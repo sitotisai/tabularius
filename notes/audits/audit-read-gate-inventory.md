@@ -334,16 +334,16 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/server/src/logs.ts:77](../../packages/server/src/logs.ts#L77) `LogShipper/follow` | `SQLite.get` (77); `SQLite.prepare` (77); `Store.sql` (77, 78, 79, 80) | ADMIN |
 | [packages/server/src/logs.ts:89](../../packages/server/src/logs.ts#L89) `LogShipper/releaseIfIdle` | `Store.sql` (89) | ADMIN |
 | [packages/server/src/mcp-design.ts:510](../../packages/server/src/mcp-design.ts#L510) `registerDesignTools/audit_log` | `Store.auditLog` (510) | DESIGN |
-| [packages/server/src/mcp.ts:1358](../../packages/server/src/mcp.ts#L1358) `createMcpServer/check_record` | `Store.get` (1358); `Store.row` (1360) | MCP |
-| [packages/server/src/mcp.ts:1079](../../packages/server/src/mcp.ts#L1079) `createMcpServer/evaluate_calculation` | `Store.get` (1079, 1087); `Store.find` (1080); `Store.evaluate` (1081); `Store.row` (1086) | SQL |
-| [packages/server/src/mcp.ts:1382](../../packages/server/src/mcp.ts#L1382) `createMcpServer/explain_related` | `Store.get` (1382) | MCP |
-| [packages/server/src/mcp.ts:1335](../../packages/server/src/mcp.ts#L1335) `createMcpServer/explain_value` | `Store.get` (1335); `Store.row` (1336) | MCP |
-| [packages/server/src/mcp.ts:959](../../packages/server/src/mcp.ts#L959) `createMcpServer/find_records` | `Store.find` (959) | MCP |
-| [packages/server/src/mcp.ts:1154](../../packages/server/src/mcp.ts#L1154) `createMcpServer/get_container` | `Store.container` (1154) | SQL |
-| [packages/server/src/mcp.ts:972](../../packages/server/src/mcp.ts#L972) `createMcpServer/get_record` | `Store.get` (972) | MCP |
-| [packages/server/src/mcp.ts:1178](../../packages/server/src/mcp.ts#L1178) `createMcpServer/sql_query` | `Store.queryWithOrigins` (1178) | SQL |
-| [packages/server/src/mcp.ts:1022](../../packages/server/src/mcp.ts#L1022) `createMcpServer/update_record` | `Store.get` (1022, 1026) | MCP |
-| [packages/server/src/mcp.ts:2279](../../packages/server/src/mcp.ts#L2279) `registerResources/audit` | `Store.auditLog` (2279) | MCP |
+| [packages/server/src/mcp.ts:1369](../../packages/server/src/mcp.ts#L1369) `createMcpServer/check_record` | `Store.get` (1369); `Store.row` (1371) | MCP |
+| [packages/server/src/mcp.ts:1090](../../packages/server/src/mcp.ts#L1090) `createMcpServer/evaluate_calculation` | `Store.get` (1090, 1098); `Store.find` (1091); `Store.evaluate` (1092); `Store.row` (1097) | SQL |
+| [packages/server/src/mcp.ts:1393](../../packages/server/src/mcp.ts#L1393) `createMcpServer/explain_related` | `Store.get` (1393) | MCP |
+| [packages/server/src/mcp.ts:1346](../../packages/server/src/mcp.ts#L1346) `createMcpServer/explain_value` | `Store.get` (1346); `Store.row` (1347) | MCP |
+| [packages/server/src/mcp.ts:970](../../packages/server/src/mcp.ts#L970) `createMcpServer/find_records` | `Store.find` (970) | MCP |
+| [packages/server/src/mcp.ts:1165](../../packages/server/src/mcp.ts#L1165) `createMcpServer/get_container` | `Store.container` (1165) | SQL |
+| [packages/server/src/mcp.ts:983](../../packages/server/src/mcp.ts#L983) `createMcpServer/get_record` | `Store.get` (983) | MCP |
+| [packages/server/src/mcp.ts:1189](../../packages/server/src/mcp.ts#L1189) `createMcpServer/sql_query` | `Store.queryWithOrigins` (1189) | SQL |
+| [packages/server/src/mcp.ts:1033](../../packages/server/src/mcp.ts#L1033) `createMcpServer/update_record` | `Store.get` (1033, 1037) | MCP |
+| [packages/server/src/mcp.ts:2290](../../packages/server/src/mcp.ts#L2290) `registerResources/audit` | `Store.auditLog` (2290) | MCP |
 | [packages/server/src/oauth.ts:880](../../packages/server/src/oauth.ts#L880) `OAuthServer/accessAllowed` | `SQLite.get` (880); `SQLite.prepare` (880) | AUTH |
 | [packages/server/src/oauth.ts:506](../../packages/server/src/oauth.ts#L506) `OAuthServer/authorize` | `SQLite.get` (506); `SQLite.prepare` (506, 510, 512, 519, 542, 543) | AUTH |
 | [packages/server/src/oauth.ts:487](../../packages/server/src/oauth.ts#L487) `OAuthServer/authorize/done` | `SQLite.prepare` (487, 488) | AUTH |
@@ -391,12 +391,12 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/server/src/optimization.ts:316](../../packages/server/src/optimization.ts#L316) `sizes` | `SQLite.all` (316); `SQLite.prepare` (316); `Store.sql` (316) | DESIGN |
 | [packages/server/src/optimization.ts:312](../../packages/server/src/optimization.ts#L312) `sizes/one` | `SQLite.get` (312); `SQLite.prepare` (312); `Store.sql` (312) | DESIGN |
 | [packages/server/src/optimization.ts:449](../../packages/server/src/optimization.ts#L449) `speedFindings` | `Store.recordCount` (449, 492, 510) | DESIGN |
-| [packages/server/src/pgwire.ts:853](../../packages/server/src/pgwire.ts#L853) `Connection/bareNames` | `Store.describe` (853) | SQL |
-| [packages/server/src/pgwire.ts:869](../../packages/server/src/pgwire.ts#L869) `Connection/catalog` | `Store.describeTyped` (869) | SQL |
-| [packages/server/src/pgwire.ts:1244](../../packages/server/src/pgwire.ts#L1244) `Connection/describe` | `Store.describeTyped` (1244) | SQL |
-| [packages/server/src/pgwire.ts:880](../../packages/server/src/pgwire.ts#L880) `Connection/run` | `Store.selectIn` (880); `Store.describeTyped` (884) | SQL |
-| [packages/server/src/pgwire.ts:830](../../packages/server/src/pgwire.ts#L830) `Connection/translate` | `Calculations.translateSQL` (830) | SQL |
-| [packages/server/src/pgwire.ts:1011](../../packages/server/src/pgwire.ts#L1011) `Connection/validateSyntax` | `SQLite.prepare` (1011); `Store.sql` (1011) | SQL |
+| [packages/server/src/pgwire.ts:859](../../packages/server/src/pgwire.ts#L859) `Connection/bareNames` | `Store.describe` (859) | SQL |
+| [packages/server/src/pgwire.ts:875](../../packages/server/src/pgwire.ts#L875) `Connection/catalog` | `Store.describeTyped` (875) | SQL |
+| [packages/server/src/pgwire.ts:1250](../../packages/server/src/pgwire.ts#L1250) `Connection/describe` | `Store.describeTyped` (1250) | SQL |
+| [packages/server/src/pgwire.ts:886](../../packages/server/src/pgwire.ts#L886) `Connection/run` | `Store.selectIn` (886); `Store.describeTyped` (890) | SQL |
+| [packages/server/src/pgwire.ts:836](../../packages/server/src/pgwire.ts#L836) `Connection/translate` | `Calculations.translateSQL` (836) | SQL |
+| [packages/server/src/pgwire.ts:1017](../../packages/server/src/pgwire.ts#L1017) `Connection/validateSyntax` | `SQLite.prepare` (1017); `Store.sql` (1017) | SQL |
 | [packages/server/src/pgwrite.ts:431](../../packages/server/src/pgwrite.ts#L431) `executeWrite/reader` | `Store.selectIn` (431) | SQL |
 | [packages/server/src/pgwrite.ts:404](../../packages/server/src/pgwrite.ts#L404) `returningColumns` | `Store.describe` (404) | SQL |
 | [packages/server/src/pii.ts:347](../../packages/server/src/pii.ts#L347) `PiiMasker/constructor` | `SQLite.get` (347); `SQLite.prepare` (347); `Store.sql` (347) | REDACTION |
