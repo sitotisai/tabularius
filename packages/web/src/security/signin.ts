@@ -30,9 +30,15 @@ export function signinTab(sec: Sec): HTMLElement {
       button('Remove', () => void remove(p), { class: 'd-danger' }),
     )));
   };
+  // Set from the server: why this account cannot confirm a credential change (see applyBlocked below).
+  let blocked: string | undefined;
+  let applyBlocked = (): void => {};
   const reload = async (): Promise<void> => {
     try {
-      render(await listMyPasskeys(db, token));
+      const { passkeys, confirmBlocked } = await listMyPasskeys(db, token);
+      blocked = confirmBlocked;
+      applyBlocked();
+      render(passkeys);
     } catch (e) {
       passkeyList.replaceChildren(h('p', { class: 'd-hint' }, errorText(e)));
     }
@@ -54,6 +60,8 @@ export function signinTab(sec: Sec): HTMLElement {
     return { password: password.value, ...(code.value.trim() ? { code: code.value.trim() } : {}) };
   };
   const forget = (): void => { password.value = ''; code.value = ''; };
+  // A one-time code works once and the server spends it on the first request, so a retry needs a fresh one.
+  const spent = (): void => { code.value = ''; };
   const add = async (): Promise<void> => {
     const confirmed = proof();
     if (!confirmed) return;
@@ -65,6 +73,7 @@ export function signinTab(sec: Sec): HTMLElement {
       toast('Passkey added.', 'info');
       await reload();
     } catch (e) {
+      spent();
       if (e instanceof DOMException && (e.name === 'NotAllowedError' || e.name === 'AbortError')) toast('Adding the passkey was cancelled.', 'info');
       else toast(errorText(e));
     }
@@ -95,25 +104,43 @@ export function signinTab(sec: Sec): HTMLElement {
       forget();
       displayedRecoveryCodes = codes;
       showCodes(codes);
-    } catch (e) { toast(errorText(e)); }
+    } catch (e) { spent(); toast(errorText(e)); }
     finally {
       recoveryGenerationPending = false;
-      for (const control of document.querySelectorAll<HTMLButtonElement>('.signin-generate')) control.disabled = false;
+      for (const control of document.querySelectorAll<HTMLButtonElement>('.signin-generate')) control.disabled = !!blocked;
     }
   };
   const generateButton = button('Generate recovery codes', () => void generate(generateButton), { class: 'signin-generate' });
   generateButton.disabled = recoveryGenerationPending;
+  const addButton = button('Add a passkey', () => void add(), { class: 'd-primary' });
 
-  wrap.append(
+  // The fields sit in a form so a password manager recognises them; Enter does nothing by itself.
+  const confirmForm = h('form', { class: 'signin-confirm', autocomplete: 'on' },
     h('h2', { class: 'd-h2' }, 'Confirm it’s you'),
     h('p', { class: 'd-hint' }, 'Adding a passkey or making recovery codes asks for your password again, and a one-time code if you use an authenticator app.'),
     field('Current password', password),
-    field('One-time code', code),
+    field('One-time code', code));
+  confirmForm.addEventListener('submit', (event) => event.preventDefault());
+  const blockedNote = h('p', { class: 'd-hint signin-blocked', role: 'status' });
+  blockedNote.hidden = true;
+  // An account with no password of its own, or a passkey as its second factor, cannot confirm here: say why and
+  // leave the actions off rather than let each try fail.
+  applyBlocked = (): void => {
+    confirmForm.hidden = !!blocked;
+    blockedNote.hidden = !blocked;
+    blockedNote.textContent = blocked ?? '';
+    addButton.disabled = !!blocked;
+    generateButton.disabled = recoveryGenerationPending || !!blocked;
+  };
+
+  wrap.append(
+    confirmForm,
+    blockedNote,
     h('h2', { class: 'd-h2' }, 'Passkeys'),
     h('p', { class: 'd-hint' }, 'Sign in without a password, using this device’s fingerprint, face or security key. Passkeys can’t be phished or reused across sites.'),
     passkeyList,
     passkeySupported()
-      ? button('Add a passkey', () => void add(), { class: 'd-primary' })
+      ? addButton
       : h('p', { class: 'd-hint' }, 'This browser can’t create passkeys here (they need a secure https connection).'),
     h('h2', { class: 'd-h2' }, 'Recovery codes'),
     h('p', { class: 'd-hint' }, 'One-time codes to sign in if you lose your passkey or authenticator. Generating a new set replaces the old one.'),
