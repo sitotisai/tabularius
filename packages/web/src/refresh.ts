@@ -56,10 +56,10 @@ export function mergeObjectRecord(old: DataRecord, fresh: DataRecord, key: strin
   if (!key) return;
   if (!portal) mergeFieldValues(old.fieldData, fresh.fieldData, key, repetition);
   else {
-    const rows = new Map(fresh.portalData[portal]?.map((row) => [row.recordId, row]));
+    const rows = new Map(ownGet(fresh.portalData, portal)?.map((row) => [row.recordId, row]));
     // Only explicitly requested missing identities mean deleted/denied; offscreen rows stay cached.
     const requested = new Set(requestedIds?.map(String) ?? rows.keys());
-    for (const row of old.portalData[portal] ?? []) {
+    for (const row of ownGet(old.portalData, portal) ?? []) {
       if (requested.has(row.recordId)) mergeFieldValues(row, rows.get(row.recordId) ?? {}, key, repetition);
     }
   }
