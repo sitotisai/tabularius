@@ -4,7 +4,7 @@
 // record, related records (through the relationship graph), globals, Get ()
 // values, custom functions and design functions.
 
-import { cleanSql, sqlName, sqlTokens } from './sql-tokens.ts';
+import { checkSqlSize, cleanSql, sqlName, sqlTokens } from './sql-tokens.ts';
 import { rethrowExecutionRefusal } from '../../calc/src/execution-refusal.ts';
 import { charCount } from '../../calc/src/text.ts';
 import { FUNCTIONS, pluginNotInstalled } from '../../calc/src/functions.ts';
@@ -2039,6 +2039,7 @@ export class Calculations {
    * record of another file; a table of one it may not read is treated as a name that is not a table at all.
    */
   translateSQL(query: string, privileges?: Privileges, account?: string, mayRead?: (file: Store) => boolean, endpoint = false): { sql: string; target: Store; stable: boolean; computed: { store: Store; table: Table; field: Field }[] } {
+    checkSqlSize(query);
     query = cleanSql(query);
     if (!oneStatement(query)) throw new CalcError(ERR.calculation, 'SQL runs one statement at a time');
     refuseUnsupportedJoins(query);
