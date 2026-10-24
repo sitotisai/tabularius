@@ -18,6 +18,12 @@ parameters. Sync outside a transaction clears the portals and frees their
 bytes; Sync inside a transaction keeps them. The extended protocol requires
 Sync after an error, and an aborted transaction also needs ROLLBACK or COMMIT.
 
+The text of one SQL statement is limited to **1 MB** (1,048,576 characters) on every
+SQL path: the PostgreSQL port (SQLSTATE `53000`), the SQL endpoint and ExecuteSQL
+(error 812). Longer text is refused before any work is done on it, because reading
+it takes far more time and memory than its length suggests. Pass large values as
+parameters.
+
 For the per-query row cap, the server reads one
 extra row to detect overflow and refuses larger results before sending any
 rows, with SQLSTATE `54000` and this message:

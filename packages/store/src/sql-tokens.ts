@@ -1,6 +1,7 @@
 // Lexical boundaries shared by SQL rewriting and the read-only gate. This is
 // not a SQL parser: unsupported grammar is still left to the query compiler.
 import { CalcError, ERR } from '../../calc/src/values.ts';
+import { StoreError } from './errors.ts';
 
 export interface SqlToken {
   kind: 'word' | 'string' | 'identifier' | 'comment' | 'space' | 'symbol' | 'parameter';
@@ -9,9 +10,22 @@ export interface SqlToken {
   end: number;
 }
 
+/**
+ * The longest SQL text (characters) any entry point reads. The text is tokenized several times over, synchronously, with
+ * an object per token, so cost and memory grow far faster than its length: a megabyte holds the server's one thread for
+ * seconds and a few megabytes abort the process. Large values belong in parameters.
+ */
+export const MAX_SQL_TEXT = 1024 * 1024;
+
+/** Refuses (error 812) SQL text over MAX_SQL_TEXT, before any work is done on it. */
+export function checkSqlSize(sql: string): void {
+  if (sql.length > MAX_SQL_TEXT) throw new StoreError(812, `Exceeded host's capacity: SQL text is larger than ${MAX_SQL_TEXT / 2 ** 20} MB; send a smaller statement (pass large values as parameters)`);
+}
+
 const invalid = (message: string): never => { throw new CalcError(ERR.calculation, message); };
 
 export function sqlTokens(sql: string, postgres = false): SqlToken[] {
+  checkSqlSize(sql);
   if (sql.includes('\0')) invalid('SQL text contains a NUL byte');
   const out: SqlToken[] = [];
   for (let i = 0; i < sql.length;) {
