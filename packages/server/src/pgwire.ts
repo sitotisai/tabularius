@@ -57,6 +57,8 @@ const MAX_UNSIGNED_PER_ADDRESS = 50;
 /** The longest message a signed-in client may send, and the longest before sign-in (a password), in bytes. */
 const MAX_MESSAGE = 256 * 1024 * 1024;
 const MAX_UNSIGNED_MESSAGE = 10_000;
+/** How long a client may leave its answers unread before the connection is dropped, in ms. */
+const OUTPUT_STALL_MS = 60_000;
 const LOCAL_ADDRESSES = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 /** Signed-in SQL connections allowed concurrently on this server. */
 export const PGWIRE_LIMIT = { signedPerAccount: 32, signedGlobal: 256 };
@@ -446,6 +448,30 @@ class Connection {
     return false;
   }
 
+  /**
+   * Waits while the client is not reading what was sent (the socket's write buffer is over its limit), and stops reading
+   * its input meanwhile, so answers to queries it has pipelined do not pile up in memory. A client that stays blocked
+   * for a minute is disconnected.
+   */
+  private async flushed(): Promise<void> {
+    const socket = this.socket;
+    if (!socket.writableNeedDrain || socket.destroyed) return;
+    socket.pause();
+    await new Promise<void>((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        socket.off('drain', done);
+        socket.off('close', done);
+        resolve();
+      };
+      const timer = setTimeout(() => socket.destroy(), OUTPUT_STALL_MS);
+      timer.unref();
+      socket.once('drain', done);
+      socket.once('close', done);
+    });
+    if (!socket.destroyed) socket.resume();
+  }
+
   private send(...parts: Buffer[]): void {
     if (!this.socket.destroyed) this.socket.write(Buffer.concat(parts));
   }
@@ -483,6 +509,7 @@ class Connection {
       const body = this.buf.subarray(5, len + 1);
       this.buf = this.buf.subarray(len + 1);
       await this.handle(type, body);
+      await this.flushed();
     }
   }
 
@@ -1016,7 +1043,10 @@ class Connection {
         }
         const r = this.run(sql, []);
         this.send(rowDescription(r.cols));
-        for (let i = 0; i < r.rows.length; i += 1000) this.send(...r.rows.slice(i, i + 1000).map((row) => dataRow(row, r.cols)));
+        for (let i = 0; i < r.rows.length; i += 1000) {
+          this.send(...r.rows.slice(i, i + 1000).map((row) => dataRow(row, r.cols)));
+          await this.flushed();
+        }
         this.send(complete(`SELECT ${r.rows.length}`));
       } catch (e) {
         // The rest of a multi-statement query is skipped, as PostgreSQL does.
@@ -1032,7 +1062,10 @@ class Connection {
     const { result, cols } = await this.runWrite(plan, [], tx);
     if (cols) {
       this.send(rowDescription(cols));
-      for (let i = 0; i < result.rows!.length; i += 1000) this.send(...result.rows!.slice(i, i + 1000).map((row) => dataRow(row, cols)));
+      for (let i = 0; i < result.rows!.length; i += 1000) {
+        this.send(...result.rows!.slice(i, i + 1000).map((row) => dataRow(row, cols)));
+        await this.flushed();
+      }
     }
     this.send(complete(result.tag));
   }
@@ -1217,7 +1250,10 @@ class Connection {
           }
           const r = p.result!;
           const end = max > 0 ? Math.min(r.rows.length, p.sent + max) : r.rows.length;
-          for (let i = p.sent; i < end; i += 1000) this.send(...r.rows.slice(i, Math.min(end, i + 1000)).map((row) => dataRow(row, r.cols, p.formats)));
+          for (let i = p.sent; i < end; i += 1000) {
+            this.send(...r.rows.slice(i, Math.min(end, i + 1000)).map((row) => dataRow(row, r.cols, p.formats)));
+            await this.flushed();
+          }
           p.sent = end;
           this.send(end < r.rows.length ? message('s') : complete(p.tag!));
           return;
@@ -1228,7 +1264,10 @@ class Connection {
         }
         const r = this.resultOf(p)!;
         const end = max > 0 ? Math.min(r.rows.length, p.sent + max) : r.rows.length;
-        for (let i = p.sent; i < end; i += 1000) this.send(...r.rows.slice(i, Math.min(end, i + 1000)).map((row) => dataRow(row, r.cols, p.formats)));
+        for (let i = p.sent; i < end; i += 1000) {
+          this.send(...r.rows.slice(i, Math.min(end, i + 1000)).map((row) => dataRow(row, r.cols, p.formats)));
+          await this.flushed();
+        }
         p.sent = end;
         this.send(end < r.rows.length ? message('s') : complete(`${own ? own.tag : 'SELECT'} ${own ? '' : r.rows.length}`.trim()));
         return;
