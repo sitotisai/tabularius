@@ -56,9 +56,15 @@ test('a good set passes; a copy changed on disk afterwards is caught, by its che
 });
 
 test('a set taken while nothing was hosted passes', { skip }, async () => {
+  // A backup of a folder with no stores is refused (it would count toward keep and push real sets out)...
   const empty = join(dir, 'empty-folder');
   mkdirSync(empty, { recursive: true });
-  const set = (await backupFolder(empty, join(dir, 'empty'), 0, '')).dir;
+  await assert.rejects(backupFolder(empty, join(dir, 'empty'), 0, ''), /no database files/);
+  assert.deepEqual(backupSets(join(dir, 'empty')), []);
+  // ...so a set of no stores is made by hand, and still verifies.
+  const set = (await backupFolder(dir, join(dir, 'empty-by-hand'), 0, '')).dir;
+  rmSync(join(set, FILE));
+  writeFileSync(join(set, 'backup.json'), JSON.stringify({ finished: {}, sha256: {} }));
   const check = await verifySet(set, '');
   assert.deepEqual(check.files, {});
   assert.equal(check.ok, true);
