@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createStore, Store, StoreError, writer, endTransaction, LOCKOUT, type Transaction } from '../src/index.ts';
+import { createStore, Store, StoreError, writer, endTransaction, LOCKOUT, totpCode, type Transaction } from '../src/index.ts';
 
-// While another session's transaction holds the file, a sign-in row cannot be written. It waits, in order, bounded,
-// and is written when the hold ends; nothing else waits, and lockouts do not depend on the rows.
+// While a transaction holds the file, a sign-in row cannot be written. It waits, in order, bounded, and is written when
+// the hold ends; nothing else waits, a sign-in that needs a write of second-factor state is still refused, and lockouts do
+// not depend on the rows.
 
 function setup(t: TestContext) {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-signin-queue-'));
@@ -47,14 +48,74 @@ test('a sign-in row waits for the hold, keeps its time and order, and a lockout 
   assert.equal(s.verifySecurityAudit().ok, true);
 });
 
+test("the holder's own sign-in rows wait too, so reverting its transaction cannot hide them", (t) => {
+  const { s, rows } = setup(t);
+  const tx: Transaction = { files: new Map() };
+  writer.run({ transaction: { open: tx } }, () => {
+    s.create('T', { A: 'held' });
+    s.auditSignIn('Ann', '10.0.0.5', false);
+  });
+  assert.deepEqual(s.deferredSecurityStats(), { pending: 1, dropped: 0 });
+  endTransaction(tx, false);
+  assert.deepEqual(rows('Ann').map((e) => e.kind), ['sign-in-failed'], 'written after the revert, which did not take it with it');
+});
+
+test('a sign-in that needs second-factor state written is refused while another session holds the file, and the code is not spent', (t) => {
+  const { s, hold } = setup(t);
+  const { secret } = s.enrollTotp('Ann');
+  assert.equal(s.confirmTotp('Ann', totpCode(secret)), true);
+  const tx = hold();
+  assert.throws(() => s.verifyTotp('Ann', totpCode(secret), '10.0.0.6'), (e: unknown) => e instanceof StoreError && e.code === 301);
+  assert.throws(() => s.issueWebauthnChallenge('auth'), (e: unknown) => e instanceof StoreError && e.code === 301);
+  endTransaction(tx, false);
+  assert.equal(s.verifyTotp('Ann', totpCode(secret), '10.0.0.6'), true, 'not used up by the refused attempt');
+  assert.equal(s.verifyTotp('Ann', totpCode(secret), '10.0.0.6'), false, 'and used up by the accepted one');
+});
+
+test('a long queue is written out in chunks that let the event loop run, in order, with the chain intact', async (t) => {
+  const { s, hold } = setup(t);
+  const tx = hold();
+  for (let i = 0; i < 450; i++) s.auditLockoutCleared(`n${String(i).padStart(4, '0')}`, 'account', '10.0.0.7');
+  assert.equal(s.deferredSecurityStats().pending, 450);
+  endTransaction(tx, true);
+  // The first chunk is written at once, the rest on later turns of the event loop.
+  const afterFirst = s.deferredSecurityStats().pending;
+  assert.ok(afterFirst > 0 && afterFirst < 450, `${afterFirst} rows still waiting after the first chunk`);
+  for (let i = 0; i < 1000 && s.deferredSecurityStats().pending; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(s.deferredSecurityStats().pending, 0);
+  const targets = s.auditLog({ kind: 'lockout-cleared', security: true, limit: 1000 }).sort((a, b) => a.seq - b.seq).map((e) => e.target);
+  assert.deepEqual(targets, Array.from({ length: 450 }, (_, i) => `n${String(i).padStart(4, '0')}`), 'in the order they happened');
+  assert.equal(s.verifySecurityAudit().ok, true);
+});
+
 test('at most 10,000 rows wait: the oldest go, once with a warning, and the count says how many', (t) => {
   const { s, hold } = setup(t);
   const warned: string[] = [];
   t.mock.method(console, 'warn', (m: string) => { warned.push(m); });
-  const tx = hold();
-  for (let i = 0; i < 10_003; i++) s.auditSignIn(`n${i}`, '10.0.0.3', true);
+  hold();
+  for (let i = 0; i < 10_003; i++) s.auditLockoutCleared(`n${i}`, 'account', '10.0.0.3');
   assert.deepEqual(s.deferredSecurityStats(), { pending: 10_000, dropped: 3 });
   assert.equal(warned.filter((m) => /sign-in audit rows are waiting/.test(m)).length, 1);
-  // The transaction is left open: writing 10,000 rows out takes seconds, and the ordering is checked above.
-  void tx;
+});
+
+test('successful sign-ins are limited to 1,000 waiting, and over the bound they go before failures and lockouts', (t) => {
+  const { s, hold } = setup(t);
+  t.mock.method(console, 'warn', () => {});
+  hold();
+  for (let i = 0; i < 1100; i++) s.auditSignIn(`ok${i}`, '10.0.0.9', true);
+  assert.deepEqual(s.deferredSecurityStats(), { pending: 1000, dropped: 100 });
+  for (let i = 0; i < 9000; i++) s.auditLockoutCleared(`n${i}`, 'account', '10.0.0.9');
+  assert.deepEqual(s.deferredSecurityStats(), { pending: 10_000, dropped: 100 });
+  for (let i = 0; i < 5; i++) s.auditLockoutCleared(`m${i}`, 'account', '10.0.0.9');
+  // Each of the five pushed out a successful sign-in, not a lockout row.
+  assert.deepEqual(s.deferredSecurityStats(), { pending: 10_000, dropped: 105 });
+});
+
+test('names in a waiting row are cut to 4,096 characters', (t) => {
+  const { s, hold } = setup(t);
+  const tx = hold();
+  s.auditSignIn('A'.repeat(100_000), 'B'.repeat(100_000), false);
+  endTransaction(tx, false);
+  const [row] = s.auditLog({ kind: 'sign-in-failed', security: true, limit: 10 });
+  assert.equal(row.account?.length, 4096);
 });

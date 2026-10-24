@@ -179,11 +179,17 @@ export const NOT_LOGGED = '‹not logged›';
 const SENSITIVE_FIELD = /(^|[^a-z])(pass(word|code|phrase|wd)?|pwd|secret|token|api[ _-]?key|private[ _-]?key|credential|ssn|social[ _-]?security|card[ _-]?(number|no|num)|cvv|cvc|iban|pin)($|[^a-z])/i;
 
 /** One entry of the audit log: a record change, or a security/authentication event. */
-/** The sign-in events whose rows may wait for another session's transaction to end (see logSecurity); no other row ever waits. */
+/** The sign-in events whose rows may wait for a transaction that holds the file to end (see logSecurity); no other row ever waits. */
 const DEFERRABLE_SECURITY_KINDS: ReadonlySet<string> = new Set(['sign-in', 'sign-in-failed', 'locked-out', 'lockout-cleared']);
-/** The most sign-in rows kept waiting; past it the oldest are dropped. */
+/** The most sign-in rows kept waiting, and of them the most successful sign-ins (anyone can make those); past either the oldest of that kind are dropped. */
 const MAX_DEFERRED_SECURITY = 10_000;
-interface DeferredSecurity { at: string; kind: SecurityEventKind; opts: { account?: string | null; target?: string; from?: string; detail?: Record<string, unknown> } }
+const MAX_DEFERRED_SIGN_INS = 1000;
+/** Rows written in one transaction when the queue is written out, so a long queue does not hold up the event loop for long at a time. */
+const DEFERRED_SECURITY_CHUNK = 200;
+/** Account names and addresses are kept to this many characters in a waiting row, as they are for comparisons. */
+const DEFERRED_FIELD_MAX = 4096;
+type SecurityOpts = { account?: string | null; target?: string; from?: string; detail?: Record<string, unknown> };
+interface DeferredSecurity { at: string; kind: SecurityEventKind; opts: SecurityOpts }
 
 export interface AuditEntry {
   seq: number;
@@ -1087,6 +1093,8 @@ export class Store {
   private readonly expiredLocks: { key: string; endedAt: number }[] = [];
   private flushingExpired = false;
   private flushExpiredLocks(): void {
+    // Sign-in rows that waited for a transaction go first (this runs in every sign-in check).
+    this.flushDeferredSecurity();
     if (this.flushingExpired || !this.expiredLocks.length) return;
     this.flushingExpired = true;
     try {
@@ -1466,7 +1474,9 @@ export class Store {
     this.denialPending.clear();
     clearTimeout(this.usageTimer);
     try { this.flushUsage(); } catch { /* the file is going away */ }
-    this.flushDeferredSecurity();
+    if (this.heldBy !== undefined && this.hasDeferredSecurity()) {
+      console.warn(`${this.deferredSecurityStats().pending} sign-in audit rows were still waiting for a transaction that holds the file, and are lost`);
+    } else this.flushDeferredSecurity(true);
     this.results?.close();
     this.readOnlySql?.close();
     this.sql.close();
@@ -2821,74 +2831,128 @@ export class Store {
    * to accounts, privilege sets, passwords, second factors, API tokens and
    * schema — not only record edits. `target` names the object acted on.
    */
-  private logSecurity(kind: SecurityEventKind, opts: { account?: string | null; target?: string; from?: string; detail?: Record<string, unknown> } = {}): void {
+  private logSecurity(kind: SecurityEventKind, opts: SecurityOpts = {}): void {
     // A failed sign-in that would take the audit past its share for them is not written. A lockout always is: there is one per lock, not per attempt.
     if (kind === 'sign-in-failed' && !this.failureAuditRoom()) return;
     const at = new Date().toISOString();
+    if (!DEFERRABLE_SECURITY_KINDS.has(kind)) {
+      // Rows that happened before this one go first, so the chain and the times agree.
+      this.flushDeferredSecurity(true);
+      this.appendSecurity(at, kind, opts);
+      return;
+    }
     this.flushDeferredSecurity();
-    // Another session's transaction holds the file, so this row cannot be written now: a sign-in must not fail for that (one
-    // account's BEGIN would lock everyone else out), so its row waits, in order, and is written when the hold ends. Rows
-    // already waiting stay ahead of any later one.
-    if (DEFERRABLE_SECURITY_KINDS.has(kind) && (this.deferredSecurity.length || this.heldByOther())) {
-      this.deferSecurity({ at, kind, opts });
+    // A transaction holds the file, so this row cannot be written now: a sign-in must not fail for that (one account's BEGIN
+    // would lock everyone else out), and a row written into the holder's savepoint would vanish if it were undone. It waits,
+    // in order, and is written when the hold ends. Rows already waiting stay ahead of any later one.
+    if (this.heldBy !== undefined || this.hasDeferredSecurity()) {
+      this.deferSecurity({ at, kind, opts: {
+        ...(opts.account !== undefined ? { account: opts.account === null ? null : opts.account.slice(0, DEFERRED_FIELD_MAX) } : {}),
+        ...(opts.target !== undefined ? { target: opts.target.slice(0, DEFERRED_FIELD_MAX) } : {}),
+        ...(opts.from !== undefined ? { from: opts.from.slice(0, DEFERRED_FIELD_MAX) } : {}),
+        ...(opts.detail !== undefined ? { detail: opts.detail } : {}),
+      } });
       return;
     }
     this.appendSecurity(at, kind, opts);
   }
 
-  private appendSecurity(at: string, kind: SecurityEventKind, opts: { account?: string | null; target?: string; from?: string; detail?: Record<string, unknown> }): void {
+  private appendSecurity(at: string, kind: SecurityEventKind, opts: SecurityOpts): void {
+    this.securityChange(() => this.appendSecurityRow(at, kind, opts));
+  }
+
+  private appendSecurityRow(at: string, kind: SecurityEventKind, opts: SecurityOpts): void {
     const payload: Record<string, unknown> = { ...(opts.detail ?? {}) };
     if (opts.target !== undefined) payload.target = opts.target;
     if (opts.from) payload.from = opts.from;
     const agent = opts.account && this.isAgent(opts.account) ? 1 : 0;
-    this.securityChange(() => appendSecurityEvent(this.sql, at, opts.account ?? null, kind,
-      Object.keys(payload).length ? JSON.stringify(payload) : null, agent));
+    appendSecurityEvent(this.sql, at, opts.account ?? null, kind, Object.keys(payload).length ? JSON.stringify(payload) : null, agent);
   }
 
-  /** Whether a transaction of another session holds this file, so that a security row written now would be refused. */
+  /** Whether a transaction of another session holds this file: a write made now on the shared connection would land in it. */
   private heldByOther(): boolean {
     return this.heldBy !== undefined && this.heldBy !== writer.getStore()?.transaction?.open;
   }
 
-  /** Sign-in rows that could not be written because another session's transaction held the file, oldest first. They are lost if the process ends before the hold does. */
-  private readonly deferredSecurity: DeferredSecurity[] = [];
+  /**
+   * A write that goes on the shared connection without joining the transaction would land inside another session's open
+   * one, and be undone with it: a one-time code or a challenge used in a sign-in could then be used again. Refused instead.
+   */
+  private requireFreeOfOthers(): void {
+    if (this.heldByOther()) throw new StoreError(301, 'Record is in use by another user (a transaction is open)');
+  }
+
+  /**
+   * Sign-in rows that could not be written because a transaction held the file, oldest first, in two queues by sequence
+   * number: successful sign-ins (limited further, as anyone can make them) and the rest. They are lost if the process ends
+   * before the hold does.
+   */
+  private readonly deferredSignIns = new Map<number, DeferredSecurity>();
+  private readonly deferredOther = new Map<number, DeferredSecurity>();
+  private deferredSeq = 0;
   private flushingSecurity = false;
   private deferredSecurityDropped = 0;
+  private deferredSecurityFailing = false;
 
-  /** Rows waiting to be written and rows dropped because too many waited (a count, no payloads). */
+  private hasDeferredSecurity(): boolean {
+    return this.deferredSignIns.size > 0 || this.deferredOther.size > 0;
+  }
+
+  /** Rows waiting to be written and rows dropped because too many waited (counts, no payloads). */
   deferredSecurityStats(): { pending: number; dropped: number } {
-    return { pending: this.deferredSecurity.length, dropped: this.deferredSecurityDropped };
+    return { pending: this.deferredSignIns.size + this.deferredOther.size, dropped: this.deferredSecurityDropped };
   }
 
   private deferSecurity(event: DeferredSecurity): void {
-    if (this.deferredSecurity.length >= MAX_DEFERRED_SECURITY) {
-      // The oldest goes. One warning per run of drops (the count starts again when the queue is written out).
-      if (this.deferredSecurityDropped++ === 0) console.warn(`sign-in audit rows are waiting for another session's transaction to end: more than ${MAX_DEFERRED_SECURITY}, so the oldest are dropped`);
-      this.deferredSecurity.shift();
-    }
-    this.deferredSecurity.push({ ...event, opts: { ...event.opts, detail: { ...(event.opts.detail ?? {}), deferred: true } } });
+    const dropOldest = (queue: Map<number, DeferredSecurity>) => {
+      queue.delete(queue.keys().next().value!);
+      // One warning per run of drops (the count starts again when the queue is written out).
+      if (this.deferredSecurityDropped++ === 0) console.warn('sign-in audit rows are waiting for a transaction that holds the file: too many, so the oldest are dropped');
+    };
+    const queue = event.kind === 'sign-in' ? this.deferredSignIns : this.deferredOther;
+    if (queue === this.deferredSignIns && queue.size >= MAX_DEFERRED_SIGN_INS) dropOldest(queue);
+    // Past the bound, successful sign-ins go before failures and lockouts.
+    if (this.deferredSignIns.size + this.deferredOther.size >= MAX_DEFERRED_SECURITY) dropOldest(this.deferredSignIns.size ? this.deferredSignIns : this.deferredOther);
+    queue.set(this.deferredSeq++, { ...event, opts: { ...event.opts, detail: { ...(event.opts.detail ?? {}), deferred: true } } });
   }
 
   /**
    * Writes the waiting rows, oldest first, with the times the events happened at, once nothing holds the file and no
    * transaction of this connection is open (a row written inside someone's transaction would go with it if it were undone).
-   * A row that cannot be written stays, with those behind it, for the next try: the end of a hold, the next security row,
-   * or closing the file.
+   * A chunk of rows goes in one transaction, and with `all` unset the rest follow on later turns of the event loop. A chunk
+   * that cannot be written stays, with those behind it, for the next try: the end of a hold, a sign-in check, the next
+   * security row, or closing the file.
    */
-  private flushDeferredSecurity(): void {
-    if (!this.deferredSecurity.length || this.flushingSecurity || this.heldBy || this.sql.isTransaction) return;
+  private flushDeferredSecurity(all = false): void {
+    if (!this.hasDeferredSecurity() || this.flushingSecurity || this.heldBy || this.sql.isTransaction) return;
     this.flushingSecurity = true;
+    let more = false;
     // An unrelated script's async transaction context must never reach the append.
     writer.exit(() => {
       try {
-        while (this.deferredSecurity.length) {
-          const { at, kind, opts } = this.deferredSecurity[0];
-          this.appendSecurity(at, kind, opts);
-          this.deferredSecurity.shift();
+        do {
+          const chunk: [Map<number, DeferredSecurity>, number, DeferredSecurity][] = [];
+          const heads = [this.deferredSignIns.entries(), this.deferredOther.entries()];
+          let a = heads[0].next(), b = heads[1].next();
+          while (chunk.length < DEFERRED_SECURITY_CHUNK && (!a.done || !b.done)) {
+            if (!a.done && (b.done || a.value[0] < b.value[0])) { chunk.push([this.deferredSignIns, a.value[0], a.value[1]]); a = heads[0].next(); }
+            else { chunk.push([this.deferredOther, b.value![0], b.value![1]]); b = heads[1].next(); }
+          }
+          this.securityChange(() => { for (const [, , e] of chunk) this.appendSecurityRow(e.at, e.kind, e.opts); });
+          for (const [queue, key] of chunk) queue.delete(key);
+        } while (all && this.hasDeferredSecurity());
+        this.deferredSecurityFailing = false;
+        if (!this.hasDeferredSecurity()) this.deferredSecurityDropped = 0;
+        else more = true;
+      } catch {
+        // Still waiting: tried again at the next flush point. One line for a run of failures, not one per try.
+        if (!this.deferredSecurityFailing) {
+          this.deferredSecurityFailing = true;
+          console.warn('sign-in audit rows could not be written yet and are waiting; they are tried again at the next sign-in check');
         }
-        this.deferredSecurityDropped = 0;
-      } catch { /* still waiting: tried again at the next flush point */ } finally { this.flushingSecurity = false; }
+      } finally { this.flushingSecurity = false; }
     });
+    if (more) setImmediate(() => this.flushDeferredSecurity()).unref();
   }
 
   /**
@@ -4850,6 +4914,7 @@ export class Store {
     const row = this.sql.prepare('SELECT identity_id FROM _fm_accounts WHERE name = ? COLLATE NOCASE').get(name) as { identity_id: string | null } | undefined;
     if (!row) return undefined;
     if (row.identity_id) return row.identity_id;
+    this.requireFreeOfOthers();
     const id = randomUUID();
     this.sql.prepare('UPDATE _fm_accounts SET identity_id = ? WHERE name = ? COLLATE NOCASE AND identity_id IS NULL').run(id, name);
     return (this.sql.prepare('SELECT identity_id FROM _fm_accounts WHERE name = ? COLLATE NOCASE').get(name) as { identity_id: string } | undefined)?.identity_id;
@@ -5346,6 +5411,7 @@ export class Store {
     if (!row) return this.failures.record(key, from, false, known);
     const step = checkTotp(row.secret, code);
     if (step === undefined || (row.last_step !== null && step <= row.last_step)) return this.failures.record(key, from, false, known);
+    this.requireFreeOfOthers();
     if (!this.failures.record(key, from, true, known)) return false;
     this.sql.prepare('UPDATE _fm_totp SET last_step = ? WHERE account = ? COLLATE NOCASE').run(step, account);
     return true;
@@ -5359,6 +5425,7 @@ export class Store {
    * doesn't grow. Returns the base64url challenge to send to the browser.
    */
   issueWebauthnChallenge(kind: 'register' | 'auth', account?: string): string {
+    this.requireFreeOfOthers();
     const now = expiryClock.now();
     this.sql.prepare(`DELETE FROM _fm_webauthn_challenges WHERE created < ?`).run(new Date(now - 300_000).toISOString());
     // However fast they are asked for, only so many wait at once: the oldest go first.
@@ -5428,7 +5495,10 @@ export class Store {
   private takeWebauthnChallenge(challenge: string, kind: 'register' | 'auth'): { ok: boolean; account: string | null } {
     const row = this.sql.prepare('SELECT account, kind, created FROM _fm_webauthn_challenges WHERE challenge = ?').get(challenge) as
       { account: string | null; kind: string; created: string } | undefined;
-    if (row) this.sql.prepare('DELETE FROM _fm_webauthn_challenges WHERE challenge = ?').run(challenge);
+    if (row) {
+      this.requireFreeOfOthers();
+      this.sql.prepare('DELETE FROM _fm_webauthn_challenges WHERE challenge = ?').run(challenge);
+    }
     if (!row || row.kind !== kind || !(Date.parse(row.created) + 300_000 > expiryClock.now())) return { ok: false, account: null };
     return { ok: true, account: row.account };
   }
