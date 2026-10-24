@@ -44,10 +44,15 @@ import { BoundedMap } from './bounded-map.ts';
 import { said } from './said.ts';
 import { ReadAudit } from './read-audit.ts';
 import { sameSecret } from './secrets.ts';
+import { positiveWholeNumber } from './setting-values.ts';
 
 const IDLE_MS = 10 * 60_000;
 /** Files larger than this aren't copied for a scratch run (the copy takes a while and the disk). */
 export const SCRATCH_MAX_BYTES = 1024 * 1024 * 1024;
+/** Scratch copies for debugger runs may be larger when the operator has disk space for them. */
+export function debugScratchMaxBytes(): number {
+  return positiveWholeNumber('TABULARIUS_DEBUG_SCRATCH_MAX_BYTES', process.env.TABULARIUS_DEBUG_SCRATCH_MAX_BYTES, SCRATCH_MAX_BYTES);
+}
 /** The most runs and recordings one session can have going at once; each may hold a copy of a file of up to 1 GB. */
 export const MAX_RUNS_PER_SESSION = 3;
 const COMMANDS = new Set(['into', 'over', 'out', 'continue', 'halt']);
@@ -76,7 +81,7 @@ export async function scratchCopy(store: Store, maxBytes: number): Promise<{ sto
     // a store without a file (in memory): copy it anyway
   }
   if (size > maxBytes) {
-    throw new ApiError(960, `The file is larger than ${Math.round(maxBytes / 1024 / 1024)} MB, too large to copy for a scratch run. Send "scratch": false to debug on the hosted file.`, 400);
+    throw new ApiError(960, `The file is larger than ${Math.round(maxBytes / 1024 / 1024)} MB, too large to copy for a scratch run. Check the scratch copy limit and available disk space.`, 400);
   }
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-debug-'));
   try {
@@ -239,7 +244,7 @@ export class DebugApi {
   /** Runs and recordings a session is starting or recording, which are not in `runs` (yet). */
   private readonly claimed = new Map<string, number>();
   /** The largest file a scratch run copies. */
-  scratchMaxBytes = SCRATCH_MAX_BYTES;
+  scratchMaxBytes = debugScratchMaxBytes();
 
   constructor(host: Host, api: DataApi) {
     this.host = host;
