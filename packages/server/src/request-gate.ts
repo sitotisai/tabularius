@@ -3,11 +3,15 @@
 import { positiveWholeNumber } from './setting-values.ts';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { clientAddress } from './client-address.ts';
+import { smallBodyPending } from './request-body.ts';
 
 export type RequestClass = 'priority' | 'normal' | 'heavy';
 
 /** A live-update stream outlives any short request: it has its own per-session bound and takes no slot. */
 export const isEventStream = (method: string | undefined, path: string): boolean => method === 'GET' && /^\/tabularius\/live\/v1\/databases\/[^/]+\/events$/.test(path);
+
+/** GET /mcp may hold an event stream open, so like the live-update stream it has its own bound (StreamSlots) and takes no slot. */
+export const isMcpStream = (method: string | undefined, path: string): boolean => method === 'GET' && path === '/mcp';
 
 /** Data API calls answer a refusal in the Data API's own envelope. */
 export const isDataApiPath = (path: string): boolean => path.startsWith('/fmi/data/');
@@ -39,12 +43,16 @@ export class RequestGate {
   private readonly byAddress = new Map<string, number>();
   private readonly waiting: Waiter[] = [];
   private shedCount = 0;
+  // Requests still waiting for a small body (a sign-in is read before the caller is known), so a few idle senders cannot take every slot.
+  private slowBodies = 0;
+  readonly slowBodyLimit: number;
 
   constructor(limit = positiveWholeNumber('TABULARIUS_REQUEST_LIMIT', process.env.TABULARIUS_REQUEST_LIMIT, 32, { min: 4 }), queueLimit = 64, waitMs = 750) {
     if (!Number.isInteger(limit) || limit < 4 || !Number.isInteger(queueLimit) || queueLimit < 0 || !Number.isInteger(waitMs) || waitMs < 1) throw new Error('Invalid request gate settings');
     this.limit = limit;
     this.queueLimit = queueLimit;
     this.waitMs = waitMs;
+    this.slowBodyLimit = Math.max(1, Math.floor(limit / 4));
   }
 
   get running(): number { return this.active; }
@@ -56,15 +64,28 @@ export class RequestGate {
     return kind === 'priority' ? this.limit : this.limit - 2;
   }
 
-  private canRun(kind: RequestClass, address: string): boolean {
+  private canRun(kind: RequestClass, address: string, req: IncomingMessage): boolean {
     if (this.active >= this.capacity(kind)) return false;
+    if (this.slowBodies >= this.slowBodyLimit && smallBodyPending(req)) return false;
     // A single address can hold at most three quarters of ordinary capacity. Priority
     // calls can use the reserved slots even when that address is at its cap.
     return (this.byAddress.get(address) ?? 0) < Math.max(1, Math.floor((this.limit - 2) * 0.75)) + (kind === 'priority' ? 2 : 0);
   }
 
-  private take(address: string, res: ServerResponse): () => void {
+  private take(address: string, req: IncomingMessage, res: ServerResponse): () => void {
     this.active++;
+    // The edge ends a small body that has not arrived within its total deadline, which frees this count.
+    if (smallBodyPending(req)) {
+      this.slowBodies++;
+      const arrived = () => {
+        req.off('end', arrived);
+        res.off('close', arrived);
+        this.slowBodies--;
+        this.drain();
+      };
+      req.once('end', arrived);
+      res.once('close', arrived);
+    }
     this.byAddress.set(address, (this.byAddress.get(address) ?? 0) + 1);
     let released = false;
     let operationDone = false;
@@ -89,7 +110,7 @@ export class RequestGate {
   private drain(): void {
     for (;;) {
       const next = (['priority', 'normal', 'heavy'] as const).flatMap((kind) => this.waiting.filter((w) => w.kind === kind))
-        .find((w) => this.canRun(w.kind, w.address));
+        .find((w) => this.canRun(w.kind, w.address, w.req));
       if (!next) return;
       const at = this.waiting.indexOf(next);
       this.waiting.splice(at, 1);
@@ -97,7 +118,7 @@ export class RequestGate {
       next.res.off('close', next.close);
       // A socket may have closed between selection and admission.
       if (next.res.destroyed || next.res.writableEnded || next.req.socket.destroyed) { next.resolve(undefined); continue; }
-      next.resolve(this.take(next.address, next.res));
+      next.resolve(this.take(next.address, next.req, next.res));
     }
   }
 
@@ -107,7 +128,7 @@ export class RequestGate {
     // Serve eligible waiters first. A full queue from one capped address must
     // not prevent a different address from taking a still-free slot.
     this.drain();
-    if (this.canRun(kind, address)) return this.take(address, res);
+    if (this.canRun(kind, address, req)) return this.take(address, req, res);
     if (this.waiting.length >= this.queueLimit && kind === 'priority') {
       const displaced = this.waiting.findLast((w) => w.kind === 'heavy') ?? this.waiting.findLast((w) => w.kind === 'normal');
       if (displaced) {

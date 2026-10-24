@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { serve } from '../src/index.ts';
 import { createStore } from '../../store/src/index.ts';
 import { MAX_LIVE_STREAMS, MAX_STREAMS_PER_SESSION, MAX_STREAM_BUFFER, putStream } from '../src/live.ts';
-import { MAX_MCP_STREAMS_PER_IDENTITY } from '../src/stream-slots.ts';
+import { MAX_MCP_STREAMS_PER_IDENTITY, MAX_MCP_UNVERIFIED_STREAMS_PER_ADDRESS } from '../src/stream-slots.ts';
 import { RawClient, request, responseBody, normal, stubCommands } from './edge-test-helpers.ts';
 import type { ServerResponse } from 'node:http';
 
@@ -172,4 +172,36 @@ test('authenticated uploads above the sign-in cap can progress longer than the i
   for (let at = 0; at < body.length; at += 8192) { c.send(body.slice(at, at + 8192)); await sleep(60); }
   assert.match(await c.end(), /^HTTP\/1.1 200 /);
   assert.equal(s.store.findIds('Items').length, 1);
+});
+
+test('sign-in bodies that never arrive cannot take every request slot', async t => {
+  const s = await start(t);
+  const held: RawClient[] = [];
+  t.after(() => { for (const c of held) c.socket.destroy(); });
+  // One address may hold 24 slots here, so only a cap on unfinished small bodies leaves room for other requests.
+  for (let i = 0; i < 30; i++) {
+    const c = await new RawClient(s.port).ready(); held.push(c);
+    c.send(request('/fmi/data/vLatest/databases/Edge/sessions', 'Content-Type: application/json\r\nContent-Length: 200\r\n', 'POST') + '{');
+  }
+  // The surplus is refused as busy once its short wait is over, so every connection has been looked at.
+  await Promise.all(held.slice(-6).map(c => c.until(text => /^HTTP\/1\.1 503 /.test(text))));
+  assert.match(await s.call('/docs/'), /^HTTP\/1\.1 200 /);
+  assert.doesNotMatch(await s.call('/fmi/data/vLatest/databases'), /^HTTP\/1\.1 503 /);
+});
+
+test('GET /mcp streams with made-up Basic accounts take no request slot and are bounded per address', async t => {
+  const s = await start(t);
+  const held: RawClient[] = [];
+  t.after(() => { for (const c of held) c.socket.destroy(); });
+  const statuses: string[] = [];
+  for (let i = 0; i < 40; i++) {
+    const c = await new RawClient(s.port).ready(); held.push(c);
+    // A new account name every connection, so the per-account limit never applies.
+    c.send(request('/mcp', `Accept: text/event-stream\r\nAuthorization: Basic ${Buffer.from(`nobody${i}:x`).toString('base64')}\r\n`));
+    await c.until(text => text.includes('\r\n\r\n'));
+    statuses.push(c.text.slice(9, 12));
+  }
+  assert.equal(statuses.filter(code => code === '200').length, MAX_MCP_UNVERIFIED_STREAMS_PER_ADDRESS);
+  assert.match(await s.call('/docs/'), /^HTTP\/1\.1 200 /);
+  assert.doesNotMatch(await s.call('/fmi/data/vLatest/databases'), /^HTTP\/1\.1 503 /);
 });
