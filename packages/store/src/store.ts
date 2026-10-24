@@ -1563,6 +1563,14 @@ export class Store {
     this.heldSession = this.sql.createSession();
   }
 
+  /**
+   * Takes this file for the open transaction of the writer context now (error 301 while another session holds it), for a
+   * caller that reads records, waits, and then writes them: held from the first read, nobody else's write can land in between.
+   */
+  holdForTransaction(): void {
+    this.joinTransaction();
+  }
+
   /** Commit one other-window action while preserving this file's pending transaction. */
   independentWindowWrite<T>(tx: Transaction, run: () => T): T {
     if (this.heldBy !== tx) return run();
