@@ -576,8 +576,8 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/store/src/import.ts:168](../../packages/store/src/import.ts#L168) `applyFileAccountStatus` | `SQLite.get` (168, 170); `SQLite.prepare` (168, 170, 172, 184) | OPERATOR |
 | [packages/store/src/import.ts:205](../../packages/store/src/import.ts#L205) `createStore` | `SQLite.prepare` (205, 216) | OPERATOR |
 | [packages/store/src/import.ts:124](../../packages/store/src/import.ts#L124) `importDesigns` | `SQLite.all` (124); `SQLite.prepare` (124, 138, 141, 144, 146); `SQLite.get` (138, 141) | OPERATOR |
-| [packages/store/src/import.ts:334](../../packages/store/src/import.ts#L334) `importFmp12` | `SQLite.prepare` (334, 344, 350, 356, 360, 375, 386, 461, 462); `SQLite.get` (350, 375); `SQLite.all` (356) | OPERATOR |
-| [packages/store/src/import.ts:325](../../packages/store/src/import.ts#L325) `importFmp12/save` | `SQLite.prepare` (325) | OPERATOR |
+| [packages/store/src/import.ts:340](../../packages/store/src/import.ts#L340) `importFmp12` | `SQLite.prepare` (340, 350, 356, 362, 366, 381, 392, 467, 468); `SQLite.get` (356, 381); `SQLite.all` (362) | OPERATOR |
+| [packages/store/src/import.ts:331](../../packages/store/src/import.ts#L331) `importFmp12/save` | `SQLite.prepare` (331) | OPERATOR |
 | [packages/store/src/import.ts:228](../../packages/store/src/import.ts#L228) `needsDesigns` | `SQLite.get` (228); `SQLite.prepare` (228) | OPERATOR |
 | [packages/store/src/import.ts:275](../../packages/store/src/import.ts#L275) `readState` | `SQLite.get` (275); `SQLite.prepare` (275) | OPERATOR |
 | [packages/store/src/import.ts:104](../../packages/store/src/import.ts#L104) `writeDesign` | `SQLite.prepare` (104, 108) | OPERATOR |
