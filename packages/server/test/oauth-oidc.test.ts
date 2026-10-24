@@ -9,7 +9,7 @@ import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import type { Store } from '../../store/src/index.ts';
+import { Store } from '../../store/src/index.ts';
 import { serve } from '../src/index.ts';
 
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
@@ -297,6 +297,27 @@ for (const active of [false, true]) {
     }
   });
 }
+
+test('another open of the file between the approval page and the click does not void the approval', { skip }, async () => {
+  // Opening a file fills in the identity of every account that has none yet, and a background open (the warmer's) can come
+  // between the page and the click. The person's identity is part of what the approval is bound to, so it is settled when the
+  // page is made, not left for whoever opens the file next.
+  for (const name of ['@example.test', 'pat@example.test']) if (store.canonicalAccount(name)) store.deleteAccount(name);
+  store.setExternalAccount('@example.test', 'Bot');
+  store.setPassword('pat@example.test', 'person-password-123', 'NoAi');
+  person = { email: 'pat@example.test', email_verified: true };
+  const { verifier, client_id, params } = await appStart();
+  const consent = await throughProvider(params);
+  assert.equal(consent.status, 200);
+  const page = await consent.text();
+  const other = new Store(join(dir, 'Charts.openhbam.sqlite'), 'Charts');
+  other.close();
+  const back = await allow(page);
+  assert.equal(back.status, 302, 'the approval still stands');
+  const code = new URL(back.headers.get('location')!).searchParams.get('code')!;
+  const t = await post('/oauth/token', form({ grant_type: 'authorization_code', code, code_verifier: verifier, client_id, redirect_uri: REDIRECT }));
+  assert.equal(t.status, 200);
+});
 
 for (const change of ['inactive', 'no fmmcp', 'second factor', 'file AI off']) {
   test(`a structured-identity code cannot mint credentials after consent when the mapping has ${change}`, { skip }, async () => {
