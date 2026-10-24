@@ -85,15 +85,22 @@ export function closeUnreadBody(req: IncomingMessage, res: ServerResponse): void
     // a refused body. No chunks are retained. A time bound allows send-then-read clients
     // to finish a large write, while cutting off slow or never-ending senders after 2 s.
     const answer = writeHead.apply(this, args);
-    const timer = setTimeout(() => socket.destroy(), BODY_DRAIN_TIMEOUT_MS);
+    // Destroying the request as well tells a handler that is still reading (its request left the server's list once the answer finished, so
+    // closing the socket alone never reaches it) that the body is not coming; otherwise it, and the request slot it holds, would wait forever.
+    const timer = setTimeout(() => { req.destroy(); socket.destroy(); }, BODY_DRAIN_TIMEOUT_MS);
     timer.unref();
     const cleanup = () => {
       clearTimeout(timer);
-      socket.off('close', cleanup);
+      socket.off('close', closed);
       req.off('end', drained);
     };
     const drained = () => { if (keepAlive) cleanup(); };
-    socket.once('close', cleanup);
+    // The socket closing leaves such a reader waiting just the same, so end the request then too.
+    const closed = () => {
+      cleanup();
+      if (!req.readableEnded && !req.destroyed) req.destroy();
+    };
+    socket.once('close', closed);
     req.once('end', drained);
     req.resume();
     return answer;
