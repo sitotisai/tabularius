@@ -1635,7 +1635,7 @@ export class DataApi {
   }
 
   /** Runs a script on a layout for a Data API session; errors become scriptError, as FileMaker Server reports them. */
-  private async script(store: Store, layout: string, session: Session, script: string, parameter: string, checkCurrent: (inScript?: boolean) => void, foundSet?: number[], phase: DenialAudit['phase'] = 'script') {
+  private async script(store: Store, layout: string, session: Session, script: string, parameter: string, checkCurrent: (inScript?: boolean) => void, from: string, foundSet?: number[], phase: DenialAudit['phase'] = 'script') {
     const collector = denialOperation.getStore();
     try {
       const privileges = sessionPrivileges(store, session);
@@ -1649,7 +1649,7 @@ export class DataApi {
           ...(e.denial ? { 'tabularius:denial': explainAccessDenial(e.denial) } : {}) };
       }
       const files = new Map<Store, () => void>();
-      const r = await runScript(store, script, { parameter, layout, foundSet, account: session.account, ...(session.from ? { clientAddress: session.from } : {}), session: session.scripts, ...this.host.scriptOptions(store.name), executionAccount: session.account, executionVia: session.via, privileges,
+      const r = await runScript(store, script, { parameter, layout, foundSet, account: session.account, clientAddress: from, session: session.scripts, ...this.host.scriptOptions(store.name), executionAccount: session.account, executionVia: session.via, privileges,
         beforeFile: (file) => {
           checkCurrent(true);
           if (!files.has(file)) files.set(file, this.fileGuard(file));
@@ -2038,7 +2038,7 @@ export class DataApi {
 
     // GET .../layouts/{layout}/script/{script}
     if (p[4] === 'script' && p.length === 6 && method === 'GET') {
-      const r = await this.script(store, layout, session, p[5], url.searchParams.get('script.param') ?? '', checkCurrent);
+      const r = await this.script(store, layout, session, p[5], url.searchParams.get('script.param') ?? '', checkCurrent, clientAddress(req));
       return r;
     }
 
@@ -2051,7 +2051,7 @@ export class DataApi {
         const key = name ? `script.${name}` : 'script';
         const script = args[key];
         if (script === undefined) return;
-        const r = await this.script(store, layout, session, script, args[`${key}.param`] ?? '', checkCurrent, found, name || 'script');
+        const r = await this.script(store, layout, session, script, args[`${key}.param`] ?? '', checkCurrent, clientAddress(req), found, name || 'script');
         out[name ? `scriptResult.${name}` : 'scriptResult'] = r.scriptResult;
         out[name ? `scriptError.${name}` : 'scriptError'] = r.scriptError;
         if ('tabularius:denial' in r) out[name ? `tabularius:denial.${name}` : 'tabularius:denial'] = r['tabularius:denial'];

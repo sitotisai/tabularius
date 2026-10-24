@@ -124,7 +124,7 @@ function piiToolRefusal(tool: string, isolated: Store[]): string | undefined {
  * account already signed in to one file (the web client's AI assistant), or
  * the server administrator.
  */
-export type McpIdentity = { account: string; password: string; /** Client address, for sign-in lockout. */ from?: string; otp?: string } | { account: string; database: string; /** External account the session signed in through. */ via?: string; /** A scoped API token's limits (read-only, layouts). */ scope?: TokenScope } | { admin: true };
+export type McpIdentity = { account: string; password: string; /** Client address, for sign-in lockout. */ from?: string; otp?: string } | { account: string; database: string; /** Client address, for Re-Login's local-only rule. */ from?: string; /** External account the session signed in through. */ via?: string; /** A scoped API token's limits (read-only, layouts). */ scope?: TokenScope } | { admin: true };
 
 // Verified passwords, so each tool call does not pay for a password hash.
 const verified = new Map<string, number>();
@@ -209,6 +209,11 @@ function maskDiagnosticText(value: unknown, masker: PiiMasker): unknown {
 function piiAccount(who: McpIdentity, account = 'admin' in who ? PII_ADMIN : who.account): string {
   if ('admin' in who) return PII_ADMIN;
   return 'scope' in who && who.scope ? `${account}\u0001${JSON.stringify(who.scope)}` : account;
+}
+
+/** Where an identity's client signed in from, when known. */
+function clientOf(who: McpIdentity): string | undefined {
+  return 'from' in who ? who.from : undefined;
 }
 
 /** Which files an identity could open at all, without counting a use: for naming what is hosted. */
@@ -831,7 +836,7 @@ export function createMcpServer(host: Host, who: McpIdentity = { admin: true }, 
       // --allow-script-network: that switch is for people's own scripts.
       // Outbound test mode is left out too: an AI's runs never send anything, even to the outbox's redirect address,
       // and mail sending with it. So are FileMaker's AI steps: scripts an AI runs stay offline.
-      const run = await runScript(store, script, offlineScriptOptions({ parameter, layout, trace: traceAllowed, session, account: p?.account ?? 'AI', ...host.scriptOptions(), executionAccount: 'admin' in who ? undefined : who.account, executionVia: 'via' in who ? who.via : undefined, ...(maxSeconds === undefined ? {} : { timeoutMs: maxSeconds * 1000 }), privileges: p,
+      const run = await runScript(store, script, offlineScriptOptions({ parameter, layout, trace: traceAllowed, session, account: p?.account ?? 'AI', ...(clientOf(who) ? { clientAddress: clientOf(who) } : {}), ...host.scriptOptions(), executionAccount: 'admin' in who ? undefined : who.account, executionVia: 'via' in who ? who.via : undefined, ...(maxSeconds === undefined ? {} : { timeoutMs: maxSeconds * 1000 }), privileges: p,
         // Export Field Contents is a client action for MCP callers; other
         // file steps retain their server-side Documents behavior.
         clientFieldExports: true, beforeFile: privacy.beforeFile, onAccessDenial: privacy.onAccessDenial,
@@ -888,7 +893,7 @@ export function createMcpServer(host: Host, who: McpIdentity = { admin: true }, 
       let state = await d.start(copy?.store ?? store, script, offlineScriptOptions({
         ...(parameter !== undefined ? { parameter } : {}), ...(layout ? { layout } : {}), ...(recordId !== undefined ? { recordId } : {}),
         // Offline, as run_script: no network and no outbound mail, not even to the outbox's test redirect.
-        account: p?.account ?? 'AI', privileges: p, ...host.scriptOptions(), executionAccount: 'admin' in who ? undefined : who.account, executionVia: 'via' in who ? who.via : undefined, executionStore: store, profile: undefined,
+        account: p?.account ?? 'AI', privileges: p, ...(clientOf(who) ? { clientAddress: clientOf(who) } : {}), ...host.scriptOptions(), executionAccount: 'admin' in who ? undefined : who.account, executionVia: 'via' in who ? who.via : undefined, executionStore: store, profile: undefined,
         beforeFile: privacy.beforeFile, onAccessDenial: privacy.onAccessDenial,
         onFieldRead: output.onFieldRead, onExecuteSQL: output.onExecuteSQL,
       }));

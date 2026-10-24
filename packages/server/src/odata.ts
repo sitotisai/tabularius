@@ -41,6 +41,7 @@ import { IdentityInFlight, busyHeaders } from './in-flight.ts';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { PrivilegeError, StoreError, relatedIdList, type LayoutInfo, type Privileges, type SortSpec, type Store } from '../../store/src/index.ts';
 import type { SqlValue } from '../../store/src/find.ts';
+import { clientAddress } from './client-address.ts';
 import { ScriptError, ScriptSession, runScript } from '../../scripts/src/index.ts';
 import { Readable, Writable } from 'node:stream';
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -1723,7 +1724,7 @@ export class ODataEndpoint {
       }
       this.sessions.set(key, (session = new ScriptSession()));
     }
-    const r = await runScript(store, found.name, { parameter, account, session, ...this.host.scriptOptions(store.name), executionAccount: account, executionVia: via, privileges: p });
+    const r = await runScript(store, found.name, { parameter, account, clientAddress: clientAddress(req), session, ...this.host.scriptOptions(store.name), executionAccount: account, executionVia: via, privileges: p });
     send(res, 200, { scriptResult: { code: r.error, resultParameter: r.result ?? '' } });
   }
 }

@@ -31,6 +31,7 @@
 import { CredentialRedactor } from '../../scripts/src/redaction.ts';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { randomBytes } from 'node:crypto';
+import { clientAddress } from './client-address.ts';
 import { mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -410,7 +411,7 @@ export class DebugApi {
             ...(typeof body.layout === 'string' && body.layout ? { layout: body.layout } : {}),
             ...(ids ? { foundSet: ids } : {}),
             ...(Number.isInteger(body.recordId) ? { recordId: Number(body.recordId) } : {}),
-            account: session.account, privileges: sessionPrivileges(copy.store, session),
+            account: session.account, clientAddress: clientAddress(req), privileges: sessionPrivileges(copy.store, session),
             ...scratchOptions(copy), executionAccount: session.account, executionVia: session.via, executionStore: store,
             // Always on the copy and offline; the session's globals are copied, not changed.
             session: scripts,
@@ -449,7 +450,7 @@ export class DebugApi {
           ...(typeof body.layout === 'string' ? { layout: body.layout } : {}),
           ...(ids ? { foundSet: ids } : {}),
           ...(Number.isInteger(body.recordId) ? { recordId: Number(body.recordId) } : {}),
-          account: session.account, session: session.scripts, privileges: run.scratch ? sessionPrivileges(run.scratch.store, session) : privileges,
+          account: session.account, clientAddress: clientAddress(req), session: session.scripts, privileges: run.scratch ? sessionPrivileges(run.scratch.store, session) : privileges,
           // A scratch run is always offline, and its files go in its own folder.
           ...(run.scratch ? scratchOptions(run.scratch) : this.host.scriptOptions(store.name)), executionAccount: session.account, executionVia: session.via, executionStore: store,
           // Debugger runs stay out of the server's profile; the run has its own, counting each step's own time (never a pause here).
