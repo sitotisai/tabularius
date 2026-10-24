@@ -29,7 +29,7 @@ import type { Host } from './host.ts';
 import { refuseUnknownFile } from './file-list.ts';
 import { narrowPrivileges, type TokenScope } from './token-scope.ts';
 import { csvField } from '../../store/src/index.ts';
-import { passwordLoginSecondFactor, publicPasswordLockout } from './password-login-policy.ts';
+import { localOnlyRefused, passwordLoginSecondFactor, publicPasswordLockout } from './password-login-policy.ts';
 
 const DEFAULT_LIMIT = 10_000;
 const MAX_LIMIT = 1_000_000;
@@ -211,7 +211,8 @@ export async function signIn(req: IncomingMessage, store: Store, api: DataApi, v
     const [name, ...rest] = Buffer.from(basic, 'base64').toString('utf8').split(':');
     refreshAuthCache(store, verified);
     const from = clientAddress(req);
-    const key = createHash('sha256').update(`${store.path}\0${basic}`).digest('hex');
+    // Per address: a password checked from one place (a lockout or a blank-password rule can differ) is not proof for another.
+    const key = createHash('sha256').update(`${store.path}\0${from}\0${basic}`).digest('hex');
     let checkedPassword = false;
     if ((verified.get(key) ?? -Infinity) < performance.now()) {
       if (!name || !(await store.verifyAsync(name, rest.join(':'), from))) {
@@ -228,6 +229,11 @@ export async function signIn(req: IncomingMessage, store: Store, api: DataApi, v
     }
     try { store.requireActiveAccount(name); } catch {
       verified.clear();
+      throw new ApiError(212, 'Invalid user account and/or password', 401);
+    }
+    // Like an inactive account, a local-only one away from the server is refused as a wrong password.
+    if (localOnlyRefused(store, name, from)) {
+      api.noteSignIn(from, store.name, name, what, 'this account may sign in only from the server itself');
       throw new ApiError(212, 'Invalid user account and/or password', 401);
     }
     // The cache above covers the password only. An account with a second factor sends a fresh one-time code with

@@ -37,6 +37,7 @@ export { IMAGE_EMBED_PROVIDERS, resolveImageEmbed, type ImageEmbedProvider, type
 export { EMBED_PRESETS, probeEmbedding, resolveEmbedEndpoint, type EmbedEndpoint } from './embed-endpoint.ts';
 import { excludeFromAi } from './ai-access.ts';
 import { McpTokens } from './mcp-tokens.ts';
+import { localOnlyRefused } from './password-login-policy.ts';
 import { localMcpToken } from './mcp-local-token.ts';
 import { OAuthServer } from './oauth.ts';
 import { Oidc, type OidcProvider } from './oidc.ts';
@@ -712,7 +713,10 @@ export async function serve(opts: ServeOptions): Promise<{ server: Server; host:
             // An API token of a file (Manage Security, or the admin console's Connect an AI app): one account of that file, its
             // privilege set narrowed to the token's scope. Older admin console tokens (ohm_) sign in as their account.
             const api = bearer?.startsWith('ohbt_') ? apiTokenIdentity(host, oauth, req, bearer, clientAddress(req)) : undefined;
-            const scoped = api ?? (bearer ? mcpTokens.check(bearer) : undefined);
+            // An ohm_ token is its account's sign-in, so a local-only account's works only from this computer, as an ohbt_ one does.
+            const legacy = api || !bearer ? undefined : mcpTokens.check(bearer);
+            const legacyStore = legacy && host.get(legacy.database);
+            const scoped = api ?? (legacy && legacyStore && !localOnlyRefused(legacyStore, legacy.account, clientAddress(req)) ? legacy : undefined);
             if (scoped) who = scoped;
             else if (bearer && sameToken(bearer, mcpAdminToken)) who = { admin: true };
             // A file's token that has expired or was revoked is refused, even from this computer, so the app signs in
