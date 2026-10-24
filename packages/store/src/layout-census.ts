@@ -8,6 +8,7 @@
 
 import type { LayoutDesign, LayoutObject } from '../../fmp12/src/index.ts';
 import { checkStoreFormula } from './check.ts';
+import { ownEntry, setOwn } from './own-keys.ts';
 import { layoutPerformance, SLOW, storeStats } from './layout-perf.ts';
 import type { Store } from './store.ts';
 
@@ -52,7 +53,8 @@ export interface SlowLayout { layout: number; name?: string; cost: number; objec
 /** One layout's counts: things wrong or missing (objects, parts, formulas that don't check, the layout itself) and slow objects. */
 export interface LayoutCount { layout: number; name?: string; issues: number; slow: number; cost: number }
 
-const add = (bag: Record<string, number>, key: string, n = 1) => { bag[key] = (bag[key] ?? 0) + n; };
+// Keys can be an object's kind, which a design may set to any text, so "__proto__" is a key like another (own-keys.ts).
+const add = (bag: Record<string, number>, key: string, n = 1) => { setOwn(bag, key, (Object.hasOwn(bag, key) ? bag[key] : 0) + n); };
 
 /** Why a formula doesn't check, in words that carry nothing from the formula itself. */
 function why(message: string): { reason: string; fn?: string } {
@@ -73,7 +75,7 @@ export function layoutCensus(store: Store, opts: { steps?: ReadonlySet<number>; 
   const images = new Set(store.images().map((i) => i.id));
   const schema = store.schema;
   const themes = new Map(store.designs().themes.map((t) => [t.id, new Set(t.styles.map((x) => x.name))]));
-  const kind = (k: string) => (out.objects[k] ??= { count: 0, issues: {} });
+  const kind = (k: string) => ownEntry(out.objects, k, () => ({ count: 0, issues: {} }));
   // Things found wrong on the layout being counted.
   let here = 0;
   const issue = (o: LayoutObject | string, what: string) => {
@@ -129,7 +131,7 @@ export function layoutCensus(store: Store, opts: { steps?: ReadonlySet<number>; 
       here++;
     }
     for (const p of d.parts) {
-      const pc = (out.parts[p.kind] ??= { count: 0, issues: {} });
+      const pc = ownEntry(out.parts, p.kind, () => ({ count: 0, issues: {} }));
       pc.count++;
       const bad = (what: string) => {
         here++;
@@ -283,12 +285,12 @@ export function censusText(c: LayoutCensus, title: string): string {
 export function addCensus(total: LayoutCensus, c: LayoutCensus): LayoutCensus {
   total.layouts += c.layouts;
   for (const [k, v] of Object.entries(c.objects)) {
-    const t = (total.objects[k] ??= { count: 0, issues: {} });
+    const t = ownEntry(total.objects, k, () => ({ count: 0, issues: {} }));
     t.count += v.count;
     for (const [w, n] of Object.entries(v.issues)) add(t.issues, w, n);
   }
   for (const [k, v] of Object.entries(c.parts)) {
-    const t = (total.parts[k] ??= { count: 0, issues: {} });
+    const t = ownEntry(total.parts, k, () => ({ count: 0, issues: {} }));
     t.count += v.count;
     for (const [w, n] of Object.entries(v.issues)) add(t.issues, w, n);
   }
