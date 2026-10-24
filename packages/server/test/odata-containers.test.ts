@@ -104,6 +104,19 @@ test('base64 in a record\'s JSON fills a container field, with ContentType and F
   assert.equal(row.Name, 'No file');
 });
 
+test('audit 26: a long run of whitespace that is not base64 is refused quickly, and whitespace inside base64 still passes', { skip }, async () => {
+  const json = { ...auth('Ann'), 'content-type': 'application/json' };
+  const patch = (value: string) => fetch(`${root}/Docs(${doc})`, { method: 'PATCH', headers: json, body: JSON.stringify({ File: value }) });
+  // The check once backtracked in quadratic time on this, blocking the whole server for seconds.
+  const started = Date.now();
+  const res = await patch(' '.repeat(40_000) + '!');
+  assert.equal(res.status, 400);
+  assert.ok(Date.now() - started < 1000, `refused in ${Date.now() - started} ms`);
+  const wrapped = png.toString('base64').replace(/(.{8})/g, '$1\r\n') + '  ';
+  assert.equal((await patch(wrapped)).status, 204);
+  assert.deepEqual((await file(doc)).data, png);
+});
+
 test('container writes follow field access and the token\'s rights', { skip }, async () => {
   const cy = await fetch(`${root}/Docs(${doc})/File`, { method: 'PATCH', headers: { ...auth('Cy'), 'content-type': 'image/png' }, body: png });
   assert.equal(cy.status, 405);
