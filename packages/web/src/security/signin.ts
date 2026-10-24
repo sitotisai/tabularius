@@ -5,9 +5,9 @@
 // account you are signed in as — the server's self-service endpoints never
 // touch another account.
 
-import { h, button, toast } from '../design/dom.ts';
+import { h, button, field, toast } from '../design/dom.ts';
 import type { Sec } from './main.ts';
-import { generateMyRecoveryCodes, listMyPasskeys, passkeySupported, registerPasskey, removeMyPasskey, type Passkey } from '../webauthn.ts';
+import { generateMyRecoveryCodes, listMyPasskeys, passkeySupported, registerPasskey, removeMyPasskey, type CredentialProof, type Passkey } from '../webauthn.ts';
 import { errorText } from './main.ts';
 
 /** A date/time as the rest of the UI shows them (ISO strings from the server). */
@@ -45,11 +45,23 @@ export function signinTab(sec: Sec): HTMLElement {
       await reload();
     } catch (e) { toast(errorText(e)); }
   };
+  // Passkeys and recovery codes outlive this session, so the server asks for the password (and a code, when the
+  // account has an authenticator app) again before it makes one.
+  const password = h('input', { type: 'password', autocomplete: 'current-password', 'aria-label': 'Current password' });
+  const code = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'one-time-code', 'aria-label': 'One-time code (if your account has an authenticator app)', placeholder: 'One-time code, if you use one' });
+  const proof = (): CredentialProof | undefined => {
+    if (!password.value) { toast('Enter your current password first.', 'info'); password.focus(); return undefined; }
+    return { password: password.value, ...(code.value.trim() ? { code: code.value.trim() } : {}) };
+  };
+  const forget = (): void => { password.value = ''; code.value = ''; };
   const add = async (): Promise<void> => {
+    const confirmed = proof();
+    if (!confirmed) return;
     const label = prompt('A name for this passkey (e.g. “MacBook Touch ID”):', 'This device');
     if (label === null) return;
     try {
-      await registerPasskey(db, token, label.trim() || 'Passkey');
+      await registerPasskey(db, token, label.trim() || 'Passkey', confirmed);
+      forget();
       toast('Passkey added.', 'info');
       await reload();
     } catch (e) {
@@ -71,13 +83,16 @@ export function signinTab(sec: Sec): HTMLElement {
   if (displayedRecoveryCodes) showCodes(displayedRecoveryCodes);
   const generate = async (generateButton: HTMLButtonElement): Promise<void> => {
     if (recoveryGenerationPending) return;
+    const confirmed = proof();
+    if (!confirmed) return;
     if (!confirm('Generate a new set of recovery codes? Any codes you had before will stop working.')) return;
     recoveryGenerationPending = true;
     generateButton.disabled = true;
     displayedRecoveryCodes = undefined;
     codesOut.replaceChildren();
     try {
-      const { codes } = await generateMyRecoveryCodes(db, token);
+      const { codes } = await generateMyRecoveryCodes(db, token, confirmed);
+      forget();
       displayedRecoveryCodes = codes;
       showCodes(codes);
     } catch (e) { toast(errorText(e)); }
@@ -90,6 +105,10 @@ export function signinTab(sec: Sec): HTMLElement {
   generateButton.disabled = recoveryGenerationPending;
 
   wrap.append(
+    h('h2', { class: 'd-h2' }, 'Confirm it’s you'),
+    h('p', { class: 'd-hint' }, 'Adding a passkey or making recovery codes asks for your password again, and a one-time code if you use an authenticator app.'),
+    field('Current password', password),
+    field('One-time code', code),
     h('h2', { class: 'd-h2' }, 'Passkeys'),
     h('p', { class: 'd-hint' }, 'Sign in without a password, using this device’s fingerprint, face or security key. Passkeys can’t be phished or reused across sites.'),
     passkeyList,
