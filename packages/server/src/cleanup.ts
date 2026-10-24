@@ -330,7 +330,7 @@ export function scanData(store: Store, req: { layout: string; checks?: Check[]; 
   const rows = new Map<number, Record<string, SqlValue>>();
   for (let i = 0; i < scannedIds.length; i += 5000) {
     const chunk = scannedIds.slice(i, i + 5000);
-    const r = owner.select(`SELECT _fm_record_id, ${cols.map(q).join(', ') || 'NULL'} FROM ${q(table.name)} WHERE _fm_record_id IN (SELECT value FROM json_each(?))`, [JSON.stringify(chunk)], chunk.length);
+    const r = owner.select(`SELECT _fm_record_id, ${cols.map(q).join(', ') || 'NULL'} FROM ${q(table.name)} WHERE _fm_record_id IN (SELECT value FROM json_each(?))`, [JSON.stringify(chunk)], chunk.length, true);
     for (const row of r.rows) rows.set(Number(row[0]), Object.fromEntries(cols.map((c, j) => [c, row[j + 1]])));
   }
   const out: CleanupScan = { layout: info.name, table: table.name, scanned: rows.size, compared: [], duplicates: [], fixes: [] };
