@@ -37,7 +37,7 @@ import { Notifier } from './notifications.ts';
 import { compactInWorker, compactionDue, fileBytes, type CompactionReport } from './compaction.ts';
 import { BoundedMap } from './bounded-map.ts';
 import { serverLanguage } from './get-language.ts';
-import { approveInRecord, firstStartRecord, loadHostedRecord, vet, HOSTED_RECORD_FILE, type ApprovalHow } from './hosted-record.ts';
+import { approveInRecord, firstStartRecord, verifiedHostedRecord, vet, HOSTED_RECORD_FILE, LOST_RECORD_MESSAGE, type ApprovalHow } from './hosted-record.ts';
 
 export const STORE_EXT = '.openhbam.sqlite';
 
@@ -394,7 +394,7 @@ export class Host {
   private readonly warmer?: Warmer;
   private readonly share: boolean;
 
-  constructor(dir: string, log: (msg: string) => void = () => {}, opts: { background?: boolean; encryptionKey?: string; urlKey?: Buffer; locks?: (store: Store) => RecordLocks; follower?: boolean; shareResults?: boolean; warmSettleMs?: number; compactionWorker?: (path: string, convert?: boolean, checkpoint?: boolean) => Promise<CompactionReport> } = {}) {
+  constructor(dir: string, log: (msg: string) => void = () => {}, opts: { background?: boolean; encryptionKey?: string; urlKey?: Buffer; locks?: (store: Store) => RecordLocks; follower?: boolean; shareResults?: boolean; warmSettleMs?: number; compactionWorker?: (path: string, convert?: boolean, checkpoint?: boolean) => Promise<CompactionReport>; startupImport?: typeof importFmp12 } = {}) {
     this.dir = dir;
     this.follower = !!opts.follower;
     this.log = log;
@@ -406,6 +406,8 @@ export class Host {
     this.urlKey = opts.urlKey ?? randomBytes(32);
     this.sharedLocks = opts.locks;
     this.share = !!opts.shareResults && !opts.encryptionKey && process.env.TABULARIUS_SHARE_RESULTS !== '0';
+    // Read the store markers before Store opens can create or update metadata.
+    const startupRecord = verifiedHostedRecord(dir);
     if (this.share && !opts.follower) {
       const warmer = new Warmer(log, opts.warmSettleMs);
       this.warmer = warmer;
@@ -488,7 +490,7 @@ export class Host {
       const temp = conversionTemp(store, join(dir, f));
       crashPoint('host-conversion:after-workspace');
       try {
-        const stats = importFmp12(join(dir, f), temp, undefined, { resume: true });
+        const stats = (opts.startupImport ?? importFmp12)(join(dir, f), temp, undefined, { resume: true });
         crashPoint('host-conversion:after-convert');
         if (publishConversion(temp, store)) {
           crashPoint('host-conversion:after-publish');
@@ -504,8 +506,8 @@ export class Host {
       if (f.endsWith(STORE_EXT)) this.addIfOpens(join(dir, f), log);
     }
     this.starting = false;
-    if (!this.follower && loadHostedRecord(dir) === undefined) {
-      try { firstStartRecord(dir, [...this.stores.values()].filter((s) => firstStartFiles.has(basename(s.path))).map((s) => ({ name: s.name, id: s.fileId }))); }
+    if (!this.follower && startupRecord === undefined) {
+      try { firstStartRecord(dir, [...this.stores.values()].filter((s) => firstStartFiles.has(basename(s.path))).map((s) => ({ name: s.name, id: s.fileId })), log); }
       catch (e) { log(`${HOSTED_RECORD_FILE} could not be written: ${(e as Error).message}`); }
     }
     for (const store of this.stores.values()) this.vetFile(store, 'found');
@@ -1207,19 +1209,19 @@ export class Host {
     if (this.starting) return;
     let writeFailed = false;
     if (origin === 'trusted' && !this.follower) {
-      try { approveInRecord(this.dir, store.name, store.fileId, by, how); store.held = undefined; return; }
+      try { approveInRecord(this.dir, store.name, store.fileId, by, how, this.log); store.held = undefined; return; }
       catch (e) { writeFailed = true; this.log(`${store.name}: approval could not be saved: ${(e as Error).message}`); }
     }
-    const record = loadHostedRecord(this.dir);
+    const record = verifiedHostedRecord(this.dir);
     const result = writeFailed && record !== null ? 'held' : vet(record, store.name, store.fileId);
     if (result === 'approved') { store.held = undefined; return; }
-    const reason = result === 'unknown-record' ? 'the approval record is damaged'
+    const reason = result === 'unknown-record' ? 'the approval record is damaged or missing'
       : record && Object.hasOwn(record.files, store.name.toLowerCase()) ? 'a different file than the one approved' : 'not seen before';
     if (result === 'unknown-record' && !this.damagedRecordLogged) {
-      this.log(`${HOSTED_RECORD_FILE} is damaged; move it aside to start fresh`);
+      this.log(LOST_RECORD_MESSAGE);
       this.damagedRecordLogged = true;
     }
-    if (!store.held || store.held.reason !== reason) this.log(`${store.name} is new to this server and is held until an administrator turns it on`);
+    if (!store.held || store.held.reason !== reason) this.log(`${store.name} is held: ${reason}`);
     store.held = { reason, since: store.held?.since ?? new Date().toISOString() };
   }
 
@@ -1233,7 +1235,7 @@ export class Host {
     if (this.follower) throw new Error('a follower cannot approve hosted files');
     const store = this.get(name);
     if (!store) throw new Error(`No hosted file named ${name}`);
-    try { approveInRecord(this.dir, store.name, store.fileId, by, 'admin'); }
+    try { approveInRecord(this.dir, store.name, store.fileId, by, 'admin', this.log, true); }
     catch (e) { this.log(`${store.name}: approval could not be saved: ${(e as Error).message}`); throw e; }
     store.held = undefined;
     for (const listener of this.onApprove) listener(store);

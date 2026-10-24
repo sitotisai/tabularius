@@ -162,6 +162,7 @@ import { secureConnection } from './exposure-headers.ts';
 import { sameSecret } from './secrets.ts';
 import { PassphraseNeeded, STORE_EXT } from './host.ts';
 import { BackupStopped, backupFolder, backupKey, backupRunning, stopBackups, backupSets, defaultBackupDir, parseTime, checkRestorePoint, restorePoint, restorePointTo, restoreRange, type BackupSchedule, type ProgressiveSchedule } from './backup.ts';
+import { approveRestoredFiles, verifiedHostedRecord } from './hosted-record.ts';
 import { ENCRYPTED_EXT } from './encrypt.ts';
 import { isLocalAdmin } from './local-admin.ts';
 import { tokenExpiry } from './token-expiry.ts';
@@ -2195,6 +2196,7 @@ export class Admin {
         return { database: copy, time: new Date(point.time).toISOString(), mode };
       }
       const securitySnapshot = file.path + '.security-snapshot';
+      const approvalBefore = { record: verifiedHostedRecord(this.host.dir) };
       // Capture the live security database before closeFileEverywhere encrypts
       // it and removes its plaintext source.
       this.host.get(file.name)!.checkpoint();
@@ -2203,6 +2205,7 @@ export class Admin {
       await this.host.closeFileEverywhere(file.name);
       try {
         try { await restorePointTo(point, file.path, undefined, securitySnapshot); } catch (e) { throw refused(e, 500); }
+        approveRestoredFiles(this.host.dir, [file.name], this.log, approvalBefore);
         // The encrypted copy closing made is older than what was just restored.
         if (this.host.encrypted) rmSync(file.path + ENCRYPTED_EXT, { force: true });
       } finally {
