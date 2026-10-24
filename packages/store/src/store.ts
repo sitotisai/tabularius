@@ -10491,15 +10491,31 @@ export class Store {
     return this.withDesignRead(() => this.selectCurrent(...args));
   }
 
-  private selectCurrent(sqlText: string, params: SqlValue[] = [], limit = 500): { names: string[]; types: (string | null)[]; rows: SqlValue[][] } {
+  private selectCurrent(sqlText: string, params: SqlValue[] = [], limit = 500, unbounded = false): { names: string[]; types: (string | null)[]; rows: SqlValue[][] } {
     const wanted = placeholders(sqlText);
     if (wanted > params.length) throw new StoreError(8310, `The query has ${wanted} ? placeholder${wanted === 1 ? '' : 's'} but ${params.length} value${params.length === 1 ? ' was' : 's were'} given`);
     const { statement, text } = this.readOnlyChecked(sqlText);
     const columns = statement.columns();
-    const st = boundedStatement(this.readOnlySql!, text, columns.map((c) => c.name));
+    return { names: columns.map((c) => c.name), types: columns.map((c) => c.type), rows: this.rowsOf(this.readOnlySql!, statement, text, columns, params, limit, unbounded) };
+  }
+
+  /**
+   * The rows of `statement` (`text` prepared on `db`) as arrays. Unless `unbounded`, the result is held to the size caps
+   * of sql-result.ts: `unbounded` is for the server's own queries over its own data (an export), never for SQL a person wrote.
+   */
+  private rowsOf(db: DatabaseSync, statement: StatementSync, text: string, columns: { name: string }[], params: SqlValue[], limit: number, unbounded: boolean): SqlValue[][] {
+    if (unbounded) {
+      statement.setReturnArrays(true);
+      const rows: SqlValue[][] = [];
+      for (const r of statement.iterate(...params) as Iterable<SqlValue[]>) {
+        rows.push(r);
+        if (rows.length >= limit) break;
+      }
+      return rows;
+    }
+    const st = boundedStatement(db, text, columns.map((c) => c.name));
     st.setReturnArrays(true);
-    const rows = collectRows(st.iterate(...params) as Iterable<SqlValue[]>, limit);
-    return { names: columns.map((c) => c.name), types: columns.map((c) => c.type), rows };
+    return collectRows(st.iterate(...params) as Iterable<unknown[]>, limit) as SqlValue[][];
   }
 
   /**
@@ -10514,16 +10530,14 @@ export class Store {
     return this.withDesignRead(() => this.selectHeldCurrent(...args));
   }
 
-  private selectHeldCurrent(sqlText: string, params: SqlValue[] = [], limit = 500): { names: string[]; types: (string | null)[]; rows: SqlValue[][] } {
+  private selectHeldCurrent(sqlText: string, params: SqlValue[] = [], limit = 500, unbounded = false): { names: string[]; types: (string | null)[]; rows: SqlValue[][] } {
     const wanted = placeholders(sqlText);
     if (wanted > params.length) throw new StoreError(8310, `The query has ${wanted} ? placeholder${wanted === 1 ? '' : 's'} but ${params.length} value${params.length === 1 ? ' was' : 's were'} given`);
     const { text } = this.readOnlyChecked(sqlText);
     for (const [name, fn] of this.queryFunctions) this.sql.function(name, { varargs: true }, fn);
-    const columns = this.sql.prepare(text).columns();
-    const st = boundedStatement(this.sql, text, columns.map((c) => c.name));
-    st.setReturnArrays(true);
-    const rows = collectRows(st.iterate(...params) as Iterable<SqlValue[]>, limit);
-    return { names: columns.map((c) => c.name), types: columns.map((c) => c.type), rows };
+    const st = this.sql.prepare(text);
+    const columns = st.columns();
+    return { names: columns.map((c) => c.name), types: columns.map((c) => c.type), rows: this.rowsOf(this.sql, st, text, columns, params, limit, unbounded) };
   }
 
   /** A read-only query's columns and their declared types, without running it. */
@@ -10587,9 +10601,17 @@ export class Store {
 
   private queryWithOriginsCurrent(sqlText: string, limit = 500): QueryOrigins {
     const { statement: st, opened, text } = this.readOnlyChecked(sqlText);
-    const rows = limit > 0
-      ? collectRows(boundedStatement(this.readOnlySql!, text, st.columns().map((c) => c.name)).iterate() as Iterable<Record<string, SqlValue>>, limit)
-      : [];
+    const names = st.columns().map((c) => c.name);
+    const rows: Record<string, SqlValue>[] = [];
+    if (limit > 0) {
+      const bounded = boundedStatement(this.readOnlySql!, text, names);
+      bounded.setReturnArrays(true);
+      for (const r of collectRows(bounded.iterate() as Iterable<unknown[]>, limit)) {
+        const row: Record<string, SqlValue> = Object.create(null);
+        names.forEach((name, i) => { row[name] = r[i] as SqlValue; });
+        rows.push(row);
+      }
+    }
     const roots = new Set(opened.filter((o) => (o.opcode === 'OpenRead' || o.opcode === 'ReopenIdx') && o.p3 === 0).map((o) => Number(o.p2)));
     const tables = new Map<string, string[]>();
     if (roots.size) {
