@@ -3434,7 +3434,7 @@ export class Store {
    * when the password was set (so expiry can be measured), and clears any
    * owed change unless `mustChange` asks for a fresh one on next sign-in.
    */
-  setPassword(account: string, password: string, privilegeSet?: string, opts: { mustChange?: boolean } = {}): void {
+  setPassword(account: string, password: string, privilegeSet?: string, opts: { mustChange?: boolean; keepPasskeys?: boolean } = {}): void {
     return this.securityChange(() => {
       account = this.canonicalAccount(account) ?? account;
       this.checkPasswordLength(password);
@@ -3458,6 +3458,12 @@ export class Store {
       this.unlock(account);
       // OAuth grants depend on this sign-in; independently issued service tokens do not.
       this.sql.prepare("DELETE FROM _fm_api_tokens WHERE account = ? COLLATE NOCASE AND provenance = 'delegated'").run(account);
+      // Recovery codes and passkeys sign in without this password, so a reset made because it may be known to someone
+      // else must not leave them working. The person changing their own password keeps the passkeys they added.
+      if (existed) {
+        this.sql.prepare('DELETE FROM _fm_recovery_codes WHERE account = ? COLLATE NOCASE').run(account);
+        if (!opts.keepPasskeys) this.sql.prepare('DELETE FROM _fm_passkeys WHERE account = ? COLLATE NOCASE').run(account);
+      }
       this.logSecurity(existed ? 'password-changed' : 'account-added', { target: account });
       if (privilegeSet !== undefined) this.setAccountPrivilegeSet(account, privilegeSet);
     });
@@ -4391,7 +4397,7 @@ export class Store {
     if (def && !isFullAccess(def) && def.allowModifyPassword === false && !this.mustChangePassword(account)) {
       throw new StoreError(9, 'Insufficient privileges: this account may not change its own password');
     }
-    this.setPassword(account, newPassword, undefined, { mustChange: false });
+    this.setPassword(account, newPassword, undefined, { mustChange: false, keepPasskeys: true });
   }
 
   /**
