@@ -110,12 +110,24 @@ export function writeDesign(sql: DatabaseSync, schema: Schema, designs: LayoutDe
 }
 
 /**
+ * A base table is dropped and created by its name, and the schema decides which
+ * tables the store treats as records, so a table named like one of the store's
+ * own (`_fm_accounts`, `_fm_meta` ...) would replace or be mistaken for it.
+ * Design mode refuses these names too.
+ */
+export function refuseReservedTableNames(schema: Schema): void {
+  const reserved = schema.tables.find((t) => /^_fm_/i.test(t.name) || /^sqlite_/i.test(t.name));
+  if (reserved) throw new Error(`The file has a table named "${reserved.name}", which the store keeps for its own use (names starting with "_fm_" or "sqlite_"). Rename the table in the source file and convert again.`);
+}
+
+/**
  * Layout designs, themes and the image library: what a client needs to draw
  * the solution's layouts. Re-run on an existing store to refresh them (the
  * schema and layout list are refreshed too; records are not touched). Design
  * changes made since the import are applied again on top.
  */
 export function importDesigns(sql: DatabaseSync, db: FmpDatabase, log: (msg: string) => void = () => {}): void {
+  refuseReservedTableNames(db.schema);
   sql.exec('SAVEPOINT import_designs');
   try {
     sql.exec(`CREATE TABLE IF NOT EXISTS _fm_images (id INTEGER PRIMARY KEY, filename TEXT, mime TEXT NOT NULL, data BLOB NOT NULL)`);
@@ -308,11 +320,11 @@ export function fileSha256(path: string): string {
  */
 export function importFmp12(src: string | FmpDatabase, outPath: string, onProgress?: (p: ImportProgress) => void, opts: { resume?: boolean; passphrase?: string } = {}): ImportStat[] {
   const db = typeof src === 'string' ? FmpDatabase.open(src, opts.passphrase) : src;
-  // A table is dropped and created by its name, so one named like a store table would replace it.
-  const reserved = db.schema.tables.find((t) => /^_fm_/i.test(t.name) || /^sqlite_/i.test(t.name));
-  if (reserved) {
+  try {
+    refuseReservedTableNames(db.schema);
+  } catch (e) {
     if (typeof src === 'string') db.close();
-    throw new Error(`The file has a table named "${reserved.name}", which the store keeps for its own use (names starting with "_fm_" or "sqlite_"). Rename the table in the source file and convert again.`);
+    throw e;
   }
   const fileInfo = typeof src === 'string' ? statSync(src) : undefined;
   const source = { size: fileInfo?.size ?? db.file.source.size, mtimeMs: Math.trunc(fileInfo?.mtimeMs ?? 0), blockCount: db.file.blockCount };
