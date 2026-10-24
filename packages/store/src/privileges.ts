@@ -17,7 +17,7 @@ import { createHash } from 'node:crypto';
 import type { PrivilegeSet, Schema } from '../../fmp12/src/index.ts';
 import { captureAccessDenial, type AccessDenial, type AccessOperation, type AccessPermission } from './access-denial.ts';
 import { validPrivilegeSetName } from './security-names.ts';
-import { ownKeyed } from './own-keys.ts';
+import { ownEntry, setOwn } from './own-keys.ts';
 
 /** A named policy entry exists only when the dictionary owns it. */
 export function ownPrivilegeEntry<T>(map: Record<string, T> | undefined, name: string): T | undefined {
@@ -207,33 +207,33 @@ export interface CustomAccessMapping {
  * - without the schema nothing can be named, so nothing is granted.
  */
 export function customAccess(p: PrivilegeSet, schema?: Schema): CustomAccessMapping {
-  // Keyed by names from the file, so without a prototype: a table or field called __proto__ or constructor is just a name.
-  const out: CustomAccessMapping = { tables: ownKeyed({}), unverifiedReadOnly: ownKeyed({}), hiddenFields: ownKeyed({}), unresolvedTables: [] };
+  // Keyed by names from the file: a table or field called __proto__ or constructor is just a name (setOwn, ownEntry, Object.hasOwn).
+  const out: CustomAccessMapping = { tables: {}, unverifiedReadOnly: {}, hiddenFields: {}, unresolvedTables: [] };
   for (const tr of p.tableRecords ?? []) {
     const table = schema?.tables.find((t) => t.id === tr.tableId);
     if (!table) { out.unresolvedTables.push(tr.tableId); continue; }
-    if (out.tables[table.name]) {
+    if (Object.hasOwn(out.tables, table.name)) {
       // Listed twice: the file is ambiguous, so the table gets no access at all.
-      out.tables[table.name] = { view: false, edit: false, create: false, delete: false, fields: {}, fieldsDefault: 'none' };
+      setOwn(out.tables, table.name, { view: false, edit: false, create: false, delete: false, fields: {}, fieldsDefault: 'none' });
       continue;
     }
     const view = tr.records.view === true;
     const t: TablePrivileges = { view, edit: view && tr.records.edit === true, create: tr.records.create === true, delete: view && tr.records.delete === true };
     if (tr.fields) {
       const byId = new Map(tr.fields.map((f) => [f.fieldId, f]));
-      const fields: Record<string, Level> = ownKeyed({});
+      const fields: Record<string, Level> = {};
       for (const f of table.fields) {
         const listed = byId.get(f.id);
-        if (listed && listed.access === 0x03) { fields[f.name] = 'modifiable'; continue; } // read/write
-        fields[f.name] = 'none';
-        (out.hiddenFields[table.name] ??= []).push(f.name);
-        if (listed && listed.view && !listed.edit) (out.unverifiedReadOnly[table.name] ??= []).push(f.name);
+        if (listed && listed.access === 0x03) { setOwn(fields, f.name, 'modifiable'); continue; } // read/write
+        setOwn(fields, f.name, 'none');
+        ownEntry(out.hiddenFields, table.name, () => []).push(f.name);
+        if (listed && listed.view && !listed.edit) ownEntry(out.unverifiedReadOnly, table.name, () => []).push(f.name);
       }
       t.fields = fields;
       // Fields added to the table after the import are not in the file's list either: hidden until granted.
       t.fieldsDefault = 'none';
     }
-    out.tables[table.name] = t;
+    setOwn(out.tables, table.name, t);
   }
   return out;
 }
@@ -641,13 +641,13 @@ export function validateDefinition(d: unknown): PrivilegeDefinition {
  */
 export function relaxUnverified(d: PrivilegeDefinition): { def: PrivilegeDefinition; relaxed: number } {
   let relaxed = 0;
-  const tables: Record<string, TablePrivileges> = ownKeyed(d.tables);
+  const tables: Record<string, TablePrivileges> = { ...(d.tables ?? {}) };
   for (const [table, names] of Object.entries(d.unverifiedReadOnly ?? {})) {
     const t = ownPrivilegeEntry(tables, table);
     if (!t?.fields) continue;
-    const fields = ownKeyed(t.fields);
-    for (const n of names) if (ownPrivilegeEntry(fields, n) === 'none') { fields[n] = 'viewOnly'; relaxed++; }
-    tables[table] = { ...t, fields };
+    const fields = { ...t.fields };
+    for (const n of names) if (ownPrivilegeEntry(fields, n) === 'none') { setOwn(fields, n, 'viewOnly'); relaxed++; }
+    setOwn(tables, table, { ...t, fields });
   }
   const { unverifiedReadOnly: _gone, ...rest } = d;
   return { def: { ...rest, ...(d.tables ? { tables } : {}) }, relaxed };
