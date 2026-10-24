@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore } from '../../store/src/index.ts';
@@ -81,12 +82,12 @@ test('damaged record stays untouched, including after a trusted create', async (
   writeFileSync(path, '{');
   const log: string[] = [];
   const host = new Host(dir, (line) => log.push(line));
-  assert.equal(host.get('A')!.held?.reason, 'the approval record is damaged');
+  assert.equal(host.get('A')!.held?.reason, 'the approval record is damaged or missing');
   const made = host.create('B');
-  assert.equal(made.held?.reason, 'the approval record is damaged');
+  assert.equal(made.held?.reason, 'the approval record is damaged or missing');
   assert.throws(() => host.approve('A', 'operator'), /damaged/);
   assert.equal(readFileSync(path, 'utf8'), '{');
-  assert.ok(log.some((line) => line.includes('move it aside to start fresh')));
+  assert.ok(log.some((line) => line.includes('approval record is missing')));
   await host.close();
 });
 
@@ -122,4 +123,111 @@ test('trusted upload and restore-copy origins are saved with their source', asyn
   host.create('MadeByServer');
   assert.equal(loadHostedRecord(dir)?.files.madebyserver.by, 'server');
   await host.close();
+});
+
+test('a lost approval record holds old and newly dropped stores without recreating it', async (t) => {
+  const dir = folder(t);
+  createStore(join(dir, 'A' + STORE_EXT));
+  let host = new Host(dir);
+  host.approve('A', 'operator');
+  await host.close();
+  rmSync(join(dir, HOSTED_RECORD_FILE));
+  createStore(join(dir, 'Evil' + STORE_EXT));
+  const lines: string[] = [];
+  host = new Host(dir, (line) => lines.push(line));
+  assert.equal(host.isHeld('A'), true);
+  assert.equal(host.isHeld('Evil'), true);
+  assert.equal(existsSync(join(dir, HOSTED_RECORD_FILE)), false);
+  assert.equal(lines.filter((line) => line.includes('approval record is missing')).length, 1);
+  host.approve('A', 'operator');
+  assert.equal(host.isHeld('A'), false);
+  assert.equal(host.isHeld('Evil'), true);
+  assert.ok(loadHostedRecord(dir)?.instance);
+  await host.close();
+});
+
+test('a valid shaped record with an unrelated instance holds all stores', async (t) => {
+  const dir = folder(t);
+  createStore(join(dir, 'A' + STORE_EXT));
+  let host = new Host(dir);
+  await host.close();
+  const path = join(dir, HOSTED_RECORD_FILE);
+  const record = JSON.parse(readFileSync(path, 'utf8'));
+  record.instance = '00000000-0000-4000-8000-000000000000';
+  writeFileSync(path, JSON.stringify(record));
+  host = new Host(dir);
+  assert.equal(host.isHeld('A'), true);
+  assert.equal(host.get('A')?.held?.reason, 'the approval record is damaged or missing');
+  await host.close();
+});
+
+test('invalid stored fileId is replaced before approval and remains approved after restart', async (t) => {
+  const dir = folder(t);
+  createStore(join(dir, 'A' + STORE_EXT));
+  for (const invalid of ['0', '""', '{}', '"ABCDEF00-0000-4000-8000-000000000000"', '{']) {
+    const sql = new DatabaseSync(join(dir, 'A' + STORE_EXT));
+    sql.prepare("INSERT OR REPLACE INTO _fm_meta (key, json) VALUES ('fileId', ?)").run(invalid);
+    sql.close();
+    let host = new Host(dir);
+    const id = host.get('A')!.fileId;
+    assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    host.approve('A', 'operator');
+    await host.close();
+    host = new Host(dir);
+    assert.equal(host.get('A')!.fileId, id);
+    assert.equal(host.isHeld('A'), false);
+    await host.close();
+  }
+});
+
+test('runtime conversion stays held, while upload and uploaded unlock are approved', async (t) => {
+  const dir = folder(t);
+  const host = new Host(dir);
+  (host as unknown as { convert: (src: string, dest: string) => Promise<{ tables: number; records: number }> }).convert = async (_src, dest) => {
+    createStore(dest);
+    return { tables: 0, records: 0 };
+  };
+  writeFileSync(join(dir, 'Dropped.fmp12'), 'synthetic source');
+  assert.equal(await host.scan(), undefined);
+  assert.equal(await host.scan(), 'Dropped');
+  assert.equal(host.isHeld('Dropped'), true);
+  const upload = join(dir, 'incoming.part');
+  writeFileSync(upload, 'synthetic source');
+  await host.hostUpload(upload, 'Uploaded', undefined, undefined, 'operator');
+  assert.equal(host.isHeld('Uploaded'), false);
+  assert.equal(loadHostedRecord(dir)?.files.uploaded.how, 'upload');
+  writeFileSync(join(dir, 'Locked.fmp12'), 'synthetic source');
+  host.locked.set('Locked.fmp12', { size: 16, uploaded: true, by: 'operator' });
+  await host.unlock('Locked.fmp12', 'synthetic', () => {}, { checked: true });
+  assert.equal(host.isHeld('Locked'), false);
+  assert.equal(loadHostedRecord(dir)?.files.locked.how, 'upload');
+  await host.close();
+});
+
+test('a startup conversion on first start is held while an existing store is approved', async (t) => {
+  const dir = folder(t);
+  createStore(join(dir, 'Existing' + STORE_EXT));
+  writeFileSync(join(dir, 'Converted.fmp12'), 'synthetic source');
+  const host = new Host(dir, () => {}, { startupImport: (_src, dest) => { createStore(dest); return []; } });
+  assert.equal(host.isHeld('Existing'), false);
+  assert.equal(host.isHeld('Converted'), true);
+  assert.equal(loadHostedRecord(dir)?.files.converted, undefined);
+  await host.close();
+});
+
+test('a follower trusted add leaves the approval record and store marker untouched', async (t) => {
+  const dir = folder(t);
+  let host = new Host(dir);
+  await host.close();
+  createStore(join(dir, 'Added' + STORE_EXT));
+  const before = readFileSync(join(dir, HOSTED_RECORD_FILE));
+  const follower = new Host(dir, () => {}, { follower: true });
+  const store = follower.get('Added')!;
+  follower.vetFile(store, 'trusted', 'upload', 'operator');
+  assert.equal(follower.isHeld('Added'), true);
+  assert.equal(readFileSync(join(dir, HOSTED_RECORD_FILE)).equals(before), true);
+  const sql = new DatabaseSync(store.path, { readOnly: true });
+  assert.equal(sql.prepare("SELECT json FROM _fm_meta WHERE key = 'hostedInstance'").get(), undefined);
+  sql.close();
+  await follower.close();
 });

@@ -1088,10 +1088,14 @@ export class Store {
     let fileId: string | undefined;
     try {
       const row = this.sql.prepare("SELECT json FROM _fm_meta WHERE key = 'fileId'").get() as { json: string } | undefined;
-      if (row) fileId = JSON.parse(row.json) as string;
-      else {
+      if (row) {
+        let parsed: unknown;
+        try { parsed = JSON.parse(row.json); } catch { /* replace an invalid identity below */ }
+        if (typeof parsed === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(parsed)) fileId = parsed;
+      }
+      if (!fileId) {
         const next = randomUUID();
-        this.sql.prepare("INSERT INTO _fm_meta (key, json) VALUES ('fileId', ?)").run(JSON.stringify(next));
+        this.sql.prepare("INSERT OR REPLACE INTO _fm_meta (key, json) VALUES ('fileId', ?)").run(JSON.stringify(next));
         fileId = next;
       }
     } catch { /* no new failure for a read-only or damaged older file */ }
