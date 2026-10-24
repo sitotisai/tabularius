@@ -320,9 +320,10 @@ class Connection {
     if (this.unsignedKey !== undefined && !server.holdUnsigned(this.unsignedKey)) {
       this.unsignedKey = undefined;
       socket.on('error', () => {});
-      // The server added this connection before the constructor ran; it must not keep it once the socket is gone.
+      // Nothing reads this socket, so it would not see the client close (a client that sent its startup message leaves
+      // unread data) and would stay open. Close it once the refusal is written; the server forgets it when it is gone.
       socket.once('close', () => this.server.forget(this));
-      socket.end(errorMsg('53300', 'too many connections waiting to sign in from this network; try again shortly'));
+      socket.end(errorMsg('53300', 'too many connections waiting to sign in from this network; try again shortly'), () => socket.destroy());
       return;
     }
     this.listen(socket);
