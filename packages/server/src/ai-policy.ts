@@ -1,7 +1,7 @@
 // Conservative, pre-execution AI boundary with schema-derived calculation taint (not persisted value taint).
 // All reachable tables are included: calculations, portals, triggers and stored copies need not name
 // the table a tool starts on. Unknown executable constructs fail closed, including for Full Access.
-import { StoreError, type Store, type Privileges, type DesignOp } from '../../store/src/index.ts';
+import { checkSqlSize, StoreError, type Store, type Privileges, type DesignOp } from '../../store/src/index.ts';
 import { dataSourceFile } from '../../store/src/import.ts';
 import { parse, resolveFunction, type Node } from '../../calc/src/index.ts';
 import type { Script, Schema } from '../../fmp12/src/index.ts';
@@ -204,6 +204,8 @@ function secretFields(store: Store, schema: Schema, who?: Privileges): SecretDep
             if (n.args[0]?.k === 'str') read(n.args[0].value, depth + 1, bound);
             else unknown();
           } else if (name === 'executesql' || name === 'executesqle') {
+            // The planner tokenizes the text several times over: the same size limit as for SQL a caller sends.
+            if (n.args[0]?.k === 'str') checkSqlSize(n.args[0].value);
             const refs = n.args[0]?.k === 'str' ? sqlFieldRefs(file.schema, n.args[0].value) : undefined;
             if (!refs) unknown();
             else for (const ref of refs) {
@@ -331,6 +333,8 @@ export function assertAiDesignChanges(store: Store, changes: readonly unknown[],
 }
 
 function sql(store: Store, text: string, operation: string): void {
+  // Before the planner reads it: a long text is refused for its size, not after seconds of analysis.
+  checkSqlSize(text);
   // Use the same schema-only planner as ExecuteSQL calculation dependencies.
   // A store query that compiles can still name an unreviewed SQL source.
   if (!sqlFieldRefs(store.schema, text)) refuse(store, operation, 'SQL read set cannot be determined statically');

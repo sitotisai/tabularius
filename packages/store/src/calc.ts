@@ -2038,8 +2038,9 @@ export class Calculations {
    * becomes LIMIT, and FileMaker_Tables / FileMaker_Fields are provided. `mayRead` says whether the caller may read every
    * record of another file; a table of one it may not read is treated as a name that is not a table at all.
    */
-  translateSQL(query: string, privileges?: Privileges, account?: string, mayRead?: (file: Store) => boolean, endpoint = false): { sql: string; target: Store; stable: boolean; computed: { store: Store; table: Table; field: Field }[] } {
-    checkSqlSize(query);
+  translateSQL(query: string, privileges?: Privileges, account?: string, mayRead?: (file: Store) => boolean, endpoint = false, sizeChecked = false): { sql: string; target: Store; stable: boolean; computed: { store: Store; table: Table; field: Field }[] } {
+    // A caller that already measured what its client sent (the PostgreSQL port, before it rewrites) skips this: rewriting can grow the text.
+    if (!sizeChecked) checkSqlSize(query);
     query = cleanSql(query);
     if (!oneStatement(query)) throw new CalcError(ERR.calculation, 'SQL runs one statement at a time');
     refuseUnsupportedJoins(query);
