@@ -120,3 +120,12 @@ test('script steps: View As and Set Zoom Level read their options', { skip: exis
   assert.ok(lines.includes('View As [ View as Form ]'), lines.join('\n'));
   assert.ok(lines.includes('Set Zoom Level [ 100% ]'), lines.join('\n'));
 });
+
+test('fmp12-99: deeply nested steps are indented to a limit, so the text stays linear in the step count', () => {
+  const step = (stepId: number, name: string, line: string) => ({ stepId, name, enabled: true, line });
+  const deep = scriptText(Array.from({ length: 20_000 }, () => step(68, 'If', 'If [ 1 ]')));
+  assert.equal(deep.split('\n').length, 20_000);
+  assert.ok(deep.length < 2_000_000, `${deep.length} characters`);
+  // Ordinary nesting is unchanged.
+  assert.equal(scriptText([step(68, 'If', 'If [ 1 ]'), step(71, 'Loop', 'Loop'), step(73, 'End Loop', 'End Loop'), step(70, 'End If', 'End If')]), 'If [ 1 ]\n\tLoop\n\tEnd Loop\nEnd If');
+});
