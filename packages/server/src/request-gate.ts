@@ -3,7 +3,7 @@
 import { positiveWholeNumber } from './setting-values.ts';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { clientAddress } from './client-address.ts';
-import { AUTH_BODY_LIMIT } from './request-body.ts';
+import { AUTH_BODY_LIMIT, preAuthBodyPending } from './request-body.ts';
 
 export type RequestClass = 'priority' | 'normal' | 'heavy';
 
@@ -25,17 +25,14 @@ export function requestClass(method: string | undefined, path: string): RequestC
   return 'normal';
 }
 
-/** A body still arriving that may be read before the caller is known: one declared small enough to be a sign-in's, or a chunked one (which
- * declares no size) sent to a sign-in route or /mcp. A real upload declares a larger size and its route checks the caller first. */
-export function smallBodyPending(req: IncomingMessage): boolean {
-  if (req.complete) return false;
-  if (req.headers['transfer-encoding']) {
-    const path = (req.url ?? '').split('?')[0];
-    return path === '/mcp' || requestClass(req.method, path) === 'priority';
-  }
-  const length = Number(req.headers['content-length']);
-  return length > 0 && length <= AUTH_BODY_LIMIT;
+/** A body of sign-in size (or chunked) that is still on its way, so the request that holds a slot for it is waiting on the caller, not working.
+ * One that asked for 100-continue is not: its body cannot arrive until the handler reads, and the edge's total deadline covers it from then. */
+export function slowBodyPending(req: IncomingMessage): boolean {
+  if (!preAuthBodyPending(req) || req.headers.expect?.toLowerCase() === '100-continue') return false;
+  return !!req.headers['transfer-encoding'] || Number(req.headers['content-length']) <= AUTH_BODY_LIMIT;
 }
+/** At most this many such requests per client address (an address with more is not a person signing in), and half the slots in all. */
+export const SLOW_BODIES_PER_ADDRESS = 2;
 
 interface Waiter {
   address: string;
@@ -57,6 +54,7 @@ export class RequestGate {
   private shedCount = 0;
   // Requests still waiting for a small body (a sign-in is read before the caller is known), so a few idle senders cannot take every slot.
   private slowBodies = 0;
+  private readonly slowByAddress = new Map<string, number>();
   readonly slowBodyLimit: number;
 
   constructor(limit = positiveWholeNumber('TABULARIUS_REQUEST_LIMIT', process.env.TABULARIUS_REQUEST_LIMIT, 32, { min: 4 }), queueLimit = 64, waitMs = 750) {
@@ -64,12 +62,14 @@ export class RequestGate {
     this.limit = limit;
     this.queueLimit = queueLimit;
     this.waitMs = waitMs;
-    this.slowBodyLimit = Math.max(1, Math.floor(limit / 4));
+    this.slowBodyLimit = Math.max(SLOW_BODIES_PER_ADDRESS, Math.floor(limit / 2));
   }
 
   get running(): number { return this.active; }
   get queued(): number { return this.waiting.length; }
   get shed(): number { return this.shedCount; }
+  /** Requests holding a slot that are still waiting for a small body. */
+  get unfinishedBodies(): number { return this.slowBodies; }
 
   private capacity(kind: RequestClass): number {
     // Two slots are always available to sign-in and static requests.
@@ -78,7 +78,7 @@ export class RequestGate {
 
   private canRun(kind: RequestClass, address: string, req: IncomingMessage): boolean {
     if (this.active >= this.capacity(kind)) return false;
-    if (this.slowBodies >= this.slowBodyLimit && smallBodyPending(req)) return false;
+    if ((this.slowBodies >= this.slowBodyLimit || (this.slowByAddress.get(address) ?? 0) >= SLOW_BODIES_PER_ADDRESS) && slowBodyPending(req)) return false;
     // A single address can hold at most three quarters of ordinary capacity. Priority
     // calls can use the reserved slots even when that address is at its cap.
     return (this.byAddress.get(address) ?? 0) < Math.max(1, Math.floor((this.limit - 2) * 0.75)) + (kind === 'priority' ? 2 : 0);
@@ -87,12 +87,15 @@ export class RequestGate {
   private take(address: string, req: IncomingMessage, res: ServerResponse): () => void {
     this.active++;
     // The edge ends a small body that has not arrived within its total deadline, which frees this count.
-    if (smallBodyPending(req)) {
+    if (slowBodyPending(req)) {
       this.slowBodies++;
+      this.slowByAddress.set(address, (this.slowByAddress.get(address) ?? 0) + 1);
       const arrived = () => {
         req.off('end', arrived);
         res.off('close', arrived);
         this.slowBodies--;
+        const left = this.slowByAddress.get(address)! - 1;
+        if (left) this.slowByAddress.set(address, left); else this.slowByAddress.delete(address);
         this.drain();
       };
       req.once('end', arrived);
@@ -138,7 +141,7 @@ export class RequestGate {
     const address = clientAddress(req);
     // The request is dispatched while the parser is still working through the bytes that arrived with its headers. Let it finish, so
     // only a body that is really still on its way counts as unfinished.
-    if (smallBodyPending(req)) await new Promise<void>((resolve) => setImmediate(resolve));
+    if (slowBodyPending(req)) await new Promise<void>((resolve) => setImmediate(resolve));
     if (res.destroyed || req.socket.destroyed) return undefined;
     // Serve eligible waiters first. A full queue from one capped address must
     // not prevent a different address from taking a still-free slot.
