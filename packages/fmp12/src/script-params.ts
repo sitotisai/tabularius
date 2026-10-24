@@ -1783,15 +1783,19 @@ export function stepLine(name: string, p: StepParams | undefined, comment?: stri
   return parts.length ? `${name} [ ${parts.join(' ; ')} ]` : name;
 }
 
+const MAX_INDENT = 64;
+
 /** A whole script as text, indented like FileMaker's script workspace; disabled steps start with //. */
 export function scriptText(steps: { stepId: number; name: string; enabled: boolean; line?: string; params?: StepParams; text?: string; calculations?: string[] }[]): string {
   let depth = 0;
+  // A file can nest without limit; indenting every line by its depth would make the text grow with the square of the step count.
+  const indent = (n: number) => '\t'.repeat(Math.min(n, MAX_INDENT));
   return steps.map((s) => {
     const opens = s.stepId === 68 || s.stepId === 71; // If, Loop
     const closes = s.stepId === 70 || s.stepId === 73; // End If, End Loop
     const middle = s.stepId === 69 || s.stepId === 125; // Else, Else If
     if (s.enabled && (closes || middle)) depth = Math.max(0, depth - 1);
-    const line = '\t'.repeat(depth) + (s.enabled ? '' : '// ') + displayedStepLine(s).replace(/\r\n?|\n/g, '\n' + '\t'.repeat(depth + 1));
+    const line = indent(depth) + (s.enabled ? '' : '// ') + displayedStepLine(s).replace(/\r\n?|\n/g, '\n' + indent(depth + 1));
     if (s.enabled && (opens || middle)) depth++;
     return line;
   }).join('\n');
