@@ -174,3 +174,15 @@ test('a reset that removes the only passkey of a two-factor-required account say
   const plain = await (await post('/tabularius/admin/v1/accounts/set-password', { database: 'Charts', account: 'finn', password: 'finn-new-password-1' })).json();
   assert.deepEqual(plain, { ok: true });
 });
+
+test('setting the same password again removes no passkey, so it does not warn that one was removed', async () => {
+  const rp = 'host.example', origin = 'https://host.example';
+  store.savePrivilegeSet({ name: 'Clerk4', records: { view: true, edit: false, create: false, delete: false }, layouts: 'none', valueLists: 'none', scripts: 'none', extendedPrivileges: ['fmrest'] });
+  store.setPassword('gina', 'gina-password-1', 'Clerk4');
+  const challenge = store.issueWebauthnChallenge('register', 'gina');
+  store.registerPasskey('gina', forgeRegistration(makeAuthenticator(rp, origin), challenge), { rpId: rp, origin, challenge });
+  store.setAccountRequire2fa('gina', true);
+  const same = await (await post('/tabularius/admin/v1/accounts/set-password', { database: 'Charts', account: 'gina', password: 'gina-password-1' })).json();
+  assert.deepEqual(same, { ok: true });
+  assert.equal(store.hasPasskey('gina'), true);
+});

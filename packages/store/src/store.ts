@@ -3452,6 +3452,7 @@ export class Store {
       const before = this.sql.prepare('SELECT password_hash FROM _fm_accounts WHERE name = ? COLLATE NOCASE').get(account) as { password_hash: string | null } | undefined;
       const existed = !!before;
       // The same password set again (an automation that re-applies it) is no reset: nothing is revoked.
+      // (A second synchronous scrypt per reset, beside the one that hashes the new password.)
       const same = !!before?.password_hash && checkPassword(password, before.password_hash);
       if (!existed) this.refuseLookalikeAccount(account);
       this.sql.prepare(`INSERT INTO _fm_accounts (name, password_hash, source, must_change, password_changed, password_disabled) VALUES (?, ?, 'openhbam', ?, ?, 0)
