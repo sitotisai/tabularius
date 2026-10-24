@@ -520,6 +520,13 @@
       "restart": "Yes; restart the server after changing its environment.",
       "explainedBy": "README.md"
     },
+    "TABULARIUS_PGWIRE_OUTPUT_STALL_MS": {
+      "description": "How long a SQL client may leave the server's answers unread before the connection is closed, in milliseconds.",
+      "default": "60000",
+      "accepted": "Nonnegative whole number of milliseconds; 0 for no limit",
+      "restart": "No server restart; read each time the server waits for a client to read.",
+      "explainedBy": "docs/pgwire-results.md"
+    },
     "TABULARIUS_PGWIRE_TX_IDLE_MS": {
       "description": "How long a SQL connection may sit idle inside BEGIN, in milliseconds, before it is rolled back and closed. Only matters with --sql-writes.",
       "default": "30000",
