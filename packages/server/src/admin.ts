@@ -1711,16 +1711,16 @@ export class Admin {
         const folderName = said(body.name);
         if (!store) send(404, { error: `"${wanted}" is not hosted` });
         else if (typeof body.account !== 'string' || !body.account || typeof body.password !== 'string' || !body.password) send(400, { error: 'Give the name and password of a Full Access account' });
-        else if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(folderName) || folderName.endsWith('.partial')) send(400, { error: 'The folder name starts with a letter or digit and uses only letters, digits, dots, dashes and underscores (80 at most)' });
+        else if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(folderName) || folderName.endsWith('.partial') || folderName.endsWith('.lock')) send(400, { error: 'The folder name starts with a letter or digit and uses only letters, digits, dots, dashes and underscores (80 at most), and cannot end in .partial or .lock' });
         else {
           const exports = join(this.host.dir, 'Exports');
           let problem: string | undefined;
           try {
             const there = lstatSync(exports, { throwIfNoEntry: false });
             if (!there) mkdirSync(exports, { mode: 0o700 });
-            else if (there.isSymbolicLink() || !there.isDirectory()) problem = `${exports} is not a plain folder, so nothing was written; remove or rename it`;
+            else if (there.isSymbolicLink() || !there.isDirectory()) problem = 'Exports is not a plain folder, so nothing was written; remove or rename it';
           } catch (e) {
-            problem = `${exports} could not be made: ${(e as Error).message}`;
+            problem = `Exports could not be made (${(e as NodeJS.ErrnoException).code ?? 'filesystem error'}); check its permissions`;
           }
           if (problem) send(409, { error: problem });
           else {
@@ -1738,7 +1738,7 @@ export class Admin {
               }
             } catch (e) {
               if (!(e instanceof ExitBundleError)) throw e;
-              send(e.status, { error: e.message });
+              send(e.status, { error: e.message.replaceAll(folder, folderName).replaceAll(exports, 'Exports') });
             }
           }
         }
