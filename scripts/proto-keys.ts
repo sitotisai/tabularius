@@ -19,6 +19,8 @@ export interface KeyedWriteAllowance { file: string; fn: string; kind: string; h
 
 const PACKAGES = ['server', 'store', 'calc', 'scripts', 'web'];
 const KIND = 'keyed-object-entry';
+const FIRST_USE_ASSIGNMENTS = new Set(['??=', '||=']);
+const FIRST_USE_OPERATORS = new Set(['??', '||']);
 
 const sourceFiles = (root: string): string[] => {
   const walk = (path: string): string[] => readdirSync(path, { withFileTypes: true }).flatMap((entry) => {
@@ -67,14 +69,16 @@ export function collectKeyedEntries(root = resolve(import.meta.dirname, '..'), o
     const add = (node: ts.Node) => findings.push({ file: rel, line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1, fn: functionName(node), kind: KIND, hash: digest(node.getText(sf)) });
     const visit = (node: ts.Node) => {
       if (ts.isBinaryExpression(node)) {
-        const op = node.operatorToken.kind;
+        // The operator as written, so the comparisons below are of plain text.
+        const op = node.operatorToken.getText(sf);
+        const target = skipParens(node.left);
+        const sink = () => !withoutPrototype((target as ts.ElementAccessExpression).expression, sf);
         // map[name] ??= {}   map[name] ||= {}
-        if ((op === ts.SyntaxKind.QuestionQuestionEqualsToken || op === ts.SyntaxKind.BarBarEqualsToken) && keyedAccess(skipParens(node.left)) && objectLiteral(node.right) && !withoutPrototype((skipParens(node.left) as ts.ElementAccessExpression).expression, sf)) add(node);
+        if (FIRST_USE_ASSIGNMENTS.has(op) && keyedAccess(target) && objectLiteral(node.right) && sink()) add(node);
         // map[name] = map[name] ?? {}   map[name] = map[name] || {}
-        else if (op === ts.SyntaxKind.EqualsToken && keyedAccess(skipParens(node.left)) && ts.isBinaryExpression(skipParens(node.right))) {
+        else if (op === '=' && keyedAccess(target) && ts.isBinaryExpression(skipParens(node.right))) {
           const r = skipParens(node.right) as ts.BinaryExpression;
-          const k = r.operatorToken.kind;
-          if ((k === ts.SyntaxKind.QuestionQuestionToken || k === ts.SyntaxKind.BarBarToken) && objectLiteral(r.right) && r.left.getText(sf) === node.left.getText(sf) && !withoutPrototype((skipParens(node.left) as ts.ElementAccessExpression).expression, sf)) add(node);
+          if (FIRST_USE_OPERATORS.has(r.operatorToken.getText(sf)) && objectLiteral(r.right) && r.left.getText(sf) === node.left.getText(sf) && sink()) add(node);
         }
       }
       ts.forEachChild(node, visit);
