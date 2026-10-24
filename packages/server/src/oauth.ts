@@ -75,6 +75,8 @@ function storedName(store: Store, account: string): string | undefined {
 /** Bind codes and refresh tokens to the same identity (the account's and, for a federated sign-in, the person's), credentials and authority as the sign-in. */
 function passwordMark(store: Store, account: string, person?: string): string {
   store.accountIdentityId(account);
+  // Part of the mark too, and given once here: left unset, the next open of the file (the warmer's, say) fills it in and the mark changes under a page that was just shown.
+  if (person) store.accountIdentityId(person);
   return hash(`${store.signInMark(account, undefined, person)}:${JSON.stringify(store.privileges(account, undefined, person).set.extendedPrivileges)}`);
 }
 
