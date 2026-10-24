@@ -106,8 +106,12 @@
       "gzip": 2739
     },
     "packages/web/src/refresh.ts": {
-      "raw": 6810,
-      "gzip": 2483
+      "raw": 9073,
+      "gzip": 3156
+    },
+    "packages/web/src/own-keys.ts": {
+      "raw": 1889,
+      "gzip": 863
     },
     "packages/web/src/import-tables-model.ts": {
       "raw": 5974,

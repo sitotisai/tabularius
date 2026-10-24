@@ -1989,7 +1989,7 @@ export class DataApi {
         return [access === 'masked' ? { ...m, result: 'text' } : m];
       };
       const own = info.owner.schema.tables.find((t) => t.name === info.table);
-      const portalMetaData: Record<string, unknown[]> = {};
+      const portalMetaData: Record<string, unknown[]> = Object.create(null); // a portal named __proto__ is a key
       for (const portal of info.plan?.portals ?? []) portalMetaData[portal.name] = portal.fields.flatMap((f) => relatedMeta(portal.occurrence, f));
       // Lists of related values depend on a record: with ?recordId= (read as GET .../records/{id} would), those that start
       // from the layout's table list that record's related values; without it they're left out.
@@ -2116,12 +2116,11 @@ export class DataApi {
         needsNativeShape.set(on, shape);
       }
       if (shape) {
-        const shaped: Record<string, unknown> = {};
-        for (const [name, value] of Object.entries(out.fieldData)) {
+        // Object.fromEntries: a field called __proto__ stays a key.
+        (out as { fieldData: Record<string, unknown> }).fieldData = Object.fromEntries(Object.entries(out.fieldData).map(([name, value]) => {
           const type = nativeFieldType(name, on);
-          shaped[name] = type ? nativeShape(value, type) : value;
-        }
-        (out as { fieldData: Record<string, unknown> }).fieldData = shaped;
+          return [name, type ? nativeShape(value, type) : value];
+        }));
       }
       const portals = store.layout(on).plan?.portals ?? [];
       if (!portals.length) return out;
