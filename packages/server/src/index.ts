@@ -6,7 +6,7 @@ import { legacyRequest } from './legacy-request.ts';
 import { AUTH_BODY_LIMIT } from './request-body.ts';
 import { parseRequestJson } from './request-json.ts';
 import { IdentityInFlight, busyHeaders } from './in-flight.ts';
-import { RequestGate, requestClass, isDataApiPath, isEventStream } from './request-gate.ts';
+import { RequestGate, requestClass, isDataApiPath, isEventStream, isMcpStream } from './request-gate.ts';
 import { StreamSlots } from './stream-slots.ts';
 import type { SmtpConfig } from './smtp.ts';
 import type { IncomingMessage, Server } from 'node:http';
@@ -615,8 +615,8 @@ export async function serve(opts: ServeOptions): Promise<{ server: Server; host:
       compressResponse(req, res, url.pathname);
       // Health always answers. An event stream is long-lived and has a separate
       // stream limit; holding a short-request slot for its lifetime would starve
-      // ordinary calls at normal session counts.
-      const stream = isEventStream(req.method, url.pathname);
+      // ordinary calls at normal session counts. GET /mcp may open one too.
+      const stream = isEventStream(req.method, url.pathname) || isMcpStream(req.method, url.pathname);
       const release = url.pathname === '/tabularius/health' || stream ? undefined : await requestGate.enter(req, res, requestClass(req.method, url.pathname));
       if (req.socket.destroyed || res.destroyed || res.writableEnded) {
         release?.();
@@ -735,7 +735,7 @@ export async function serve(opts: ServeOptions): Promise<{ server: Server; host:
           // GET may keep an SSE response open, so it does not use a short-request slot.
           if (req.socket.destroyed || res.destroyed || res.writableEnded) return;
           const identity = 'admin' in who ? 'admin' : JSON.stringify(['account', who.account.toLowerCase()]);
-          const streamDone = req.method === 'GET' ? mcpStreams.enter(identity, res) : undefined;
+          const streamDone = req.method === 'GET' ? mcpStreams.enter(identity, res, 'password' in who ? who.from : undefined) : undefined;
           if (req.method === 'GET' && !streamDone) {
             busyHeaders(res);
             res.writeHead(503, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'Too many MCP event streams' }));
