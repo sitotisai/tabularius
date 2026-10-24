@@ -477,41 +477,49 @@ function fileSize(path: string): number | undefined {
  * first: FileMaker Server keeps them in RC_Data_FMS/<file>/, FileMaker Pro in
  * Files/<file>/, each under the field's base directory (Manage Containers;
  * the default is named after the file). A base directory comes from the file,
- * so a root is kept only inside this file's own storage (those two folders, or
- * a folder named after the file beside it): never another hosted file's
- * storage, a sibling folder, or RC_Data_FMS and Files themselves. A name that
- * is not a single folder name (empty, "." or "..") has no roots at all. The
- * folder named after the file beside it is used only for a plain name (ASCII
- * letters, digits, space, dash, underscore and dot, no trailing dot or space,
- * no "~1" short-name form) that is not Files or RC_Data_FMS without case: any
- * other spelling could be those folders, which hold every file's storage, on a
- * disk that ignores case or Unicode case (a long "s" in Files) or answers to
- * Windows short names (RC_DAT~1).
+ * so a root is kept only below those two folders for this file: never another
+ * hosted file's storage, a sibling folder, RC_Data_FMS and Files themselves, or
+ * a folder of the server's own beside the hosted files (Backups, Logs,
+ * Exports...), which a folder named after the file could be. A name that is
+ * not a single folder name (empty, "." or "..") or has a "~1" form (a Windows
+ * short name, which can stand for another file's folder) has no roots at all.
+ * `refused` collects what was left out, for the operator: base directories that
+ * lead to no root, and a name that has none.
  */
-export function externalRoots(folder: string, name: string, baseDirs: string[]): string[] {
+export function externalRoots(folder: string, name: string, baseDirs: string[], refused: string[] = []): string[] {
   const roots: string[] = [];
-  if (basename(resolve(folder, 'Files', name)) !== name) return roots;
+  if (basename(resolve(folder, 'Files', name)) !== name || /~\d/.test(name)) {
+    refused.push(`the file name ${JSON.stringify(name)} cannot be used for a container folder`);
+    return roots;
+  }
   const own = [resolve(folder, 'RC_Data_FMS', name), resolve(folder, 'Files', name)];
-  if (/^[A-Za-z0-9 _.-]+$/.test(name) && !/[. ]$/.test(name) && !/~\d/.test(name) && !['files', 'rc_data_fms'].includes(name.toLowerCase())) own.push(resolve(folder, name));
-  const add = (...parts: string[]) => {
+  const add = (...parts: string[]): boolean => {
     const r = resolve(folder, ...parts);
-    if (own.some((o) => r === o || r.startsWith(o + sep)) && !roots.includes(r)) roots.push(r);
+    if (!own.some((o) => r === o || r.startsWith(o + sep))) return false;
+    if (!roots.includes(r)) roots.push(r);
+    return true;
   };
   for (const base of baseDirs) {
     const b = base.replace(/\\/g, '/').replace(/^\/+/, '');
     // Windows drops a trailing dot or space from a name, so ".. " is ".." there; a drive letter leaves the folder. A name
     // that has anything else in it ("Acme Inc.") stays itself, there and everywhere else.
-    if (b.split('/').some((part) => part !== '.' && /^[. ]+$/.test(part)) || /^[A-Za-z]:/.test(b)) continue;
-    for (const top of ['RC_Data_FMS', 'Files']) {
-      add(top, name, b);
-      add(top, b);
+    let used = false;
+    if (!b.split('/').some((part) => part !== '.' && /^[. ]+$/.test(part)) && !/^[A-Za-z]:/.test(b)) {
+      for (const top of ['RC_Data_FMS', 'Files']) {
+        used = add(top, name, b) || used;
+        used = add(top, b) || used;
+      }
+      used = add(b) || used;
     }
-    add(b);
+    if (!used) refused.push(base);
   }
   add('RC_Data_FMS', name);
   add('Files', name);
   return roots;
 }
+
+/** Files whose refused container folders have been reported in this process. */
+const warnedRoots = new Set<string>();
 
 /** Container files bigger than this are kept in pieces of this size. */
 export const CONTAINER_CHUNK = 1024 * 1024;
@@ -1235,7 +1243,13 @@ export class Store {
       this.sql.exec('ALTER TABLE _fm_containers ADD COLUMN sha256 TEXT');
     }
     this.sql.exec('CREATE INDEX IF NOT EXISTS _fm_containers_hash ON _fm_containers (sha256, mime, filename) WHERE external IS NULL AND sha256 IS NOT NULL');
-    this.externalRoots = externalRoots(dirname(path), name, this.schema?.containerDirectories?.map((d) => d.path) ?? []);
+    const refusedRoots: string[] = [];
+    this.externalRoots = externalRoots(dirname(path), name, this.schema?.containerDirectories?.map((d) => d.path) ?? [], refusedRoots);
+    // Once per file per process: a container that goes missing after an upgrade is explained here.
+    if (refusedRoots.length && !warnedRoots.has(path)) {
+      warnedRoots.add(path);
+      console.warn(`Container folders of ${name}: left out because they are outside its own storage (RC_Data_FMS/${name}/ and Files/${name}/): ${refusedRoots.join('; ')}. Files stored there are not found; move them under one of those two folders.`);
+    }
     this.externalDirectoryLinks = existingDirectoryLinks(this.externalRoots);
     try { this.recoverPendingExternalFiles(); }
     catch (error) { this.sql.close(); throw error; }

@@ -157,19 +157,18 @@ container files, and links named by container data are refused.
 
 A container field's base directory (Manage Containers) is read from the file, so
 it can only lead further down inside the file's own storage: below
-`RC_Data_FMS/<name>/`, `Files/<name>/` or a folder named after the file. One that
-climbs out with `..`, starts with a drive letter, or names another hosted file's
-storage, a sibling folder, or `RC_Data_FMS` or `Files` themselves is skipped. If
-your base directory points somewhere else (a folder beside the hosted file, say),
-containers stored there show as missing and new ones go under `RC_Data_FMS/<name>/`:
-move the files into the folder named by the base directory below
-`RC_Data_FMS/<name>/` (or `Files/<name>/`). Nothing is moved for you.
-
-The folder named after the hosted file, beside it, is used only when the name is
-plain: ASCII letters, digits, space, dash, underscore and dot, not ending in a dot
-or a space, with no `~1` form, and not `Files` or `RC_Data_FMS` in any
-capitalization. For any other name (an accented letter, say), keep external
-containers under `RC_Data_FMS/<name>/` or `Files/<name>/`.
+`RC_Data_FMS/<name>/` or `Files/<name>/`. One that climbs out with `..`, starts
+with a drive letter, names another hosted file's storage, a sibling folder or one
+of the server's own folders, or is `RC_Data_FMS` or `Files` themselves, is skipped.
+Letter case matters: for a file called `Mine`, a base directory `mine/Docs` is not
+read as `Mine/Docs`, even on a disk that ignores case. The folder named after the
+hosted file beside it is not searched. If your base directory points somewhere
+else (a folder beside the hosted file, say), containers stored there show as
+missing and new ones go under `RC_Data_FMS/<name>/`; the server logs a line naming
+the base directories it left out when it opens the file. Move the files into the
+folder named by the base directory below `RC_Data_FMS/<name>/` (or
+`Files/<name>/`). Nothing is moved for you. A file whose name is empty, `.`, `..`
+or has a `~1` form (`ACMEIN~1`) reads no external containers.
 
 ### What won't work yet
 
