@@ -11,11 +11,11 @@ import { MAX_MCP_STREAMS_PER_IDENTITY, MAX_MCP_UNVERIFIED_STREAMS_PER_ADDRESS } 
 import { RawClient, request, responseBody, normal, stubCommands } from './edge-test-helpers.ts';
 import type { ServerResponse } from 'node:http';
 
-async function start(t: TestContext, bodyMs?: number) {
+async function start(t: TestContext, bodyMs?: number, limits: Record<string, number> = {}) {
   stubCommands(t);
   const dir = mkdtempSync(join(tmpdir(), 'edge-app-'));
   createStore(join(dir, 'Edge.openhbam.sqlite'));
-  const app = await serve({ dir, port: 0, hostname: '127.0.0.1', watch: false, checkFiles: false, statsInterval: 0, log: () => {}, mcpToken: 'edge-admin', edgeLimits: { connectionsPerAddress: 400, ...(bodyMs ? { bodyMs, checkMs: 10 } : {}) } });
+  const app = await serve({ dir, port: 0, hostname: '127.0.0.1', watch: false, checkFiles: false, statsInterval: 0, log: () => {}, mcpToken: 'edge-admin', edgeLimits: { connectionsPerAddress: 400, ...(bodyMs ? { bodyMs, checkMs: 10 } : {}), ...limits } });
   t.after(async () => {
     app.server.closeAllConnections();
     await new Promise<void>(resolve => app.server.close(() => resolve()));
@@ -204,4 +204,23 @@ test('GET /mcp streams with made-up Basic accounts take no request slot and are 
   assert.equal(statuses.filter(code => code === '200').length, MAX_MCP_UNVERIFIED_STREAMS_PER_ADDRESS);
   assert.match(await s.call('/docs/'), /^HTTP\/1\.1 200 /);
   assert.doesNotMatch(await s.call('/fmi/data/vLatest/databases'), /^HTTP\/1\.1 503 /);
+});
+
+test('chunked bodies that trickle to the routes that read before sign-in are ended, so they cannot hold every slot', async t => {
+  const s = await start(t, undefined, { smallBodyMs: 400, checkMs: 10 });
+  const held: RawClient[] = [];
+  const drip = setInterval(() => { for (const c of held) if (!c.socket.destroyed) c.socket.write('1\r\nx\r\n'); }, 100);
+  t.after(() => { clearInterval(drip); for (const c of held) c.socket.destroy(); });
+  // The XML gateway and OAuth registration read up to 64 KiB with no sign-in at all; none of these is a sign-in route.
+  for (const path of ['/fmi/xml/fmresultset.xml', '/oauth/register', '/oauth/revoke']) {
+    const group: RawClient[] = [];
+    for (let i = 0; i < 25; i++) {
+      const c = await new RawClient(s.port).ready(); held.push(c); group.push(c);
+      c.send(request(path, 'Transfer-Encoding: chunked\r\nContent-Type: application/x-www-form-urlencoded\r\n', 'POST') + '1\r\nx\r\n');
+    }
+    // Each is answered (refused as busy, or ended at the deadline) and closed well before the 300 s idle budget.
+    await Promise.all(group.map(c => c.until(text => /^HTTP\/1\.1 (408|503) /.test(text))));
+    assert.ok(group.some(c => /^HTTP\/1\.1 408 /.test(c.text)), `${path}: a body that was let in ends at the total deadline`);
+    assert.match(await s.call('/docs/'), /^HTTP\/1\.1 200 /);
+  }
 });

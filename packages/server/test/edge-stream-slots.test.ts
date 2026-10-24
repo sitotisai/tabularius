@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import type { ServerResponse } from 'node:http';
 import { createEdgeServer } from '../src/edge-limits.ts';
 import { StreamSlots } from '../src/stream-slots.ts';
 import { listen, normal, RawClient, request, stubCommands } from './edge-test-helpers.ts';
@@ -53,4 +55,21 @@ test('SSE total/identity slots release on close, refusal, explicit failure and d
   assert.equal(afterDisconnect, false, 'an await cannot resurrect a closed subscriber');
   await open('/d', 200);
   await normal(port);
+});
+
+test('unverified streams share one allowance per address (an IPv6 /64 counts once) and one pool that leaves room for verified callers', () => {
+  const slots = new StreamSlots(10, 5, 2, 3);
+  const response = () => Object.assign(new EventEmitter(), { destroyed: false, writableEnded: false, socket: { destroyed: false } }) as unknown as ServerResponse;
+  const held: Array<() => void> = [];
+  const enter = (identity: string, caller?: string) => { const release = slots.enter(identity, response(), caller); if (release) held.push(release); return !!release; };
+  assert.equal(enter('a', '2001:db8:0:1::1'), true);
+  assert.equal(enter('b', '2001:db8:0:1:ffff::2'), true);
+  assert.equal(enter('c', '2001:db8:0:1::3'), false, 'the same /64, however the account name is spelled');
+  assert.equal(enter('d', '203.0.113.1'), true);
+  assert.equal(enter('e', '203.0.113.2'), false, 'the pool of unverified streams is full');
+  assert.equal(enter('token-holder'), true, 'a verified caller still has room');
+  held[0]();
+  assert.equal(enter('e', '203.0.113.2'), true, 'a released stream frees its place');
+  for (const release of held) release();
+  assert.equal(enter('f', '203.0.113.9'), true, 'nothing is left counted');
 });
