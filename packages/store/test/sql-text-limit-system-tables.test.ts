@@ -21,3 +21,14 @@ test('ExecuteSQL over a file whose system tables are far past the limit still ru
     assert.throws(() => store.calc.executeSQL(`SELECT 1${' '.repeat(MAX_SQL_TEXT)}`, []), (e: unknown) => e instanceof StoreError && e.code === 812 && /larger than 1 MB/.test(e.message));
   } finally { store.close(); rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('a caller that has already measured the text (the PostgreSQL port, which rewrites it first) can skip the check', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-sql-checked-'));
+  createStore(join(dir, 'Big.sqlite'));
+  const store = new Store(join(dir, 'Big.sqlite'), 'Big');
+  try {
+    const padded = `SELECT 1${' '.repeat(MAX_SQL_TEXT)}`;
+    assert.throws(() => store.calc.translateSQL(padded), (e: unknown) => e instanceof StoreError && e.code === 812);
+    assert.match(store.calc.translateSQL(padded, undefined, undefined, undefined, false, true).sql, /^SELECT 1/);
+  } finally { store.close(); rmSync(dir, { recursive: true, force: true }); }
+});

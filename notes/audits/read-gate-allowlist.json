@@ -221,7 +221,7 @@
   {"file":"packages/server/src/pgwire.ts","fn":"Connection/catalog","gate":"SQL","sites":[{"api":"Store.describeTyped","hash":"f811b2900cb82ec9b399"}]},
   {"file":"packages/server/src/pgwire.ts","fn":"Connection/describe","gate":"SQL","sites":[{"api":"Store.describeTyped","hash":"615a9eba46610e100c2e"}]},
   {"file":"packages/server/src/pgwire.ts","fn":"Connection/run","gate":"SQL","sites":[{"api":"Store.selectIn","hash":"7b6da99610205f1ca3c4"},{"api":"Store.describeTyped","hash":"615a9eba46610e100c2e"}]},
-  {"file":"packages/server/src/pgwire.ts","fn":"Connection/translate","gate":"SQL","sites":[{"api":"Calculations.translateSQL","hash":"1f0a98e28fe5d115d528"}]},
+  {"file":"packages/server/src/pgwire.ts","fn":"Connection/translate","gate":"SQL","sites":[{"api":"Calculations.translateSQL","hash":"d3cdfad26c8ee9024add"}]},
   {"file":"packages/server/src/pgwire.ts","fn":"Connection/validateSyntax","gate":"SQL","sites":[{"api":"SQLite.prepare","hash":"5317c953ce8909c02185"},{"api":"Store.sql","hash":"5317c953ce8909c02185"}]},
   {"file":"packages/server/src/pgwrite.ts","fn":"executeWrite/reader","gate":"SQL","sites":[{"api":"Store.selectIn","hash":"670799e5fbb807eac0c2"}]},
   {"file":"packages/server/src/pgwrite.ts","fn":"returningColumns","gate":"SQL","sites":[{"api":"Store.describe","hash":"514057613b724bff75a3"}]},
