@@ -239,3 +239,31 @@ test('a Data API call with a made-up token is refused before its body is read, s
   }
   await Promise.all(held.map(c => c.until(text => /^HTTP\/1\.1 401 /.test(text))));
 });
+
+test('a made-up token does not exempt a body from the deadline, however the sign-in address is spelled, while a real session on another route is left alone', async t => {
+  const s = await start(t, undefined, { smallBodyMs: 400, checkMs: 10 });
+  const held: RawClient[] = [];
+  const drip = setInterval(() => { for (const c of held) if (!c.socket.destroyed) c.socket.write('1\r\nx\r\n'); }, 100);
+  t.after(() => { clearInterval(drip); for (const c of held) c.socket.destroy(); });
+  // The Data API decodes each path segment before it routes, so these are the sign-in route; it reads the body before it looks at the token.
+  for (const path of ['/fmi/data/v1/databases/Edge/%73essions', '/fmi/data/v1/databases/Edge/session%73']) {
+    const group: RawClient[] = [];
+    for (let i = 0; i < 12; i++) {
+      const c = await new RawClient(s.port).ready(); held.push(c); group.push(c);
+      c.send(request(path, 'Transfer-Encoding: chunked\r\nContent-Type: application/json\r\nAuthorization: Bearer made-up\r\n', 'POST') + '1\r\nx\r\n');
+    }
+    await Promise.all(group.map(c => c.until(text => /^HTTP\/1\.1 (408|503) /.test(text))));
+    assert.ok(group.some(c => /^HTTP\/1\.1 408 /.test(c.text)), `${path}: a body that was let in ends at the total deadline`);
+    let docs = '';
+    for (let i = 0; i < 100 && !/^HTTP\/1\.1 200 /.test(docs); i++) { docs = await s.call('/docs/'); if (!/^HTTP\/1\.1 200 /.test(docs)) await sleep(50); }
+    assert.match(docs, /^HTTP\/1\.1 200 /);
+  }
+  // A session this server holds, on a route that is not sign-in: a chunked body may take longer than the deadline.
+  const token = await s.login();
+  const c = await new RawClient(s.port).ready();
+  c.send(request('/fmi/data/vLatest/databases/Edge/layouts/Items/records', `Authorization: Bearer ${token}\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n`, 'POST'));
+  const json = '{"fieldData":{"Name":"slow"}}';
+  for (let at = 0; at < json.length; at += 3) { const piece = json.slice(at, at + 3); c.send(`${piece.length.toString(16)}\r\n${piece}\r\n`); await sleep(100); }
+  assert.match(await c.send('0\r\n\r\n').end(), /^HTTP\/1\.1 200 /);
+  assert.equal(s.store.findIds('Items').length, 1);
+});
