@@ -1063,7 +1063,7 @@ export class WebClient {
         if (Object.keys(labels).length) out.valueListLabels = labels;
       }
       if (portals.length) {
-        const rows: Record<string, Record<string, { hidden: number[]; styles?: Record<number, number[]>; labels?: Record<number, string>; merges?: Record<string, string>; active?: Record<number, string>; web?: Record<number, string>; tooltips: Record<number, string>; placeholders: Record<number, string> }>> = {};
+        const rows: Record<string, Record<string, { hidden: number[]; styles?: Record<number, number[]>; labels?: Record<number, string>; merges?: Record<string, string>; active?: Record<number, string>; web?: Record<number, string>; tooltips: Record<number, string>; placeholders: Record<number, string> }>> = Object.create(null); // a portal named __proto__ is a key
         const rec = store.get(info, id, 'us', { ...Object.fromEntries(portals.map((p) => [p.name, { limit: 100 }])),
           ...(body.step === 'Refresh Object' || body.step === 'Set Web Viewer' ? this.displayPortals(body, id) : {}) }, privileges, { summaries: false, fresh: !!context, ...(opts.row ? { row: opts.row } : {}) });
         for (const p of portals) {

@@ -170,9 +170,10 @@ type ScriptPhase = 'prerequest' | 'presort' | '';
  */
 function textFormatting(input: unknown, fieldData: Record<string, unknown>): Record<string, StyleRun[]> {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ApiError(960, 'styles must be an object of fields', 400);
-  const out: Record<string, StyleRun[]> = {};
+  // No prototype: a field named __proto__ is just a key, and cannot be found on Object.prototype.
+  const out: Record<string, StyleRun[]> = Object.create(null);
   for (const [name, runs] of Object.entries(input as Record<string, unknown>)) {
-    const value = fieldData[name];
+    const value = Object.hasOwn(fieldData, name) ? fieldData[name] : undefined;
     if (value === undefined) throw new ApiError(960, `styles for "${name}" need its value in fieldData`, 400);
     const clean = cleanRuns(runs, String(value).length);
     if (!clean) throw new ApiError(960, `styles for "${name}" are not valid`, 400);
@@ -187,13 +188,13 @@ function textFormatting(input: unknown, fieldData: Record<string, unknown>): Rec
  */
 function portalFormatting(input: unknown, portalData: Record<string, Record<string, unknown>[]>): Record<string, Record<string, Record<string, StyleRun[]>>> {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ApiError(960, 'portalStyles must be an object of portals', 400);
-  const out: Record<string, Record<string, Record<string, StyleRun[]>>> = {};
+  const out: Record<string, Record<string, Record<string, StyleRun[]>>> = Object.create(null);
   for (const [portal, rows] of Object.entries(input as Record<string, unknown>)) {
     if (!rows || typeof rows !== 'object' || Array.isArray(rows)) throw new ApiError(960, `portalStyles for "${portal}" must be an object of rows`, 400);
     for (const [recordId, fields] of Object.entries(rows as Record<string, unknown>)) {
-      const row = portalData[portal]?.find((r) => r.recordId !== undefined && String(r.recordId) === recordId);
+      const row = (Object.hasOwn(portalData, portal) ? portalData[portal] : undefined)?.find((r) => r.recordId !== undefined && String(r.recordId) === recordId);
       if (!row) throw new ApiError(960, `portalStyles for row ${recordId} of "${portal}" need that row in portalData`, 400);
-      ((out[portal] ??= {})[recordId] = textFormatting(fields, row));
+      ((out[portal] ??= Object.create(null))[recordId] = textFormatting(fields, row));
     }
   }
   return out;
@@ -375,7 +376,8 @@ export const recordJson = (r: StoredRecord) => ({
 
 /** Portal paging from query parameters (_offset.{portal}, _limit.{portal}) or a _find body (offset.{portal}, limit.{portal}). */
 function portalPaging(get: (key: string) => unknown, keys: Iterable<string>): PortalPaging {
-  const out: PortalPaging = {};
+  // No prototype: a portal named __proto__ in `_limit.__proto__` is just a key, not Object.prototype.
+  const out: PortalPaging = Object.create(null);
   for (const k of keys) {
     const m = /^_?(offset|limit)\.(.+)$/.exec(k);
     if (!m) continue;

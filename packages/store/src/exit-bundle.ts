@@ -471,12 +471,13 @@ function finish(snap: Store, closeWork: () => void, stage: string, target: strin
 
   const schema = snap.schema;
   const without = { ...schema, accounts: schema.accounts.map(({ passwordVerifier: _verifier, ...account }) => account) };
-  const globals: Record<string, Record<string, unknown>> = {};
-  const serials: Record<string, Record<string, unknown>> = {};
+  // No prototype on these: a table named __proto__ is a key of the file, not Object.prototype.
+  const globals: Record<string, Record<string, unknown>> = Object.create(null);
+  const serials: Record<string, Record<string, unknown>> = Object.create(null);
   for (const table of schema.tables) {
     for (const field of table.fields) {
-      if (field.options?.global) (globals[table.name] ??= {})[field.name] = snap.calc.globalValue(table, field);
-      if (field.options?.autoEnter?.serial) (serials[table.name] ??= {})[field.name] = snap.calc.peekSerial(table, field) ?? null;
+      if (field.options?.global) (globals[table.name] ??= Object.create(null))[field.name] = snap.calc.globalValue(table, field);
+      if (field.options?.autoEnter?.serial) (serials[table.name] ??= Object.create(null))[field.name] = snap.calc.peekSerial(table, field) ?? null;
     }
   }
   writeAtomic(join(stage, 'schema.json'), `${stableJson(without)}\n`);

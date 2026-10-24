@@ -6898,7 +6898,8 @@ export class Store {
     }
     if (traced && plan.related.length) traceField(performance.now() - t0, `related fields: ${plan.related.length} occurrences, ${plan.related.reduce((n, r) => n + r.fields.length, 0)} fields`, statements - ran0);
     if (!plan.portals.length) return;
-    rec.portalData = {};
+    // No prototype on these two: a portal is named by the layout (an imported file's too), and one named __proto__ must be a key.
+    rec.portalData = Object.create(null) as NonNullable<StoredRecord['portalData']>;
     for (const portal of plan.portals) {
       const t0 = traced ? performance.now() : 0;
       const ran0 = statements;
@@ -6912,7 +6913,7 @@ export class Store {
       const memo = memoKey !== undefined ? this.foundSetMemo!.get(memoKey) : undefined;
       if (memo) {
         rec.portalData[portal.name] = memo.out.map((o) => ({ ...o }));
-        if (memo.styles) (rec.portalStyles ??= {})[portal.name] = memo.styles;
+        if (memo.styles) (rec.portalStyles ??= Object.create(null))[portal.name] = memo.styles;
         let counts = this.portalFound.get(rec);
         if (!counts) this.portalFound.set(rec, counts = { privileges: p, counts: {} });
         counts.counts[portal.name] = memo.count;
@@ -6938,7 +6939,7 @@ export class Store {
           ...this.relatedValues(res!.occurrence, r, fields, fmt, p, stamps),
         } as PortalRow;
         const styled = this.relatedStyles(res!.occurrence, r, fields.filter((f) => styleable(res!.occurrence, [f]).length));
-        if (styled) ((rec.portalStyles ??= {})[portal.name] ??= {})[o.recordId] = styled;
+        if (styled) ((rec.portalStyles ??= Object.create(null))[portal.name] ??= {})[o.recordId] = styled;
         return o;
       });
       const ran2 = statements;
