@@ -5532,11 +5532,11 @@ export class Store {
       // The unverified-import marker only stays for fields that are still hidden and still exist, so a later
       // "relax" can never widen a field the admin hid on purpose after the import, or one that was removed.
       if (saved.unverifiedReadOnly) {
-        const kept: Record<string, string[]> = ownKeyed({});
+        const kept: Record<string, string[]> = {};
         for (const [table, names] of Object.entries(saved.unverifiedReadOnly)) {
           const def = this.schema.tables.find((t) => t.name === table);
           const live = names.filter((n) => ownPrivilegeEntry(ownPrivilegeEntry(saved.tables, table)?.fields, n) === 'none' && def?.fields.some((f) => f.name === n));
-          if (live.length) kept[table] = live;
+          if (live.length) setOwn(kept, table, live);
         }
         if (Object.keys(kept).length) saved.unverifiedReadOnly = kept; else delete saved.unverifiedReadOnly;
       }
