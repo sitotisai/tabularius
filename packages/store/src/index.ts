@@ -17,7 +17,7 @@ export { anchorHead, checkAnchor, MIN_ANCHOR_KEY_BYTES, type AuditAnchor, type A
 export { findWhere, type FieldInfo, type SqlValue } from './find.ts';
 export { generateTotpSecret, checkTotp, totpCode, totpUri } from './totp.ts';
 export { privilegeSetName, extendedPrivilegesOf, summarize, serialIncrement, serialNext, summaryColumns, rowsById, containerValue } from './calc.ts';
-export { ownKeyed, setOwn } from './own-keys.ts';
+export { ownKeyed, ownEntry, setOwn } from './own-keys.ts';
 export { ownPrivilegeEntry, Privileges, PrivilegeError, FULL_ACCESS, BUILT_IN_EXTENDED_PRIVILEGES, isFullAccess, customAccess, type CustomAccessMapping, type PrivilegeDefinition, type TablePrivileges, type Level, type Rule, type FieldLevel, type FieldMask, maskValue, MASK_FILL, MASK_PLACEHOLDER, MASK_TEXT_MAX } from './privileges.ts';
 export { accessReport, explainAccess, diffPrivilegeSet, testAccount, type AccessReport, type TableAccess, type RuleFact, type SetChange, type AccessExplanation, type TableExplanation, type AccessFact, type FieldFact, type SurfaceFact, type AccountTest, type AccountTestLayout, type AccountTestScript, type AccountTestBlocked } from './access-report.ts';
 export { designText, designObjects, writeDesignText, stableJson, DESIGN_MANIFEST, type DesignSource } from './design-text.ts';
