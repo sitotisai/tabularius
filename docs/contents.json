@@ -478,6 +478,7 @@
         "docs/reference/settings/environment/tabularius_convert_timeout.md",
         "docs/reference/settings/environment/tabularius_count_sql.md",
         "docs/reference/settings/environment/tabularius_data_api_max_limit.md",
+        "docs/reference/settings/environment/tabularius_debug_scratch_max_bytes.md",
         "docs/reference/settings/environment/tabularius_drain_seconds.md",
         "docs/reference/settings/environment/tabularius_encryption_key.md",
         "docs/reference/settings/environment/tabularius_fixture_cache.md",
