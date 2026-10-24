@@ -228,7 +228,7 @@ export function exportSql(store: Store, sink: ExportSqlSink, opts: ExportSqlOpti
     }
     // Straight from the table (main.), not the view that reads decimal numbers as floating point.
     const base = store.scopedTableSql(table.name, opts.privileges)?.replace(` FROM ${q(table.name)} WHERE `, ` FROM main.${q(table.name)} WHERE `) ?? `main.${q(table.name)}`;
-    const present = new Set(store.select(`SELECT * FROM (${base}) LIMIT 1`, [], 1).names);
+    const present = new Set(store.select(`SELECT * FROM (${base}) LIMIT 1`, [], 1, true).names);
     const tabName = names.take(table.name);
     const used = new Names(dialect);
     const idColumn = used.take('record_id', true);
@@ -253,7 +253,7 @@ export function exportSql(store: Store, sink: ExportSqlSink, opts: ExportSqlOpti
   }
 
   const columnList = (t: Tab) => ['_fm_record_id', ...t.cols.map((c) => q(c.field.name))].join(', ');
-  const page = (t: Tab, after: number) => store.select(`SELECT ${columnList(t)} FROM (${t.base}) WHERE _fm_record_id > ? ORDER BY _fm_record_id LIMIT ${readBatch}`, [after], readBatch).rows;
+  const page = (t: Tab, after: number) => store.select(`SELECT ${columnList(t)} FROM (${t.base}) WHERE _fm_record_id > ? ORDER BY _fm_record_id LIMIT ${readBatch}`, [after], readBatch, true).rows;
   const cellOf = (c: Col, raw: unknown): { items?: Norm[]; one?: Norm; unfit: number; nul: number } => {
     if (!c.repeating) {
       const n = normalize(c.kind, raw);

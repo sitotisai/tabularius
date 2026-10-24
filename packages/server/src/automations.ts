@@ -334,7 +334,7 @@ export async function dryRunAutomation(store: Store, spec: Omit<Automation, 'id'
       // A record the change would set off: one where the condition is false before it, when there's a change to make.
       recordId = (test ? ids.find((id) => !truth(id)) : ids.find((id) => truth(id))) ?? ids[0];
       if (test) {
-        const before = copy.select(`SELECT ${Object.keys(test).map((k) => `"${k.replace(/"/g, '""')}"`).join(', ')} FROM "${info.table.replace(/"/g, '""')}" WHERE _fm_record_id = ?`, [recordId], 1).rows[0] ?? [];
+        const before = copy.select(`SELECT ${Object.keys(test).map((k) => `"${k.replace(/"/g, '""')}"`).join(', ')} FROM "${info.table.replace(/"/g, '""')}" WHERE _fm_record_id = ?`, [recordId], 1, true).rows[0] ?? [];
         copy.update(info, recordId, test, undefined, { account: spec.account });
         Object.entries(test).forEach(([k, v], i) => {
           const was = asText({ type: 'text', value: String(before[i] ?? '') });
