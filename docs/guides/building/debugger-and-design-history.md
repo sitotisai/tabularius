@@ -8,6 +8,12 @@ Use this guide when a script's result is unexpected or a design change needs rev
 4. In Design mode, open the layout's **Versions** history and compare a saved version with the current layout. **Open this version** makes it unsaved edits; save it only after reviewing the result, or use Undo to drop it.
 5. Confirm the final layout and data on the intended screen after the review.
 
+## Debugging a large hosted file
+
+Scratch runs copy the hosted SQLite file and run offline; record changes in the copy never reach the hosted file. The default copy limit is 1 GiB. If the file is larger, set `TABULARIUS_DEBUG_SCRATCH_MAX_BYTES` to a larger positive whole number of bytes and restart the server. Allow enough free disk space for the copy and for up to three concurrent debugger runs per session. The setting applies to web Script Debugger runs, time-travel recordings and the `debug_script` MCP tool. A run above the configured limit is refused before the script starts.
+
+The debugger's **Scratch copy** checkbox stays selected by default. Clearing it runs on the hosted file and can keep record changes or perform outside actions. Design previews still use their separate 1 GiB copy limit. A rollback-only run is not offered: an open transaction across pauses would share the hosted store connection with other requests, and some script effects are outside SQLite. A design-only SQLite copy with a read-only data attachment cannot accept record writes during a debug run. Compatibility of this behavior with other products is unverified. <!-- known-difference: Scripts and script steps ;; Large-file debugger scratch limits and fallback behavior are unverified against other products ;; A large hosted file may require a different debugging workflow ;; A documented comparison or direct run with a large file in the compatible product -->
+
 ## Worked example
 
 This creates a harmless script with two inspectable variable assignments. Use the debugger to pause between them; it does not modify a record.
