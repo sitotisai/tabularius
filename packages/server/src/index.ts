@@ -272,7 +272,7 @@ function apiTokenIdentity(host: Host, oauth: OAuthServer, req: IncomingMessage, 
     const id = /^ohbt_([0-9a-f]+)\./.exec(token)?.[1];
     if ((bound.provenance === 'delegated' || (id && oauth.managedAccess(id))) && (!id || !oauth.accessAllowed(id, req, store, bound.account))) return undefined;
     if (!store.signInLocationAllowed(bound.account, from)) return undefined;
-    return { account: bound.account, database: store.name, ...(bound.readOnly || bound.layouts ? { scope: { readOnly: bound.readOnly, ...(bound.layouts ? { layouts: bound.layouts } : {}) } } : {}) };
+    return { account: bound.account, database: store.name, from, ...(bound.readOnly || bound.layouts ? { scope: { readOnly: bound.readOnly, ...(bound.layouts ? { layouts: bound.layouts } : {}) } } : {}) };
   }
   return undefined;
 }
@@ -716,7 +716,7 @@ export async function serve(opts: ServeOptions): Promise<{ server: Server; host:
             // An ohm_ token is its account's sign-in, so a local-only account's works only from this computer, as an ohbt_ one does.
             const legacy = api || !bearer ? undefined : mcpTokens.check(bearer);
             const legacyStore = legacy && host.get(legacy.database);
-            const scoped = api ?? (legacy && legacyStore && !localOnlyRefused(legacyStore, legacy.account, clientAddress(req)) ? legacy : undefined);
+            const scoped = api ?? (legacy && legacyStore && !localOnlyRefused(legacyStore, legacy.account, clientAddress(req)) ? { ...legacy, from: clientAddress(req) } : undefined);
             if (scoped) who = scoped;
             else if (bearer && sameToken(bearer, mcpAdminToken)) who = { admin: true };
             // A file's token that has expired or was revoked is refused, even from this computer, so the app signs in
