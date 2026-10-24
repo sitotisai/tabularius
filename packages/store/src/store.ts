@@ -15,6 +15,7 @@ import { containerBackupInProgress, holdContainerBackup } from './container-back
 import { PreparedCache } from './preparation.ts';
 import { rethrowExecutionRefusal } from '../../calc/src/execution-refusal.ts';
 import { SQL_DATE_FUNCTIONS, placeholders, oneStatement } from './sql-dates.ts';
+import { boundedStatement, collectRows } from './sql-result.ts';
 import { DatabaseSync, backup, type Session, type StatementSync, type SQLInputValue, type SQLOutputValue } from 'node:sqlite';
 import { createHash, createHmac, pbkdf2Sync, scrypt, scryptSync, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { isIP } from 'node:net';
@@ -10493,14 +10494,11 @@ export class Store {
   private selectCurrent(sqlText: string, params: SqlValue[] = [], limit = 500): { names: string[]; types: (string | null)[]; rows: SqlValue[][] } {
     const wanted = placeholders(sqlText);
     if (wanted > params.length) throw new StoreError(8310, `The query has ${wanted} ? placeholder${wanted === 1 ? '' : 's'} but ${params.length} value${params.length === 1 ? ' was' : 's were'} given`);
-    const st = this.readOnly(sqlText);
+    const { statement, text } = this.readOnlyChecked(sqlText);
+    const columns = statement.columns();
+    const st = boundedStatement(this.readOnlySql!, text, columns.map((c) => c.name));
     st.setReturnArrays(true);
-    const rows: SqlValue[][] = [];
-    for (const r of st.iterate(...params) as Iterable<SqlValue[]>) {
-      rows.push(r);
-      if (rows.length >= limit) break;
-    }
-    const columns = st.columns();
+    const rows = collectRows(st.iterate(...params) as Iterable<SqlValue[]>, limit);
     return { names: columns.map((c) => c.name), types: columns.map((c) => c.type), rows };
   }
 
@@ -10521,14 +10519,10 @@ export class Store {
     if (wanted > params.length) throw new StoreError(8310, `The query has ${wanted} ? placeholder${wanted === 1 ? '' : 's'} but ${params.length} value${params.length === 1 ? ' was' : 's were'} given`);
     const { text } = this.readOnlyChecked(sqlText);
     for (const [name, fn] of this.queryFunctions) this.sql.function(name, { varargs: true }, fn);
-    const st = this.sql.prepare(text);
+    const columns = this.sql.prepare(text).columns();
+    const st = boundedStatement(this.sql, text, columns.map((c) => c.name));
     st.setReturnArrays(true);
-    const rows: SqlValue[][] = [];
-    for (const r of st.iterate(...params) as Iterable<SqlValue[]>) {
-      rows.push(r);
-      if (rows.length >= limit) break;
-    }
-    const columns = st.columns();
+    const rows = collectRows(st.iterate(...params) as Iterable<SqlValue[]>, limit);
     return { names: columns.map((c) => c.name), types: columns.map((c) => c.type), rows };
   }
 
@@ -10592,12 +10586,10 @@ export class Store {
   }
 
   private queryWithOriginsCurrent(sqlText: string, limit = 500): QueryOrigins {
-    const { statement: st, opened } = this.readOnlyChecked(sqlText);
-    const rows: Record<string, SqlValue>[] = [];
-    if (limit > 0) for (const r of st.iterate() as Iterable<Record<string, SqlValue>>) {
-      rows.push(r);
-      if (rows.length >= limit) break;
-    }
+    const { statement: st, opened, text } = this.readOnlyChecked(sqlText);
+    const rows = limit > 0
+      ? collectRows(boundedStatement(this.readOnlySql!, text, st.columns().map((c) => c.name)).iterate() as Iterable<Record<string, SqlValue>>, limit)
+      : [];
     const roots = new Set(opened.filter((o) => (o.opcode === 'OpenRead' || o.opcode === 'ReopenIdx') && o.p3 === 0).map((o) => Number(o.p2)));
     const tables = new Map<string, string[]>();
     if (roots.size) {
