@@ -45,6 +45,8 @@ Each refusal says why and changes nothing.
 
 Outside `BEGIN`, each write statement is one unit that is kept or undone whole: a multi-row `INSERT` whose third row breaks a validation rule leaves none of the rows. A simple query made only of writes (several statements separated by semicolons) is also one unit, so a later statement that fails undoes the earlier ones, as PostgreSQL does.
 
+An `UPDATE` or `DELETE` that matches records holds the file from the moment it has found them until it ends, so a change made meanwhile by another session is refused with `55P03` (retry the statement) rather than overwritten by values worked out from the old rows.
+
 `BEGIN` opens a storage transaction that the connection holds across messages. `COMMIT` keeps it and `ROLLBACK` undoes it. An error inside `BEGIN` puts the connection in the failed state: every command answers `25P02` until the end of the block, and `COMMIT` then undoes everything and answers `ROLLBACK`. Savepoints and chained transactions are not supported. Reads inside the transaction see its own uncommitted changes.
 
 While a connection holds a transaction, the file is held: another session's write to that file is refused with `55P03` (FileMaker error 301) until the transaction ends. To keep a connection from holding a file for good:
