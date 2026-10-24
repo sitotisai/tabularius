@@ -1,45 +1,17 @@
 [
   {
     "file": "packages/store/src/layout-census.ts",
-    "fn": "layoutCensus/kind",
-    "kind": "keyed-object-entry",
-    "hash": "056a7e1ac64448e93698",
-    "reason": "Keys are layout object kinds, part kinds and formula locations the census names itself, never names from a file or a request."
-  },
-  {
-    "file": "packages/store/src/layout-census.ts",
     "fn": "layoutCensus/formula",
     "kind": "keyed-object-entry",
     "hash": "134eee5b96703f2f79aa",
-    "reason": "Keys are layout object kinds, part kinds and formula locations the census names itself, never names from a file or a request."
-  },
-  {
-    "file": "packages/store/src/layout-census.ts",
-    "fn": "layoutCensus",
-    "kind": "keyed-object-entry",
-    "hash": "b744f59b486e43937f37",
-    "reason": "Keys are layout object kinds, part kinds and formula locations the census names itself, never names from a file or a request."
-  },
-  {
-    "file": "packages/store/src/layout-census.ts",
-    "fn": "addCensus",
-    "kind": "keyed-object-entry",
-    "hash": "7cb710bd75d38e4b115e",
-    "reason": "Keys are layout object kinds, part kinds and formula locations the census names itself, never names from a file or a request."
-  },
-  {
-    "file": "packages/store/src/layout-census.ts",
-    "fn": "addCensus",
-    "kind": "keyed-object-entry",
-    "hash": "7f9d8b78a61b645b6088",
-    "reason": "Keys are layout object kinds, part kinds and formula locations the census names itself, never names from a file or a request."
+    "reason": "The key is one of the fixed phrases the census passes to formula() itself, such as 'hide', 'tooltip' and 'chart'; no object kind, part kind or name from a file reaches it."
   },
   {
     "file": "packages/store/src/layout-census.ts",
     "fn": "addCensus",
     "kind": "keyed-object-entry",
     "hash": "84b75c581ad1c68b3975",
-    "reason": "Keys are layout object kinds, part kinds and formula locations the census names itself, never names from a file or a request."
+    "reason": "The keys are the formula phrases above, read back from a census that layoutCensus made; object kinds and part kinds are added with ownEntry on the lines before it."
   },
   {
     "file": "packages/store/src/script-text.ts",

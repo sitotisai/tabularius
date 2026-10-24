@@ -6072,12 +6072,12 @@ class Session implements Host {
         replacePortal(old, rec, portalName);
       } else if (target) {
         const key = portalName && target.o.field ? `${target.o.field.tableOccurrence}::${target.o.field.field}` : this.renderer!.fieldKey(target.o);
-        mergeObjectRecord(old, rec, key, repetition, portalName, portalName ? requestedPortals?.[portalName] : undefined);
+        mergeObjectRecord(old, rec, key, repetition, portalName, portalName ? ownGet(requestedPortals, portalName) : undefined);
         const children = (objects: LayoutObject[], within = portalName) => {
           for (const child of objects) {
             const inPortal = child.kind === 'portal' ? child.name ?? child.portal?.tableOccurrence : within;
             const childKey = inPortal && child.field ? `${child.field.tableOccurrence}::${child.field.field}` : this.renderer!.fieldKey(child);
-            mergeObjectRecord(old, rec, childKey, undefined, inPortal, inPortal ? requestedPortals?.[inPortal] : undefined);
+            mergeObjectRecord(old, rec, childKey, undefined, inPortal, inPortal ? ownGet(requestedPortals, inPortal) : undefined);
             if (child.children) children(child.children, inPortal);
           }
         };
@@ -6094,7 +6094,7 @@ class Session implements Host {
           if (act.step === 'Refresh Portal') ownSet(state.rows, portalName, ownGet(next.rows, portalName) ?? {});
           else {
             ownSet(state.rows, portalName, { ...ownGet(before.rows, portalName) });
-            const requested = new Set(requestedPortals?.[portalName]?.map(String) ?? ownGet(rec.portalData, portalName)?.map((row) => row.recordId));
+            const requested = new Set(ownGet(requestedPortals, portalName)?.map(String) ?? ownGet(rec.portalData, portalName)?.map((row) => row.recordId));
             for (const [id, row] of Object.entries(before.rows?.[portalName] ?? {})) {
               if (!requested.has(id)) continue;
               state.rows[portalName][id] = mergeObjectState(row, next.rows?.[portalName]?.[id] ?? { hidden: [] }, target.o);
