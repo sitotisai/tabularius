@@ -12,6 +12,7 @@ import { DenialCollector, denialOperation } from './denial-audit.ts';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import { refreshAuthCache } from './auth-cache.ts';
+import { localOnlyRefused } from './password-login-policy.ts';
 import { SERVER_VERSION } from './version.ts';
 import { assertAiPolicy, assertAiDesignChanges } from './ai-policy.ts';
 import { assertAiPrivilegeSet, assertNoAiVisibility } from './ai-security.ts';
@@ -146,6 +147,11 @@ function checkSecondFactor(store: Store, who: { account: string; password: strin
   return true;
 }
 
+/** The cache key of a checked password: per file, account and address, since a lockout or a blank-password rule can differ by address. */
+function verifiedKey(store: Store, who: { account: string; password: string; from?: string }): string {
+  return createHash('sha256').update(`${store.path}\0${who.account.toLowerCase()}\0${who.from ?? 'mcp'}\0${who.password}`).digest('hex');
+}
+
 function rememberPassword(key: string): void {
   if (verified.size >= VERIFIED_MAX) verified.clear();
   verified.set(key, performance.now());
@@ -214,7 +220,7 @@ function canSee(who: McpIdentity): (s: Store) => boolean {
       if (!s.canonicalAccount(who.account)) return false;
       // The password too, by the same check (and failure count) a tool call on the file makes: a name alone must not tell.
       refreshAuthCache(s, verified);
-      const key = createHash('sha256').update(`${s.path}\0${who.account.toLowerCase()}\0${who.password}`).digest('hex');
+      const key = verifiedKey(s, who);
       const at = verified.get(key);
       if (at === undefined || performance.now() - at > VERIFIED_MS) {
         if (!s.verify(who.account, who.password, who.from ?? 'mcp')) return false;
@@ -222,6 +228,7 @@ function canSee(who: McpIdentity): (s: Store) => boolean {
         rememberPassword(key);
       }
       s.requireActiveAccount(who.account);
+      if (localOnlyRefused(s, who.account, who.from ?? 'mcp', false)) return false;
       const p = s.privileges(who.account);
       const secondFactorRequired = (s.requireTotpForFullAccess() && p.full) || s.accountRequires2fa(who.account);
       if (s.hasTotp(who.account) && !checkSecondFactor(s, who)) return false;
@@ -257,7 +264,7 @@ function privilegesIn(store: Store, who: McpIdentity, via = 'MCP'): Privileges |
     return narrowPrivileges(store, p, who.scope);
   }
   refreshAuthCache(store, verified);
-  const key = createHash('sha256').update(`${store.path}\0${who.account.toLowerCase()}\0${who.password}`).digest('hex');
+  const key = verifiedKey(store, who);
   const at = verified.get(key);
   if (at === undefined || performance.now() - at > VERIFIED_MS) {
     if (!store.verify(who.account, who.password, who.from ?? 'mcp')) throw new StoreError(212, `Invalid account or password for ${store.name}`);
@@ -268,6 +275,8 @@ function privilegesIn(store: Store, who: McpIdentity, via = 'MCP'): Privileges |
     verified.clear();
     throw new StoreError(212, `Invalid account or password for ${store.name}`);
   }
+  // A local-only account away from this computer is refused as a wrong password; the log says why.
+  if (localOnlyRefused(store, who.account, who.from ?? 'mcp')) throw new StoreError(212, `Invalid account or password for ${store.name}`);
   const secondFactorRequired = (store.requireTotpForFullAccess() && store.privileges(who.account).full) || store.accountRequires2fa(who.account);
   if (store.hasTotp(who.account)) {
     if (!who.otp) throw new StoreError(1211, 'A one-time code from your authenticator app is required');

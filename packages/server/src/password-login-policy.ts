@@ -6,6 +6,18 @@ export interface PasswordLoginPolicyError {
   message: string;
 }
 
+/**
+ * The "sign in only from the server itself" rule, for a password that has already been verified: true when the account is
+ * local-only and `from` is not this computer. Every password surface asks this one question and then refuses with the
+ * text a wrong password gets, so a caller holding the password cannot tell a local-only account from a wrong one; the
+ * real reason is in the file's sign-in log. `audit` is false for a check that only decides what to show.
+ */
+export function localOnlyRefused(store: Store, account: string, from: string, audit = true): boolean {
+  if (store.signInLocationAllowed(account, from)) return false;
+  if (audit) store.auditSignIn(account, from, false);
+  return true;
+}
+
 /** The second-factor checks shared by password-based sign-in surfaces. */
 export function passwordLoginSecondFactor(store: Store, account: string, otp: string | undefined, from: string): PasswordLoginPolicyError | undefined {
   const secondFactorRequired = (store.requireTotpForFullAccess() && store.privileges(account).full) || store.accountRequires2fa(account);
