@@ -89,7 +89,7 @@ export async function runSequence(t: TestContext, sequence: Op[], options: { che
     for (const writer of [false, true]) store.savePrivilegeSet({ name: writer ? 'Writer' : 'Reader', aiVisible: { Items: ['Secret'] },
       records: { view: 'Owner = Get ( AccountName )', edit: writer ? 'Owner = Get ( AccountName )' : false, create: false, delete: false, fields: { Secret: 'none' } },
       layouts: 'viewOnly', valueLists: 'none', scripts: 'none', extendedPrivileges: ['fmrest', 'fmmcp'] });
-    const accounts = names.map((name) => ({ name, password: `${name}-generated-password-0`, version: 0, active: true, writer: false, failures: [0, 0], blocked: [0, 0] }));
+    const accounts = names.map((name) => ({ name, password: `${name}-generated-password-0`, version: 0, active: true, passkey: true, writer: false, failures: [0, 0], blocked: [0, 0] }));
     const authenticators = names.map(() => makeAuthenticator('127.0.0.1', url));
     const counts = [0, 0];
     for (const [i, a] of accounts.entries()) {
@@ -208,7 +208,8 @@ export async function runSequence(t: TestContext, sequence: Op[], options: { che
           const challenge = start.data.response.challenge;
           const body = { response: { ...forgeAssertion(authenticators[account], challenge, ++counts[account]), challenge } };
           const r = await request(REST + '/sessions/passkey', 'POST', body, undefined, address);
-          const allowed = a.active && addressBlocked[address] <= mono;
+          // An administrator's password reset (below) removes the account's passkeys; its own password change does not.
+          const allowed = a.active && a.passkey && addressBlocked[address] <= mono;
           assert.equal(r.status, allowed ? 200 : 401, 'passkey sign-in eligibility');
           if (allowed) add(r.data.response.token, account, 'rest');
           else countAddressFailure(address);
@@ -278,7 +279,7 @@ export async function runSequence(t: TestContext, sequence: Op[], options: { che
           a.password = `${a.name}-generated-password-${++a.version}`; secrets.add(a.password);
           if (kind !== 'password') {
             assert.equal((await request(REST + '/sessions', 'PATCH', { oldPassword: old, newPassword: a.password }, bearer(current!), address)).status, 200, 'own password repair');
-          } else store.setPassword(a.name, a.password);
+          } else { store.setPassword(a.name, a.password); a.passkey = false; }
           a.failures = [0, 0]; a.blocked = [0, 0];
           invalidate(account, false); // Service tokens are independent credentials; OAuth grants are password-derived.
           if (kind !== 'password') current!.valid = true; // The request just reauthenticated with the old secret.
