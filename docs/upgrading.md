@@ -28,6 +28,8 @@ the backup the upgrade took, not by pointing an old version at files a newer one
 
 ## Upgrading
 
+On the first start with file approval memory, the server creates `.openhbam-hosted.json` in the hosted folder and approves the stores already there. A later file with a new name or a different identity at an approved name is marked held in the admin file list. The record is local to the hosted folder and is excluded from backups. On a server that has run before, a missing or damaged record holds every file; a swapped record whose instance matches no store marker does too. A backup and restore approves the file it restores when the destination has a healthy approval record or is a new folder; a damaged or missing record with prior approval evidence leaves restored files held. Held files are shown in the admin file status only, and the control to turn one on arrives in the next change. The identity is a label that a modified copy of an approved file keeps, so this catches files without the approved identity, not edits inside an approved file. In this release the held mark is informational while execution gates are being added.
+
 `tabularius upgrade` fetches the new version, **backs up the hosted folder**, restarts the service, waits for it to answer,
 and puts the old version back if it does not start (ADMIN.md, "Upgrade"). Two things to know:
 

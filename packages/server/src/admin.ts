@@ -162,6 +162,7 @@ import { secureConnection } from './exposure-headers.ts';
 import { sameSecret } from './secrets.ts';
 import { PassphraseNeeded, STORE_EXT } from './host.ts';
 import { BackupStopped, backupFolder, backupKey, backupRunning, stopBackups, backupSets, defaultBackupDir, parseTime, checkRestorePoint, restorePoint, restorePointTo, restoreRange, type BackupSchedule, type ProgressiveSchedule } from './backup.ts';
+import { approveRestoredFiles, verifiedHostedRecord } from './hosted-record.ts';
 import { ENCRYPTED_EXT } from './encrypt.ts';
 import { isLocalAdmin } from './local-admin.ts';
 import { tokenExpiry } from './token-expiry.ts';
@@ -2174,11 +2175,12 @@ export class Admin {
           throw new RestoreError(409, `A file named ${copy} is already hosted`);
         }
         try { await restorePointTo(point, target, undefined, file.path); } catch (e) { throw refused(e, 500); }
-        this.host.add(target);
+        this.host.add(target, 'trusted', 'restore', 'admin console');
         await this.host.openFileEverywhere(copy);
         return { database: copy, time: new Date(point.time).toISOString(), mode };
       }
       const securitySnapshot = file.path + '.security-snapshot';
+      const approvalBefore = { record: verifiedHostedRecord(this.host.dir) };
       // Capture the live security database before closeFileEverywhere encrypts
       // it and removes its plaintext source.
       this.host.get(file.name)!.checkpoint();
@@ -2187,6 +2189,7 @@ export class Admin {
       await this.host.closeFileEverywhere(file.name);
       try {
         try { await restorePointTo(point, file.path, undefined, securitySnapshot); } catch (e) { throw refused(e, 500); }
+        approveRestoredFiles(this.host.dir, [file.name], this.log, approvalBefore);
         // The encrypted copy closing made is older than what was just restored.
         if (this.host.encrypted) rmSync(file.path + ENCRYPTED_EXT, { force: true });
       } finally {
@@ -2692,6 +2695,7 @@ export class Admin {
       const file = join(this.host.dir, name + STORE_EXT);
       return {
         name,
+        ...(store.held ? { held: store.held } : {}),
         bytes: size(file) + size(file + '-wal'),
         tables: store.schema.tables.length,
         layouts: store.schema.layouts.length,
