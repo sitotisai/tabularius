@@ -168,7 +168,7 @@ export const groups: RestGroup[] = [
         permissions: 'A valid session token for the file (Bearer or X-FM-Data-Access-Token); acts only on the session\'s own account. The token alone is not enough: the account\'s current password is asked for again.',
         params: [
           version, database, bearer,
-          { name: 'password', in: 'body', type: 'string', required: true, description: 'The account\'s current password. A wrong one is 212 (401) and counts toward the sign-in lockout (a locked-out account gets 212 with the time to retry); a missing one is 960 (400). An account with no password set in this file (only the file\'s own, an empty one, or none) is refused with 9 (403) until an administrator sets one.' },
+          { name: 'password', in: 'body', type: 'string', required: true, description: 'The account\'s current password. A wrong one is 212 (401) and counts toward the sign-in lockout (a locked-out account gets 212 with the time to retry); a missing one is 960 (400). An account with no password of its own in this file (only the file\'s own, an empty one, or none) is refused with 9 (403) until it sets one with Change Password or an administrator does.' },
           { name: 'code', in: 'body', type: 'string', description: 'A current one-time code from the authenticator app; required (error 1211, 401) when the account has one set up. An account whose required second factor is a passkey is refused with 9 (403), since a passkey cannot answer in this request.' },
         ],
         example: {
@@ -184,7 +184,7 @@ export const groups: RestGroup[] = [
         permissions: 'A valid session token for the file; acts only on the session\'s own account. The token alone is not enough: the account\'s current password is asked for again.',
         params: [
           version, database, bearer,
-          { name: 'password', in: 'body', type: 'string', required: true, description: 'The account\'s current password. A wrong one is 212 (401) and counts toward the sign-in lockout (a locked-out account gets 212 with the time to retry); a missing one is 960 (400). An account with no password set in this file (only the file\'s own, an empty one, or none) is refused with 9 (403) until an administrator sets one.' },
+          { name: 'password', in: 'body', type: 'string', required: true, description: 'The account\'s current password. A wrong one is 212 (401) and counts toward the sign-in lockout (a locked-out account gets 212 with the time to retry); a missing one is 960 (400). An account with no password of its own in this file (only the file\'s own, an empty one, or none) is refused with 9 (403) until it sets one with Change Password or an administrator does.' },
           { name: 'code', in: 'body', type: 'string', description: 'A current one-time code from the authenticator app; required (error 1211, 401) when the account has one set up. An account whose required second factor is a passkey is refused with 9 (403), since a passkey cannot answer in this request.' },
         ],
         example: {
@@ -222,7 +222,7 @@ export const groups: RestGroup[] = [
           status: 200,
           response: ok({ passkeys: [{ id: 'AV3k9x2LmQ7rT1yZ', account: 'Admin', label: 'MacBook', created: '2026-10-01T09:12:44.120Z', lastUsed: '2026-10-12T08:03:10.511Z' }] }),
         },
-        notes: 'label and lastUsed are left out when not set.',
+        notes: 'label and lastUsed are left out when not set. confirmBlocked is present, with the reason, when the account cannot make recovery codes or a passkey over the API (it has no password of its own in this file, or an empty one, or a passkey is its required second factor); the web client uses it to turn those actions off.',
       },
       {
         method: 'DELETE',

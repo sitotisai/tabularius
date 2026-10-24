@@ -1394,25 +1394,29 @@ export class DataApi {
     const body = await readJson(req, AUTH_BODY_LIMIT);
     const from = clientAddress(req);
     if (typeof body.password !== 'string') throw new ApiError(960, 'Send {"password": "..."}: your current password is required for this', 400);
-    // The file's own (or an empty) password is not a proof worth a lasting credential, and none cannot be checked.
-    if (!store.hasOwnPassword(account)) throw new ApiError(9, 'This account has no password in this file; ask an administrator to set one before adding a passkey or recovery codes', 403);
+    const blocked = this.credentialChangeBlock(store, account);
+    if (blocked) throw new ApiError(9, blocked, 403);
     if (!(await store.verifyAsync(account, body.password, from))) {
-      store.auditSignIn(account, from, false);
+      store.auditSignIn(account, from, false, undefined, { reauth: true });
       const until = store.lockedOut(account, from);
       this.signInWarning(from, `${account} could not confirm a credential change in ${store.name}: ${until ? 'locked out after too many failed sign-ins' : 'wrong password'}`);
-      const visible = publicPasswordLockout(until, from);
-      if (visible) throw lockedOutError(visible);
+      // Signed in already, so the real lockout is shown even from a shared address.
+      if (until) throw lockedOutError(until);
       throw new ApiError(212, 'The current password is wrong', 401);
     }
-    try {
-      this.checkSecondFactor(store, account, from, typeof body.code === 'string' ? body.code : '');
-    } catch (e) {
-      // A passkey cannot answer in this request, so it is refused rather than waved through on the password alone.
-      if (e instanceof ApiError && e.code === PASSKEY_SECOND_FACTOR_REQUIRED) {
-        throw new ApiError(9, 'This account uses a passkey as its second factor, which cannot confirm this here; sign in with the passkey in the web client, or ask an administrator', 403);
-      }
-      throw e;
-    }
+    this.checkSecondFactor(store, account, from, typeof body.code === 'string' ? body.code : '');
+  }
+
+  /**
+   * Why this account cannot confirm a credential change in a request, or undefined when it can: no password of its own
+   * to ask for (only the file's, an empty one, or none after a restore), or a passkey as its required second factor,
+   * which cannot answer here. The web client asks first so it can hide the actions.
+   */
+  private credentialChangeBlock(store: Store, account: string): string | undefined {
+    if (!store.hasProvingPassword(account)) return 'This account has no password of its own in this file (or an empty one); set one with Change Password first, or ask an administrator';
+    const secondFactorRequired = (store.requireTotpForFullAccess() && store.privileges(account).full) || store.accountRequires2fa(account);
+    if (!store.hasTotp(account) && secondFactorRequired && store.hasPasskey(account)) return 'This account uses a passkey as its second factor, which cannot confirm this here; ask an administrator';
+    return undefined;
   }
 
   /** The second-factor rules of a password sign-in to one file: the code, a passkey-only account, and the file's or account's requirement. */
@@ -1886,7 +1890,8 @@ export class DataApi {
         }
       }
       if (p[2] === 'passkey' && p.length === 3 && method === 'GET') {
-        return { passkeys: store.passkeys(self) };
+        const confirmBlocked = this.credentialChangeBlock(store, self);
+        return { passkeys: store.passkeys(self), ...(confirmBlocked ? { confirmBlocked } : {}) };
       }
       if (p[2] === 'passkey' && p.length === 4 && method === 'DELETE') {
         // Only your own passkeys.
