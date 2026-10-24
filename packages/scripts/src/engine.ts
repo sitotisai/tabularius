@@ -48,6 +48,7 @@ import { MissingSheetError, openXlsx, SheetLimitError, unxml, xmlElements, xmlTa
 import { applyXslt, XsltError } from '../../calc/src/xslt.ts';
 import { stepLocates } from './location-use.ts';
 import { localeElements } from './locale.ts';
+import { passwordAloneRefused } from '../../store/src/password-login-policy.ts';
 import { denialOf, retainDenial, explainAccessDenial, type AccessDenial } from '../../store/src/access-denial.ts';
 import { Privileges, PrivilegeError, StoreError, designReport, isFullAccess, dataSourceFile, endTransaction, type Transaction, summarize, serialNext, type FieldData, type FindRequest, type LayoutInfo, type SessionGlobals, type SortSpec, type Store, writer, lintScript, tableDDL, schemaVisibility, fmpXmlResult, fmpXmlHeader, fmpXmlRow, fmpXmlFooter, fmpDsoResult, dsoElementName, type ExportField, type ExportRow, customFunctionDef, occurrence as occurrenceOf, rowsById, relatedCondition, designFunction, NO_FILE_ARGUMENT, containerValue, errorMeaning } from '../../store/src/index.ts';
 import type { SqlValue } from '../../store/src/find.ts';
@@ -379,6 +380,8 @@ export interface RunOptions {
   variables?: Record<string, string>;
   /** Get ( AccountName ). */
   account?: string;
+  /** Where the run's caller signed in from, for Re-Login's local-only rule; without it a local-only account can't be re-logged in to. */
+  clientAddress?: string;
   /** Every authenticated run retains its initiating principal, including Full Access and Re-Login. */
   executionAccount?: string;
   /** The initiating identity's privilege mapping, when it signed in through a provider. */
@@ -6992,6 +6995,9 @@ export class ScriptEngine {
       [name = '', password = ''] = answer.inputs ?? [];
     }
     if (!name || !f.store.verify(name, password, 'script')) throw new ScriptError(ERROR.wrongPassword, 'Account name or password is wrong');
+    // A password alone can't answer a second factor, and a local-only account needs to be known to come from this computer; neither can be
+    // reached around through a script. The run's client address is what the caller said, and none counts as away from the server.
+    if (passwordAloneRefused(f.store, name, this.opts.clientAddress ?? 'script')) throw new ScriptError(ERROR.wrongPassword, 'Account name or password is wrong');
     const account = f.store.accounts().find((a) => a.name.toLowerCase() === name.toLowerCase())?.name ?? name;
     const authenticated = f.store.privileges(account);
     const ceiling = this.opts.privileges?.ceiling;
