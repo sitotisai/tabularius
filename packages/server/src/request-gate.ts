@@ -3,7 +3,7 @@
 import { positiveWholeNumber } from './setting-values.ts';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { clientAddress } from './client-address.ts';
-import { smallBodyPending } from './request-body.ts';
+import { AUTH_BODY_LIMIT } from './request-body.ts';
 
 export type RequestClass = 'priority' | 'normal' | 'heavy';
 
@@ -23,6 +23,18 @@ export function requestClass(method: string | undefined, path: string): RequestC
   if (method === 'POST' && (/^\/fmi\/data\/[^/]+\/databases\/[^/]+\/sessions$/.test(path) || /\/(?:sign-in|passkey-sign-in|signin|login|callback)$/.test(path))) return 'priority';
   if (path.includes('/_find') || /\/exports?(?:\/|$)|\/export(?:\/|$)/.test(path)) return 'heavy';
   return 'normal';
+}
+
+/** A body still arriving that may be read before the caller is known: one declared small enough to be a sign-in's, or a chunked one (which
+ * declares no size) sent to a sign-in route or /mcp. A real upload declares a larger size and its route checks the caller first. */
+export function smallBodyPending(req: IncomingMessage): boolean {
+  if (req.complete) return false;
+  if (req.headers['transfer-encoding']) {
+    const path = (req.url ?? '').split('?')[0];
+    return path === '/mcp' || requestClass(req.method, path) === 'priority';
+  }
+  const length = Number(req.headers['content-length']);
+  return length > 0 && length <= AUTH_BODY_LIMIT;
 }
 
 interface Waiter {
@@ -124,6 +136,9 @@ export class RequestGate {
 
   async enter(req: IncomingMessage, res: ServerResponse, kind: RequestClass): Promise<(() => void) | undefined> {
     const address = clientAddress(req);
+    // The request is dispatched while the parser is still working through the bytes that arrived with its headers. Let it finish, so
+    // only a body that is really still on its way counts as unfinished.
+    if (smallBodyPending(req)) await new Promise<void>((resolve) => setImmediate(resolve));
     if (res.destroyed || req.socket.destroyed) return undefined;
     // Serve eligible waiters first. A full queue from one capped address must
     // not prevent a different address from taking a still-free slot.
