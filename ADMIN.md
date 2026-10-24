@@ -892,8 +892,10 @@ progressing uploads can take longer than 300 seconds. A body that a route may re
 before it knows who is calling (declared at most 256 KiB, or chunked until it has sent that much) must arrive
 within 15 seconds in total once the server starts reading it, 15 seconds per 64 KiB declared. That means a sender
 slower than about 4 KB/s is cut off with `408`, whichever route it posts to; larger declared uploads are not.
-A response the client stops reading (bytes waiting, none accepted for 60 seconds) ends the connection.
-Both are `ServeOptions.edgeLimits` (`smallBodyMs`, `writeStallMs`). Connections close after
+A chunked body counts what it carries, not its framing, and declares no size, so on every route except a Data API
+call with a token (whose token is checked before any body is read) it must carry more than 256 KiB within those
+15 seconds: a chunked upload that streams slower than about 17 KB/s gets `408`. Send a `Content-Length` (or a token)
+for a slow upload. This is `ServeOptions.edgeLimits.smallBodyMs`. Connections close after
 their 100th complete response; keep-alive clients reconnect normally. Pipelined
 requests execute in order up to that budget, so a completed write's response is
 sent before closing.

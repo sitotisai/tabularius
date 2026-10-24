@@ -8,6 +8,6 @@ How many requests each worker runs at once before further ones wait in a queue (
 | Accepted values | Whole number of 4 or more; decimal digits only for numbers, within the safe integer range |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/performance.md](../../../performance.md) |
-| Code | [packages/server/src/request-gate.ts:59](../../../../packages/server/src/request-gate.ts#L59) |
+| Code | [packages/server/src/request-gate.ts:110](../../../../packages/server/src/request-gate.ts#L110) |
 
 [All environment variables](../../../environment-variables.md)
