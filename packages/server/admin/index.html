@@ -4461,12 +4461,12 @@ $('set-password-form').addEventListener('submit', async (e) => {
   const account = $('pw-account').value.trim();
   const password = $('pw-password').value;
   if (!db) return;
-  if (!confirm(`Set a new password for "${account}" in ${db}?${$('pw-must-change').checked ? ' It will be forced to change it at next sign-in.' : ''}`)) return;
+  if (!confirm(`Set a new password for "${account}" in ${db}?${$('pw-must-change').checked ? ' It will be forced to change it at next sign-in.' : ''} Its passkeys and recovery codes will be removed (API tokens are not).`)) return;
   try {
-    await call('POST', '/tabularius/admin/v1/accounts/set-password', { database: db, account, password, mustChange: $('pw-must-change').checked });
+    const done = await call('POST', '/tabularius/admin/v1/accounts/set-password', { database: db, account, password, mustChange: $('pw-must-change').checked });
     $('set-password-form').reset();
     $('pw-must-change').checked = true;
-    alert(`Password set for "${account}". It also lifts any sign-in lockout on this account.`);
+    alert(`Password set for "${account}". It also lifts any sign-in lockout on this account.${done && done.warning ? `\n\n${done.warning}` : ''}`);
   } catch (err) { say("Couldn't set the password: " + err.message); }
 });
 $('unlock-form').addEventListener('submit', async (e) => {

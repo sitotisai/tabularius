@@ -52,7 +52,7 @@ export function applySecurityChanges(store: Store, changes: (SecurityOp | Extend
   store.securityChangeBatch(() => {
     if (designOps.length && securityOps.length) store.applySecurityWithCatalog(designOps, securityOps, { account });
   else if (designOps.length) store.applyDesign(designOps, { account });
-    else if (securityOps.length) store.applySecurity(securityOps);
+    else if (securityOps.length) store.applySecurity(securityOps, account);
   });
 }
 

@@ -17568,7 +17568,7 @@ Response `200`:
 }
 ```
 
-Every session the account had signed in on the old password is ended. The change is written to the server's log, never the password.
+Every session the account had signed in on the old password is ended, and its recovery codes and passkeys are removed (not when the new password is the same as the old one); service API tokens are not touched. The password-changed security event counts what was removed. When the account requires a second factor and had only a passkey, the response also carries a "warning": it cannot sign in until an authenticator app is set up. The change is written to the server's log, never the password.
 
 <a id="admin-accounts-post-tabularius-admin-v1-accounts-unlock"></a>
 
