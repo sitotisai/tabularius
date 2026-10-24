@@ -250,3 +250,40 @@ test('an off-site mirror reports linked backup sets in its result and log', asyn
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('an off-site mirror of an empty or missing backup folder keeps the remote history', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-s3-empty-'));
+  const folder = join(dir, 'Backups');
+  const s3 = await fakeS3();
+  try {
+    const set = '2026-10-19_120000';
+    mkdirSync(join(folder, set), { recursive: true });
+    writeFileSync(join(folder, set, 'backup.bin'), 'backup');
+    const bucket = new S3({ url: 's3://backups/keep', endpoint: s3.endpoint, ...KEYS });
+    assert.equal((await mirrorUp(folder, bucket)).uploaded, 1);
+    const key = `keep/${set}/backup.bin`;
+    assert.ok(s3.objects.has(key));
+
+    // The folder is emptied (a new disk, a volume not mounted): nothing is removed there.
+    rmSync(join(folder, set), { recursive: true });
+    await assert.rejects(mirrorUp(folder, bucket), /no backup sets.*nothing was removed/s);
+    assert.ok(s3.objects.has(key));
+
+    // The folder is gone altogether.
+    rmSync(folder, { recursive: true });
+    await assert.rejects(mirrorUp(folder, bucket), /no backup sets.*nothing was removed/s);
+    assert.ok(s3.objects.has(key));
+
+    // The schedule reports it instead of staying quiet.
+    const logs: string[] = [];
+    const schedule = scheduleOffsite(folder, bucket, { every: 60_000, log: (message) => logs.push(message) });
+    await schedule.run();
+    await schedule.stop();
+    assert.equal(schedule.last?.ok, false);
+    assert.ok(logs.some((message) => /off-site backup failed/.test(message)));
+    assert.ok(s3.objects.has(key));
+  } finally {
+    s3.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
