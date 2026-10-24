@@ -487,6 +487,8 @@ export function externalRoots(folder: string, name: string, baseDirs: string[]):
   };
   for (const base of baseDirs) {
     const b = base.replace(/\\/g, '/').replace(/^\/+/, '');
+    // The path comes from the file: one that climbs out, or names a drive, would reach another hosted file's storage or a sibling folder.
+    if (b.split('/').includes('..') || /^[A-Za-z]:/.test(b)) continue;
     for (const top of ['RC_Data_FMS', 'Files']) {
       add(top, name, b);
       add(top, b);
