@@ -479,15 +479,20 @@ function fileSize(path: string): number | undefined {
  * the default is named after the file). A base directory comes from the file,
  * so a root is kept only inside this file's own storage (those two folders, or
  * a folder named after the file beside it): never another hosted file's
- * storage, a sibling folder, or RC_Data_FMS and Files themselves. A file named
- * like one of those two folders has no folder of its own beside it: that would
- * be the folder holding every file's storage (on a disk that ignores case, in
- * any spelling).
+ * storage, a sibling folder, or RC_Data_FMS and Files themselves. A name that
+ * is not a single folder name (empty, "." or "..") has no roots at all. The
+ * folder named after the file beside it is used only for a plain name (ASCII
+ * letters, digits, space, dash, underscore and dot, no trailing dot or space,
+ * no "~1" short-name form) that is not Files or RC_Data_FMS without case: any
+ * other spelling could be those folders, which hold every file's storage, on a
+ * disk that ignores case or Unicode case (a long "s" in Files) or answers to
+ * Windows short names (RC_DAT~1).
  */
 export function externalRoots(folder: string, name: string, baseDirs: string[]): string[] {
   const roots: string[] = [];
+  if (basename(resolve(folder, 'Files', name)) !== name) return roots;
   const own = [resolve(folder, 'RC_Data_FMS', name), resolve(folder, 'Files', name)];
-  if (!['files', 'rc_data_fms'].includes(name.toLowerCase())) own.push(resolve(folder, name));
+  if (/^[A-Za-z0-9 _.-]+$/.test(name) && !/[. ]$/.test(name) && !/~\d/.test(name) && !['files', 'rc_data_fms'].includes(name.toLowerCase())) own.push(resolve(folder, name));
   const add = (...parts: string[]) => {
     const r = resolve(folder, ...parts);
     if (own.some((o) => r === o || r.startsWith(o + sep)) && !roots.includes(r)) roots.push(r);
