@@ -45,7 +45,7 @@ Each refusal says why and changes nothing.
 
 Outside `BEGIN`, each write statement is one unit that is kept or undone whole: a multi-row `INSERT` whose third row breaks a validation rule leaves none of the rows. A simple query made only of writes (several statements separated by semicolons) is also one unit, so a later statement that fails undoes the earlier ones, as PostgreSQL does.
 
-An `UPDATE` or `DELETE` that matches records holds the file from the moment it has found them until it ends, so a change made meanwhile by another session is refused with `55P03` (retry the statement) rather than overwritten by values worked out from the old rows.
+An `UPDATE` or `DELETE` takes the file before it looks for records, even when none match, and holds it until it ends. A change another session makes meanwhile is refused with `55P03` (retry the statement) rather than overwritten by values worked out from the old rows, and an `UPDATE` or `DELETE` that finds nothing is refused the same way while another session holds the file.
 
 `BEGIN` opens a storage transaction that the connection holds across messages. `COMMIT` keeps it and `ROLLBACK` undoes it. An error inside `BEGIN` puts the connection in the failed state: every command answers `25P02` until the end of the block, and `COMMIT` then undoes everything and answers `ROLLBACK`. Savepoints and chained transactions are not supported. Reads inside the transaction see its own uncommitted changes.
 

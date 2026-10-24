@@ -83,10 +83,24 @@ test('the hold is released, and the statement is all or nothing, when the client
   const { store, open } = await serve(t);
   const c = await open();
   for (let i = 0; i < 600; i++) store.create('Items', { Name: `r${i}`, Count: 0 });
+  // The statement has taken the file when the client goes: it is in flight, not yet started or already done.
+  const hold = store.holdForTransaction.bind(store);
+  const held = new Promise<void>((resolve) => { store.holdForTransaction = () => { hold(); resolve(); }; });
   c.send('Q', Buffer.from('UPDATE Items SET Count = Count + 1\0'));
-  await turn();
+  await held;
   c.close();
   await untilFree(store);
   const counts = (store.sql.prepare("SELECT DISTINCT Count FROM Items WHERE Name LIKE 'r%'").all() as { Count: number }[]).map((r) => Number(r.Count));
   assert.equal(counts.length, 1, JSON.stringify(counts));
+});
+
+test('an UPDATE that matches nothing is refused while another session holds the file', async (t) => {
+  const { open } = await serve(t);
+  const [a, b] = [await open(), await open()];
+  assert.equal((await a.simple('BEGIN')).error, undefined);
+  assert.equal((await a.simple("INSERT INTO Items (Name, Count) VALUES ('held', 1)")).error, undefined);
+  assert.equal((await b.simple("UPDATE Items SET Count = 2 WHERE Name = 'nothing'")).error?.code, '55P03');
+  assert.equal((await b.simple("DELETE FROM Items WHERE Name = 'nothing'")).error?.code, '55P03');
+  assert.equal((await a.simple('ROLLBACK')).error, undefined);
+  assert.equal((await b.simple("UPDATE Items SET Count = 2 WHERE Name = 'nothing'")).error, undefined);
 });
