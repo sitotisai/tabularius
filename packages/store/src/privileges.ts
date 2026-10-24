@@ -17,6 +17,7 @@ import { createHash } from 'node:crypto';
 import type { PrivilegeSet, Schema } from '../../fmp12/src/index.ts';
 import { captureAccessDenial, type AccessDenial, type AccessOperation, type AccessPermission } from './access-denial.ts';
 import { validPrivilegeSetName } from './security-names.ts';
+import { ownKeyed } from './own-keys.ts';
 
 /** A named policy entry exists only when the dictionary owns it. */
 export function ownPrivilegeEntry<T>(map: Record<string, T> | undefined, name: string): T | undefined {
@@ -206,7 +207,8 @@ export interface CustomAccessMapping {
  * - without the schema nothing can be named, so nothing is granted.
  */
 export function customAccess(p: PrivilegeSet, schema?: Schema): CustomAccessMapping {
-  const out: CustomAccessMapping = { tables: {}, unverifiedReadOnly: {}, hiddenFields: {}, unresolvedTables: [] };
+  // Keyed by names from the file, so without a prototype: a table or field called __proto__ or constructor is just a name.
+  const out: CustomAccessMapping = { tables: ownKeyed({}), unverifiedReadOnly: ownKeyed({}), hiddenFields: ownKeyed({}), unresolvedTables: [] };
   for (const tr of p.tableRecords ?? []) {
     const table = schema?.tables.find((t) => t.id === tr.tableId);
     if (!table) { out.unresolvedTables.push(tr.tableId); continue; }
@@ -219,7 +221,7 @@ export function customAccess(p: PrivilegeSet, schema?: Schema): CustomAccessMapp
     const t: TablePrivileges = { view, edit: view && tr.records.edit === true, create: tr.records.create === true, delete: view && tr.records.delete === true };
     if (tr.fields) {
       const byId = new Map(tr.fields.map((f) => [f.fieldId, f]));
-      const fields: Record<string, Level> = {};
+      const fields: Record<string, Level> = ownKeyed({});
       for (const f of table.fields) {
         const listed = byId.get(f.id);
         if (listed && listed.access === 0x03) { fields[f.name] = 'modifiable'; continue; } // read/write
@@ -639,11 +641,11 @@ export function validateDefinition(d: unknown): PrivilegeDefinition {
  */
 export function relaxUnverified(d: PrivilegeDefinition): { def: PrivilegeDefinition; relaxed: number } {
   let relaxed = 0;
-  const tables: Record<string, TablePrivileges> = { ...(d.tables ?? {}) };
+  const tables: Record<string, TablePrivileges> = ownKeyed(d.tables);
   for (const [table, names] of Object.entries(d.unverifiedReadOnly ?? {})) {
     const t = ownPrivilegeEntry(tables, table);
     if (!t?.fields) continue;
-    const fields = { ...t.fields };
+    const fields = ownKeyed(t.fields);
     for (const n of names) if (ownPrivilegeEntry(fields, n) === 'none') { fields[n] = 'viewOnly'; relaxed++; }
     tables[table] = { ...t, fields };
   }

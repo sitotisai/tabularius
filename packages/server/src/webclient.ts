@@ -1132,7 +1132,7 @@ export class WebClient {
     const states = this.view(store, session, layout, viewBody, privileges, context, audit);
     const charts = this.charts(store, session, layout, { ...viewBody, records: records.map((r) => r.recordId), ids }, privileges, context, rows, audit).records;
     for (const [id, state] of Object.entries(states.records ?? {}) as [string, Record<string, unknown>][]) if (charts[id]) state.charts = charts[id];
-    const foundRows: Record<string, ReturnType<Store['foundSetRows']> & { offset: number }> = {};
+    const foundRows: Record<string, ReturnType<Store['foundSetRows']> & { offset: number }> = Object.create(null);
     for (const p of info.plan?.portals ?? []) {
       if (p.occurrenceId !== info.plan?.occurrenceId) continue;
       if (body.step === 'Refresh Portal' && body.objectId !== undefined) {

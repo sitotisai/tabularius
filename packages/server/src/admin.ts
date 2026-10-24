@@ -137,7 +137,7 @@ import { BoundedMap } from './bounded-map.ts';
 import { createHash, randomBytes } from 'node:crypto';
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, resolve, sep } from 'node:path';
-import { discardExitBundle, exitBundle, ExitBundleError, webViewerEntryCovers, hashPassword, defaultMinPasswordLength, checkPassword, addressBucket, StoreError, findStaleCalcs, refreshStaleCalcs, undoStaleRefresh, staleRefreshHistory, StaleCalcError, SECURITY_EVENT_CATEGORIES, isFullAccess, type AuditEntry, type FieldLevel, type SecurityEvent, type Store } from '../../store/src/index.ts';
+import { discardExitBundle, exitBundle, ExitBundleError, webViewerEntryCovers, hashPassword, defaultMinPasswordLength, checkPassword, addressBucket, StoreError, findStaleCalcs, refreshStaleCalcs, undoStaleRefresh, staleRefreshHistory, StaleCalcError, SECURITY_EVENT_CATEGORIES, isFullAccess, ownKeyed, ownPrivilegeEntry, type AuditEntry, type FieldLevel, type SecurityEvent, type Store } from '../../store/src/index.ts';
 import { loadAsset, sendAsset } from './static-cache.ts';
 import { inlineScriptSources } from './csp.ts';
 import type { DataApi } from './dataapi.ts';
@@ -1530,19 +1530,20 @@ export class Admin {
             send(400, { error: `No field "${table}::${field}"` });
           } else {
             try {
-              const tables = { ...(set.tables ?? {}) };
-              const current = tables[table] ?? { ...set.records };
-              const fields = { ...(current.fields ?? {}) };
+              // Copies without a prototype: a table or field called __proto__ is a name like any other, and must not be dropped.
+              const tables = ownKeyed(set.tables);
+              const current = ownPrivilegeEntry(tables, table) ?? { ...set.records };
+              const fields = ownKeyed(current.fields);
               // Back to the table's own default (none listed) when that's exactly what's being set, so this
               // never grows the definition with entries that change nothing.
               const atDefault = access === 'modifiable' && current.fieldsDefault !== 'none';
               if (atDefault) delete fields[field]; else fields[field] = access as FieldLevel;
               // A mask belongs only to a masked field: setting any other level drops it. A masked field with
               // no mask shows its last four characters.
-              const masks = { ...(current.masks ?? {}) };
+              const masks = ownKeyed(current.masks);
               const before = masks[field];
               delete masks[field];
-              if (access === 'masked' && (body.mask === undefined || body.mask === null) && before && current.fields?.[field] === 'masked') {
+              if (access === 'masked' && (body.mask === undefined || body.mask === null) && before && ownPrivilegeEntry(current.fields, field) === 'masked') {
                 // Re-saving as masked without naming a mask keeps the one the field has.
                 masks[field] = before;
               } else if (access === 'masked') {

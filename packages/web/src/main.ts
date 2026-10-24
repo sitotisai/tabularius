@@ -7,7 +7,7 @@ const PASSKEY_SECOND_FACTOR_REQUIRED = 9000;
 
 import { ViewerState, viewerKey, viewerMessage, restoreViewer, type ViewerAction } from './web-viewer.ts';
 import { SessionLifetime } from './session-lifetime.ts';
-import { mergeObjectState, mergeObjectRecord, mergeFoundObjectRows, refreshMatches, checkpointCache, foundPortalPage, foundPortalRange } from './refresh.ts';
+import { mergeObjectState, mergeObjectRecord, mergeFoundObjectRows, refreshMatches, checkpointCache, foundPortalPage, foundPortalRange, keepPortalFormatting, portalRevert, replacePortal } from './refresh.ts';
 import { Api, ApiError, PIECED_FROM, fileListOff, listDatabases, retryableRequest, retrying, unreachableRequest, type ExportFormat } from './api.ts';
 import { OfflineCopy, copyKey, deriveBits, exportKey, importKey, indexedDbShelf, newSalt, type OfflineKey, type QueuedEdit } from './offline.ts';
 import { passkeySupported, signInWithPasskey, signInWithPasskeyFactor, signInWithRecoveryCode, type PasskeyLogin } from './webauthn.ts';
@@ -49,6 +49,7 @@ import { pinnedToast, progressToast, toast, toastUndo } from './toast.ts';
 import { httpProblem } from './http-problem.ts';
 import { browserFeatures, browserFeatureMessage } from './browser-features.ts';
 import { announce } from './announcer.ts';
+import { ownEntry, ownGet, ownSet } from './own-keys.ts';
 
 type View = 'form' | 'list' | 'table';
 type OpenPopover = { id: number; el: HTMLElement; button: number; parent?: OpenPopover };
@@ -3284,7 +3285,7 @@ class Session implements Host {
     // In a portal row it's the related record's text: its own fields only (not one from further along).
     const rowEl = box.closest<HTMLElement>('.fm-portal-row');
     const portal = rowEl?.dataset.portalName;
-    const data = portal ? rec.portalData[portal]?.find((r) => r.recordId === rowEl!.dataset.row) : undefined;
+    const data = portal ? ownGet(rec.portalData, portal)?.find((r) => r.recordId === rowEl!.dataset.row) : undefined;
     if (rowEl && !data) return undefined;
     const occurrence = portal ? this.meta?.portals.find((p) => p.name === portal)?.occurrence : undefined;
     const start = focus || box === active ? box.selectionStart ?? 0 : last!.start;
@@ -3297,7 +3298,7 @@ class Session implements Host {
     if (!key || (key.includes('::') && /\(\d+\)$/.test(key)) || meta?.type !== 'text' || meta.calculated || meta.global) return undefined;
     if (data) {
       if (!key.startsWith(`${occurrence}::`)) return undefined;
-      const kept = rec.portalStyles?.[portal!]?.[data.recordId]?.[key] ?? [];
+      const kept = ownGet(rec.portalStyles, portal!)?.[data.recordId]?.[key] ?? [];
       return { box, key, start, end, runs: editRuns(kept, String(data[key] ?? ''), box.value), row: { portal: portal!, data } };
     }
     // A related field outside a portal ("TO::Field"): the first related record keeps it, as FileMaker writes there.
@@ -3346,9 +3347,7 @@ class Session implements Host {
             portalStyles: { [portal]: { [data.recordId]: { [t.key]: runs } } },
           });
           data[t.key] = value;
-          const rows = ((rec.portalStyles ??= {})[portal] ??= {});
-          rows[data.recordId] = { ...rows[data.recordId], [t.key]: runs };
-          if (!runs.length) delete rows[data.recordId][t.key];
+          keepPortalFormatting(rec, portal, data.recordId, t.key, runs);
         } else {
           rec.modId = await this.api.update(this.meta!.layout.name, rec.recordId, { [t.key]: value }, { modId: rec.modId, styles: { [t.key]: runs } });
           rec.fieldData[t.key] = value;
@@ -4344,14 +4343,7 @@ class Session implements Host {
         return;
       }
       if (orig) {
-        const portalData: Record<string, Record<string, Value>[]> = {};
-        for (const r of orig.rows) {
-          if (orig.made?.some((m) => m.portal === r.portal && m.recordId === r.recordId)) continue;
-          const rows = (portalData[r.portal] ??= []);
-          let row = rows.find((x) => x.recordId === r.recordId);
-          if (!row) rows.push(row = { recordId: r.recordId });
-          row[r.key] = r.value;
-        }
+        const portalData = portalRevert(orig.rows, orig.made);
         await this.api.update(layout, rec.recordId, orig.fields, Object.keys(portalData).length ? { portalData: portalData as Record<string, Partial<PortalRow>[]> } : { modId: rec.modId });
       }
       this.uncommitted = this.original = undefined;
@@ -4704,7 +4696,7 @@ class Session implements Host {
     const rowEl = this.portalRow;
     if (rowEl?.isConnected && this.content.contains(rowEl)) {
       const owner = this.recordAt(rowEl);
-      const related = owner?.portalData[rowEl.dataset.portal!]?.find((r) => r.recordId === rowEl.dataset.row);
+      const related = ownGet(owner?.portalData, rowEl.dataset.portal!)?.find((r) => r.recordId === rowEl.dataset.row);
       if (owner && related) return this.deletePortalRow({ portal: rowEl.dataset.portal!, row: related }, 'Permanently delete this ONE related record?', owner);
     }
     if (!(await askConfirm('Delete Record', 'Permanently delete this ENTIRE record?', 'Delete'))) return;
@@ -5382,7 +5374,7 @@ class Session implements Host {
       this.fetchFoundRows(portal, 0, got.page - 1);
     }
     const rec = this.record;
-    const own = rec?.portalData[portal]?.find((r) => r.recordId === rec.recordId);
+    const own = ownGet(rec?.portalData, portal)?.find((r) => r.recordId === rec!.recordId);
     return own ? got.rows.map((r) => (r?.recordId === own.recordId ? own : r)) : got.rows;
   }
 
@@ -5441,7 +5433,7 @@ class Session implements Host {
           rows.push(...piece);
         }
       } catch { /* the 50 it came with stay; a later draw asks again */ asked.delete(portal); }
-      if (generation === this.displayGeneration) (record.portalData[portal] ??= []).push(...rows);
+      if (generation === this.displayGeneration) ownEntry(record.portalData, portal, () => []).push(...rows);
       return rows;
     })();
     asked.set(portal, fetched);
@@ -6023,10 +6015,10 @@ class Session implements Host {
         const scroller = box.querySelector<HTMLElement>('.fm-portal-rows');
         const ids = [...box.querySelectorAll<HTMLElement>('.fm-portal-row[data-row]')].filter((row) => !scroller ||
           (row.offsetTop < scroller.scrollTop + scroller.clientHeight && row.offsetTop + row.offsetHeight > scroller.scrollTop)).map((r) => Number(r.dataset.row));
-        (displayPortals[parent] ??= {})[name] = ids;
+        ownSet(displayPortals[parent] ??= {}, name, ids);
         const cached = this.foundRows.get(name);
         const range = cached && foundPortalRange(ids, this.ids, cached.rows);
-        if (range) foundPortalRanges[name] = range;
+        if (range) ownSet(foundPortalRanges, name, range);
       }
     }
     return { layoutId: this.meta?.layout.id, displayPortals, foundPortalRanges };
@@ -6077,9 +6069,7 @@ class Session implements Host {
       const requestedPortals = refresh.requestedPortals?.[rec.recordId];
       if (whole || !old) this.cache.set(i, rec);
       else if (act.step === 'Refresh Portal' && portalName) {
-        old.portalData[portalName] = rec.portalData[portalName] ?? [];
-        if (rec.portalStyles?.[portalName]) (old.portalStyles ??= {})[portalName] = rec.portalStyles[portalName];
-        else if (old.portalStyles) delete old.portalStyles[portalName];
+        replacePortal(old, rec, portalName);
       } else if (target) {
         const key = portalName && target.o.field ? `${target.o.field.tableOccurrence}::${target.o.field.field}` : this.renderer!.fieldKey(target.o);
         mergeObjectRecord(old, rec, key, repetition, portalName, portalName ? requestedPortals?.[portalName] : undefined);
@@ -6101,16 +6091,16 @@ class Session implements Host {
         const state = mergeObjectState(before, next, target.o);
         if (portalName) {
           state.rows = { ...before.rows };
-          if (act.step === 'Refresh Portal') state.rows[portalName] = next.rows?.[portalName] ?? {};
+          if (act.step === 'Refresh Portal') ownSet(state.rows, portalName, ownGet(next.rows, portalName) ?? {});
           else {
-            state.rows[portalName] = { ...before.rows?.[portalName] };
-            const requested = new Set(requestedPortals?.[portalName]?.map(String) ?? rec.portalData[portalName]?.map((row) => row.recordId));
+            ownSet(state.rows, portalName, { ...ownGet(before.rows, portalName) });
+            const requested = new Set(requestedPortals?.[portalName]?.map(String) ?? ownGet(rec.portalData, portalName)?.map((row) => row.recordId));
             for (const [id, row] of Object.entries(before.rows?.[portalName] ?? {})) {
               if (!requested.has(id)) continue;
               state.rows[portalName][id] = mergeObjectState(row, next.rows?.[portalName]?.[id] ?? { hidden: [] }, target.o);
             }
             // Previously no formula output in a visible portal row (for example a newly shown viewer).
-            for (const row of old?.portalData[portalName] ?? []) if (requested.has(row.recordId) && !state.rows[portalName][row.recordId]) {
+            for (const row of ownGet(old?.portalData, portalName) ?? []) if (requested.has(row.recordId) && !state.rows[portalName][row.recordId]) {
               state.rows[portalName][row.recordId] = mergeObjectState({ hidden: [] }, next.rows?.[portalName]?.[row.recordId] ?? { hidden: [] }, target.o);
             }
           }
@@ -6148,7 +6138,7 @@ class Session implements Host {
       const host = this.hostFor(rec, i);
       const instances = portal ? [...scope.querySelectorAll<HTMLElement>(`.fm[data-id="${portal.id}"] .fm-portal-row[data-row]`)] : [scope];
       for (const instance of instances) {
-        const row = portal && name ? rec.portalData[name]?.find((r) => r.recordId === instance.dataset.row) ?? this.foundRows.get(name)?.rows.find((r) => r?.recordId === instance.dataset.row) : undefined;
+        const row = portal && name ? ownGet(rec.portalData, name)?.find((r) => r.recordId === instance.dataset.row) ?? this.foundRows.get(name)?.rows.find((r) => r?.recordId === instance.dataset.row) : undefined;
         if (portal && !row) continue;
         const container = parent && parent !== portal ? instance.querySelector<HTMLElement>(`.fm[data-id="${parent.id}"]`) : instance;
         if (!container) continue; // The design parent is itself hidden.
@@ -6193,7 +6183,7 @@ class Session implements Host {
       if (act.recordId !== undefined && String(act.recordId) !== rec.recordId) continue;
       const host = this.hostFor(rec, i);
       const state = data?.states[rec.recordId] ?? this.states.get(rec.recordId);
-      const rows = name ? rec.portalData[name] ?? [] : [undefined];
+      const rows = name ? ownGet(rec.portalData, name) ?? [] : [undefined];
       for (const row of rows) {
         const address = row && name ? state?.rows?.[name]?.[row.recordId]?.web?.[target.o.id] : state?.web?.[target.o.id];
         host.viewer!(target.o, row && name ? { portal: name, row } : undefined, address).state.apply(act.action as ViewerAction, typeof act.url === 'string' ? act.url : undefined);

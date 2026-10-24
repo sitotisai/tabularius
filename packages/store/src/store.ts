@@ -2,7 +2,7 @@
 // API in FileMaker's shapes: field names, repetitions as "Field(2)", and
 // dates in US (M/D/YYYY) or ISO format.
 
-import { ownKeyed } from './own-keys.ts';
+import { ownKeyed, setOwn } from './own-keys.ts';
 import { checkStoredWebViewerHosts, normalizeWebViewerHosts } from './web-viewer-hosts.ts';
 import { isCredentialName } from '../../scripts/src/credentials.ts';
 import { cleanSql, sqlName, sqlTokens } from './sql-tokens.ts';
@@ -33,7 +33,7 @@ import { asBoolean, asNumberOrEmpty, asText, CalcError, compare, decimalSum, edi
 import { foldCase, recordSortKey, recordSortLanguage, SORT_LANGUAGE_IDS, sortFunction, sortKey, sortLanguage } from '../../calc/src/collation.ts';
 import { valueListOrder } from './value-list-sort.ts';
 import { languageOrderBy } from './sql-language-order.ts';
-import { authorityOf, countObjectUse, ensurePrivilegeTables, isFullAccess, privilegeSets, relaxUnverified, validateDefinition, Privileges, PrivilegeError, NO_ACCESS, maskValue, type FieldMask, type PrivilegeDefinition, type Rule } from './privileges.ts';
+import { authorityOf, ownPrivilegeEntry, countObjectUse, ensurePrivilegeTables, isFullAccess, privilegeSets, relaxUnverified, validateDefinition, Privileges, PrivilegeError, NO_ACCESS, maskValue, type FieldMask, type PrivilegeDefinition, type Rule } from './privileges.ts';
 import { accessReport, explainAccess, diffPrivilegeSet, testAccount, type AccessReport, type AccessExplanation, type SetChange, type AccountTest } from './access-report.ts';
 import { accessDenialContext, denialAuditDetail, denialAuditSuppressed, type AccessDenial, type DenialAudit, type AccessOperation, type RuleOutcome } from './access-denial.ts';
 import { applyOps, DesignError, type DeletedDesign, type DesignOp, type Effect } from './design.ts';
@@ -5532,10 +5532,10 @@ export class Store {
       // The unverified-import marker only stays for fields that are still hidden and still exist, so a later
       // "relax" can never widen a field the admin hid on purpose after the import, or one that was removed.
       if (saved.unverifiedReadOnly) {
-        const kept: Record<string, string[]> = {};
+        const kept: Record<string, string[]> = ownKeyed({});
         for (const [table, names] of Object.entries(saved.unverifiedReadOnly)) {
           const def = this.schema.tables.find((t) => t.name === table);
-          const live = names.filter((n) => saved.tables?.[table]?.fields?.[n] === 'none' && def?.fields.some((f) => f.name === n));
+          const live = names.filter((n) => ownPrivilegeEntry(ownPrivilegeEntry(saved.tables, table)?.fields, n) === 'none' && def?.fields.some((f) => f.name === n));
           if (live.length) kept[table] = live;
         }
         if (Object.keys(kept).length) saved.unverifiedReadOnly = kept; else delete saved.unverifiedReadOnly;
@@ -6773,9 +6773,9 @@ export class Store {
       }
       if ((reps.has(f.name) || (def?.options?.repetitions ?? 1) > 1) && typeof raw === 'string' && raw.startsWith('[')) {
         const values = JSON.parse(raw) as SqlValue[];
-        values.forEach((v, i) => (fieldData[i === 0 ? f.name : `${f.name}(${i + 1})`] = this.present(v, f.type, fmt, p?.linkPrincipal)));
+        values.forEach((v, i) => setOwn(fieldData, i === 0 ? f.name : `${f.name}(${i + 1})`, this.present(v, f.type, fmt, p?.linkPrincipal)));
       } else {
-        fieldData[f.name] = this.present(raw, def?.kind === 'summary' ? summaryType(table, def) : f.type, fmt, p?.linkPrincipal);
+        setOwn(fieldData, f.name, this.present(raw, def?.kind === 'summary' ? summaryType(table, def) : f.type, fmt, p?.linkPrincipal));
       }
     }
     const rec: StoredRecord = { ...(this.fileMode === 'native' ? { id: String(row._fm_uuid) } : {}), recordId: Number(row._fm_record_id), modId: Number(row._fm_mod_id), fieldData };
@@ -6915,7 +6915,7 @@ export class Store {
         rec.portalData[portal.name] = memo.out.map((o) => ({ ...o }));
         if (memo.styles) (rec.portalStyles ??= Object.create(null))[portal.name] = memo.styles;
         let counts = this.portalFound.get(rec);
-        if (!counts) this.portalFound.set(rec, counts = { privileges: p, counts: {} });
+        if (!counts) this.portalFound.set(rec, counts = { privileges: p, counts: Object.create(null) });
         counts.counts[portal.name] = memo.count;
         continue;
       }
@@ -6926,7 +6926,7 @@ export class Store {
         : foundSetPortal ? this.foundSetPage(portal, row, window) : this.portalRows(plan, portal, row, window, p, portal.fields.length ? portal.fields : undefined);
       if (res) {
         let counts = this.portalFound.get(rec);
-        if (!counts) this.portalFound.set(rec, counts = { privileges: p, counts: {} });
+        if (!counts) this.portalFound.set(rec, counts = { privileges: p, counts: Object.create(null) });
         counts.counts[portal.name] = res.count;
       }
       const rows = (res?.rows ?? []).map((r) => foundSetPortal ? this.previewRows?.get(Number(r._fm_record_id)) ?? r : r).filter((r) => visible(res!.occurrence, r));
@@ -7047,16 +7047,16 @@ export class Store {
     for (const p of info.plan.portals) {
       const kept = reuseCounts && known && known.privileges === privileges ? known.counts[p.name] : undefined;
       if (kept !== undefined) {
-        out[p.name] = kept;
+        setOwn(out, p.name, kept);
         continue;
       }
       // A found-set portal read outside a find shows the record itself.
       if (p.occurrenceId === info.plan.occurrenceId) {
-        out[p.name] = 1;
+        setOwn(out, p.name, 1);
         continue;
       }
       row ??= info.owner.row(info, recordId);
-      out[p.name] = this.portalRows(info.plan, p, row, { limit: 0 }, privileges)?.count ?? 0;
+      setOwn(out, p.name, this.portalRows(info.plan, p, row, { limit: 0 }, privileges)?.count ?? 0);
     }
     return out;
   }

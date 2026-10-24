@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 export interface DangerousFinding { file: string; line: number; fn: string; kind: string; hash: string }
 export interface DangerousAllowance { file: string; fn: string; kind: string; hash: string; reason: string }
-const digest = (text: string) => createHash('sha256').update(text.replace(/\s+/g, ' ')).digest('hex').slice(0, 20);
+export const digest = (text: string) => createHash('sha256').update(text.replace(/\s+/g, ' ')).digest('hex').slice(0, 20);
 const sourceFiles = (root: string) => {
   const dir = join(root, 'packages/server/src');
   const walk = (path: string): string[] => readdirSync(path, { withFileTypes: true }).flatMap((entry) => {
@@ -15,7 +15,7 @@ const sourceFiles = (root: string) => {
   });
   return walk(dir).sort();
 };
-function functionName(node: ts.Node): string {
+export function functionName(node: ts.Node): string {
   const names: string[] = [];
   const text = (n: ts.Node) => n.getText(node.getSourceFile());
   for (let p = node.parent; p; p = p.parent) {

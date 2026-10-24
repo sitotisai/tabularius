@@ -4,6 +4,7 @@
 
 import { h, button, select, field, check } from '../design/dom.ts';
 import { explain, type Sec } from './main.ts';
+import { cloneKeyed, keyed } from '../own-keys.ts';
 import type { FieldLevel, FieldMask, Level, PrivilegeSet, Rule, TablePrivileges } from './client.ts';
 
 const LEVELS: [string, string][] = [['modifiable', 'Modifiable'], ['viewOnly', 'View only'], ['none', 'None']];
@@ -11,8 +12,9 @@ const LEVELS: [string, string][] = [['modifiable', 'Modifiable'], ['viewOnly', '
 const FIELD_LEVELS: [string, string][] = [...LEVELS.slice(0, 2), ['masked', 'Masked'], LEVELS[2]];
 const MASK_KINDS: [string, string][] = [['last4', 'Show last 4 characters'], ['placeholder', 'Show fixed text']];
 
+// Without prototypes: the maps are keyed by table, field, layout and script names, and one called __proto__ is a name.
 function clone(p: PrivilegeSet): PrivilegeSet {
-  return JSON.parse(JSON.stringify(p));
+  return cloneKeyed(p);
 }
 
 function isFull(p: PrivilegeSet): boolean {
@@ -57,7 +59,7 @@ export function tableEditor(t: TablePrivileges, fields: string[], ctx?: { table:
     const saveMask = () => {
       const text = maskText.value.trim();
       const m: FieldMask = { kind: maskKind.value as FieldMask['kind'], ...(text ? { text } : {}) };
-      (t.masks ??= {})[f] = m;
+      (t.masks ??= keyed())[f] = m;
     };
     const showMask = (masked: boolean) => {
       maskKind.style.display = masked ? '' : 'none';
@@ -66,7 +68,7 @@ export function tableEditor(t: TablePrivileges, fields: string[], ctx?: { table:
     const sel = select(FIELD_LEVELS, t.fields?.[f] ?? 'modifiable', { 'aria-label': `Field ${f}` });
     sel.addEventListener('change', () => {
       const l = sel.value as FieldLevel;
-      t.fields ??= {};
+      t.fields ??= keyed();
       if (l === 'modifiable') delete t.fields[f];
       else t.fields[f] = l;
       if (t.fields && !Object.keys(t.fields).length) delete t.fields;
@@ -204,8 +206,8 @@ function editor(sec: Sec, working: PrivilegeSet): HTMLElement {
         else holder.replaceChildren();
       };
       toggle.input.addEventListener('change', () => {
-        working.tables ??= {};
-        if (toggle.input.checked) working.tables[t.name] = { ...working.records, fields: {} };
+        working.tables ??= keyed();
+        if (toggle.input.checked) working.tables[t.name] = { ...working.records, fields: keyed() };
         else { delete working.tables[t.name]; if (!Object.keys(working.tables).length) delete working.tables; }
         build();
       });
@@ -220,10 +222,10 @@ function editor(sec: Sec, working: PrivilegeSet): HTMLElement {
     sections.push(layoutsSection(working, layouts));
     sections.push(accessSection('Value lists', working.valueLists, (l) => { working.valueLists = l; }, valueLists,
       (name) => working.valueListAccess?.[name] ?? working.valueLists,
-      (name, lvl) => { working.valueListAccess ??= {}; working.valueListAccess[name] = lvl; }));
+      (name, lvl) => { working.valueListAccess ??= keyed(); working.valueListAccess[name] = lvl; }));
     sections.push(accessSection('Scripts', working.scripts, (l) => { working.scripts = l; }, scripts,
       (name) => working.scriptAccess?.[name] ?? working.scripts,
-      (name, lvl) => { working.scriptAccess ??= {}; working.scriptAccess[name] = lvl; }));
+      (name, lvl) => { working.scriptAccess ??= keyed(); working.scriptAccess[name] = lvl; }));
 
     // Available menu commands (a guard on what the UI offers, as in FileMaker).
     const menu = select([['all', 'All'], ['editing', 'Editing only'], ['minimum', 'Minimum']], working.menuCommands ?? 'all', { 'aria-label': 'Available menu commands' });
@@ -249,14 +251,14 @@ function editor(sec: Sec, working: PrivilegeSet): HTMLElement {
         const box = check(`${name} AI-visible`, visible === true || (Array.isArray(visible) && visible.some((f) => f.toLowerCase() === name.toLowerCase())));
         box.input.disabled = visible === true;
         box.input.addEventListener('change', () => {
-          working.aiVisible ??= {};
+          working.aiVisible ??= keyed();
           const previous = working.aiVisible[policyKey];
           const fields = Array.isArray(previous) ? previous.filter((f) => f.toLowerCase() !== name.toLowerCase()) : [];
           working.aiVisible[policyKey] = box.input.checked ? [...fields, name] : fields;
         });
         return box.el;
       }));
-      all.input.addEventListener('change', () => { (working.aiVisible ??= {})[policyKey] = all.input.checked ? true : []; build(); });
+      all.input.addEventListener('change', () => { (working.aiVisible ??= keyed())[policyKey] = all.input.checked ? true : []; build(); });
       build();
       return h('details', {}, h('summary', {}, table.name), all.el, holder);
     })));
@@ -289,11 +291,11 @@ function layoutsSection(working: PrivilegeSet, items: string[]): HTMLElement {
   const rows = items.map((name) => {
     const entry = () => working.layoutAccess?.[name];
     const layoutSel = levelSelect(entry()?.layout ?? working.layouts, (l) => {
-      working.layoutAccess ??= {};
+      working.layoutAccess ??= keyed();
       working.layoutAccess[name] = { layout: l, records: entry()?.records ?? 'modifiable' };
     }, `Layout ${name}`);
     const recordsSel = levelSelect(entry()?.records ?? 'modifiable', (l) => {
-      working.layoutAccess ??= {};
+      working.layoutAccess ??= keyed();
       working.layoutAccess[name] = { layout: entry()?.layout ?? working.layouts, records: l };
     }, `Records through ${name}`);
     return h('div', { class: 'sec-field-row' }, h('span', {}, name), layoutSel, h('span', { class: 'sec-sub' }, 'records'), recordsSel);
