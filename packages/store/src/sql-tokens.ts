@@ -11,21 +11,22 @@ export interface SqlToken {
 }
 
 /**
- * The longest SQL text (characters) any entry point reads. The text is tokenized several times over, synchronously, with
+ * The longest SQL text (characters) a caller may send. The text is tokenized several times over, synchronously, with
  * an object per token, so cost and memory grow far faster than its length: a megabyte holds the server's one thread for
- * seconds and a few megabytes abort the process. Large values belong in parameters.
+ * seconds and a few megabytes abort the process. Large values belong in parameters. Only text a caller sent is held to
+ * this, at the entry points: SQL the server builds itself (the FileMaker_Fields system table is a long JSON literal) is not.
  */
 export const MAX_SQL_TEXT = 1024 * 1024;
+export const SQL_TEXT_TOO_LARGE = `SQL text is larger than ${MAX_SQL_TEXT / 2 ** 20} MB; send a smaller statement (pass large values as parameters)`;
 
-/** Refuses (error 812) SQL text over MAX_SQL_TEXT, before any work is done on it. */
+/** Refuses (error 812) SQL text a caller sent over MAX_SQL_TEXT, before any work is done on it. */
 export function checkSqlSize(sql: string): void {
-  if (sql.length > MAX_SQL_TEXT) throw new StoreError(812, `Exceeded host's capacity: SQL text is larger than ${MAX_SQL_TEXT / 2 ** 20} MB; send a smaller statement (pass large values as parameters)`);
+  if (sql.length > MAX_SQL_TEXT) throw new StoreError(812, `Exceeded host's capacity: ${SQL_TEXT_TOO_LARGE}`);
 }
 
 const invalid = (message: string): never => { throw new CalcError(ERR.calculation, message); };
 
 export function sqlTokens(sql: string, postgres = false): SqlToken[] {
-  checkSqlSize(sql);
   if (sql.includes('\0')) invalid('SQL text contains a NUL byte');
   const out: SqlToken[] = [];
   for (let i = 0; i < sql.length;) {

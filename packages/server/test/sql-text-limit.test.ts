@@ -11,6 +11,7 @@ import type { Server } from 'node:http';
 import { createStore, MAX_SQL_TEXT } from '../../store/src/index.ts';
 import { serve, type Host } from '../src/index.ts';
 import { PgServer } from '../src/pgwire.ts';
+import { pgSyntax } from '../src/pgcatalog.ts';
 
 const cstr = (s: string) => Buffer.from(s + '\0');
 const i16 = (n: number) => { const b = Buffer.alloc(2); b.writeInt16BE(n); return b; };
@@ -21,7 +22,9 @@ let server: Server;
 let host: Host;
 let base: string;
 let pg: PgServer;
+let pgWrites: PgServer;
 let port: number;
+let writesPort: number;
 const sockets = new Set<Socket>();
 
 before(async () => {
@@ -37,10 +40,13 @@ before(async () => {
   store.setPassword('Ann', 'pw', full.name);
   pg = new PgServer(host, { port: 0 });
   port = await pg.listen();
+  pgWrites = new PgServer(host, { port: 0, writes: true });
+  writesPort = await pgWrites.listen();
 });
 after(async () => {
   for (const s of sockets) s.destroy();
   pg?.close();
+  pgWrites?.close();
   await new Promise<void>((r) => (server ? server.close(() => r()) : r()));
   if (dir) rmSync(dir, { recursive: true, force: true });
 });
@@ -48,8 +54,9 @@ after(async () => {
 class Client {
   private buf = Buffer.alloc(0);
   private wake?: () => void;
-  readonly socket: Socket = connect(port, '127.0.0.1');
-  constructor() {
+  readonly socket: Socket;
+  constructor(to = port) {
+    this.socket = connect(to, '127.0.0.1');
     sockets.add(this.socket);
     this.socket.on('data', (b: Buffer) => { this.buf = Buffer.concat([this.buf, b]); this.wake?.(); });
     this.socket.on('error', () => this.wake?.());
@@ -105,16 +112,33 @@ test('the PostgreSQL port refuses SQL text over the limit and stays usable', asy
   const c = await new Client().open();
   try {
     const simple = await c.query(padded(MAX_SQL_TEXT));
-    assert.equal(simple.code, '53000');
+    assert.equal(simple.code, '54000');
     tooLong(simple.error);
     c.send('P', cstr(''), cstr(padded(MAX_SQL_TEXT)), i16(0));
     c.send('S');
     const parsed = await c.until();
-    assert.equal(parsed.code, '53000');
+    assert.equal(parsed.code, '54000');
     tooLong(parsed.error);
     assert.deepEqual((await c.query('SELECT 1')).rows, ['1']);
     assert.equal((await c.query(padded(1000))).error, undefined, 'text under the limit still runs');
   } finally { c.socket.destroy(); }
+});
+
+test('a connection that can write answers the same, with no FileMaker prefix', async () => {
+  const c = await new Client(writesPort).open();
+  try {
+    const refused = await c.query(padded(MAX_SQL_TEXT));
+    assert.equal(refused.code, '54000');
+    assert.match(refused.error ?? '', /^SQL text is larger than 1 MB/);
+    assert.deepEqual((await c.query('SELECT 1')).rows, ['1']);
+  } finally { c.socket.destroy(); }
+});
+
+test('the limit is on what the client sent: many short strings under it are rewritten however far that grows them', () => {
+  // pgSyntax swaps every string for a key of about 18 characters and reads the result again: well past 1 MB here.
+  const sql = `SELECT 1 WHERE 'z' IN (${Array.from({ length: 60_000 }, () => "'a'").join(', ')})`;
+  assert.ok(sql.length < MAX_SQL_TEXT / 2);
+  assert.ok(pgSyntax(sql).length > 0);
 });
 
 test('HTTP SQL refuses SQL text over the limit', async () => {

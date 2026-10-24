@@ -20,7 +20,7 @@
 
 import { positiveWholeNumber } from './setting-values.ts';
 import { isUtf8 } from 'node:buffer';
-import { checkSqlSize, cleanSql, maskSql, sqlTokens } from '../../store/src/sql-tokens.ts';
+import { cleanSql, MAX_SQL_TEXT, maskSql, SQL_TEXT_TOO_LARGE, sqlTokens } from '../../store/src/sql-tokens.ts';
 import { noteSurfaceSignIn } from './surface-access.ts';
 import { FAULT_MESSAGE, isFault, logFault } from './fault-log.ts';
 import { createServer, type Server, type Socket } from 'node:net';
@@ -209,7 +209,7 @@ function booleans(cols: Column[], catalog: boolean): Column[] {
 /** Statements in a query string, split at semicolons outside quotes and comments. */
 export function splitStatements(sql: string): string[] {
   // Before any tokenizing, and not folded into the syntax error below: this is a limit, not a mistake in the text.
-  checkSqlSize(sql);
+  if (sql.length > MAX_SQL_TEXT) throw new PgError('54000', SQL_TEXT_TOO_LARGE);
   // Normalize only after tokenization: escaped quotes and dollar strings must
   // never expose a semicolon as a command boundary.
   try { sql = cleanSql(sql, true); }
