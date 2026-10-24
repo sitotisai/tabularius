@@ -506,7 +506,8 @@ class Connection {
     const reply = await this.next('p').finally(() => clearTimeout(timer));
     if (!reply || this.closed || this.socket.destroyed) return;
     const password = reply.subarray(0, Math.max(0, reply.indexOf(0))).toString('utf8');
-    const from = this.socket.remoteAddress ?? '';
+    // A peer with no address is unknown, never this computer.
+    const from = this.socket.remoteAddress ?? 'unknown';
     // Blocked by an administrator: refused before the password is checked, as for the Data API.
     if (this.server.host.config.blockNewUsers()) return fail('57P03', 'the server isn\'t accepting new users right now; try again later');
     // Hosted files and the unhosted-name pool have independent failure histories and
