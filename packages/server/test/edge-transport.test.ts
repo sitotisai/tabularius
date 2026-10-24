@@ -288,6 +288,8 @@ test('a body a route may read before it knows the caller ends at a total deadlin
   for (const path of ['/', '/oauth/token', '/fmi/xml/fmresultset.xml', '/oauth/register', '/oauth/revoke']) await trickle(path, chunked, '1\r\nx\r\n', true);
   await trickle('/', 'Content-Length: 1000000\r\n', 'x', false);
   await trickle('/', chunked, '1\r\nx\r\n', false, chunk(600 * 1024));
+  // Padding does not make a body: chunks of one byte behind a thousand zeros send more than 256 KiB on the wire and almost nothing of body.
+  await trickle('/', chunked, '1\r\nx\r\n', true, `${'0'.repeat(1000)}1\r\nx\r\n`.repeat(800));
   // A Data API call with a token is checked before its body is read, so its slow body is an authenticated client's; sign-in is not.
   const records = '/fmi/data/vLatest/databases/X/layouts/Items/records';
   await trickle(records, `${chunked}Authorization: Bearer token\r\n`, '1\r\nx\r\n', false);
@@ -333,23 +335,6 @@ test('a handler still reading a body that the edge refused is told the body is n
   // The answer is out; the stalled sender is cut off within the two-second drain window, which must also end the handler's wait.
   for (let i = 0; i < 300 && !finished; i++) await sleep(20);
   assert.equal(finished, true);
-});
-
-test('a response the peer never reads ends the connection and releases its response', async t => {
-  stubCommands(t);
-  let closed!: () => void;
-  const gone = new Promise<void>(resolve => { closed = resolve; });
-  const port = await listen(t, createEdgeServer((req, res) => {
-    if (req.url === '/') { res.end('ok'); return; }
-    res.once('close', closed);
-    res.writeHead(200);
-    res.write(Buffer.alloc(64 * 1024 * 1024));
-  }, { writeStallMs: 300, checkMs: 10 }));
-  const c = await new RawClient(port).ready();
-  c.socket.pause(); // never read the answer
-  c.send(request('/big'));
-  await Promise.race([gone, sleep(4000).then(() => { throw new Error('the stalled response was never ended'); })]);
-  await normal(port);
 });
 
 for (const [name, firstIP, sameIP, otherIP] of [

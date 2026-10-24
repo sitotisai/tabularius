@@ -4,7 +4,8 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { createServer as createTlsServer, type ServerOptions as TlsOptions } from 'node:https';
 import type { BlockList, Socket } from 'node:net';
 import { performance } from 'node:perf_hooks';
-import { AUTH_BODY_LIMIT, PRE_AUTH_BODY_LIMIT, closeUnreadBody, continueOnRead, preAuthBodyPending } from './request-body.ts';
+import { AUTH_BODY_LIMIT, closeUnreadBody, continueOnRead } from './request-body.ts';
+import { preAuthBodyPending, watchBody } from './request-gate.ts';
 import { forwardedFor, trustedProxyPeer, type ProxyHeader } from './client-address.ts';
 import { requestClosesConnection, validHttpRequest } from './http-framing.ts';
 
@@ -20,8 +21,6 @@ export const EDGE_LIMITS = Object.freeze({
   // this total time once the handler starts reading it, scaled up for a declared size above 64 KiB (so the slowest accepted sender is about 4 KB/s).
   // Otherwise a trickle of bytes keeps renewing the inactivity budget and holds a request slot for as long as it likes.
   smallBodyMs: 15_000,
-  // A response the peer does not read (bytes waiting in the socket, none accepted for this long) ends the connection and frees its request slot.
-  writeStallMs: 60_000,
   idleMs: 5_000,
   checkMs: 1_000,
   connections: 1024,
@@ -132,8 +131,7 @@ export function createEdgeServer(
     if (req.headers.expect?.toLowerCase() === '100-continue' && req.httpVersion !== '1.0') continueOnRead(req, res);
     // Observe wire progress without attaching a data listener (which would consume before auth).
     if (!req.complete) {
-      const firstByte = req.socket.bytesRead;
-      let bytes = firstByte;
+      let bytes = req.socket.bytesRead;
       let progress = performance.now();
       // The total deadline runs from when the handler starts to read (any reader sets the flow mode), not from dispatch: a handler may queue first.
       let reading: number | undefined;
@@ -145,8 +143,7 @@ export function createEdgeServer(
         if (req.socket.bytesRead !== bytes) { bytes = req.socket.bytesRead; progress = performance.now(); }
         const now = performance.now();
         if (reading === undefined && req.readableFlowing !== null) reading = now;
-        const tooSlow = reading !== undefined && preAuthBodyPending(req) && now - reading >= allowed
-          && (!chunked || bytes - firstByte <= PRE_AUTH_BODY_LIMIT);
+        const tooSlow = reading !== undefined && preAuthBodyPending(req) && now - reading >= allowed;
         if (tooSlow || now - progress >= limits.bodyMs) {
           cleanup();
           if (!res.headersSent) refuse(408);
@@ -163,19 +160,6 @@ export function createEdgeServer(
       res.once('finish', cleanup);
       res.once('close', cleanup);
     }
-    {
-      const socket = req.socket;
-      let sent = socket.bytesWritten;
-      let moved = performance.now();
-      const stalled = setInterval(() => {
-        const now = performance.now();
-        if (socket.bytesWritten !== sent || !socket.writableLength) { sent = socket.bytesWritten; moved = now; }
-        else if (now - moved >= limits.writeStallMs) { stop(); socket.destroy(); }
-      }, Math.min(limits.checkMs, limits.writeStallMs)).unref();
-      const stop = () => { clearInterval(stalled); res.off('finish', stop); res.off('close', stop); };
-      res.once('finish', stop);
-      res.once('close', stop);
-    }
     const failed = () => {
       if (res.destroyed || res.writableEnded) return;
       if (res.headersSent) { res.destroy(); return; }
@@ -187,6 +171,8 @@ export function createEdgeServer(
     catch { failed(); }
   };
   const dispatch = (req: IncomingMessage, res: ServerResponse) => {
+    // From the first byte, also while the request waits behind an earlier one on its connection: padding in a chunked body is not body.
+    watchBody(req);
     if (failedSockets.has(req.socket) || req.socket.destroyed || res.destroyed) return;
     let state = connections.get(req.socket);
     if (!state) {
