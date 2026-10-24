@@ -1,10 +1,10 @@
 // Admission for short HTTP requests. Long-lived live-update streams use their
 // own per-session bound and never occupy a short-request slot.
+import { performance } from 'node:perf_hooks';
 import { positiveWholeNumber } from './setting-values.ts';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { clientAddress } from './client-address.ts';
 import { addressBucket } from '../../store/src/client-ip.ts';
-import { AUTH_BODY_LIMIT } from './request-body.ts';
 
 export type RequestClass = 'priority' | 'normal' | 'heavy';
 
@@ -29,11 +29,19 @@ export function requestClass(method: string | undefined, path: string): RequestC
 /** The most any route reads before it knows who is calling (inbound hooks check a signature over a body of up to this size). */
 export const PRE_AUTH_BODY_LIMIT = 256 * 1024;
 
-/** A Data API call that carries a token: the token is checked before any body is read (an unknown one is refused with no read), so a slow body is an
- * authenticated client's and may take as long as its progress allows. Sign-in (`.../sessions`) takes Basic credentials or a body and reads first. */
+// Whether the request carries a Data API token that the server holds, as the gate found out when it admitted the request.
+const verdicts = new WeakMap<IncomingMessage, boolean>();
+
+/** A Data API call that carries a token the server holds: the token is checked before any body is read (an unknown one is refused with no read), so
+ * a slow body is a signed-in client's and may take as long as its progress allows. Anything else (a made-up token, no token, sign-in) is not.
+ * The gate asks the Data API when it admits the request (`RequestGate.holdsToken`). A process that cannot (the cluster front, which hands the request
+ * to a worker that does) goes by the shape of the request, reading the path as the Data API does, one decoded segment at a time. */
 export function tokenCheckedFirst(req: IncomingMessage): boolean {
+  const verdict = verdicts.get(req);
+  if (verdict !== undefined) return verdict;
   const path = (req.url ?? '').split('?')[0];
-  return /^Bearer\s/i.test(req.headers.authorization ?? '') && isDataApiPath(path) && !/\/sessions(?:\/|$)/.test(path);
+  if (!/^Bearer\s/i.test(req.headers.authorization ?? '') || !isDataApiPath(path)) return false;
+  try { return !path.split('/').filter(Boolean).map(decodeURIComponent).includes('sessions'); } catch { return false; }
 }
 
 /** Emitted on a request when its whole body has arrived, or a chunked one has sent more than any route reads before it knows the caller. */
@@ -56,25 +64,29 @@ export function watchBody(req: IncomingMessage): void {
   } as IncomingMessage['push'];
 }
 
+const admitted = new WeakMap<IncomingMessage, number>();
+/** When the gate let the request in (`performance.now()`), if it did. A handler can wait for something of its own before it reads (the Data API queues
+ * calls that carry the same token), so the time a body has had to arrive counts from here, not from the first read. */
+export const admittedAt = (req: IncomingMessage): number | undefined => admitted.get(req);
+
 /** Body bytes the parser has handed over so far (0 until `watchBody`). */
 export const decodedBodyBytes = (req: IncomingMessage): number => watched.get(req)?.decoded ?? 0;
 
-/** A body that has not fully arrived and that some route may read before the caller is known: one declared at most PRE_AUTH_BODY_LIMIT, or a
- * chunked one, which declares nothing, until it has sent that much body. Routes are not told apart, because the ones that read first (sign-in,
- * MCP with Basic credentials, the XML gateway, OAuth registration, inbound hooks) are not a list that stays true. */
-export function preAuthBodyPending(req: IncomingMessage): boolean {
-  if (req.complete || tokenCheckedFirst(req)) return false;
+/** A body that has not fully arrived and is of a size some route may read before the caller is known: one declared at most PRE_AUTH_BODY_LIMIT, or a
+ * chunked one, which declares nothing, until it has sent that much body. Whoever the caller is. */
+function smallBodyPending(req: IncomingMessage): boolean {
+  if (req.complete) return false;
   if (req.headers['transfer-encoding']) return decodedBodyBytes(req) <= PRE_AUTH_BODY_LIMIT;
   const length = Number(req.headers['content-length']);
   return length > 0 && length <= PRE_AUTH_BODY_LIMIT;
 }
 
-/** A body of sign-in size (or chunked) that is still on its way, so the request that holds a slot for it is waiting on the caller, not working.
- * Declared sizes between 64 KiB and 256 KiB are timed by the edge but not counted here: only an inbound hook reads that much before auth. */
-export function slowBodyPending(req: IncomingMessage): boolean {
-  if (!preAuthBodyPending(req)) return false;
-  return !!req.headers['transfer-encoding'] || Number(req.headers['content-length']) <= AUTH_BODY_LIMIT;
-}
+/** A body that has not fully arrived and that some route may read before the caller is known. Routes are not told apart, because the ones that read
+ * first (sign-in, MCP with Basic credentials, the XML gateway, OAuth registration, inbound hooks) are not a list that stays true. */
+export const preAuthBodyPending = (req: IncomingMessage): boolean => smallBodyPending(req) && !tokenCheckedFirst(req);
+
+/** Such a body is still on its way, so the request that holds a slot for it is waiting on the caller, not working. */
+export const slowBodyPending = preAuthBodyPending;
 
 /** Requests waiting on a small body take a place from one pool, not slots at large: sign-in and the like (priority) from a small one, so a flood of
  * ordinary requests cannot take their places, everything else from a bigger one. One address, an IPv6 /64 counting as one, may hold only a share. */
@@ -101,6 +113,8 @@ export class RequestGate {
   private readonly waiting: Waiter[] = [];
   private shedCount = 0;
   // Requests still waiting for a small body (a sign-in is read before the caller is known), so a few idle senders cannot take every slot.
+  /** Set by the server: whether a Data API request carries a token it holds (without side effects other than the token's own bookkeeping). */
+  holdsToken?: (req: IncomingMessage) => boolean;
   private readonly slow: { priority: SlowPool; normal: SlowPool };
   /** Most that both pools together may hold: always leaves a slot of ordinary capacity for a request that is not waiting on anyone. */
   readonly slowBodyLimit: number;
@@ -151,6 +165,7 @@ export class RequestGate {
 
   private take(address: string, kind: RequestClass, req: IncomingMessage, res: ServerResponse): () => void {
     this.active++;
+    admitted.set(req, performance.now());
     // The edge ends a small body that has not arrived within its total deadline, which frees this count.
     if (slowBodyPending(req)) {
       const pool = this.poolFor(kind);
@@ -214,6 +229,8 @@ export class RequestGate {
     // An IPv6 host chooses its own address within a /64, as the edge's connection limit assumes.
     const address = addressBucket(clientAddress(req));
     watchBody(req);
+    // Found out once, here, for a body still on its way: by header shape alone a made-up token (or an encoded path) would pass for a signed-in client.
+    if (this.holdsToken && smallBodyPending(req) && isDataApiPath((req.url ?? '').split('?')[0])) verdicts.set(req, this.holdsToken(req));
     // The request is dispatched while the parser is still working through the bytes that arrived with its headers. Let it finish, so
     // only a body that is really still on its way counts as unfinished.
     if (slowBodyPending(req)) await new Promise<void>((resolve) => setImmediate(resolve));

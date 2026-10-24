@@ -5,7 +5,7 @@ import { createServer as createTlsServer, type ServerOptions as TlsOptions } fro
 import type { BlockList, Socket } from 'node:net';
 import { performance } from 'node:perf_hooks';
 import { AUTH_BODY_LIMIT, closeUnreadBody, continueOnRead } from './request-body.ts';
-import { preAuthBodyPending, watchBody } from './request-gate.ts';
+import { admittedAt, preAuthBodyPending, watchBody } from './request-gate.ts';
 import { forwardedFor, trustedProxyPeer, type ProxyHeader } from './client-address.ts';
 import { requestClosesConnection, validHttpRequest } from './http-framing.ts';
 
@@ -18,7 +18,7 @@ export const EDGE_LIMITS = Object.freeze({
   // Body inactivity, not a total upload deadline: progressing authenticated uploads may take longer.
   bodyMs: 300_000,
   // A body that a route may read before it knows who is calling (declared at most 256 KiB, or chunked until it has sent that much) must arrive within
-  // this total time once the handler starts reading it, scaled up for a declared size above 64 KiB (so the slowest accepted sender is about 4 KB/s).
+  // this total time once the request is admitted (or its handler starts reading it), scaled up for a declared size above 64 KiB (so the slowest accepted sender is about 4 KB/s).
   // Otherwise a trickle of bytes keeps renewing the inactivity budget and holds a request slot for as long as it likes.
   smallBodyMs: 15_000,
   idleMs: 5_000,
@@ -133,7 +133,8 @@ export function createEdgeServer(
     if (!req.complete) {
       let bytes = req.socket.bytesRead;
       let progress = performance.now();
-      // The total deadline runs from when the handler starts to read (any reader sets the flow mode), not from dispatch: a handler may queue first.
+      // The total deadline runs from when the request is let in by the gate, or from when the handler starts to read (any reader sets the flow mode) if
+      // it never went through the gate; not from dispatch: a handler may queue first.
       let reading: number | undefined;
       const chunked = !!req.headers['transfer-encoding'];
       const declared = Number(req.headers['content-length']);
@@ -142,7 +143,7 @@ export function createEdgeServer(
         if (req.complete) { cleanup(); return; }
         if (req.socket.bytesRead !== bytes) { bytes = req.socket.bytesRead; progress = performance.now(); }
         const now = performance.now();
-        if (reading === undefined && req.readableFlowing !== null) reading = now;
+        if (reading === undefined) reading = admittedAt(req) ?? (req.readableFlowing !== null ? now : undefined);
         const tooSlow = reading !== undefined && preAuthBodyPending(req) && now - reading >= allowed;
         if (tooSlow || now - progress >= limits.bodyMs) {
           cleanup();

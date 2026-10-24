@@ -385,6 +385,7 @@ export async function serve(opts: ServeOptions): Promise<{ server: Server; host:
     disposers.push(() => metrics.stop());
     const requestGate = new RequestGate(opts.requestLimit, opts.requestQueue ?? Number(process.env.TABULARIUS_REQUEST_QUEUE ?? 64));
     metrics.requestGate = requestGate;
+    requestGate.holdsToken = (req) => api.holdsToken(req);
     admin.metrics = metrics;
     admin.uploads = new Uploads(host, log);
     disposers.push(() => admin.uploads!.stop());
