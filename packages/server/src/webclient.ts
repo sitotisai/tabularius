@@ -28,6 +28,7 @@
 // there is no build step.
 
 import { parseRequestJson } from './request-json.ts';
+import { clientAddress } from './client-address.ts';
 import { BoundedMap } from './bounded-map.ts';
 import type { SqlValue } from '../../store/src/find.ts';
 import { SERVER_VERSION, serverCommit } from './version.ts';
@@ -487,7 +488,7 @@ export class WebClient {
         else if (m[3] === 'history') send(200, this.history(store, layout, body, privileges));
         else if (m[3] === 'value-list') send(200, this.valueListFor(store, body, privileges));
         else if (m[3] === 'revert') send(200, this.revert(store, session, layout, body, privileges));
-        else send(200, await this.button(store, session, layout, body, privileges));
+        else send(200, await this.button(store, session, layout, body, privileges, clientAddress(req)));
       } else {
         send(200, m[2] === undefined ? this.menu(store, privileges, session.account) : this.layout(store, decodeURIComponent(m[2]), privileges, session, requestHostName(req)));
       }
@@ -1753,7 +1754,7 @@ export class WebClient {
    * button's record (or portal row) with the client's found set, with the
    * button's script parameter evaluated in that context.
    */
-  private async button(store: Store, session: Session, layout: string, body: Record<string, unknown>, privileges: Privileges) {
+  private async button(store: Store, session: Session, layout: string, body: Record<string, unknown>, privileges: Privileges, from: string) {
     const info = store.layout(layout);
     const raw = info.layoutId !== undefined ? store.design(info.layoutId) : undefined;
     const design = raw && this.resolveDesign(store, raw);
@@ -1932,7 +1933,7 @@ export class WebClient {
       // Only when the event's own trigger chose the script: a timer, menu item or one-step command naming an event
       // mustn't switch that trigger off for its run.
       ...(byEvent ? { startedBy: { event: event!, ...(Number.isInteger(body.objectId) ? { objectId: Number(body.objectId) } : {}) } } : {}),
-      ...(activeObject !== undefined && Number.isInteger(body.activeRow) ? { activeRow: Number(body.activeRow) } : {}), ...(openWindows?.length ? { openWindows } : {}), ...(trigger ? { trigger } : {}), ...(w.mode === 'find' ? { mode: 'find' as const, ...(findRequests(body.requests) ? { requests: inFileDateOrder(store, layout, findRequests(body.requests)) } : {}) } : {}), recordId, preview: body.preview === true, ...(body.view === 'form' || body.view === 'list' || body.view === 'table' ? { view: body.view } : {}), account: session.account, ...(session.from ? { clientAddress: session.from } : {}), session: session.scripts, ...this.host.scriptOptions(store.name), executionAccount: session.account, executionVia: session.via, privileges,
+      ...(activeObject !== undefined && Number.isInteger(body.activeRow) ? { activeRow: Number(body.activeRow) } : {}), ...(openWindows?.length ? { openWindows } : {}), ...(trigger ? { trigger } : {}), ...(w.mode === 'find' ? { mode: 'find' as const, ...(findRequests(body.requests) ? { requests: inFileDateOrder(store, layout, findRequests(body.requests)) } : {}) } : {}), recordId, preview: body.preview === true, ...(body.view === 'form' || body.view === 'list' || body.view === 'table' ? { view: body.view } : {}), account: session.account, clientAddress: from, session: session.scripts, ...this.host.scriptOptions(store.name), executionAccount: session.account, executionVia: session.via, privileges,
       onAccessDenial: (denial, code) => collector.observe(denial, code),
       onProgress: (event) => this.runningProgress.set(userStop, event),
       ...(lastVisited ? { lastVisited } : {}),
