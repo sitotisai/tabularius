@@ -888,7 +888,8 @@ per-address limits apply at the front; private Unix connections to workers are
 exempt from the per-address cap.
 
 Headers must finish within 10 seconds. Bodies have a **300-second idle timeout**;
-progressing uploads can take longer than 300 seconds. Connections close after
+progressing uploads can take longer than 300 seconds. A body of at most 64 KiB
+(or a chunked one that has sent no more) must arrive within 15 seconds in total. Connections close after
 their 100th complete response; keep-alive clients reconnect normally. Pipelined
 requests execute in order up to that budget, so a completed write's response is
 sent before closing.
