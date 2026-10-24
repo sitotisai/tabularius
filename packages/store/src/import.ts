@@ -308,6 +308,12 @@ export function fileSha256(path: string): string {
  */
 export function importFmp12(src: string | FmpDatabase, outPath: string, onProgress?: (p: ImportProgress) => void, opts: { resume?: boolean; passphrase?: string } = {}): ImportStat[] {
   const db = typeof src === 'string' ? FmpDatabase.open(src, opts.passphrase) : src;
+  // A table is dropped and created by its name, so one named like a store table would replace it.
+  const reserved = db.schema.tables.find((t) => /^_fm_/i.test(t.name) || /^sqlite_/i.test(t.name));
+  if (reserved) {
+    if (typeof src === 'string') db.close();
+    throw new Error(`The file has a table named "${reserved.name}", which the store keeps for its own use (names starting with "_fm_" or "sqlite_"). Rename the table in the source file and convert again.`);
+  }
   const fileInfo = typeof src === 'string' ? statSync(src) : undefined;
   const source = { size: fileInfo?.size ?? db.file.source.size, mtimeMs: Math.trunc(fileInfo?.mtimeMs ?? 0), blockCount: db.file.blockCount };
   let sql = new DatabaseSync(outPath);
