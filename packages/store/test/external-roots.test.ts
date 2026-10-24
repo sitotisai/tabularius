@@ -3,7 +3,10 @@
 // another hosted file's storage must not widen the roots.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { createStore, Store } from '../src/index.ts';
 import { externalRoots } from '../src/store.ts';
 
 const folder = resolve('/srv/hosted');
@@ -58,8 +61,6 @@ test('fmp12-94: a file named like the storage folders cannot read other files\' 
     assert.deepEqual(externalRoots(folder, name, []), mine);
     assert.ok(externalRoots(folder, name, ['Docs']).includes(at('Files', name, 'Docs')), name);
   }
-  // an ordinary name keeps the folder named after it, which a base directory starting with that name leads into
-  assert.ok(externalRoots(folder, 'Filesystem', ['Filesystem/Docs']).includes(at('Filesystem', 'Docs')));
 });
 
 test('fmp12-94: a folder name ending in a dot or a space is kept when it cannot act as a parent folder', () => {
@@ -67,7 +68,6 @@ test('fmp12-94: a folder name ending in a dot or a space is kept when it cannot 
   for (const want of [at('RC_Data_FMS', 'Mine', 'Acme Inc.', 'Scans'), at('Files', 'Mine', 'Acme Inc.', 'Scans'), at('RC_Data_FMS', 'Mine', 'Archive ', '2024')]) {
     assert.ok(roots.includes(want), want);
   }
-  assert.ok(externalRoots(folder, 'Mine', ['Mine/Acme Inc./Scans']).includes(at('Mine', 'Acme Inc.', 'Scans')));
   // only a part made of dots and spaces can become "." or ".." once Windows strips it
   for (const base of ['.. ', 'a/.. /b', '. . /x', ' /x', '.../x']) {
     assert.deepEqual(externalRoots(folder, 'Mine', [base]), own, JSON.stringify(base));
@@ -76,8 +76,8 @@ test('fmp12-94: a folder name ending in a dot or a space is kept when it cannot 
 
 test('fmp12-94: a name that a disk may fold or shorten into the storage folders gets no folder of its own beside the file', () => {
   const holders = [at('Files'), at('RC_Data_FMS')];
-  // U+017F (long s) folds to "s" on case-insensitive volumes, and RC_DAT~1 is RC_Data_FMS as a Windows short name.
-  for (const name of ['Fileſ', 'RC_DAT~1', 'RC_DATA~1', 'FILES~1', 'Files.', 'Files ', 'RC_Data_FMS.', 'Fıles']) {
+  // U+017F (long s) folds to "s" on case-insensitive volumes. (RC_DAT~1, a Windows short name, has no roots: see below.)
+  for (const name of ['Fileſ', 'Files.', 'Files ', 'RC_Data_FMS.', 'Fıles']) {
     const beside = at(name);
     for (const base of [`${name}/Other`, 'Other', `${name}`, `Files/${name}/Other`, '']) {
       for (const r of externalRoots(folder, name, [base])) {
@@ -89,8 +89,6 @@ test('fmp12-94: a name that a disk may fold or shorten into the storage folders 
     assert.ok(externalRoots(folder, name, []).includes(at('RC_Data_FMS', name)), name);
     assert.ok(externalRoots(folder, name, [`${name}/Docs`]).every((r) => !r.startsWith(at('Other'))), name);
   }
-  // a plain name, with dots, spaces, dashes and underscores inside, keeps the folder named after it
-  assert.ok(externalRoots(folder, 'Acme Inc-2_a.b', ['Acme Inc-2_a.b/Docs']).includes(at('Acme Inc-2_a.b', 'Docs')));
 });
 
 test('fmp12-94: a name that is not one folder name has no roots', () => {
@@ -100,4 +98,56 @@ test('fmp12-94: a name that is not one folder name has no roots', () => {
       assert.deepEqual(externalRoots(folder, name, bases), [], `${JSON.stringify(name)} with ${JSON.stringify(bases)}`);
     }
   }
+});
+
+test('fmp12-94: no root is ever a folder of its own beside the hosted file, whatever the file is called', () => {
+  // The server keeps its own data in folders beside the hosted files (backups, logs, exports, secrets...), and a disk can
+  // read a name as another folder, so a root is only ever below RC_Data_FMS/<file> or Files/<file>.
+  const names = ['Backups', 'backups', 'Logs', 'Documents', 'Exports', 'Outbox', '.openhbam-secrets', '.hidden', 'Files', 'Fileſ', 'Mine', 'Filesystem', 'Acme Inc-2_a.b', 'Café'];
+  for (const name of names) {
+    const inside = [at('RC_Data_FMS', name), at('Files', name)];
+    for (const base of ['', name, `${name}/Docs`, 'Docs', `../${name}`, `/${name}`, `Files/${name}`, `RC_Data_FMS/${name}/x`]) {
+      for (const r of externalRoots(folder, name, [base])) {
+        assert.ok(inside.some((o) => r === o || r.startsWith(o + '/')), `${JSON.stringify(name)} with ${JSON.stringify(base)} gave ${r}`);
+      }
+    }
+    for (const o of inside) assert.ok(externalRoots(folder, name, [name]).includes(o), `${name} keeps ${o}`);
+  }
+});
+
+test('fmp12-94: a name with a ~digit (a Windows short name, ACMEIN~1) has no roots at all', () => {
+  // ACMEIN~1 can be the short name of another file's RC_Data_FMS or Files folder, so even those two are not its own.
+  for (const name of ['ACMEIN~1', 'RC_DAT~1', 'FILES~1', 'a~9b', 'Acme~12']) {
+    for (const bases of [[], ['Other'], [name], ['Files/Other']]) {
+      assert.deepEqual(externalRoots(folder, name, bases), [], `${name} with ${JSON.stringify(bases)}`);
+    }
+  }
+  assert.ok(externalRoots(folder, 'Acme~Inc', []).length === 2, 'a tilde that is not followed by a digit is an ordinary character');
+});
+
+test('fmp12-94: what is refused is reported, so an operator can see why a container goes missing', () => {
+  const refused: string[] = [];
+  externalRoots(folder, 'Mine', ['Docs', '../Other', 'C:/Elsewhere', '.. /x', 'Acme Inc./Scans'], refused);
+  assert.deepEqual(refused, ['../Other', 'C:/Elsewhere', '.. /x']);
+  const named: string[] = [];
+  assert.deepEqual(externalRoots(folder, '..', ['Docs'], named), []);
+  assert.equal(named.length, 1);
+  assert.match(named[0], /file name/);
+  // A base directory whose letter case differs from the file's name is refused, as another folder on a disk that tells case.
+  const cased: string[] = [];
+  assert.ok(!externalRoots(folder, 'Mine', ['mine/Docs'], cased).includes(at('mine', 'Docs')));
+  assert.deepEqual(cased, []);
+});
+
+test('fmp12-94: opening a file with a refused name warns once, naming the file', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-external-roots-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const path = join(dir, 'Odd.openhbam.sqlite');
+  createStore(path);
+  const warnings: string[] = [];
+  t.mock.method(console, 'warn', (message: string) => { warnings.push(String(message)); });
+  for (let i = 0; i < 3; i++) new Store(path, 'ACMEIN~1').close();
+  const mine = warnings.filter((w) => w.includes('ACMEIN~1'));
+  assert.equal(mine.length, 1, warnings.join('\n'));
+  assert.match(mine[0], /container/);
 });
