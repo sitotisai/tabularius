@@ -2,7 +2,7 @@
 
 Generated with `node scripts/audit-cross-origin.ts` from the six modules in `scripts/reference/rest/`. Check with `--check`.
 
-Route-table entries after splitting methods: **452** (264 non-GET/HEAD; 188 GET/HEAD). All reads are included so data-bearing and stateful GETs cannot disappear behind a method-only filter.
+Route-table entries after splitting methods: **455** (267 non-GET/HEAD; 188 GET/HEAD). All reads are included so data-bearing and stateful GETs cannot disappear behind a method-only filter.
 
 Categories and exemption reasons: [audit](r25-08-csrf-cors-matrix.md). A is an ambient-credential origin guard; B is a bearer/header-token exemption from CSRF checks, never from authorization; U is an explicit URL capability; M is MCP; O is OAuth/OIDC; P is public; H is a webhook secret.
 
@@ -71,6 +71,8 @@ Handler: `packages/server/src/webclient.ts`.
 
 | Method | Route | Credential / invariant |
 | --- | --- | --- |
+| POST | `/tabularius/app/v1/databases/{database}/sign-out` | B: explicit file token; no cookie |
+| POST | `/tabularius/app/v1/databases/{database}/forget-device` | B: explicit file token; no cookie |
 | GET | `/favicon.ico` | P: public shell/static/discovery |
 | HEAD | `/favicon.ico` | P: public shell/static/discovery |
 | GET | `/fmi/webd/{database}` | P: public shell/static/discovery |
@@ -539,6 +541,7 @@ Handler: `packages/server/src/admin.ts`.
 | POST | `/tabularius/admin/v1/clients/{id}/message` | A: console origin + auth; mutation header |
 | POST | `/tabularius/admin/v1/message` | A: console origin + auth; mutation header |
 | POST | `/tabularius/admin/v1/block-new-users` | A: console origin + auth; mutation header |
+| POST | `/tabularius/admin/v1/device-storage` | A: console origin + auth; mutation header |
 | POST | `/tabularius/admin/v1/session-timeout` | A: console origin + auth; mutation header |
 | POST | `/tabularius/admin/v1/responsive` | A: console origin + auth; mutation header |
 | POST | `/tabularius/admin/v1/notifications` | A: console origin + auth; mutation header |
