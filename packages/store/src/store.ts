@@ -5,7 +5,7 @@
 import { ownKeyed, setOwn } from './own-keys.ts';
 import { checkStoredWebViewerHosts, normalizeWebViewerHosts } from './web-viewer-hosts.ts';
 import { isCredentialName } from '../../scripts/src/credentials.ts';
-import { cleanSql, sqlName, sqlTokens } from './sql-tokens.ts';
+import { checkSqlSize, cleanSql, sqlName, sqlTokens } from './sql-tokens.ts';
 import { SignInFailures, LOCKOUT, SIGN_IN_FAILURE_AUDIT_FLOOR, signInFailureAuditShare, noAddressBudget, sharedSource, addressBucket, accountsSharingLockout, lockoutName } from './sign-in-failures.ts';
 import { expiryClock } from './clock.ts';
 import { crashPoint } from './crash-point.ts';
@@ -10583,6 +10583,7 @@ export class Store {
    * table or table-valued function (json_each, ...), whose columns have no real origin.
    */
   queryWithOrigins(...args: Parameters<Store['queryWithOriginsCurrent']>): QueryOrigins {
+    checkSqlSize(args[0]);
     return this.withDesignRead(() => this.queryWithOriginsCurrent(...args));
   }
 
