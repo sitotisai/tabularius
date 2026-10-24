@@ -1307,8 +1307,8 @@ export class Store {
       if (this.blankHashes.size >= 1000) this.blankHashes.clear();
       blank = checkPasswordAsync('', hash);
       this.blankHashes.set(hash, blank);
-      const pending = blank;
-      pending.catch(() => { if (this.blankHashes.get(hash) === pending) this.blankHashes.delete(hash); });
+      // A failed hash is forgotten so the next call tries again (if another call already replaced it, that one just recomputes).
+      blank.catch(() => this.blankHashes.delete(hash));
     }
     return !(await blank);
   }
