@@ -406,6 +406,12 @@ class Connection {
       // everything received so far for every piece, time that grows with the square of the message.
       this.pieces.push(d);
       this.pieced += d.length;
+      // Before sign-in only a password comes. Whatever else is buffered while it is being checked is not a client
+      // that will be let in, so it is cut off rather than held (a header announcing 200 MB, then the data).
+      if (this.started && !this.privileges && this.buf.length + this.pieced > MAX_UNSIGNED_MESSAGE + 5) {
+        socket.destroy();
+        return;
+      }
       if (this.incomplete()) return;
       this.buf = Buffer.concat([this.buf, ...this.pieces]);
       this.pieces = [];
@@ -423,13 +429,21 @@ class Connection {
   private pieces: Buffer[] = [];
   private pieced = 0;
 
-  /** Whether `buf` begins a message (after start-up) that the pieces held back do not yet complete. */
+  /**
+   * Whether the last message in `buf` (after start-up) is still arriving and the pieces held back do not yet complete it.
+   * Messages already whole in `buf` (queued behind one that is being handled) are stepped over to find it.
+   */
   private incomplete(): boolean {
-    if (!this.started || this.buf.length < 5) return false;
-    const len = this.buf.readInt32BE(1);
-    // A length that will be refused is let through so it is: before sign-in only a password comes, nothing large.
-    if (len < 4 || len > (this.privileges ? MAX_MESSAGE : MAX_UNSIGNED_MESSAGE)) return false;
-    return this.buf.length + this.pieced < len + 1;
+    if (!this.started) return false;
+    const limit = this.privileges ? MAX_MESSAGE : MAX_UNSIGNED_MESSAGE;
+    for (let at = 0; this.buf.length - at >= 5;) {
+      const len = this.buf.readInt32BE(at + 1);
+      // A length that will be refused is let through so it is: before sign-in only a password comes, nothing large.
+      if (len < 4 || len > limit) return false;
+      if (at + len + 1 > this.buf.length) return this.buf.length + this.pieced < at + len + 1;
+      at += len + 1;
+    }
+    return false;
   }
 
   private send(...parts: Buffer[]): void {
