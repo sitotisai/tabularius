@@ -22,6 +22,7 @@ const KIND = 'keyed-object-entry';
 const FIRST_USE_ASSIGNMENTS = new Set(['??=', '||=']);
 const FIRST_USE_OPERATORS = new Set(['??', '||']);
 const ABSENT_TESTS = new Set(['===', '==']);
+const ASSIGNS = new Set(['=']);
 
 const sourceFiles = (root: string): string[] => {
   const walk = (path: string): string[] => readdirSync(path, { withFileTypes: true }).flatMap((entry) => {
@@ -98,7 +99,7 @@ export function collectKeyedEntries(root = resolve(import.meta.dirname, '..'), o
         // map[name] = map[name] ?? {}   map[name] = map[name] || {}
         else if (op === '=' && ts.isBinaryExpression(right) && FIRST_USE_OPERATORS.has(right.operatorToken.getText(sf)) && emptyObject(right.right) && same(right.left, node.left)) report(node, node.left);
         // map[name] ?? (map[name] = {})   map[name] || (map[name] = {})
-        else if (FIRST_USE_OPERATORS.has(op) && ts.isBinaryExpression(right) && right.operatorToken.getText(sf) === '=' && emptyObject(right.right) && same(right.left, node.left)) report(node, node.left);
+        else if (FIRST_USE_OPERATORS.has(op) && ts.isBinaryExpression(right) && ASSIGNS.has(right.operatorToken.getText(sf)) && emptyObject(right.right) && same(right.left, node.left)) report(node, node.left);
       }
       // if (!map[name]) map[name] = {};   if (map[name] === undefined) map[name] = {};
       if (ts.isIfStatement(node) && !node.elseStatement) {
@@ -108,7 +109,7 @@ export function collectKeyedEntries(root = resolve(import.meta.dirname, '..'), o
         else if (ts.isBinaryExpression(test) && ABSENT_TESTS.has(test.operatorToken.getText(sf)) && ['undefined', 'null'].includes(test.right.getText(sf))) tested = test.left;
         const then = soleExpression(node.thenStatement);
         const made = then && skipParens(then);
-        if (tested && made && ts.isBinaryExpression(made) && made.operatorToken.getText(sf) === '=' && emptyObject(made.right) && same(skipParens(tested), made.left)) report(node, made.left);
+        if (tested && made && ts.isBinaryExpression(made) && ASSIGNS.has(made.operatorToken.getText(sf)) && emptyObject(made.right) && same(skipParens(tested), made.left)) report(node, made.left);
       }
       ts.forEachChild(node, visit);
     };
