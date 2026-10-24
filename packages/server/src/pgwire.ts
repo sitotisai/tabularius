@@ -420,7 +420,15 @@ class Connection {
         if (this.buf.length < len) return;
         const body = this.buf.subarray(4, len);
         this.buf = this.buf.subarray(len);
-        await this.startup(body);
+        try {
+          await this.startup(body);
+        } catch (e) {
+          // The file refused (for example, another session's transaction holds it): say so, rather than dropping the client in silence.
+          if (!(e instanceof StoreError)) throw e;
+          this.sendError(e);
+          this.socket.end();
+          return;
+        }
         continue;
       }
       // A refused or abandoned sign-in leaves no privileges: whatever follows it is not run as anyone.
