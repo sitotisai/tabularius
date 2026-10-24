@@ -265,24 +265,64 @@ for (const direction of [-1, 1]) test(`body inactivity survives a ${direction < 
   }
 });
 
-test('a sign-in sized body that keeps trickling still ends at the total deadline, a large declared upload or a chunked one to another route does not', async t => {
+test('a body a route may read before it knows the caller ends at a total deadline once reading starts; a real upload does not', async t => {
   stubCommands(t);
   const port = await listen(t, createEdgeServer((req, res) => {
     req.resume(); req.on('end', () => res.end('done'));
   }, { smallBodyMs: 300, bodyMs: 5000, checkMs: 10 }));
-  const trickle = async (path: string, headers: string, piece: string, refused: boolean) => {
+  const chunk = (bytes: number) => `${bytes.toString(16)}\r\n${'x'.repeat(bytes)}\r\n`;
+  const trickle = async (path: string, headers: string, piece: string, refused: boolean, first = '') => {
     const c = await new RawClient(port).ready();
-    c.send(request(path, headers, 'POST'));
-    const until = Date.now() + 700;
+    c.send(request(path, headers, 'POST') + first);
+    const until = Date.now() + 800;
     // One small write every 50 ms renews the inactivity budget, so only a total deadline can stop it.
     while (Date.now() < until && !c.socket.destroyed && !/^HTTP\/1\.1 408 /.test(c.text)) { c.send(piece); await sleep(50); }
-    assert.equal(/^HTTP\/1\.1 408 /.test(c.text), refused);
+    assert.equal(/^HTTP\/1\.1 408 /.test(c.text), refused, `${path} ${headers.trim()}`);
     c.socket.destroy();
   };
+  const chunked = 'Transfer-Encoding: chunked\r\n';
   await trickle('/', 'Content-Length: 200\r\n', 'x', true);
-  await trickle('/oauth/token', 'Transfer-Encoding: chunked\r\n', '1\r\nx\r\n', true);
-  await trickle('/', 'Transfer-Encoding: chunked\r\n', '1\r\nx\r\n', false);
+  // Up to 256 KiB is read before authentication by inbound hooks: the deadline scales with the declared size (here about 460 ms).
+  await trickle('/', 'Content-Length: 100000\r\n', 'x', true);
+  // A chunked body declares nothing, so no route is exempt: sign-in, XML gateway, OAuth registration and ordinary routes alike.
+  for (const path of ['/', '/oauth/token', '/fmi/xml/fmresultset.xml', '/oauth/register', '/oauth/revoke']) await trickle(path, chunked, '1\r\nx\r\n', true);
   await trickle('/', 'Content-Length: 1000000\r\n', 'x', false);
+  await trickle('/', chunked, '1\r\nx\r\n', false, chunk(600 * 1024));
+  await normal(port);
+});
+
+test('the total deadline starts when the handler reads, not when the request arrives', async t => {
+  stubCommands(t);
+  const port = await listen(t, createEdgeServer((req, res) => {
+    setTimeout(() => { req.resume(); req.on('end', () => res.end('done')); }, 700);
+  }, { smallBodyMs: 300, bodyMs: 5000, checkMs: 10 }));
+  const c = await new RawClient(port).ready();
+  const sent = Date.now();
+  c.send(request('/', 'Content-Length: 200\r\n', 'POST'));
+  let refusedAt = 0;
+  while (Date.now() - sent < 1800 && !refusedAt) {
+    c.send('x');
+    await sleep(40);
+    if (/^HTTP\/1\.1 408 /.test(c.text)) refusedAt = Date.now() - sent;
+  }
+  c.socket.destroy();
+  assert.ok(refusedAt >= 700 + 250, `refused after ${refusedAt} ms: the handler began reading at 700 ms and the deadline is 300 ms`);
+});
+
+test('a response the peer never reads ends the connection and releases its response', async t => {
+  stubCommands(t);
+  let closed!: () => void;
+  const gone = new Promise<void>(resolve => { closed = resolve; });
+  const port = await listen(t, createEdgeServer((req, res) => {
+    if (req.url === '/') { res.end('ok'); return; }
+    res.once('close', closed);
+    res.writeHead(200);
+    res.write(Buffer.alloc(64 * 1024 * 1024));
+  }, { writeStallMs: 300, checkMs: 10 }));
+  const c = await new RawClient(port).ready();
+  c.socket.pause(); // never read the answer
+  c.send(request('/big'));
+  await Promise.race([gone, sleep(4000).then(() => { throw new Error('the stalled response was never ended'); })]);
   await normal(port);
 });
 
