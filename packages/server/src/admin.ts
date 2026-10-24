@@ -1677,7 +1677,7 @@ export class Admin {
             // A new password from the console invalidates whatever sessions were signed in on the old one.
             this.api.endByAccount(store.name, accountName);
             this.log(`${store.name}: password set for ${accountName} from the admin console`);
-            send(200, { ok: true, ...(passkeyOnly ? { warning: `${accountName} requires a second factor and had only a passkey, which the reset removed: it cannot sign in until you set up an authenticator app for it.` } : {}) });
+            send(200, { ok: true, ...(passkeyOnly && !store.hasPasskey(accountName) ? { warning: `${accountName} requires a second factor and had only a passkey, which the reset removed: it cannot sign in until you set up an authenticator app for it.` } : {}) });
           } catch (e) { send(400, { error: adminErrorText(e, this.host) }); }
         }
       } else if (path === '/tabularius/admin/v1/accounts/unlock' && req.method === 'POST') {
