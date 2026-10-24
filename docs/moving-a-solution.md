@@ -155,6 +155,16 @@ server records those existing directory links when it opens the file and uses
 them for container reads and writes. Links added later, links to individual
 container files, and links named by container data are refused.
 
+A container field's base directory (Manage Containers) is read from the file, so
+it can only lead further down inside the file's own storage: below
+`RC_Data_FMS/<name>/`, `Files/<name>/` or a folder named after the file. One that
+climbs out with `..`, starts with a drive letter, or names another hosted file's
+storage, a sibling folder, or `RC_Data_FMS` or `Files` themselves is skipped. If
+your base directory points somewhere else (a folder beside the hosted file, say),
+containers stored there show as missing and new ones go under `RC_Data_FMS/<name>/`:
+move the files into the folder named by the base directory below
+`RC_Data_FMS/<name>/` (or `Files/<name>/`). Nothing is moved for you.
+
 ### What won't work yet
 
 Before you invite anyone in, run:

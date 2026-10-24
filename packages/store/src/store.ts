@@ -479,19 +479,24 @@ function fileSize(path: string): number | undefined {
  * the default is named after the file). A base directory comes from the file,
  * so a root is kept only inside this file's own storage (those two folders, or
  * a folder named after the file beside it): never another hosted file's
- * storage, a sibling folder, or RC_Data_FMS and Files themselves.
+ * storage, a sibling folder, or RC_Data_FMS and Files themselves. A file named
+ * like one of those two folders has no folder of its own beside it: that would
+ * be the folder holding every file's storage (on a disk that ignores case, in
+ * any spelling).
  */
 export function externalRoots(folder: string, name: string, baseDirs: string[]): string[] {
   const roots: string[] = [];
-  const own = [resolve(folder, 'RC_Data_FMS', name), resolve(folder, 'Files', name), resolve(folder, name)];
+  const own = [resolve(folder, 'RC_Data_FMS', name), resolve(folder, 'Files', name)];
+  if (!['files', 'rc_data_fms'].includes(name.toLowerCase())) own.push(resolve(folder, name));
   const add = (...parts: string[]) => {
     const r = resolve(folder, ...parts);
     if (own.some((o) => r === o || r.startsWith(o + sep)) && !roots.includes(r)) roots.push(r);
   };
   for (const base of baseDirs) {
     const b = base.replace(/\\/g, '/').replace(/^\/+/, '');
-    // Windows drops a trailing dot or space from a name, so ".. " is ".." there; a drive letter leaves the folder.
-    if (b.split('/').some((part) => /[. ]$/.test(part)) || /^[A-Za-z]:/.test(b)) continue;
+    // Windows drops a trailing dot or space from a name, so ".. " is ".." there; a drive letter leaves the folder. A name
+    // that has anything else in it ("Acme Inc.") stays itself, there and everywhere else.
+    if (b.split('/').some((part) => part !== '.' && /^[. ]+$/.test(part)) || /^[A-Za-z]:/.test(b)) continue;
     for (const top of ['RC_Data_FMS', 'Files']) {
       add(top, name, b);
       add(top, b);
