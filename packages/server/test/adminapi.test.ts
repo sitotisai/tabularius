@@ -286,7 +286,7 @@ test('schedules: a backup schedule backs up the hosted files, keeps the newest s
       }
       t.mock.timers.tick(1100); // sets are named by the second
     }
-    const sets = readdirSync(target).filter((n) => !n.endsWith('.partial'));
+    const sets = readdirSync(target).filter((n) => !n.endsWith('.partial') && !n.startsWith('.'));
     assert.equal(sets.length, 2);
     assert.ok(existsSync(join(target, sets[0], 'Charts.fmp12')) || readdirSync(join(target, sets[0])).some((f) => f.startsWith('Charts')), 'the hosted file is in the set');
     const listed = (await call(`/schedules/${s.id}`, { headers: auth })).body.response.schedule;
