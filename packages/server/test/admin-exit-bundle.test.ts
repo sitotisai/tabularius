@@ -50,7 +50,7 @@ test('an unauthenticated request is refused before any bundle code runs', async 
 });
 
 test('bad names, missing credentials and unhosted files are refused', async () => {
-  for (const name of ['', '.', '..', '../escape', 'a/b', '.hidden', 'x.partial', 'a'.repeat(81)]) assert.equal((await copy(name)).status, 400, name);
+  for (const name of ['', '.', '..', '../escape', 'a/b', '.hidden', 'x.partial', 'x.lock', 'a'.repeat(81)]) assert.equal((await copy(name)).status, 400, name);
   assert.equal((await post('exit-bundle', { database: 'Shop', name: 'ok' })).status, 400);
   assert.equal((await post('exit-bundle', { database: 'Nothing', name: 'ok', account: 'Admin', password: PASSWORD })).status, 404);
   assert.equal(existsSync(join(dir, 'Exports', 'ok')), false);
@@ -82,6 +82,8 @@ test('success writes under Exports, never hosts it, and a second request for the
   assert.deepEqual(r.body, { ok: true, folder: 'Exports/first', tables: 1, rows: 1, containers: 0 });
   assert.ok(existsSync(join(dir, 'Exports', 'first', 'data.sqlite')));
   assert.equal((await copy('first')).status, 409);
+  const again = await copy('first');
+  assert.ok(!String(again.body.error).includes(dir));
   const host = new Host(dir);
   try {
     assert.deepEqual(host.names(), ['Shop']);
@@ -91,12 +93,27 @@ test('success writes under Exports, never hosts it, and a second request for the
 });
 
 test('an unfinished copy is discarded through the console, and 404 says when there is none', async () => {
-  assert.equal((await post('exit-bundle/discard', { database: 'Shop', name: 'none', account: 'Admin', password: PASSWORD })).status, 404);
+  const missing = await post('exit-bundle/discard', { database: 'Shop', name: 'none', account: 'Admin', password: PASSWORD });
+  assert.equal(missing.status, 404);
+  assert.ok(!String(missing.body.error).includes(dir));
   mkdirSync(join(dir, 'Exports', 'half.partial'), { mode: 0o700 });
   const r = await post('exit-bundle/discard', { database: 'Shop', name: 'half', account: 'Admin', password: PASSWORD });
   assert.equal(r.status, 200);
   assert.equal(existsSync(join(dir, 'Exports', 'half.partial')), false);
   assert.equal((await post('exit-bundle/discard', { database: 'Shop', name: 'half', account: 'Admin', password: 'wrong' })).status, 403);
+});
+
+test('a non-folder unfinished copy reports its name without the hosted path', async () => {
+  const elsewhere = join(dir, 'other-stage');
+  mkdirSync(elsewhere);
+  const stage = join(dir, 'Exports', 'bad-stage.partial');
+  symlinkSync(elsewhere, stage);
+  try {
+    const r = await post('exit-bundle/discard', { database: 'Shop', name: 'bad-stage', account: 'Admin', password: PASSWORD });
+    assert.equal(r.status, 409);
+    assert.match(String(r.body.error), /bad-stage\.partial/);
+    assert.ok(!String(r.body.error).includes(dir));
+  } finally { rmSync(stage); }
 });
 
 test('an Exports that is a symlink is refused', async () => {
@@ -106,6 +123,7 @@ test('an Exports that is a symlink is refused', async () => {
   symlinkSync(real, join(dir, 'Exports'));
   const r = await copy('through-a-link');
   assert.equal(r.status, 409);
+  assert.ok(!String(r.body.error).includes(dir));
   assert.deepEqual(readdirSync(real), []);
   rmSync(join(dir, 'Exports'));
 });
