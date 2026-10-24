@@ -31,9 +31,6 @@ export function slowBodyPending(req: IncomingMessage): boolean {
   if (!preAuthBodyPending(req) || req.headers.expect?.toLowerCase() === '100-continue') return false;
   return !!req.headers['transfer-encoding'] || Number(req.headers['content-length']) <= AUTH_BODY_LIMIT;
 }
-/** At most this many such requests per client address (an address with more is not a person signing in), and half the slots in all. */
-export const SLOW_BODIES_PER_ADDRESS = 2;
-
 interface Waiter {
   address: string;
   kind: RequestClass;
@@ -55,14 +52,17 @@ export class RequestGate {
   // Requests still waiting for a small body (a sign-in is read before the caller is known), so a few idle senders cannot take every slot.
   private slowBodies = 0;
   private readonly slowByAddress = new Map<string, number>();
+  /** How many such requests all addresses together may have (half the slots), and one address (a quarter: more is not one person signing in). */
   readonly slowBodyLimit: number;
+  readonly slowBodiesPerAddress: number;
 
   constructor(limit = positiveWholeNumber('TABULARIUS_REQUEST_LIMIT', process.env.TABULARIUS_REQUEST_LIMIT, 32, { min: 4 }), queueLimit = 64, waitMs = 750) {
     if (!Number.isInteger(limit) || limit < 4 || !Number.isInteger(queueLimit) || queueLimit < 0 || !Number.isInteger(waitMs) || waitMs < 1) throw new Error('Invalid request gate settings');
     this.limit = limit;
     this.queueLimit = queueLimit;
     this.waitMs = waitMs;
-    this.slowBodyLimit = Math.max(SLOW_BODIES_PER_ADDRESS, Math.floor(limit / 2));
+    this.slowBodyLimit = Math.max(2, Math.floor(limit / 2));
+    this.slowBodiesPerAddress = Math.max(2, Math.floor(limit / 4));
   }
 
   get running(): number { return this.active; }
@@ -78,7 +78,7 @@ export class RequestGate {
 
   private canRun(kind: RequestClass, address: string, req: IncomingMessage): boolean {
     if (this.active >= this.capacity(kind)) return false;
-    if ((this.slowBodies >= this.slowBodyLimit || (this.slowByAddress.get(address) ?? 0) >= SLOW_BODIES_PER_ADDRESS) && slowBodyPending(req)) return false;
+    if ((this.slowBodies >= this.slowBodyLimit || (this.slowByAddress.get(address) ?? 0) >= this.slowBodiesPerAddress) && slowBodyPending(req)) return false;
     // A single address can hold at most three quarters of ordinary capacity. Priority
     // calls can use the reserved slots even when that address is at its cap.
     return (this.byAddress.get(address) ?? 0) < Math.max(1, Math.floor((this.limit - 2) * 0.75)) + (kind === 'priority' ? 2 : 0);

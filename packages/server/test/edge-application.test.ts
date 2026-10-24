@@ -221,6 +221,9 @@ test('chunked bodies that trickle to the routes that read before sign-in are end
     // Each is answered (refused as busy, or ended at the deadline) and closed well before the 300 s idle budget.
     await Promise.all(group.map(c => c.until(text => /^HTTP\/1\.1 (408|503) /.test(text))));
     assert.ok(group.some(c => /^HTTP\/1\.1 408 /.test(c.text)), `${path}: a body that was let in ends at the total deadline`);
-    assert.match(await s.call('/docs/'), /^HTTP\/1\.1 200 /);
+    // An answered body's connection is cut within the two-second drain window; only then is its slot free again.
+    let docs = '';
+    for (let i = 0; i < 100 && !/^HTTP\/1\.1 200 /.test(docs); i++) { docs = await s.call('/docs/'); if (!/^HTTP\/1\.1 200 /.test(docs)) await sleep(50); }
+    assert.match(docs, /^HTTP\/1\.1 200 /);
   }
 });
