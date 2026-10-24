@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { Server } from 'node:http';
-import { createStore, type Store } from '../../store/src/index.ts';
+import { createStore, Store } from '../../store/src/index.ts';
 import { OAuthServer } from '../src/oauth.ts';
 import type { Host } from '../src/host.ts';
 import { serve } from '../src/index.ts';
@@ -113,6 +113,8 @@ for (const scenario of ['local', 'federated', 'changed password', 'unreadable id
         // Unreadable persisted JSON is tolerated during construction and binds without a person.
         if (scenario === 'unreadable identity') assert.equal(retained.password, expected);
         else {
+          // The file opened again meanwhile (the warmer does): opening fills in the identity of an account that has none, which must not void the grant.
+          new Store(store.path, 'Synthetic').close();
           const renewed = await refresh(client_id, issued.refresh_token);
           assert.equal(renewed.status, 200, await renewed.clone().text());
           const next = await renewed.json() as { access_token: string; refresh_token: string };
