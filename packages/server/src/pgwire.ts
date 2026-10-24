@@ -992,6 +992,9 @@ class Connection {
       // DDL, TRUNCATE and the like are refused when they run, with one plain message, not as a syntax error.
       if (!/^\s*(SELECT|WITH|VALUES|TABLE|\()/i.test(sql)) return;
     }
+    // SQLite applies a flag PRAGMA (foreign_keys, writable_schema, synchronous...) when it prepares the statement, and the
+    // statement below is prepared on the connection that writes, before the read-only checks have run. Refused at execution.
+    if (/^(?:\s+|--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)*(?:EXPLAIN\s+(?:QUERY\s+PLAN\s+)?)?PRAGMA\b/i.test(sql)) return;
     // These commands use PostgreSQL session syntax rather than SQLite syntax.
     if (/^(BEGIN|START\s+TRANSACTION|SET|RESET|SHOW|DISCARD|DEALLOCATE|DECLARE|FETCH|MOVE|CLOSE|PREPARE|EXECUTE|COPY|LISTEN|UNLISTEN|NOTIFY)\b/i.test(sql)) return;
     try {
