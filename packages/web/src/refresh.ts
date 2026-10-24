@@ -1,4 +1,5 @@
-import type { DataRecord, LayoutObject, RowState, FormulaState } from './types.ts';
+import type { DataRecord, LayoutObject, RowState, FormulaState, StyleRun, Value } from './types.ts';
+import { ownEntry, ownGet, ownSet } from './own-keys.ts';
 
 /** Reject a response for another window, layout or parent record. */
 export function refreshMatches(action: { windowId?: unknown; layoutId?: unknown; recordId?: unknown }, window: string, layout: number, record?: string): boolean {
@@ -102,4 +103,32 @@ export function foundPortalRange(shown: number[], ids: number[] | undefined, row
   else rows.forEach((row, i) => { if (row) positions.set(row.recordId, i); });
   const indices = shown.flatMap((id) => { const i = positions.get(String(id)); return i === undefined ? [] : [i]; });
   return indices.length ? { offset: Math.min(...indices) + 1, limit: Math.max(...indices) - Math.min(...indices) + 1 } : undefined;
+}
+
+/** After a related record's text was formatted in a portal row: the row's formatting in the record, which shows it. */
+export function keepPortalFormatting(rec: Pick<DataRecord, 'portalStyles'>, portal: string, recordId: string, key: string, runs: StyleRun[]): void {
+  const rows = ownEntry<Record<string, Record<string, StyleRun[]>>>(rec.portalStyles ??= {}, portal, () => ({}));
+  rows[recordId] = { ...rows[recordId], [key]: runs };
+  if (!runs.length) delete rows[recordId][key];
+}
+
+/** The portal rows Revert Record puts back, as the portalData of the update: one entry per portal, one row per related record. */
+export function portalRevert(rows: { portal: string; recordId: string; key: string; value: Value }[], made?: { portal: string; recordId: string }[]): Record<string, { recordId: string; [key: string]: Value }[]> {
+  const portalData: Record<string, { recordId: string; [key: string]: Value }[]> = {};
+  for (const r of rows) {
+    if (made?.some((m) => m.portal === r.portal && m.recordId === r.recordId)) continue;
+    const list = ownEntry(portalData, r.portal, () => []);
+    let row = list.find((x) => x.recordId === r.recordId);
+    if (!row) list.push(row = { recordId: r.recordId });
+    row[r.key] = r.value;
+  }
+  return portalData;
+}
+
+/** Refresh Portal: the portal's rows and formatting from `fresh` replace those of `old`, for a portal of any name. */
+export function replacePortal(old: Pick<DataRecord, 'portalData' | 'portalStyles'>, fresh: Pick<DataRecord, 'portalData' | 'portalStyles'>, portal: string): void {
+  ownSet(old.portalData, portal, ownGet(fresh.portalData, portal) ?? []);
+  const styles = ownGet(fresh.portalStyles, portal);
+  if (styles) ownSet(old.portalStyles ??= {}, portal, styles);
+  else if (old.portalStyles) delete old.portalStyles[portal];
 }
