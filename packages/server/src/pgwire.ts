@@ -57,8 +57,6 @@ const MAX_UNSIGNED_PER_ADDRESS = 50;
 /** The longest message a signed-in client may send, and the longest before sign-in (a password), in bytes. */
 const MAX_MESSAGE = 256 * 1024 * 1024;
 const MAX_UNSIGNED_MESSAGE = 10_000;
-/** How long a client may leave its answers unread before the connection is dropped, in ms. */
-const OUTPUT_STALL_MS = 60_000;
 const LOCAL_ADDRESSES = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 /** Signed-in SQL connections allowed concurrently on this server. */
 export const PGWIRE_LIMIT = { signedPerAccount: 32, signedGlobal: 256 };
@@ -279,6 +277,13 @@ export function txMaxMs(): number {
   return Number.isInteger(n) && n >= 0 ? n : 300_000;
 }
 
+/** How long a client may leave its answers unread before the connection is dropped, in ms (TABULARIUS_PGWIRE_OUTPUT_STALL_MS, default 60,000; 0 for no limit). Read each time the server waits for a client. */
+export function outputStallMs(): number {
+  const given = process.env.TABULARIUS_PGWIRE_OUTPUT_STALL_MS?.trim();
+  const n = given ? Number(given) : 60_000;
+  return Number.isInteger(n) && n >= 0 ? n : 60_000;
+}
+
 /** The SQLSTATE of a store error on a connection that can write (error code, then what the client can act on). */
 function writeState(code: number): string {
   if (code === 212) return '28000';
@@ -451,25 +456,40 @@ class Connection {
   /**
    * Waits while the client is not reading what was sent (the socket's write buffer is over its limit), and stops reading
    * its input meanwhile, so answers to queries it has pipelined do not pile up in memory. A client that stays blocked
-   * for a minute is disconnected.
+   * for TABULARIUS_PGWIRE_OUTPUT_STALL_MS (a minute) is disconnected. Nothing runs during the wait, so it does not count
+   * as work: a transaction's idle and age limits apply to it as they do between messages.
    */
   private async flushed(): Promise<void> {
     const socket = this.socket;
     if (!socket.writableNeedDrain || socket.destroyed) return;
     socket.pause();
-    await new Promise<void>((resolve) => {
-      const done = () => {
-        clearTimeout(timer);
-        socket.off('drain', done);
-        socket.off('close', done);
-        resolve();
-      };
-      const timer = setTimeout(() => socket.destroy(), OUTPUT_STALL_MS);
-      timer.unref();
-      socket.once('drain', done);
-      socket.once('close', done);
-    });
+    const stall = outputStallMs();
+    const working = this.working;
+    this.working = false;
+    this.lastActive = monotonicClock.now();
+    try {
+      await new Promise<void>((resolve) => {
+        const done = () => {
+          clearTimeout(timer);
+          socket.off('drain', done);
+          socket.off('close', done);
+          resolve();
+        };
+        const timer = stall > 0 ? setTimeout(() => socket.destroy(), stall) : undefined;
+        timer?.unref();
+        socket.once('drain', done);
+        socket.once('close', done);
+      });
+    } finally {
+      this.working = working;
+      this.lastActive = monotonicClock.now();
+    }
     if (!socket.destroyed) socket.resume();
+  }
+
+  /** Whether the client is gone or going: what is still to be sent to it need not be made. */
+  private gone(): boolean {
+    return this.socket.destroyed || this.socket.writableEnded;
   }
 
   private send(...parts: Buffer[]): void {
@@ -1026,7 +1046,8 @@ class Connection {
         await this.inUnit(async (tx) => {
           for (const sql of statements) await this.simpleWrite(this.session(sql, true)!.write!, tx);
         });
-      } catch (e) { this.sendError(e); }
+      } catch (e) { this.sendError(e); return; }
+      await this.flushed();
       return;
     }
     for (const sql of statements) {
@@ -1034,6 +1055,9 @@ class Connection {
         const own = this.session(sql, true);
         if (own?.write) {
           await this.inUnit((tx) => this.simpleWrite(own.write!, tx));
+          // The write is kept (or, inside BEGIN, held as the transaction is) before the wait for the client to read it.
+          await this.flushed();
+          if (this.gone()) return;
           continue;
         }
         if (own) {
@@ -1046,6 +1070,7 @@ class Connection {
         for (let i = 0; i < r.rows.length; i += 1000) {
           this.send(...r.rows.slice(i, i + 1000).map((row) => dataRow(row, r.cols)));
           await this.flushed();
+          if (this.gone()) return;
         }
         this.send(complete(`SELECT ${r.rows.length}`));
       } catch (e) {
@@ -1057,15 +1082,15 @@ class Connection {
     }
   }
 
-  /** A write sent as a simple query: its RETURNING rows, then its tag. */
+  /**
+   * A write sent as a simple query: its RETURNING rows, then its tag. Nothing here waits for the client to read: the
+   * unit this runs in is kept or undone when it ends, and the file is not held while the client is slow (the caller waits).
+   */
   private async simpleWrite(plan: WritePlan, tx: Transaction): Promise<void> {
     const { result, cols } = await this.runWrite(plan, [], tx);
     if (cols) {
       this.send(rowDescription(cols));
-      for (let i = 0; i < result.rows!.length; i += 1000) {
-        this.send(...result.rows!.slice(i, i + 1000).map((row) => dataRow(row, cols)));
-        await this.flushed();
-      }
+      for (let i = 0; i < result.rows!.length; i += 1000) this.send(...result.rows!.slice(i, i + 1000).map((row) => dataRow(row, cols)));
     }
     this.send(complete(result.tag));
   }
@@ -1253,6 +1278,7 @@ class Connection {
           for (let i = p.sent; i < end; i += 1000) {
             this.send(...r.rows.slice(i, Math.min(end, i + 1000)).map((row) => dataRow(row, r.cols, p.formats)));
             await this.flushed();
+            if (this.gone()) return;
           }
           p.sent = end;
           this.send(end < r.rows.length ? message('s') : complete(p.tag!));
@@ -1267,6 +1293,7 @@ class Connection {
         for (let i = p.sent; i < end; i += 1000) {
           this.send(...r.rows.slice(i, Math.min(end, i + 1000)).map((row) => dataRow(row, r.cols, p.formats)));
           await this.flushed();
+          if (this.gone()) return;
         }
         p.sent = end;
         this.send(end < r.rows.length ? message('s') : complete(`${own ? own.tag : 'SELECT'} ${own ? '' : r.rows.length}`.trim()));
