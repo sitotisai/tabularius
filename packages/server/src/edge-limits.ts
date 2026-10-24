@@ -4,8 +4,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { createServer as createTlsServer, type ServerOptions as TlsOptions } from 'node:https';
 import type { BlockList, Socket } from 'node:net';
 import { performance } from 'node:perf_hooks';
-import { AUTH_BODY_LIMIT, closeUnreadBody, continueOnRead } from './request-body.ts';
-import { smallBodyPending } from './request-gate.ts';
+import { AUTH_BODY_LIMIT, PRE_AUTH_BODY_LIMIT, closeUnreadBody, continueOnRead, preAuthBodyPending } from './request-body.ts';
 import { forwardedFor, trustedProxyPeer, type ProxyHeader } from './client-address.ts';
 import { requestClosesConnection, validHttpRequest } from './http-framing.ts';
 
@@ -17,9 +16,12 @@ export const EDGE_LIMITS = Object.freeze({
   headersMs: 10_000,
   // Body inactivity, not a total upload deadline: progressing authenticated uploads may take longer.
   bodyMs: 300_000,
-  // A body small enough to be a sign-in's (or a chunked one, up to that size, to a sign-in route or /mcp) must arrive within this total time: it is read before the
-  // caller is known, so a trickle of bytes must not hold it open for as long as the inactivity budget keeps being renewed.
+  // A body that a route may read before it knows who is calling (declared at most 256 KiB, or chunked until it has sent that much) must arrive within
+  // this total time once the handler starts reading it, scaled up for a declared size above 64 KiB (so the slowest accepted sender is about 4 KB/s).
+  // Otherwise a trickle of bytes keeps renewing the inactivity budget and holds a request slot for as long as it likes.
   smallBodyMs: 15_000,
+  // A response the peer does not read (bytes waiting in the socket, none accepted for this long) ends the connection and frees its request slot.
+  writeStallMs: 60_000,
   idleMs: 5_000,
   checkMs: 1_000,
   connections: 1024,
@@ -132,15 +134,20 @@ export function createEdgeServer(
     if (!req.complete) {
       const firstByte = req.socket.bytesRead;
       let bytes = firstByte;
-      const started = performance.now();
-      let progress = started;
+      let progress = performance.now();
+      // The total deadline runs from when the handler starts to read (any reader sets the flow mode), not from dispatch: a handler may queue first.
+      let reading: number | undefined;
+      const chunked = !!req.headers['transfer-encoding'];
+      const declared = Number(req.headers['content-length']);
+      const allowed = limits.smallBodyMs * (chunked ? 1 : Math.max(1, declared / AUTH_BODY_LIMIT));
       const timer = setInterval(() => {
         if (req.complete) { cleanup(); return; }
         if (req.socket.bytesRead !== bytes) { bytes = req.socket.bytesRead; progress = performance.now(); }
         const now = performance.now();
-        const slowSmall = smallBodyPending(req) && now - started >= limits.smallBodyMs
-          && (!req.headers['transfer-encoding'] || bytes - firstByte <= AUTH_BODY_LIMIT);
-        if (slowSmall || now - progress >= limits.bodyMs) {
+        if (reading === undefined && req.readableFlowing !== null) reading = now;
+        const tooSlow = reading !== undefined && preAuthBodyPending(req) && now - reading >= allowed
+          && (!chunked || bytes - firstByte <= PRE_AUTH_BODY_LIMIT);
+        if (tooSlow || now - progress >= limits.bodyMs) {
           cleanup();
           if (!res.headersSent) refuse(408);
           else req.socket.destroy();
@@ -155,6 +162,19 @@ export function createEdgeServer(
       req.once('end', cleanup);
       res.once('finish', cleanup);
       res.once('close', cleanup);
+    }
+    {
+      const socket = req.socket;
+      let sent = socket.bytesWritten;
+      let moved = performance.now();
+      const stalled = setInterval(() => {
+        const now = performance.now();
+        if (socket.bytesWritten !== sent || !socket.writableLength) { sent = socket.bytesWritten; moved = now; }
+        else if (now - moved >= limits.writeStallMs) { stop(); socket.destroy(); }
+      }, Math.min(limits.checkMs, limits.writeStallMs)).unref();
+      const stop = () => { clearInterval(stalled); res.off('finish', stop); res.off('close', stop); };
+      res.once('finish', stop);
+      res.once('close', stop);
     }
     const failed = () => {
       if (res.destroyed || res.writableEnded) return;
