@@ -14,6 +14,7 @@ export { normalizeWebViewerHost, normalizeWebViewerHosts, webViewerEntryCovers, 
 export { verifySecurityAudit, type SecurityAuditVerification } from './security-chain.ts';
 export { verifyRecordAudit, type RecordAuditVerification } from './record-chain.ts';
 export { anchorHead, checkAnchor, MIN_ANCHOR_KEY_BYTES, type AuditAnchor, type AuditChain, type AnchorCheck } from './audit-anchor.ts';
+export { MAX_SQL_TEXT, checkSqlSize } from './sql-tokens.ts';
 export { findWhere, type FieldInfo, type SqlValue } from './find.ts';
 export { generateTotpSecret, checkTotp, totpCode, totpUri } from './totp.ts';
 export { privilegeSetName, extendedPrivilegesOf, summarize, serialIncrement, serialNext, summaryColumns, rowsById, containerValue } from './calc.ts';
