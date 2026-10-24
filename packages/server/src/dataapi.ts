@@ -1394,7 +1394,7 @@ export class DataApi {
     const body = await readJson(req, AUTH_BODY_LIMIT);
     const from = clientAddress(req);
     if (typeof body.password !== 'string') throw new ApiError(960, 'Send {"password": "..."}: your current password is required for this', 400);
-    const blocked = this.credentialChangeBlock(store, account);
+    const blocked = await this.credentialChangeBlock(store, account);
     if (blocked) throw new ApiError(9, blocked, 403);
     if (!(await store.verifyAsync(account, body.password, from))) {
       store.auditSignIn(account, from, false, undefined, { reauth: true });
@@ -1412,8 +1412,8 @@ export class DataApi {
    * to ask for (only the file's, an empty one, or none after a restore), or a passkey as its required second factor,
    * which cannot answer here. The web client asks first so it can hide the actions.
    */
-  private credentialChangeBlock(store: Store, account: string): string | undefined {
-    if (!store.hasProvingPassword(account)) return 'This account has no password of its own in this file (or an empty one); set one with Change Password first, or ask an administrator';
+  private async credentialChangeBlock(store: Store, account: string): Promise<string | undefined> {
+    if (!(await store.hasProvingPassword(account))) return 'This account has no password of its own in this file, or an empty one; ask an administrator to set one (an account that signs in with the file\'s own password can also use Change Password)';
     const secondFactorRequired = (store.requireTotpForFullAccess() && store.privileges(account).full) || store.accountRequires2fa(account);
     if (!store.hasTotp(account) && secondFactorRequired && store.hasPasskey(account)) return 'This account uses a passkey as its second factor, which cannot confirm this here; ask an administrator';
     return undefined;
@@ -1890,7 +1890,7 @@ export class DataApi {
         }
       }
       if (p[2] === 'passkey' && p.length === 3 && method === 'GET') {
-        const confirmBlocked = this.credentialChangeBlock(store, self);
+        const confirmBlocked = await this.credentialChangeBlock(store, self);
         return { passkeys: store.passkeys(self), ...(confirmBlocked ? { confirmBlocked } : {}) };
       }
       if (p[2] === 'passkey' && p.length === 4 && method === 'DELETE') {
