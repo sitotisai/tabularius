@@ -300,23 +300,30 @@ for (const active of [false, true]) {
 
 test('another open of the file between the approval page and the click does not void the approval', { skip }, async () => {
   // Opening a file fills in the identity of every account that has none yet, and a background open (the warmer's) can come
-  // between the page and the click. The person's identity is part of what the approval is bound to, so it is settled when the
-  // page is made, not left for whoever opens the file next.
+  // between the page and the click, or between the sign-in and a refresh. The person's identity is part of what the approval
+  // and the refresh token are bound to, so it is settled when the mark is made, not left for whoever opens the file next.
   for (const name of ['@example.test', 'pat@example.test']) if (store.canonicalAccount(name)) store.deleteAccount(name);
   store.setExternalAccount('@example.test', 'Bot');
   store.setPassword('pat@example.test', 'person-password-123', 'NoAi');
-  person = { email: 'pat@example.test', email_verified: true };
-  const { verifier, client_id, params } = await appStart();
-  const consent = await throughProvider(params);
-  assert.equal(consent.status, 200);
-  const page = await consent.text();
-  const other = new Store(join(dir, 'Charts.openhbam.sqlite'), 'Charts');
-  other.close();
-  const back = await allow(page);
-  assert.equal(back.status, 302, 'the approval still stands');
-  const code = new URL(back.headers.get('location')!).searchParams.get('code')!;
-  const t = await post('/oauth/token', form({ grant_type: 'authorization_code', code, code_verifier: verifier, client_id, redirect_uri: REDIRECT }));
-  assert.equal(t.status, 200);
+  try {
+    person = { email: 'pat@example.test', email_verified: true };
+    const { verifier, client_id, params } = await appStart();
+    const consent = await throughProvider(params);
+    assert.equal(consent.status, 200);
+    const page = await consent.text();
+    new Store(store.path, 'Charts').close();
+    const back = await allow(page);
+    assert.equal(back.status, 302, 'the approval still stands');
+    const code = new URL(back.headers.get('location')!).searchParams.get('code')!;
+    const t = await post('/oauth/token', form({ grant_type: 'authorization_code', code, code_verifier: verifier, client_id, redirect_uri: REDIRECT }));
+    assert.equal(t.status, 200);
+    const { refresh_token } = await t.json() as { refresh_token: string };
+    new Store(store.path, 'Charts').close();
+    const refreshed = await post('/oauth/token', form({ grant_type: 'refresh_token', refresh_token, client_id }));
+    assert.equal(refreshed.status, 200, 'the refresh token still stands');
+  } finally {
+    for (const name of ['@example.test', 'pat@example.test']) if (store.canonicalAccount(name)) store.deleteAccount(name);
+  }
 });
 
 for (const change of ['inactive', 'no fmmcp', 'second factor', 'file AI off']) {
