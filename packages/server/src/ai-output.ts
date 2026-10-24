@@ -149,7 +149,7 @@ export function storedSecretValues(copy: Store): string[] {
     const names = secret.filter((f) => !f.options?.global).map((f) => `"${f.name.replace(/"/g, '""')}"`);
     if (!names.length) continue;
     try {
-      const r = copy.select(`SELECT ${names.join(', ')} FROM "${t.name.replace(/"/g, '""')}"`, [], 20_000);
+      const r = copy.select(`SELECT ${names.join(', ')} FROM "${t.name.replace(/"/g, '""')}"`, [], 20_000, true);
       for (const row of r.rows) for (const v of row) add(v);
     } catch {
       // a column that can't be read plainly (an unstored calculation) holds no stored secret
