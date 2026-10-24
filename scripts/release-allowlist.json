@@ -163,6 +163,10 @@
         "why": "the guide for AI coding agents"
       },
       {
+        "glob": "CHANGELOG.md",
+        "why": "what changed in each version"
+      },
+      {
         "glob": "CLAUDE.md",
         "why": "points coding agents at AGENTS.md"
       },
