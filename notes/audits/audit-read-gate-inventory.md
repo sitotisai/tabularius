@@ -393,10 +393,10 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/server/src/optimization.ts:449](../../packages/server/src/optimization.ts#L449) `speedFindings` | `Store.recordCount` (449, 492, 510) | DESIGN |
 | [packages/server/src/pgwire.ts:845](../../packages/server/src/pgwire.ts#L845) `Connection/bareNames` | `Store.describe` (845) | SQL |
 | [packages/server/src/pgwire.ts:861](../../packages/server/src/pgwire.ts#L861) `Connection/catalog` | `Store.describeTyped` (861) | SQL |
-| [packages/server/src/pgwire.ts:1233](../../packages/server/src/pgwire.ts#L1233) `Connection/describe` | `Store.describeTyped` (1233) | SQL |
+| [packages/server/src/pgwire.ts:1236](../../packages/server/src/pgwire.ts#L1236) `Connection/describe` | `Store.describeTyped` (1236) | SQL |
 | [packages/server/src/pgwire.ts:872](../../packages/server/src/pgwire.ts#L872) `Connection/run` | `Store.selectIn` (872); `Store.describeTyped` (876) | SQL |
 | [packages/server/src/pgwire.ts:822](../../packages/server/src/pgwire.ts#L822) `Connection/translate` | `Calculations.translateSQL` (822) | SQL |
-| [packages/server/src/pgwire.ts:1000](../../packages/server/src/pgwire.ts#L1000) `Connection/validateSyntax` | `SQLite.prepare` (1000); `Store.sql` (1000) | SQL |
+| [packages/server/src/pgwire.ts:1003](../../packages/server/src/pgwire.ts#L1003) `Connection/validateSyntax` | `SQLite.prepare` (1003); `Store.sql` (1003) | SQL |
 | [packages/server/src/pgwrite.ts:431](../../packages/server/src/pgwrite.ts#L431) `executeWrite/reader` | `Store.selectIn` (431) | SQL |
 | [packages/server/src/pgwrite.ts:404](../../packages/server/src/pgwrite.ts#L404) `returningColumns` | `Store.describe` (404) | SQL |
 | [packages/server/src/pii.ts:347](../../packages/server/src/pii.ts#L347) `PiiMasker/constructor` | `SQLite.get` (347); `SQLite.prepare` (347); `Store.sql` (347) | REDACTION |
