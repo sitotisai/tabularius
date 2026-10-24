@@ -35,10 +35,13 @@ in the extended protocol).
 
 `Store.select()` returns an array, and portals retain that array for later
 Execute messages. Its current API cannot stream rows. The limit bounds each
-result to 100,001 buffered rows by default, including the overflow check. It is not a
-process-wide byte budget: wide text or container values, multiple portals,
-concurrent connections, and SQLite's own query work can still consume more
-memory. The measurements below cover three modest text columns.
+result to 100,001 buffered rows by default, including the overflow check. Each
+result is also bounded in size: a text or blob value over 64 MB, or values that
+add up to more than 256 MB in one result, fail with error 812 and a message
+that says what to cut (this applies to every SQL path: ExecuteSQL, the SQL
+endpoint, `sql_query`, and the PostgreSQL port). There is no process-wide byte
+budget: multiple portals, concurrent connections, and SQLite's own query work
+can still consume more memory. The measurements below cover three modest text columns.
 Streaming rows in batches with no cap is a possible follow-up.
 
 ## Date and time result types
