@@ -1,16 +1,19 @@
 // An UPDATE reads the matching records, works out the new values and then writes them, with a turn of the event loop
 // in between. Another connection that writes in that gap must be refused, not have its change overwritten.
-import { test } from 'node:test';
+import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Host } from '../src/host.ts';
 import { PgServer } from '../src/pgwire.ts';
-import { createStore } from '../../store/src/index.ts';
+import { createStore, StoreError, type Store } from '../../store/src/index.ts';
 import { PgClient } from './pg-client.ts';
 
-test('concurrent UPDATE statements never lose an increment', async (t) => {
+const turn = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+/** A served file with an Items table and one account, closed with the test. */
+async function serve(t: TestContext) {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-pg-hold-'));
   createStore(join(dir, 'Shop.openhbam.sqlite'), { mode: 'native' });
   const host = new Host(dir), pg = new PgServer(host, { port: 0, writes: true });
@@ -28,6 +31,22 @@ test('concurrent UPDATE statements never lose an increment', async (t) => {
     rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
   const open = async () => { const c = await PgClient.open({ port, user: 'Ann', password: 'pw', database: 'Shop' }); clients.push(c); return c; };
+  return { store, open };
+}
+
+/** Waits until a write to the file is no longer refused because something holds it. */
+async function untilFree(store: Store): Promise<void> {
+  for (let i = 0; i < 20_000; i++) {
+    try { store.create('Items', { Name: 'free' }); return; } catch (e) {
+      if (!(e instanceof StoreError && e.code === 301)) throw e;
+      await turn();
+    }
+  }
+  assert.fail('the file is still held');
+}
+
+test('concurrent UPDATE statements never lose an increment', async (t) => {
+  const { store, open } = await serve(t);
   const [a, b] = [await open(), await open()];
   assert.equal((await a.simple("INSERT INTO Items (Name, Count) VALUES ('x', 0)")).error, undefined);
 
@@ -45,4 +64,29 @@ test('concurrent UPDATE statements never lose an increment', async (t) => {
   assert.ok(kept > 0);
   // A write that meets another's hold is told so (55P03), not silently overwritten.
   for (const code of refused) assert.equal(code, '55P03');
+});
+
+test('the hold is released when a statement fails while its values are worked out', async (t) => {
+  const { store, open } = await serve(t);
+  const c = await open();
+  assert.equal((await c.simple("INSERT INTO Items (Name, Count) VALUES ('x', 1)")).error, undefined);
+  // A NULL is refused after the records are found and the file is held.
+  const r = await c.simple("UPDATE Items SET Name = NULL WHERE Name = 'x'");
+  assert.ok(r.error, 'the statement is refused');
+  await untilFree(store);
+  assert.deepEqual((store.sql.prepare('SELECT Name FROM Items WHERE Count = 1').all() as { Name: string }[]).map((r) => r.Name), ['x'], 'nothing was changed');
+  // The same connection goes on working.
+  assert.equal((await c.simple("UPDATE Items SET Count = 2 WHERE Name = 'x'")).error, undefined);
+});
+
+test('the hold is released, and the statement is all or nothing, when the client disconnects in the middle of it', async (t) => {
+  const { store, open } = await serve(t);
+  const c = await open();
+  for (let i = 0; i < 600; i++) store.create('Items', { Name: `r${i}`, Count: 0 });
+  c.send('Q', Buffer.from('UPDATE Items SET Count = Count + 1\0'));
+  await turn();
+  c.close();
+  await untilFree(store);
+  const counts = (store.sql.prepare("SELECT DISTINCT Count FROM Items WHERE Name LIKE 'r%'").all() as { Count: number }[]).map((r) => Number(r.Count));
+  assert.equal(counts.length, 1, JSON.stringify(counts));
 });
