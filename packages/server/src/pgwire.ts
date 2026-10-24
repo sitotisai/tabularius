@@ -420,6 +420,11 @@ class Connection {
         await this.startup(body);
         continue;
       }
+      // A refused or abandoned sign-in leaves no privileges: whatever follows it is not run as anyone.
+      if (!this.privileges) {
+        this.socket.destroy();
+        return;
+      }
       if (this.buf.length < 5) return;
       const len = this.buf.readInt32BE(1);
       if (len < 4 || len > 256 * 1024 * 1024) throw new Error('bad message length');
