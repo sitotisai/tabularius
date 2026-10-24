@@ -5,6 +5,7 @@
 import { webViewerBridge, viewerMessage, restoreViewer, type ViewerState } from './web-viewer.ts';
 import { StyleSheet, elementOf } from './styles.ts';
 import { formatValue } from './format.ts';
+import { ownGet } from './own-keys.ts';
 import { editRuns, styledNodes } from './styled.ts';
 import { rotationOf, turnedBox } from './rotation.ts';
 import type { DataFormat, DataRecord, FieldMeta, FieldRef, LayoutMeta, LayoutObject, LayoutPart, PortalRow, Value, FormulaState } from './types.ts';
@@ -962,8 +963,8 @@ export class LayoutRenderer {
     const shown = portalRowsShown(p.rows, rowHeight, stretch, host.pageNumber !== undefined);
     // A found-set portal's rows not fetched yet are holes, filled as they scroll into view.
     const all: (PortalRow | undefined)[] = host.mode !== 'browse' ? [] : foundSet
-      ? host.foundSetRows?.(portal!.name, Math.max(0, p.initialRow - 1) + shown) ?? host.record?.portalData[portal!.name] ?? []
-      : host.record?.portalData[portal?.name ?? name] ?? [];
+      ? host.foundSetRows?.(portal!.name, Math.max(0, p.initialRow - 1) + shown) ?? ownGet(host.record?.portalData, portal!.name) ?? []
+      : ownGet(host.record?.portalData, portal?.name ?? name) ?? [];
     const firstRow = p.scrolling && host.pageNumber === undefined ? 0 : Math.max(0, p.initialRow - 1);
     const rows = all.slice(firstRow, p.scrolling && host.pageNumber === undefined ? undefined : firstRow + shown);
     const inner = h('div', { class: 'fm-portal-rows' });
