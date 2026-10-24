@@ -5301,9 +5301,13 @@ export class Store {
     }
     // Keep challenge consumption on a failed ceremony; the credential and event are atomic.
     return this.securityChange(() => {
-      this.sql.prepare(`INSERT INTO _fm_passkeys (id, account, public_key, sign_count, alg, label, created) VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET account = excluded.account, public_key = excluded.public_key, sign_count = excluded.sign_count, alg = excluded.alg`)
+      // The credential id is the registering client's choice and is readable from the sign-in allow-list, so a
+      // conflict may only refresh the account's own row, never move another account's passkey to this one.
+      const written = this.sql.prepare(`INSERT INTO _fm_passkeys (id, account, public_key, sign_count, alg, label, created) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET public_key = excluded.public_key, sign_count = excluded.sign_count, alg = excluded.alg
+        WHERE _fm_passkeys.account = excluded.account COLLATE NOCASE`)
         .run(cred.credentialId, account, cred.publicKey, cred.signCount, cred.alg, label ?? null, new Date().toISOString());
+      if (!written.changes) throw new StoreError(960, 'That passkey is already registered to another account; use a different authenticator');
       this.logSecurity('passkey-registered', { target: account, detail: { id: cred.credentialId, ...(label ? { label } : {}) } });
       return { id: cred.credentialId };
     });
