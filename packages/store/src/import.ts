@@ -154,8 +154,9 @@ export function importDesigns(sql: DatabaseSync, db: FmpDatabase, log: (msg: str
       log('the FileMaker file had [Guest] switched on; it comes across switched off, and Manage Security can switch it on');
     }
     sql.prepare('INSERT INTO _fm_meta VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json').run('designVersion', JSON.stringify(DESIGN_VERSION));
-    sql.exec('DELETE FROM _fm_images');
-    const addImage = sql.prepare('INSERT INTO _fm_images VALUES (?, ?, ?, ?)');
+    // The file's library is written over what it names. Images added in Tabularius (design mode, MCP design tools) are
+    // not in the file and are not in the design log, so they stay; layouts that use them still find them.
+    const addImage = sql.prepare('INSERT OR REPLACE INTO _fm_images VALUES (?, ?, ?, ?)');
     for (const [id, img] of readImageLibrary(db.file)) addImage.run(id, img.filename ?? null, img.mime, img.data);
     sql.exec('RELEASE import_designs');
   } catch (e) {
