@@ -1818,7 +1818,8 @@ const mediaType = (v: string | undefined) => {
 
 /** A container's file from base64 in a JSON body. */
 function fileOf(v: unknown, p: Prop, mime?: string, filename?: string): NonNullable<Fill['file']> {
-  if (typeof v !== 'string' || !/^[A-Za-z0-9+/\s]*={0,2}\s*$/.test(v)) throw bad(`${p.name}: a container's file is sent as base64 (or null to empty it)`, '500');
+  // Whitespace is removed first: a pattern that allowed it twice backtracked in quadratic time on a long run of it, which blocks the server.
+  if (typeof v !== 'string' || !/^[A-Za-z0-9+/]*={0,2}$/.test(v.replace(/\s+/g, ''))) throw bad(`${p.name}: a container's file is sent as base64 (or null to empty it)`, '500');
   const data = Buffer.from(v, 'base64');
   if (data.length > MAX_CONTAINER_BYTES) throw new ODataError(413, '960', `${p.name}: files over ${MAX_CONTAINER_BYTES / 1024 / 1024} MB go through the Data API's container upload`);
   return { filename: filename ? filename.replace(/^.*[\\/]/, '') || null : null, mime: mediaType(mime), data: new Uint8Array(data) };
