@@ -51,7 +51,7 @@ test('a passkey registers for the signed-in account, then signs a new session in
   const bearer = { authorization: `Bearer ${token}`, 'content-type': 'application/json' };
 
   // Ask the server for a registration challenge, forge the ceremony against it.
-  const opts = await json(await api('passkey/register/options', { method: 'POST', headers: bearer, body: '{}' }));
+  const opts = await json(await api('passkey/register/options', { method: 'POST', headers: bearer, body: JSON.stringify({ password: 'pw' }) }));
   assert.equal(opts.response.rpId, rpId);
   const challenge = String(opts.response.challenge);
   const reg = await json(await api('passkey/register', {
@@ -85,7 +85,7 @@ test('a passkey registers for the signed-in account, then signs a new session in
 
 test('recovery codes are issued to the account and sign in once each', { skip }, async () => {
   const token = await passwordToken();
-  const gen = await json(await api('recovery-codes', { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: '{}' }));
+  const gen = await json(await api('recovery-codes', { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ password: 'pw' }) }));
   const codes = gen.response.codes as string[];
   assert.equal(codes.length, 10);
   assert.equal(gen.response.remaining, 10);
@@ -114,7 +114,7 @@ test('a passkey as the second factor: refuses password-only once required, then 
   const token = await passwordToken();
   const auth = makeAuthenticator(rpId, origin);
   const bearer = { authorization: `Bearer ${token}`, 'content-type': 'application/json' };
-  const opts = await json(await api('passkey/register/options', { method: 'POST', headers: bearer, body: '{}' }));
+  const opts = await json(await api('passkey/register/options', { method: 'POST', headers: bearer, body: JSON.stringify({ password: 'pw' }) }));
   const challenge = String(opts.response.challenge);
   await api('passkey/register', { method: 'POST', headers: bearer, body: JSON.stringify({ response: { ...forgeRegistration(auth, challenge), challenge }, label: '2fa key' }) });
 
@@ -148,7 +148,7 @@ test('another account cannot delete your passkey', { skip }, async () => {
   const token = await passwordToken();
   const bearer = { authorization: `Bearer ${token}`, 'content-type': 'application/json' };
   const auth = makeAuthenticator(rpId, origin);
-  const opts = await json(await api('passkey/register/options', { method: 'POST', headers: bearer, body: '{}' }));
+  const opts = await json(await api('passkey/register/options', { method: 'POST', headers: bearer, body: JSON.stringify({ password: 'pw' }) }));
   const challenge = String(opts.response.challenge);
   const reg = await json(await api('passkey/register', { method: 'POST', headers: bearer, body: JSON.stringify({ response: { ...forgeRegistration(auth, challenge), challenge } }) }));
   const id = String(reg.response.id);

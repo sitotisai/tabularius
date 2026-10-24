@@ -402,7 +402,7 @@ A wrong, used or missing code is 212 "That recovery code is not valid" (401); re
 
 Makes a fresh set of ten recovery codes for the signed-in account, replacing any it had, and returns them once.
 
-**Permissions:** A valid session token for the file (Bearer or X-FM-Data-Access-Token); acts only on the session's own account.
+**Permissions:** A valid session token for the file (Bearer or X-FM-Data-Access-Token); acts only on the session's own account. The token alone is not enough: the account's current password is asked for again.
 
 **Parameters:**
 
@@ -411,12 +411,17 @@ Makes a fresh set of ten recovery codes for the signed-in account, replacing any
 | `version` | path | string | yes | vLatest, v1 or v2 (all answer the same) |
 | `database` | path | string | yes | The hosted file's name |
 | `Authorization` | header | string | yes | Bearer {token}: a session token from POST …/sessions, or a scoped API token (ohbt_…). The X-FM-Data-Access-Token header is accepted in its place. |
+| `password` | body | string | yes | The account's current password. A wrong one is 212 (401); a missing one is 960 (400). |
+| `code` | body | string | no | A current one-time code from the authenticator app; required (error 1211, 401) when the account has one set up. |
 
 **Example:**
 
 ```http
 POST /fmi/data/vLatest/databases/Invoices/recovery-codes
 Authorization: Bearer <session-token>
+Content-Type: application/json
+
+{"password": "<current-password>"}
 ```
 
 Response `200`:
@@ -446,7 +451,7 @@ Response `200`:
 
 Starts registering a passkey for the signed-in account: returns a challenge and the credential ids it already has.
 
-**Permissions:** A valid session token for the file; acts only on the session's own account.
+**Permissions:** A valid session token for the file; acts only on the session's own account. The token alone is not enough: the account's current password is asked for again.
 
 **Parameters:**
 
@@ -455,6 +460,8 @@ Starts registering a passkey for the signed-in account: returns a challenge and 
 | `version` | path | string | yes | vLatest, v1 or v2 (all answer the same) |
 | `database` | path | string | yes | The hosted file's name |
 | `Authorization` | header | string | yes | Bearer {token}: a session token from POST …/sessions, or a scoped API token (ohbt_…). The X-FM-Data-Access-Token header is accepted in its place. |
+| `password` | body | string | yes | The account's current password. A wrong one is 212 (401); a missing one is 960 (400). |
+| `code` | body | string | no | A current one-time code from the authenticator app; required (error 1211, 401) when the account has one set up. |
 
 **Example:**
 
@@ -463,7 +470,7 @@ POST /fmi/data/vLatest/databases/Invoices/passkey/register/options
 Authorization: Bearer <session-token>
 Content-Type: application/json
 
-{}
+{"password": "<current-password>"}
 ```
 
 Response `200`:

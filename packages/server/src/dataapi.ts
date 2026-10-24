@@ -1384,6 +1384,28 @@ export class DataApi {
     return token;
   }
 
+  /**
+   * The proof a credential that outlives this session asks for (recovery codes, a passkey): the account's own password
+   * and, when it has a one-time code set up, a current code, as signing in does. A session or API token alone is not
+   * enough, since the credential would stay valid after the token is revoked or the password changed.
+   */
+  private async confirmCredentialChange(req: IncomingMessage, store: Store, account: string): Promise<void> {
+    const body = await readJson(req, AUTH_BODY_LIMIT);
+    const from = clientAddress(req);
+    if (typeof body.password !== 'string' || !body.password) throw new ApiError(960, 'Send {"password": "..."}: your current password is required for this', 400);
+    if (!(await store.verifyAsync(account, body.password, from))) {
+      this.host.logs?.write('Access', 'Warning', from, `${account} was refused a credential change in ${store.name}: wrong password`);
+      throw new ApiError(212, 'The current password is wrong', 401);
+    }
+    if (!store.hasTotp(account)) return;
+    const code = typeof body.code === 'string' ? body.code : '';
+    if (!code) throw new ApiError(1211, 'A one-time code from your authenticator app is required', 401);
+    if (!store.verifyTotp(account, code, from)) {
+      this.host.logs?.write('Access', 'Warning', from, `${account} was refused a credential change in ${store.name}: wrong one-time code`);
+      throw new ApiError(1211, 'That one-time code is not valid; check your authenticator app', 401);
+    }
+  }
+
   /** The second-factor rules of a password sign-in to one file: the code, a passkey-only account, and the file's or account's requirement. */
   private checkSecondFactor(store: Store, account: string, from: string, code: string): void {
     const secondFactorRequired = (store.requireTotpForFullAccess() && store.privileges(account).full) || store.accountRequires2fa(account);
@@ -1827,11 +1849,14 @@ export class DataApi {
       const self = session.account;
       if (session.via || session.externalIdentity) throw new ApiError(9, 'This session signed in through an identity provider and cannot manage local account credentials', 403);
       if (p[2] === 'recovery-codes' && p.length === 3 && method === 'POST') {
+        await this.confirmCredentialChange(req, store, self);
         return { codes: store.generateRecoveryCodes(self), remaining: store.recoveryCodesRemaining(self) };
       }
       if (p[2] === 'passkey' && p[3] === 'register' && p[4] === 'options' && method === 'POST') {
         const wait = store.challengeWait(clientAddress(req));
         if (wait) throw new ApiError(212, 'Too many requests; try again shortly', 429, undefined, wait);
+        // The challenge is bound to this account and is what registration needs, so the proof is asked here.
+        await this.confirmCredentialChange(req, store, self);
         return { challenge: store.issueWebauthnChallenge('register', self), rpId: env.rpId,
           user: { name: self }, excludeCredentials: store.passkeyIds(self) };
       }
