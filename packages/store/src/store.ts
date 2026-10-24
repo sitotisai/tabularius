@@ -1294,6 +1294,12 @@ export class Store {
     }
   }
 
+  /** Whether the account has a password of its own that is worth asking for again: set in Tabularius (not only the file's own verifier) and not empty. */
+  hasProvingPassword(account: string): boolean {
+    const hash = (this.sql.prepare('SELECT password_hash FROM _fm_accounts WHERE name = ? COLLATE NOCASE').get(account) as { password_hash: string | null } | undefined)?.password_hash;
+    return hash != null && !checkPassword('', hash);
+  }
+
   /** Whether the account has a password set in Tabularius (an empty one included), not only the file's own verifier. */
   hasOwnPassword(account: string): boolean {
     return (this.sql.prepare('SELECT password_hash FROM _fm_accounts WHERE name = ? COLLATE NOCASE').get(account) as { password_hash: string | null } | undefined)?.password_hash != null;
@@ -2746,8 +2752,8 @@ export class Store {
    * surface, as they happen; stateless per-request re-authentication (MCP) is
    * not recorded here, to keep the log to genuine sign-ins.
    */
-  auditSignIn(account: string, from: string, ok: boolean, factor?: 'two-factor' | 'passkey' | 'recovery-code'): void {
-    this.logSecurity(ok ? 'sign-in' : 'sign-in-failed', { account, from, ...(factor ? { detail: { factor } } : {}) });
+  auditSignIn(account: string, from: string, ok: boolean, factor?: 'two-factor' | 'passkey' | 'recovery-code', extra?: Record<string, unknown>): void {
+    this.logSecurity(ok ? 'sign-in' : 'sign-in-failed', { account, from, ...(factor || extra ? { detail: { ...(factor ? { factor } : {}), ...extra } } : {}) });
   }
 
   /**

@@ -411,7 +411,7 @@ Makes a fresh set of ten recovery codes for the signed-in account, replacing any
 | `version` | path | string | yes | vLatest, v1 or v2 (all answer the same) |
 | `database` | path | string | yes | The hosted file's name |
 | `Authorization` | header | string | yes | Bearer {token}: a session token from POST …/sessions, or a scoped API token (ohbt_…). The X-FM-Data-Access-Token header is accepted in its place. |
-| `password` | body | string | yes | The account's current password. A wrong one is 212 (401) and counts toward the sign-in lockout (a locked-out account gets 212 with the time to retry); a missing one is 960 (400). An account with no password set in this file (only the file's own, an empty one, or none) is refused with 9 (403) until an administrator sets one. |
+| `password` | body | string | yes | The account's current password. A wrong one is 212 (401) and counts toward the sign-in lockout (a locked-out account gets 212 with the time to retry); a missing one is 960 (400). An account with no password of its own in this file (only the file's own, an empty one, or none) is refused with 9 (403) until it sets one with Change Password or an administrator does. |
 | `code` | body | string | no | A current one-time code from the authenticator app; required (error 1211, 401) when the account has one set up. An account whose required second factor is a passkey is refused with 9 (403), since a passkey cannot answer in this request. |
 
 **Example:**
@@ -460,7 +460,7 @@ Starts registering a passkey for the signed-in account: returns a challenge and 
 | `version` | path | string | yes | vLatest, v1 or v2 (all answer the same) |
 | `database` | path | string | yes | The hosted file's name |
 | `Authorization` | header | string | yes | Bearer {token}: a session token from POST …/sessions, or a scoped API token (ohbt_…). The X-FM-Data-Access-Token header is accepted in its place. |
-| `password` | body | string | yes | The account's current password. A wrong one is 212 (401) and counts toward the sign-in lockout (a locked-out account gets 212 with the time to retry); a missing one is 960 (400). An account with no password set in this file (only the file's own, an empty one, or none) is refused with 9 (403) until an administrator sets one. |
+| `password` | body | string | yes | The account's current password. A wrong one is 212 (401) and counts toward the sign-in lockout (a locked-out account gets 212 with the time to retry); a missing one is 960 (400). An account with no password of its own in this file (only the file's own, an empty one, or none) is refused with 9 (403) until it sets one with Change Password or an administrator does. |
 | `code` | body | string | no | A current one-time code from the authenticator app; required (error 1211, 401) when the account has one set up. An account whose required second factor is a passkey is refused with 9 (403), since a passkey cannot answer in this request. |
 
 **Example:**
@@ -594,7 +594,7 @@ Response `200`:
 }
 ```
 
-label and lastUsed are left out when not set.
+label and lastUsed are left out when not set. confirmBlocked is present, with the reason, when the account cannot make recovery codes or a passkey over the API (it has no password of its own in this file, or an empty one, or a passkey is its required second factor); the web client uses it to turn those actions off.
 
 <a id="data-api-sessions-delete-fmi-data-version-databases-database-passkey-credentialid"></a>
 

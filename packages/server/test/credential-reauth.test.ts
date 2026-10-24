@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createStore, totpCode } from '../../store/src/index.ts';
+import { createStore, hashPassword, totpCode } from '../../store/src/index.ts';
 import { LOCKOUT } from '../../store/src/sign-in-failures.ts';
 import { makeAuthenticator, forgeRegistration } from '../../store/test/forge-webauthn.ts';
 import { serve } from '../src/index.ts';
@@ -135,7 +135,42 @@ test('an account with no password here is told so, not that its password is wron
     const r = await fetch(url('recovery-codes'), { method: 'POST', headers: { authorization: `Bearer ${bearer}`, 'content-type': 'application/json' }, body: JSON.stringify(sent) });
     const body = (await r.json()) as { messages: { message: string }[] };
     assert.equal(r.status, 403);
-    assert.match(body.messages[0].message, /no password in this file; ask an administrator to set one/);
+    assert.match(body.messages[0].message, /no password of its own in this file.*Change Password/);
   }
   assert.equal(store.recoveryCodesRemaining('Nopass'), 0);
+});
+
+test('an empty password is not a proof, even when it is the stored one', async () => {
+  const store = s.host.get('Shop')!;
+  const full = store.privilegeSets().find((p) => p.id === 1)!;
+  store.setPassword('Blanky', password, full.name);
+  const bearer = store.createApiToken('Blanky');
+  store.sql.prepare('UPDATE _fm_accounts SET password_hash = ? WHERE name = ?').run(hashPassword(''), 'Blanky');
+  for (const path of ['recovery-codes', 'passkey/register/options']) {
+    const r = await post(bearer, path, { password: '' });
+    assert.deepEqual(rejected(r), { status: 403, code: '9' }, path);
+  }
+  assert.equal(store.recoveryCodesRemaining('Blanky'), 0);
+});
+
+test('the passkey-second-factor refusal says to ask an administrator', async () => {
+  const bearer = s.host.get('Shop')!.createApiToken('Cara');
+  const r = await fetch(url('recovery-codes'), { method: 'POST', headers: { authorization: `Bearer ${bearer}`, 'content-type': 'application/json' }, body: JSON.stringify({ password }) });
+  const body = (await r.json()) as { messages: { message: string }[] };
+  assert.match(body.messages[0].message, /passkey as its second factor.*ask an administrator/);
+});
+
+test('the passkey list says up front when this account cannot confirm a credential change', async () => {
+  const list = async (bearer: string) => ((await (await fetch(url('passkey'), { headers: { authorization: `Bearer ${bearer}` } })).json()) as { response: { confirmBlocked?: string } }).response;
+  const store = s.host.get('Shop')!;
+  assert.equal((await list(token)).confirmBlocked, undefined);
+  assert.match((await list(store.createApiToken('Cara'))).confirmBlocked ?? '', /passkey as its second factor/);
+  assert.match((await list(store.createApiToken('Nopass'))).confirmBlocked ?? '', /Change Password/);
+  assert.match((await list(store.createApiToken('Blanky'))).confirmBlocked ?? '', /Change Password/);
+});
+
+test('a wrong password here is a failed sign-in marked as a credential-change confirmation', async () => {
+  const store = s.host.get('Shop')!;
+  const failure = store.auditLog({ security: true, limit: 500 }).find((e) => e.kind === 'sign-in-failed' && e.account === 'Locky');
+  assert.equal((failure?.changes as { reauth?: boolean } | undefined)?.reauth, true);
 });

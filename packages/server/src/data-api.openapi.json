@@ -879,7 +879,7 @@
                 "properties": {
                   "password": {
                     "type": "string",
-                    "description": "The account's current password. A wrong one is 212 (401) and counts toward the sign-in lockout (a locked-out account gets 212 with the time to retry); a missing one is 960 (400). An account with no password set in this file (only the file's own, an empty one, or none) is refused with 9 (403) until an administrator sets one."
+                    "description": "The account's current password. A wrong one is 212 (401) and counts toward the sign-in lockout (a locked-out account gets 212 with the time to retry); a missing one is 960 (400). An account with no password of its own in this file (only the file's own, an empty one, or none) is refused with 9 (403) until it sets one with Change Password or an administrator does."
                   },
                   "code": {
                     "type": "string",
@@ -1012,7 +1012,7 @@
                 "properties": {
                   "password": {
                     "type": "string",
-                    "description": "The account's current password. A wrong one is 212 (401) and counts toward the sign-in lockout (a locked-out account gets 212 with the time to retry); a missing one is 960 (400). An account with no password set in this file (only the file's own, an empty one, or none) is refused with 9 (403) until an administrator sets one."
+                    "description": "The account's current password. A wrong one is 212 (401) and counts toward the sign-in lockout (a locked-out account gets 212 with the time to retry); a missing one is 960 (400). An account with no password of its own in this file (only the file's own, an empty one, or none) is refused with 9 (403) until it sets one with Change Password or an administrator does."
                   },
                   "code": {
                     "type": "string",
@@ -1157,7 +1157,7 @@
           "Data API: sessions and sign-in"
         ],
         "summary": "Lists the signed-in account's passkeys, newest first.",
-        "description": "**Permissions:** A valid session token for the file; lists only the session's own account.\n\nlabel and lastUsed are left out when not set.",
+        "description": "**Permissions:** A valid session token for the file; lists only the session's own account.\n\nlabel and lastUsed are left out when not set. confirmBlocked is present, with the reason, when the account cannot make recovery codes or a passkey over the API (it has no password of its own in this file, or an empty one, or a passkey is its required second factor); the web client uses it to turn those actions off.",
         "security": [
           {
             "bearerAuth": []
