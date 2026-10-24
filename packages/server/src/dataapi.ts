@@ -35,7 +35,7 @@ import { AUTH_BODY_LIMIT, drainSmallBody } from './request-body.ts';
 import { assertRequestJsonBounds, JsonDepthError, JsonSizeError, JsonNumberError, MAX_JSON_QUERY_BYTES, parseRequestJson } from './request-json.ts';
 import { PASSKEY_SECOND_FACTOR_REQUIRED } from '../../store/src/error-codes.ts';
 import { SignInFailures, sharedSource } from '../../store/src/sign-in-failures.ts';
-import { publicPasswordLockout } from './password-login-policy.ts';
+import { localOnlyRefused, publicPasswordLockout } from './password-login-policy.ts';
 import { noteSurfaceSignIn } from './surface-access.ts';
 import { requestOrigin } from './public-origin.ts';
 import { createHash, randomBytes } from 'node:crypto';
@@ -1467,7 +1467,14 @@ export class DataApi {
         this.host.logs?.write('Access', 'Warning', from, `${username} could not sign in to ${other.name} (a data source of ${store.name}): wrong account or password`);
         throw new ApiError(212, 'Invalid user account and/or password; please try again', 401);
       }
+      // The same rules as a direct sign-in to that file: a local-only account away from the server is refused as a wrong password,
+      // and an owed password change is refused (this session can't make it). The server-wide block on new users was checked for the login.
+      if (localOnlyRefused(other, username, from)) {
+        this.host.logs?.write('Access', 'Warning', from, `${username} could not sign in to ${other.name} (a data source of ${store.name}): this account may sign in only from the server itself`);
+        throw new ApiError(212, 'Invalid user account and/or password; please try again', 401);
+      }
       this.checkSecondFactor(other, username, from, code);
+      if (other.mustChangePassword(username)) throw new ApiError(212, `This account must change its password in ${other.name} before continuing; sign in to that file directly, change it, then try again`, 403);
       other.auditSignIn(username, from, true);
       out[name] = { account: username, principalId };
     }
@@ -1642,7 +1649,7 @@ export class DataApi {
           ...(e.denial ? { 'tabularius:denial': explainAccessDenial(e.denial) } : {}) };
       }
       const files = new Map<Store, () => void>();
-      const r = await runScript(store, script, { parameter, layout, foundSet, account: session.account, session: session.scripts, ...this.host.scriptOptions(store.name), executionAccount: session.account, executionVia: session.via, privileges,
+      const r = await runScript(store, script, { parameter, layout, foundSet, account: session.account, ...(session.from ? { clientAddress: session.from } : {}), session: session.scripts, ...this.host.scriptOptions(store.name), executionAccount: session.account, executionVia: session.via, privileges,
         beforeFile: (file) => {
           checkCurrent(true);
           if (!files.has(file)) files.set(file, this.fileGuard(file));
