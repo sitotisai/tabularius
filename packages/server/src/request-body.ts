@@ -2,14 +2,6 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 
 /** Maximum envelope while credentials still need to be verified from the body. */
 export const AUTH_BODY_LIMIT = 64 * 1024;
-/** A body still arriving that a sign-in route may be waiting to read before it knows who is calling: its declared size is
- * small, or it is chunked and so declares none. A real upload declares a larger size. */
-export function smallBodyPending(req: IncomingMessage): boolean {
-  if (req.complete) return false;
-  if (req.headers['transfer-encoding']) return true;
-  const length = Number(req.headers['content-length']);
-  return length > 0 && length <= AUTH_BODY_LIMIT;
-}
 /** Discarding is time-bounded, never buffered: even a stalled sender is closed promptly. */
 export const BODY_DRAIN_TIMEOUT_MS = 2000;
 
