@@ -1,5 +1,5 @@
-// A connection refused for the per-address unsigned limit is forgotten when its socket closes, so a client that
-// reconnects in a loop cannot grow the server's memory.
+// A connection refused for the per-address unsigned limit is closed and forgotten, so a client that reconnects in a
+// loop (and sends its startup message first, as clients do) cannot grow the server's memory or fill its socket cap.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -36,10 +36,15 @@ test('refused unsigned connections are not retained by the server', async (t) =>
   for (let i = 0; i < 50; i++) held.push(await open(port));
   for (let i = 0; i < 20; i++) {
     const refused = await open(port);
+    // As a real client does: the startup message goes first, and the client waits for the server to answer and close.
+    const params = Buffer.from('user\0nobody\0database\0nothing\0\0'), head = Buffer.alloc(8);
+    head.writeInt32BE(8 + params.length); head.writeInt32BE(196608, 4);
+    refused.write(Buffer.concat([head, params]));
     refused.on('data', () => {});
     await closed(refused);
   }
   // The client sees the close before the server's own handlers have all run; give them turns of the event loop.
   for (let i = 0; i < 1000 && conns() > 50; i++) await new Promise((resolve) => setImmediate(resolve));
   assert.equal(conns(), 50, 'only the connections still open are kept');
+  assert.equal(pg.connections, 50, 'and the refused sockets are closed');
 });
