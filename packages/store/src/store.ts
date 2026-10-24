@@ -19,7 +19,7 @@ import { boundedStatement, collectRows } from './sql-result.ts';
 import { DatabaseSync, backup, type Session, type StatementSync, type SQLInputValue, type SQLOutputValue } from 'node:sqlite';
 import { createHash, createHmac, pbkdf2Sync, scrypt, scryptSync, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { isIP } from 'node:net';
-import { basename, dirname, extname, join, relative, resolve, isAbsolute } from 'node:path';
+import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { closeSync, constants as fsConstants, copyFileSync, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, readdirSync, readSync, renameSync, rmSync, statSync } from 'node:fs';
 import { checkedFile, cleanupPath, openSync, readFileSync, writeFileSync, writeSync } from './fs-boundary.ts';
 import { externalFieldNames, parseDate, parseTime, parseTimestamp, type DateStyle, type Field, type FieldType, type LayoutDesign, type LayoutDesigns, type LayoutObject, type Schema, type Table } from '../../fmp12/src/index.ts';
@@ -476,19 +476,22 @@ function fileSize(path: string): number | undefined {
  * Where a hosted file's externally stored container files may be, first match
  * first: FileMaker Server keeps them in RC_Data_FMS/<file>/, FileMaker Pro in
  * Files/<file>/, each under the field's base directory (Manage Containers;
- * the default is named after the file). Every one is inside `folder`.
+ * the default is named after the file). A base directory comes from the file,
+ * so a root is kept only inside this file's own storage (those two folders, or
+ * a folder named after the file beside it): never another hosted file's
+ * storage, a sibling folder, or RC_Data_FMS and Files themselves.
  */
 export function externalRoots(folder: string, name: string, baseDirs: string[]): string[] {
   const roots: string[] = [];
+  const own = [resolve(folder, 'RC_Data_FMS', name), resolve(folder, 'Files', name), resolve(folder, name)];
   const add = (...parts: string[]) => {
     const r = resolve(folder, ...parts);
-    const inside = relative(folder, r);
-    if (inside && !inside.startsWith('..') && !isAbsolute(inside) && !roots.includes(r)) roots.push(r);
+    if (own.some((o) => r === o || r.startsWith(o + sep)) && !roots.includes(r)) roots.push(r);
   };
   for (const base of baseDirs) {
     const b = base.replace(/\\/g, '/').replace(/^\/+/, '');
-    // The path comes from the file: one that climbs out, or names a drive, would reach another hosted file's storage or a sibling folder.
-    if (b.split('/').includes('..') || /^[A-Za-z]:/.test(b)) continue;
+    // Windows drops a trailing dot or space from a name, so ".. " is ".." there; a drive letter leaves the folder.
+    if (b.split('/').some((part) => /[. ]$/.test(part)) || /^[A-Za-z]:/.test(b)) continue;
     for (const top of ['RC_Data_FMS', 'Files']) {
       add(top, name, b);
       add(top, b);
