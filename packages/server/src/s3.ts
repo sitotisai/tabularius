@@ -16,6 +16,7 @@
 // in parts (S3 takes at most 5 GB in one request).
 
 import { readJsonStateSync, updateJsonStateSync } from '../../store/src/durable.ts';
+import { prunedSets } from './pruned-sets.ts';
 import { redactDiagnosticText } from '../../scripts/src/redaction.ts';
 import { secret } from '../../store/src/settings.ts';
 import { createHash, createHmac } from 'node:crypto';
@@ -270,8 +271,8 @@ function walk(dir: string, root = dir, skipped: string[] = []): string[] {
 
 /**
  * Makes the bucket match the backup folder: uploads files that are new or
- * changed since the last time, removes objects whose files are gone (sets
- * pruned locally). Returns what it did.
+ * changed since the last time, removes the objects of sets that backup
+ * retention pruned locally (not sets that are merely missing). Returns what it did.
  */
 export async function mirrorUp(folder: string, s3: S3): Promise<{ uploaded: number; removed: number; bytes: number; skipped: string[] }> {
   const record = join(folder, MIRRORED);
@@ -314,26 +315,19 @@ export async function mirrorUp(folder: string, s3: S3): Promise<{ uploaded: numb
   let removed = 0;
   const local = new Set([...here].map((r) => s3.key(r)));
   const protectedSets = skipped.map((entry) => s3.key(entry.split(':', 1)[0]!) + '/');
-  const stale: string[] = [];
+  // Only sets that retention removed here. A folder that is emptied, not mounted, moved or new has pruned nothing, so
+  // the sets already off-site (maybe the only copies) stay.
+  const pruned = prunedSets(folder);
   for (const o of remote) {
     const rel = s3.prefix ? o.key.slice(s3.prefix.length + 1) : o.key;
     // Only what this mirrors: sets (dated folders) under the prefix.
-    if (!/^\d{4}-\d{2}-\d{2}_\d{6}\//.test(rel) || local.has(o.key) || protectedSets.some((prefix) => o.key.startsWith(prefix))) continue;
+    if (!/^\d{4}-\d{2}-\d{2}_\d{6}\//.test(rel) || !pruned.has(rel.split('/', 1)[0]!) || local.has(o.key) || protectedSets.some((prefix) => o.key.startsWith(prefix))) continue;
     // A second mirror may have uploaded a file created since our initial walk.
     if (safeExistingPath(folder, rel.split('/').join(sep))) continue;
-    stale.push(o.key);
-  }
-  // A backup folder with no sets (emptied, not mounted, moved, or a fresh path) is not a
-  // retention prune: the off-site copies may be the only ones left, so keep them.
-  if (stale.length && ![...here].some((rel) => /^\d{4}-\d{2}-\d{2}_\d{6}\//.test(rel.split(sep).join('/'))) && !protectedSets.length) {
-    throw new Error(`the backup folder ${folder} holds no backup sets, so the ${stale.length} off-site files were left alone and nothing was removed there; check that the folder is mounted and is the right one`);
-  }
-  // Record what went up before anything is removed, so a failure here cannot lose the marks.
-  save();
-  for (const key of stale) {
-    await s3.delete(key);
+    await s3.delete(o.key);
     removed++;
   }
+  save();
   return { uploaded, removed, bytes, skipped };
 }
 
