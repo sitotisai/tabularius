@@ -26,6 +26,9 @@ for (const end of ['ROLLBACK', 'COMMIT']) {
     store.setPassword('Boss', 'pw', full.name);
     store.setPassword('Locky', 'pw', full.name);
     store.setPassword('Writer', 'pw', 'CreateOnly');
+    store.setPassword('Fresh', 'pw', full.name);
+    // Accounts that have signed in before have an identity id; Fresh has not, and making one is a write.
+    for (const account of ['Boss', 'Locky', 'Writer']) store.accountIdentityId(account);
     const port = await pg.listen();
     const clients: PgClient[] = [];
     t.after(async () => { for (const c of clients) c.close(); pg.close(); await host.close(); rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }); });
@@ -37,6 +40,8 @@ for (const end of ['ROLLBACK', 'COMMIT']) {
     assert.equal((await w.simple("INSERT INTO Items (Name) VALUES ('x')")).error, undefined);
     const started = Date.now();
 
+    // An account's first sign-in makes its identity id, which is a write: refused while the file is held, and said so.
+    await assert.rejects(() => open('Fresh'), /^Error: 55P03 /);
     // A wrong password and then the right one, while the file is held.
     await assert.rejects(() => open('Boss', 'wrong'), /28P01/);
     const boss = await open('Boss');
