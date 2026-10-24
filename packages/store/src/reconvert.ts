@@ -11,6 +11,7 @@ import { renameFileSync as renameSync } from './file-ops.ts';
 //   - records deleted since are deleted;
 //   - records edited since keep the fields their audit log says were changed
 //     (all fields when the log has nothing for them);
+//   - images added in Tabularius are copied;
 //   - accounts, passwords, privilege sets, tokens, two-factor secrets, the
 //     audit log and other settings are copied whole.
 // Container files those records point at are copied with them. The store as it
@@ -181,6 +182,7 @@ async function build(
     sql.exec(`ATTACH DATABASE '${kept.replace(/'/g, "''")}' AS old`);
     sql.exec('BEGIN');
     if (carry) carryRecords(sql, counts);
+    carryImages(sql);
     // Accounts come from the old store whole; one made before accounts carried
     // the file's on/off status gets it now, as a refresh would.
     const hadStatus = !!sql.prepare('SELECT 1 FROM old._fm_meta WHERE key = ?').get(ACCOUNT_STATUS_META);
@@ -313,6 +315,16 @@ function carryRecords(sql: DatabaseSync, counts: { created: number; edited: numb
     for (const r of created) insert.run(r._fm_record_id as number, ...shared.map((c) => remap(c, r[c]) as never));
     counts.created += created.length;
   }
+}
+
+/**
+ * Images added in Tabularius: in the old store's library but not in the fresh conversion's. An id the .fmp12's own
+ * library also uses is left to the file (it can only differ if the file changed, which a forced convert accepts).
+ */
+function carryImages(sql: DatabaseSync): void {
+  if (!tableExists(sql, '_fm_images', 'old')) return;
+  if (!tableExists(sql, '_fm_images')) sql.exec('CREATE TABLE _fm_images (id INTEGER PRIMARY KEY, filename TEXT, mime TEXT NOT NULL, data BLOB NOT NULL)');
+  sql.exec('INSERT INTO main._fm_images (id, filename, mime, data) SELECT id, filename, mime, data FROM old._fm_images WHERE id NOT IN (SELECT id FROM main._fm_images)');
 }
 
 /** Accounts, privileges, tokens, the audit log and other settings, from the old store. */
