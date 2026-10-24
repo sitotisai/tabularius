@@ -32,7 +32,8 @@ for (const [accept, workers] of [[false, 1], [true, 1], [false, 2], [true, 2]] a
     ], {
       env: { PATH, TABULARIUS_TEST_CHILD_MARKER },
       stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 20_000,
+      // About 3 s here; a loaded CI runner took 25 s and the old 20 s limit killed the child (status null).
+      timeout: 60_000,
     });
     let stdout = '', stderr = '', ready = false;
     child.stdout.setEncoding('utf8').on('data', (chunk: string) => {
