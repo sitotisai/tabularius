@@ -58,7 +58,7 @@ import { applyCleanup, cleanupHistory, scanData, undoCleanup, updateMany, CHECKS
 import { Dashboards, DashboardError, cleanDashboard, computeDashboard, mayChange, type Dashboard } from './dashboards.ts';
 import { docsSection, documentSolution } from './docs.ts';
 import { whoCan } from './who-can.ts';
-import { SCRATCH_MAX_BYTES, dropScratch, scratchCopy } from './debug.ts';
+import { debugScratchMaxBytes, dropScratch, scratchCopy } from './debug.ts';
 import { CONNECTION_TYPES, ConnectionError } from './connections.ts';
 import { checkCalculation, checkFormula, formulaGuard, dataSourceHosted, explainItem, unhostedFileOf, layoutProfile, searchSolution, solutionOverview, whereUsed } from './insight.ts';
 import { FAULT_MESSAGE, callerText, isFault, logFault } from './fault-log.ts';
@@ -872,7 +872,7 @@ export function createMcpServer(host: Host, who: McpIdentity = { admin: true }, 
     try {
       const p = privilegesIn(store, who);
       if (p && !p.full) throw new Error(`Insufficient privileges: debugging needs [Full Access], as in FileMaker; "${p.account}" has "${p.name}"`);
-      copy = scratch ? await scratchCopy(store, SCRATCH_MAX_BYTES) : undefined;
+      copy = scratch ? await scratchCopy(store, debugScratchMaxBytes()) : undefined;
       const d = new ScriptDebugger({ pauseOnError, breakpoints: breakpoints.map((b) => ({ script: b.script ?? script, index: b.step - 1 })) });
       let state = await d.start(copy?.store ?? store, script, offlineScriptOptions({
         ...(parameter !== undefined ? { parameter } : {}), ...(layout ? { layout } : {}), ...(recordId !== undefined ? { recordId } : {}),

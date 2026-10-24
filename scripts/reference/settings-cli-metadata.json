@@ -212,6 +212,13 @@
       "restart": "No server restart; read when a store is opened.",
       "explainedBy": "docs/performance.md"
     },
+    "TABULARIUS_DEBUG_SCRATCH_MAX_BYTES": {
+      "description": "Largest hosted SQLite file copied for a Script Debugger run, time-travel recording or debug_script scratch run. Raise it only when there is enough free disk space for each concurrent copy; runs remain offline and isolated.",
+      "default": "1073741824 bytes (1 GiB)",
+      "accepted": "Positive whole number of bytes using decimal digits only",
+      "restart": "Yes; restart the server after changing its environment.",
+      "explainedBy": "docs/guides/building/debugger-and-design-history.md"
+    },
     "TABULARIUS_DATA_API_MAX_LIMIT": {
       "description": "Largest record count one Data API request may ask for.",
       "default": "10000 records",
