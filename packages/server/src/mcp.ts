@@ -224,6 +224,8 @@ function canSee(who: McpIdentity): (s: Store) => boolean {
       const at = verified.get(key);
       if (at === undefined || performance.now() - at > VERIFIED_MS) {
         if (!s.verify(who.account, who.password, who.from ?? 'mcp')) return false;
+        // Before the password is remembered: a refused one stays as costly as a wrong one, so the cost does not tell them apart.
+        if (localOnlyRefused(s, who.account, who.from ?? 'mcp', false)) return false;
         refreshAuthCache(s, verified);
         rememberPassword(key);
       }

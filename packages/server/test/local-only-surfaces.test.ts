@@ -78,6 +78,28 @@ test('/mcp refuses a local-only account on Basic and on an ohm_ token away from 
   assert.ok(store.securityEvents({ account: 'Local', kind: 'sign-in-failed' }).length >= 2);
 });
 
+test('naming a missing database does not remember a local-only account\'s password, so a correct one costs what a wrong one does', async (t) => {
+  const { s, store } = await app(t);
+  const verify = t.mock.method(store, 'verify');
+  const missing = (pw: string) => fetch(s.url + '/mcp', {
+    method: 'POST',
+    headers: { authorization: basic('Local', pw), 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18', 'x-forwarded-for': REMOTE },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'find_records', arguments: { database: 'Nope', layout: 'Items' } } }),
+  }).then((r) => r.text());
+  const used = async (pw: string) => {
+    const before = verify.mock.callCount();
+    const first = await missing(pw);
+    await missing(pw);
+    return { checks: verify.mock.callCount() - before, first };
+  };
+  const right = await used(password);
+  const wrong = await used('wrong');
+  // Both are checked on every call, and neither reply names the file.
+  assert.equal(right.checks, wrong.checks);
+  assert.ok(right.checks >= 2);
+  assert.ok(!right.first.includes('Shop'));
+});
+
 test('a password checked from one address does not stand in for the check another address gets', async (t) => {
   const { s, store, get } = await app(t);
   const other = '203.0.113.10';
@@ -154,7 +176,7 @@ test('the PostgreSQL port refuses a local-only account away from the server, as 
   const host = new Host(dir);
   const pg = new PgServer(host, { port: 0 });
   populate(host.create('Shop'));
-  const ctl = { from: '127.0.0.1' };
+  const ctl = { from: '127.0.0.1' as string | undefined };
   t.mock.method(pg, 'isLocal', (socket: Socket) => {
     Object.defineProperty(socket, 'remoteAddress', { value: ctl.from, configurable: true });
     return true; // real loopback sockets; the address is injected after the TLS/local guard
@@ -168,4 +190,7 @@ test('the PostgreSQL port refuses a local-only account away from the server, as 
   assert.deepEqual(remote, wrong);
   assert.equal(remote.code, '28P01');
   assert.equal((await pgLogin(port, 'Open', password)).code, 'OK');
+  // A peer with no address is not this computer.
+  ctl.from = undefined;
+  assert.equal((await pgLogin(port, 'Local', password)).code, '28P01');
 });
