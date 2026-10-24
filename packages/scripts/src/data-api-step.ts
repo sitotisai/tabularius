@@ -90,7 +90,7 @@ function respond(store: Store, body: Record<string, unknown>, opts: { account?: 
       const name = needLayout();
       if (body.recordId !== undefined && body.query !== undefined) throw new RequestError(1708, 'A request takes recordId or query, not both');
       const response = body['layout.response'] === undefined ? name : String(body['layout.response']);
-      const portals: PortalPaging = {};
+      const portals: PortalPaging = Object.create(null);
       for (const [k, v] of Object.entries(body)) {
         const m = /^(offset|limit)\.(.+)$/.exec(k);
         if (m && Number.isFinite(Number(v))) (portals[m[2]] ??= {})[m[1] as 'offset' | 'limit'] = Number(v);
