@@ -26,7 +26,8 @@ async function start(t: TestContext, limit = 8) {
   t.after(() => { for (const c of held) c.socket.destroy(); });
   // Loopback answers to every 127.x address, so each one stands for a different client.
   const from = async (address: string) => { const c = await new RawClient(port, connect({ port, host: '127.0.0.1', localAddress: address })).ready(); held.push(c); return c; };
-  const hold = async (address: string, path = ORDINARY, headers = 'Content-Length: 200\r\n') => (await from(address)).send(request(path, headers, 'POST') + '{');
+  const hold = async (address: string, path = ORDINARY, headers = 'Content-Length: 200\r\n') =>
+    (await from(address)).send(request(path, headers, 'POST') + (/chunked/i.test(headers) ? '1\r\nx\r\n' : '{'));
   const whole = async (address: string, path = ORDINARY) => (await from(address)).send(request(path, 'Content-Length: 2\r\nConnection: close\r\n', 'POST') + '{}').end();
   return { gate, from, hold, whole };
 }
@@ -109,6 +110,34 @@ test('with the fewest slots, bodies that are waited for never leave ordinary req
   }
   assert.match(await whole('127.0.0.5'), /^HTTP\/1\.1 200 /);
   assert.match(await whole('127.0.0.6'), /^HTTP\/1\.1 200 /);
+});
+
+test('a body declared between 64 and 256 KiB counts too, since an inbound hook reads that much before it knows the caller', async t => {
+  const { gate, hold } = await start(t);
+  for (let i = 0; i < EACH; i++) await hold('127.0.0.2', ORDINARY, 'Content-Length: 100000\r\n');
+  await until(() => gate.unfinishedBodies === EACH, 'the bodies take a place');
+  const refused = await hold('127.0.0.2', ORDINARY, 'Content-Length: 100000\r\n');
+  await refused.until(text => /^HTTP\/1\.1 503 /.test(text));
+  // A body no route reads before authentication is not waited on in this way.
+  await hold('127.0.0.3', ORDINARY, 'Content-Length: 1000000\r\n');
+  await sleep(50);
+  assert.equal(gate.unfinishedBodies, EACH);
+});
+
+test('only a token the server holds leaves a Data API body uncounted, not the look of one', async t => {
+  const { gate, hold } = await start(t);
+  gate.holdsToken = req => req.headers.authorization === 'Bearer held';
+  const chunked = (token: string) => `Transfer-Encoding: chunked\r\nAuthorization: Bearer ${token}\r\n`;
+  const records = '/fmi/data/vLatest/databases/X/layouts/Items/records';
+  await hold('127.0.0.2', records, chunked('held'));
+  await hold('127.0.0.2', records, chunked('held'));
+  await hold('127.0.0.2', records, chunked('held'));
+  await sleep(100);
+  assert.equal(gate.unfinishedBodies, 0, 'a held token is checked before the body is read');
+  // The same shape with a made-up token, and the sign-in route spelled with an escape, are waiting on a stranger.
+  await hold('127.0.0.3', records, chunked('made-up'));
+  await hold('127.0.0.3', '/fmi/data/v1/databases/X/%73essions', chunked('made-up'));
+  await until(() => gate.unfinishedBodies === 2, 'both take a place');
 });
 
 test('an IPv6 /64 is one address for the places a body may wait in', async t => {

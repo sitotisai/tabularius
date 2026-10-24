@@ -1103,6 +1103,22 @@ export class DataApi {
     }
   }
 
+  /**
+   * Whether the request carries a token this server holds (a session, or a scoped API token for the file in its address). It changes nothing: no session
+   * ends or is kept alive. The request gate asks before a body has been read, so that a signed-in caller's slow upload is left alone.
+   */
+  holdsToken(req: IncomingMessage): boolean {
+    const token = /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? '')?.[1] ?? (req.headers['x-fm-data-access-token'] as string | undefined);
+    if (!token) return false;
+    if (!token.startsWith('ohbt_')) return this.sessions.has(token);
+    // fmi, data, version, databases, file
+    let parts: string[];
+    try { parts = (req.url ?? '').split('?')[0].split('/').filter(Boolean).map(decodeURIComponent); } catch { return false; }
+    const [section, file] = parts.slice(3);
+    if (section !== 'databases') return false;
+    return !!file && !!this.host.get(file)?.apiToken(token);
+  }
+
   /** The session for a request's token (Bearer or X-FM-Data-Access-Token); throws when missing or expired. */
   authorize(req: IncomingMessage, db: string, allowPasswordChange = false): Session {
     const auth = req.headers.authorization ?? '';

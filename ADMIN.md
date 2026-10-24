@@ -890,12 +890,16 @@ exempt from the per-address cap.
 Headers must finish within 10 seconds. Bodies have a **300-second idle timeout**;
 progressing uploads can take longer than 300 seconds. A body that a route may read
 before it knows who is calling (declared at most 256 KiB, or chunked until it has sent that much) must arrive
-within 15 seconds in total once the server starts reading it, 15 seconds per 64 KiB declared. That means a sender
+within 15 seconds in total once the server has let the request in, 15 seconds per 64 KiB declared. That means a sender
 slower than about 4 KB/s is cut off with `408`, whichever route it posts to; larger declared uploads are not.
 A chunked body counts what it carries, not its framing, and declares no size, so on every route except a Data API
-call with a token (whose token is checked before any body is read) it must carry more than 256 KiB within those
-15 seconds: a chunked upload that streams slower than about 17 KB/s gets `408`. Send a `Content-Length` (or a token)
-for a slow upload. This is `ServeOptions.edgeLimits.smallBodyMs`. Connections close after
+call with a token the server holds (checked when the request arrives, before any body is read) it must carry more than
+256 KiB within those 15 seconds: a chunked upload that streams slower than about 17 KB/s gets `408`. Send a
+`Content-Length` (or a token) for a slow upload. This is `ServeOptions.edgeLimits.smallBodyMs`.
+Requests that are still waiting on such a body also take places from a small pool, so a few idle senders cannot use
+every request slot: sign-in has 4 places of 32 slots, 2 per client address, and everything else 16, 8 per address. When
+the sign-in places are all taken, a sign-in whose body arrives more than three-quarters of a second after its headers
+(a very slow link), or that waits for `100-continue`, is answered busy and can be tried again. Connections close after
 their 100th complete response; keep-alive clients reconnect normally. Pipelined
 requests execute in order up to that budget, so a completed write's response is
 sent before closing.

@@ -296,6 +296,9 @@ test('a body a route may read before it knows the caller ends at a total deadlin
   await trickle(records, 'Content-Length: 200\r\nAuthorization: Bearer token\r\n', 'x', false);
   await trickle('/fmi/data/vLatest/databases/X/sessions', `${chunked}Authorization: Bearer token\r\n`, '1\r\nx\r\n', true);
   await trickle(records, `${chunked}Authorization: Basic eDp5\r\n`, '1\r\nx\r\n', true);
+  // The Data API decodes each segment before it routes, so an escaped spelling of sign-in is sign-in.
+  await trickle('/fmi/data/v1/databases/X/%73essions', `${chunked}Authorization: Bearer token\r\n`, '1\r\nx\r\n', true);
+  await trickle('/fmi/data/v1/databases/X/session%73', `${chunked}Authorization: Bearer token\r\n`, '1\r\nx\r\n', true);
   await trickle('/oauth/register', `${chunked}Authorization: Bearer token\r\n`, '1\r\nx\r\n', true);
   await normal(port);
 });
