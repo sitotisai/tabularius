@@ -230,7 +230,14 @@ async function backupOnceHeld(folder: string, dest: string, keep: number, passph
     if (signal?.aborted) throw new BackupStopped();
   };
   check();
-  const names = readdirSync(folder).filter((f) => f.endsWith(STORE_EXT));
+  const found = readdirSync(folder);
+  const names = found.filter((f) => f.endsWith(STORE_EXT));
+  // A set of no files would count toward `keep` and push a real one out: refuse before anything is made or pruned.
+  if (!names.length) {
+    throw new Error(found.some((f) => f.endsWith(STORE_EXT + ENCRYPTED_EXT))
+      ? `${folder} has no database files to back up because its stores are encrypted at rest and the server is not running to unlock them; start the server (it backs them up) or run tabularius decrypt first`
+      : `${folder} has no database files to back up; check that the data folder is mounted and is the right one`);
+  }
   const previous = backupSets(dest).at(-1);
   // Before anything is made: a backup that cannot fit would fill the disk the files themselves are on.
   checkRoom(folder, names, dest, previous && join(dest, previous), statfs);
