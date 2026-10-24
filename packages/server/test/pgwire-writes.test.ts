@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createStore, StoreError, type Store, type Transaction } from '../../store/src/index.ts';
+import { createStore, endTransaction, StoreError, type Store, type Transaction } from '../../store/src/index.ts';
 import { monotonicClock } from '../../store/src/monotonic.ts';
 import { Host } from '../src/host.ts';
 import { PgServer } from '../src/pgwire.ts';
@@ -351,7 +351,11 @@ test('the row cap on RETURNING fails 54000 and writes nothing; the 100,000 recor
       await assert.rejects(() => executeWrite(parseWrite(sql)!, t.store, privileges, [], 0, () => false, tx, 3), (e: unknown) => e instanceof StoreError && e.code === 812, sql);
     }
     assert.equal(count(t.store), 5, 'nothing was changed');
-    assert.equal(tx.files.size, 0, 'nothing was held');
+    // The hold (taken before the statement reads) goes with the transaction, which the caller ends.
+    endTransaction(tx, false);
+    assert.equal(tx.files.size, 0);
+    t.store.create('Items', { Name: 'free' });
+    assert.equal(count(t.store), 6, 'the file is free again');
   } finally { await t.close(); }
 });
 

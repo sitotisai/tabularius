@@ -478,12 +478,13 @@ export async function executeWrite(plan: WritePlan, store: Store, privileges: Pr
       return result(data.length, rows);
     }
 
+    // The file is held before this statement reads anything. It goes on to read the rows again, yield and write, and a write by
+    // anyone else in between (another connection, the Data API, a script, or another process, which only the hold keeps out
+    // when no transaction is open) would be overwritten by values worked out from rows that have since changed. The hold lasts as
+    // any write's does: to the end of the statement, or inside BEGIN to COMMIT or ROLLBACK.
+    store.holdForTransaction();
     const ids = reader(`SELECT _fm_record_id FROM ${tableSql} WHERE (${where}) ORDER BY _fm_record_id`, params, Infinity).map((r) => Number(r[0]));
     tooMany(ids.length);
-    // Held before the first yield, so before anything else can run: this statement goes on to read the rows again, yield and
-    // write, and a write by anyone else in between (another connection, the Data API, a script) would be overwritten by
-    // values worked out from rows that have since changed, or act on rows that no longer match.
-    if (ids.length) store.holdForTransaction();
     if (plan.kind === 'update') {
       // Each record's new values are read from the record as it is now, all before the first change.
       const values = plan.set!.map((s) => render(s.expr, fields));
