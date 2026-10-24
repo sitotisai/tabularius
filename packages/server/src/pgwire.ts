@@ -34,7 +34,7 @@ import { SignInFailures } from '../../store/src/sign-in-failures.ts';
 import type { SqlValue } from '../../store/src/find.ts';
 import type { Host } from './host.ts';
 import { BinaryFormatError, binaryParam, binaryValue, castParamTypes, expansionBudget, isFalse, isPlainNumber } from './pgbinary.ts';
-import { passwordLoginSecondFactor } from './password-login-policy.ts';
+import { localOnlyRefused, passwordLoginSecondFactor } from './password-login-policy.ts';
 import { BOOLEAN_COLUMNS, catalogFunctions, FIRST_TABLE_OID, namesCatalogRelation, pgCastColumns, pgCastProbe, type PgCastColumn, pgSyntax, readsCatalog, withCatalog, type CatalogData } from './pgcatalog.ts';
 
 /** What a `SHOW` statement names (the statement is trimmed), or undefined when it is not a one-line SHOW. A scan, not `/^SHOW\s+(.+?)\s*$/`, which backtracks over every run of blanks. */
@@ -527,6 +527,11 @@ class Connection {
       if (this.user) this.store.auditSignIn(this.user, from, false);
       const until = locked ?? (this.user ? this.store.lockedOut(this.user, from) : undefined);
       noteSurfaceSignIn(this.server.host, from, this.store.name, this.user, 'the PostgreSQL protocol', until ? 'too many failed sign-ins' : 'wrong account or password');
+      return fail('28P01', passwordMessage);
+    }
+    // A local-only account away from this computer is refused as a wrong password; the log says why.
+    if (localOnlyRefused(this.store, this.user, from)) {
+      noteSurfaceSignIn(this.server.host, from, this.store.name, this.user, 'the PostgreSQL protocol', 'this account may sign in only from the server itself');
       return fail('28P01', passwordMessage);
     }
     const secondFactorError = passwordLoginSecondFactor(this.store, this.user, undefined, from);
