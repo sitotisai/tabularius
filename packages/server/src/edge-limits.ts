@@ -4,7 +4,8 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { createServer as createTlsServer, type ServerOptions as TlsOptions } from 'node:https';
 import type { BlockList, Socket } from 'node:net';
 import { performance } from 'node:perf_hooks';
-import { AUTH_BODY_LIMIT, closeUnreadBody, continueOnRead, smallBodyPending } from './request-body.ts';
+import { AUTH_BODY_LIMIT, closeUnreadBody, continueOnRead } from './request-body.ts';
+import { smallBodyPending } from './request-gate.ts';
 import { forwardedFor, trustedProxyPeer, type ProxyHeader } from './client-address.ts';
 import { requestClosesConnection, validHttpRequest } from './http-framing.ts';
 
@@ -16,7 +17,7 @@ export const EDGE_LIMITS = Object.freeze({
   headersMs: 10_000,
   // Body inactivity, not a total upload deadline: progressing authenticated uploads may take longer.
   bodyMs: 300_000,
-  // A body small enough to be a sign-in's, or a chunked one that has sent no more than that, must arrive within this total time: it is read before the
+  // A body small enough to be a sign-in's (or a chunked one, up to that size, to a sign-in route or /mcp) must arrive within this total time: it is read before the
   // caller is known, so a trickle of bytes must not hold it open for as long as the inactivity budget keeps being renewed.
   smallBodyMs: 15_000,
   idleMs: 5_000,
