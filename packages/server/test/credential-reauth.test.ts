@@ -7,6 +7,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore, totpCode } from '../../store/src/index.ts';
+import { LOCKOUT } from '../../store/src/sign-in-failures.ts';
+import { makeAuthenticator, forgeRegistration } from '../../store/test/forge-webauthn.ts';
 import { serve } from '../src/index.ts';
 
 let dir = '', base = '', token = '', apiToken = '';
@@ -69,4 +71,71 @@ test('an account with a one-time code also needs it for those changes', async ()
     assert.equal(ok.status, 200);
     assert.ok(Array.isArray(ok.response.codes));
   } finally { store.disableTotp('Chief'); }
+});
+
+const rejected = (r: { status: number; code: string }) => ({ status: r.status, code: r.code });
+
+test('wrong passwords here count toward the sign-in lockout and are audited as failed sign-ins', async () => {
+  const store = s.host.get('Shop')!;
+  const full = store.privilegeSets().find((p) => p.id === 1)!;
+  store.setPassword('Locky', password, full.name);
+  const bearer = store.createApiToken('Locky');
+  const failures = () => store.auditLog({ security: true, limit: 500 }).filter((e) => e.kind === 'sign-in-failed' && e.account === 'Locky').length;
+  for (let i = 0; i < LOCKOUT.attempts; i++) assert.deepEqual(rejected(await post(bearer, 'recovery-codes', { password: `wrong-${i}` })), { status: 401, code: '212' });
+  assert.equal(failures(), LOCKOUT.attempts, 'each wrong password is a failed sign-in in the security audit');
+  // Locked out: even the right password is refused, and the answer says so and how long, as at sign-in.
+  const locked = await fetch(url('recovery-codes'), { method: 'POST', headers: { authorization: `Bearer ${bearer}`, 'content-type': 'application/json' }, body: JSON.stringify({ password }) });
+  const body = (await locked.json()) as { messages: { code: string; message: string }[] };
+  assert.equal(locked.status, 401);
+  assert.match(body.messages[0].message, /Too many failed sign-ins; try again after/);
+  assert.ok(Number(locked.headers.get('retry-after')) > 0, 'with the seconds to wait');
+  assert.equal(store.recoveryCodesRemaining('Locky'), 0);
+});
+
+test('a one-time code cannot be used twice here', async () => {
+  const store = s.host.get('Shop')!;
+  const full = store.privilegeSets().find((p) => p.id === 1)!;
+  store.setPassword('Otto', password, full.name);
+  const bearer = store.createApiToken('Otto');
+  const { secret } = store.enrollTotp('Otto');
+  assert.equal(store.confirmTotp('Otto', totpCode(secret)), true);
+  const code = totpCode(secret, Math.floor(Date.now() / 1000 / 30) + 1);
+  assert.equal((await post(bearer, 'recovery-codes', { password, code })).status, 200);
+  assert.deepEqual(rejected(await post(bearer, 'recovery-codes', { password, code })), { status: 401, code: '1211' });
+});
+
+test('an account whose second factor is a passkey is not satisfied by a token and its password', async () => {
+  const store = s.host.get('Shop')!;
+  const full = store.privilegeSets().find((p) => p.id === 1)!;
+  store.setPassword('Cara', password, full.name);
+  const bearer = store.createApiToken('Cara');
+  const challenge = store.issueWebauthnChallenge('register', 'Cara');
+  const auth = makeAuthenticator(new URL(base).hostname, new URL(base).origin);
+  store.registerPasskey('Cara', forgeRegistration(auth, challenge), { rpId: auth.rpId, origin: auth.origin, challenge });
+  store.setAccountRequire2fa('Cara', true);
+  // Signing in with the password alone is refused for the same reason.
+  const signIn = await fetch(url('sessions'), { method: 'POST', headers: { authorization: 'Basic ' + btoa(`Cara:${password}`), 'content-type': 'application/json' }, body: '{}' });
+  assert.equal(signIn.status, 401);
+  for (const path of ['recovery-codes', 'passkey/register/options']) {
+    const r = await post(bearer, path, { password });
+    assert.equal(r.status, 403, path);
+    assert.notEqual(r.code, '0');
+  }
+  assert.equal(store.recoveryCodesRemaining('Cara'), 0);
+  assert.equal(store.passkeyIds('Cara').length, 1);
+});
+
+test('an account with no password here is told so, not that its password is wrong', async () => {
+  const store = s.host.get('Shop')!;
+  const full = store.privilegeSets().find((p) => p.id === 1)!;
+  store.setPassword('Nopass', password, full.name);
+  const bearer = store.createApiToken('Nopass');
+  store.sql.prepare('UPDATE _fm_accounts SET password_hash = NULL, password_disabled = 1 WHERE name = ?').run('Nopass');
+  for (const sent of [{ password }, { password: '' }]) {
+    const r = await fetch(url('recovery-codes'), { method: 'POST', headers: { authorization: `Bearer ${bearer}`, 'content-type': 'application/json' }, body: JSON.stringify(sent) });
+    const body = (await r.json()) as { messages: { message: string }[] };
+    assert.equal(r.status, 403);
+    assert.match(body.messages[0].message, /no password in this file; ask an administrator to set one/);
+  }
+  assert.equal(store.recoveryCodesRemaining('Nopass'), 0);
 });
