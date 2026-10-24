@@ -73,3 +73,31 @@ test('fmp12-94: a folder name ending in a dot or a space is kept when it cannot 
     assert.deepEqual(externalRoots(folder, 'Mine', [base]), own, JSON.stringify(base));
   }
 });
+
+test('fmp12-94: a name that a disk may fold or shorten into the storage folders gets no folder of its own beside the file', () => {
+  const holders = [at('Files'), at('RC_Data_FMS')];
+  // U+017F (long s) folds to "s" on case-insensitive volumes, and RC_DAT~1 is RC_Data_FMS as a Windows short name.
+  for (const name of ['Fileſ', 'RC_DAT~1', 'RC_DATA~1', 'FILES~1', 'Files.', 'Files ', 'RC_Data_FMS.', 'Fıles']) {
+    const beside = at(name);
+    for (const base of [`${name}/Other`, 'Other', `${name}`, `Files/${name}/Other`, '']) {
+      for (const r of externalRoots(folder, name, [base])) {
+        assert.ok(r !== beside && !r.startsWith(beside + '/'), `${JSON.stringify(name)} with ${JSON.stringify(base)} gave ${r}`);
+        assert.ok(holders.every((h) => r !== h), r);
+      }
+    }
+    // its own storage inside the two folders is still read
+    assert.ok(externalRoots(folder, name, []).includes(at('RC_Data_FMS', name)), name);
+    assert.ok(externalRoots(folder, name, [`${name}/Docs`]).every((r) => !r.startsWith(at('Other'))), name);
+  }
+  // a plain name, with dots, spaces, dashes and underscores inside, keeps the folder named after it
+  assert.ok(externalRoots(folder, 'Acme Inc-2_a.b', ['Acme Inc-2_a.b/Docs']).includes(at('Acme Inc-2_a.b', 'Docs')));
+});
+
+test('fmp12-94: a name that is not one folder name has no roots', () => {
+  // Drop-in files ".openhbam.sqlite", "..openhbam.sqlite" and "...openhbam.sqlite" are named "", "." and "..".
+  for (const name of ['', '.', '..', 'a/b', '../x']) {
+    for (const bases of [[], ['Other'], ['..'], ['.'], ['Files/Other'], ['x/y']]) {
+      assert.deepEqual(externalRoots(folder, name, bases), [], `${JSON.stringify(name)} with ${JSON.stringify(bases)}`);
+    }
+  }
+});
