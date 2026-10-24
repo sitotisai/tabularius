@@ -4,7 +4,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { createServer as createTlsServer, type ServerOptions as TlsOptions } from 'node:https';
 import type { BlockList, Socket } from 'node:net';
 import { performance } from 'node:perf_hooks';
-import { closeUnreadBody, continueOnRead } from './request-body.ts';
+import { AUTH_BODY_LIMIT, closeUnreadBody, continueOnRead, smallBodyPending } from './request-body.ts';
 import { forwardedFor, trustedProxyPeer, type ProxyHeader } from './client-address.ts';
 import { requestClosesConnection, validHttpRequest } from './http-framing.ts';
 
@@ -16,6 +16,9 @@ export const EDGE_LIMITS = Object.freeze({
   headersMs: 10_000,
   // Body inactivity, not a total upload deadline: progressing authenticated uploads may take longer.
   bodyMs: 300_000,
+  // A body small enough to be a sign-in's, or a chunked one that has sent no more than that, must arrive within this total time: it is read before the
+  // caller is known, so a trickle of bytes must not hold it open for as long as the inactivity budget keeps being renewed.
+  smallBodyMs: 15_000,
   idleMs: 5_000,
   checkMs: 1_000,
   connections: 1024,
@@ -126,17 +129,22 @@ export function createEdgeServer(
     if (req.headers.expect?.toLowerCase() === '100-continue' && req.httpVersion !== '1.0') continueOnRead(req, res);
     // Observe wire progress without attaching a data listener (which would consume before auth).
     if (!req.complete) {
-      let bytes = req.socket.bytesRead;
-      let progress = performance.now();
+      const firstByte = req.socket.bytesRead;
+      let bytes = firstByte;
+      const started = performance.now();
+      let progress = started;
       const timer = setInterval(() => {
         if (req.complete) { cleanup(); return; }
         if (req.socket.bytesRead !== bytes) { bytes = req.socket.bytesRead; progress = performance.now(); }
-        else if (performance.now() - progress >= limits.bodyMs) {
+        const now = performance.now();
+        const slowSmall = smallBodyPending(req) && now - started >= limits.smallBodyMs
+          && (!req.headers['transfer-encoding'] || bytes - firstByte <= AUTH_BODY_LIMIT);
+        if (slowSmall || now - progress >= limits.bodyMs) {
           cleanup();
           if (!res.headersSent) refuse(408);
           else req.socket.destroy();
         }
-      }, Math.min(limits.checkMs, limits.bodyMs)).unref();
+      }, Math.min(limits.checkMs, limits.bodyMs, limits.smallBodyMs)).unref();
       const cleanup = () => {
         clearInterval(timer);
         req.off('end', cleanup);

@@ -265,6 +265,26 @@ for (const direction of [-1, 1]) test(`body inactivity survives a ${direction < 
   }
 });
 
+test('a small or chunked body that keeps trickling still ends at the total deadline, a large declared upload does not', async t => {
+  stubCommands(t);
+  const port = await listen(t, createEdgeServer((req, res) => {
+    req.resume(); req.on('end', () => res.end('done'));
+  }, { smallBodyMs: 300, bodyMs: 5000, checkMs: 10 }));
+  const trickle = async (headers: string, piece: string, refused: boolean) => {
+    const c = await new RawClient(port).ready();
+    c.send(request('/', headers, 'POST'));
+    const until = Date.now() + 700;
+    // One small write every 50 ms renews the inactivity budget, so only a total deadline can stop it.
+    while (Date.now() < until && !c.socket.destroyed && !/^HTTP\/1\.1 408 /.test(c.text)) { c.send(piece); await sleep(50); }
+    assert.equal(/^HTTP\/1\.1 408 /.test(c.text), refused);
+    c.socket.destroy();
+  };
+  await trickle('Content-Length: 200\r\n', 'x', true);
+  await trickle('Transfer-Encoding: chunked\r\n', '1\r\nx\r\n', true);
+  await trickle('Content-Length: 1000000\r\n', 'x', false);
+  await normal(port);
+});
+
 for (const [name, firstIP, sameIP, otherIP] of [
   ['IPv6 /64', '2001:db8::1', '2001:0DB8:0000:0000:ffff::1', '2001:db8:0:1::1'],
   ['mapped IPv4', '203.0.113.9', '::ffff:cb00:7109', '203.0.113.10'],
