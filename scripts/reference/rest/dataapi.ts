@@ -168,8 +168,8 @@ export const groups: RestGroup[] = [
         permissions: 'A valid session token for the file (Bearer or X-FM-Data-Access-Token); acts only on the session\'s own account. The token alone is not enough: the account\'s current password is asked for again.',
         params: [
           version, database, bearer,
-          { name: 'password', in: 'body', type: 'string', required: true, description: 'The account\'s current password. A wrong one is 212 (401); a missing one is 960 (400).' },
-          { name: 'code', in: 'body', type: 'string', description: 'A current one-time code from the authenticator app; required (error 1211, 401) when the account has one set up.' },
+          { name: 'password', in: 'body', type: 'string', required: true, description: 'The account\'s current password. A wrong one is 212 (401) and counts toward the sign-in lockout (a locked-out account gets 212 with the time to retry); a missing one is 960 (400). An account with no password set in this file (only the file\'s own, an empty one, or none) is refused with 9 (403) until an administrator sets one.' },
+          { name: 'code', in: 'body', type: 'string', description: 'A current one-time code from the authenticator app; required (error 1211, 401) when the account has one set up. An account whose required second factor is a passkey is refused with 9 (403), since a passkey cannot answer in this request.' },
         ],
         example: {
           request: 'POST /fmi/data/vLatest/databases/Invoices/recovery-codes\nAuthorization: Bearer <session-token>\nContent-Type: application/json\n\n{"password": "<current-password>"}',
@@ -184,8 +184,8 @@ export const groups: RestGroup[] = [
         permissions: 'A valid session token for the file; acts only on the session\'s own account. The token alone is not enough: the account\'s current password is asked for again.',
         params: [
           version, database, bearer,
-          { name: 'password', in: 'body', type: 'string', required: true, description: 'The account\'s current password. A wrong one is 212 (401); a missing one is 960 (400).' },
-          { name: 'code', in: 'body', type: 'string', description: 'A current one-time code from the authenticator app; required (error 1211, 401) when the account has one set up.' },
+          { name: 'password', in: 'body', type: 'string', required: true, description: 'The account\'s current password. A wrong one is 212 (401) and counts toward the sign-in lockout (a locked-out account gets 212 with the time to retry); a missing one is 960 (400). An account with no password set in this file (only the file\'s own, an empty one, or none) is refused with 9 (403) until an administrator sets one.' },
+          { name: 'code', in: 'body', type: 'string', description: 'A current one-time code from the authenticator app; required (error 1211, 401) when the account has one set up. An account whose required second factor is a passkey is refused with 9 (403), since a passkey cannot answer in this request.' },
         ],
         example: {
           request: 'POST /fmi/data/vLatest/databases/Invoices/passkey/register/options\nAuthorization: Bearer <session-token>\nContent-Type: application/json\n\n{"password": "<current-password>"}',

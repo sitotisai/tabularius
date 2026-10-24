@@ -1386,23 +1386,32 @@ export class DataApi {
 
   /**
    * The proof a credential that outlives this session asks for (recovery codes, a passkey): the account's own password
-   * and, when it has a one-time code set up, a current code, as signing in does. A session or API token alone is not
-   * enough, since the credential would stay valid after the token is revoked or the password changed.
+   * and whatever second factor signing in with it would need, with the same lockout and security audit as a sign-in.
+   * A session or API token alone is not enough, since the credential would stay valid after the token is revoked or
+   * the password changed.
    */
   private async confirmCredentialChange(req: IncomingMessage, store: Store, account: string): Promise<void> {
     const body = await readJson(req, AUTH_BODY_LIMIT);
     const from = clientAddress(req);
-    if (typeof body.password !== 'string' || !body.password) throw new ApiError(960, 'Send {"password": "..."}: your current password is required for this', 400);
+    if (typeof body.password !== 'string') throw new ApiError(960, 'Send {"password": "..."}: your current password is required for this', 400);
+    // The file's own (or an empty) password is not a proof worth a lasting credential, and none cannot be checked.
+    if (!store.hasOwnPassword(account)) throw new ApiError(9, 'This account has no password in this file; ask an administrator to set one before adding a passkey or recovery codes', 403);
     if (!(await store.verifyAsync(account, body.password, from))) {
-      this.host.logs?.write('Access', 'Warning', from, `${account} was refused a credential change in ${store.name}: wrong password`);
+      store.auditSignIn(account, from, false);
+      const until = store.lockedOut(account, from);
+      this.signInWarning(from, `${account} could not confirm a credential change in ${store.name}: ${until ? 'locked out after too many failed sign-ins' : 'wrong password'}`);
+      const visible = publicPasswordLockout(until, from);
+      if (visible) throw lockedOutError(visible);
       throw new ApiError(212, 'The current password is wrong', 401);
     }
-    if (!store.hasTotp(account)) return;
-    const code = typeof body.code === 'string' ? body.code : '';
-    if (!code) throw new ApiError(1211, 'A one-time code from your authenticator app is required', 401);
-    if (!store.verifyTotp(account, code, from)) {
-      this.host.logs?.write('Access', 'Warning', from, `${account} was refused a credential change in ${store.name}: wrong one-time code`);
-      throw new ApiError(1211, 'That one-time code is not valid; check your authenticator app', 401);
+    try {
+      this.checkSecondFactor(store, account, from, typeof body.code === 'string' ? body.code : '');
+    } catch (e) {
+      // A passkey cannot answer in this request, so it is refused rather than waved through on the password alone.
+      if (e instanceof ApiError && e.code === PASSKEY_SECOND_FACTOR_REQUIRED) {
+        throw new ApiError(9, 'This account uses a passkey as its second factor, which cannot confirm this here; sign in with the passkey in the web client, or ask an administrator', 403);
+      }
+      throw e;
     }
   }
 
