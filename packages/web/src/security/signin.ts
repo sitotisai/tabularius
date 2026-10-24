@@ -60,7 +60,8 @@ export function signinTab(sec: Sec): HTMLElement {
     return { password: password.value, ...(code.value.trim() ? { code: code.value.trim() } : {}) };
   };
   const forget = (): void => { password.value = ''; code.value = ''; };
-  // A one-time code works once and the server spends it on the first request, so a retry needs a fresh one.
+  // A one-time code works once, and the server spends it when the password was right. After any failure the box is
+  // cleared so a retry types a fresh one (a wrong password costs a retype of the code too).
   const spent = (): void => { code.value = ''; };
   const add = async (): Promise<void> => {
     const confirmed = proof();

@@ -1,7 +1,9 @@
 // Minting recovery codes or starting a passkey registration is a credential change that outlives the session or API
 // token making it, so it asks for the account's password (and its one-time code when it has one) as changing the
 // password does. A bearer token alone is not enough. Runs on a created file, no fixtures.
-import { test, before, after } from 'node:test';
+import { test, before, after, mock } from 'node:test';
+import crypto from 'node:crypto';
+import { syncBuiltinESMExports } from 'node:module';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -135,7 +137,7 @@ test('an account with no password here is told so, not that its password is wron
     const r = await fetch(url('recovery-codes'), { method: 'POST', headers: { authorization: `Bearer ${bearer}`, 'content-type': 'application/json' }, body: JSON.stringify(sent) });
     const body = (await r.json()) as { messages: { message: string }[] };
     assert.equal(r.status, 403);
-    assert.match(body.messages[0].message, /no password of its own in this file.*Change Password/);
+    assert.match(body.messages[0].message, /no password of its own in this file.*ask an administrator to set one/);
   }
   assert.equal(store.recoveryCodesRemaining('Nopass'), 0);
 });
@@ -158,6 +160,7 @@ test('the passkey-second-factor refusal says to ask an administrator', async () 
   const r = await fetch(url('recovery-codes'), { method: 'POST', headers: { authorization: `Bearer ${bearer}`, 'content-type': 'application/json' }, body: JSON.stringify({ password }) });
   const body = (await r.json()) as { messages: { message: string }[] };
   assert.match(body.messages[0].message, /passkey as its second factor.*ask an administrator/);
+  assert.doesNotMatch(body.messages[0].message, /sign in with the passkey/, 'no dead-end advice: a passkey sign-in cannot confirm this either');
 });
 
 test('the passkey list says up front when this account cannot confirm a credential change', async () => {
@@ -165,12 +168,44 @@ test('the passkey list says up front when this account cannot confirm a credenti
   const store = s.host.get('Shop')!;
   assert.equal((await list(token)).confirmBlocked, undefined);
   assert.match((await list(store.createApiToken('Cara'))).confirmBlocked ?? '', /passkey as its second factor/);
-  assert.match((await list(store.createApiToken('Nopass'))).confirmBlocked ?? '', /Change Password/);
-  assert.match((await list(store.createApiToken('Blanky'))).confirmBlocked ?? '', /Change Password/);
+  assert.match((await list(store.createApiToken('Nopass'))).confirmBlocked ?? '', /ask an administrator to set one/);
+  assert.match((await list(store.createApiToken('Blanky'))).confirmBlocked ?? '', /ask an administrator to set one/);
 });
 
 test('a wrong password here is a failed sign-in marked as a credential-change confirmation', async () => {
   const store = s.host.get('Shop')!;
-  const failure = store.auditLog({ security: true, limit: 500 }).find((e) => e.kind === 'sign-in-failed' && e.account === 'Locky');
+  const full = store.privilegeSets().find((p) => p.id === 1)!;
+  store.setPassword('Marked', password, full.name);
+  assert.equal((await post(store.createApiToken('Marked'), 'recovery-codes', { password: 'wrong' })).status, 401);
+  const failure = store.auditLog({ security: true, limit: 500 }).find((e) => e.kind === 'sign-in-failed' && e.account === 'Marked');
   assert.equal((failure?.changes as { reauth?: boolean } | undefined)?.reauth, true);
+});
+
+test('a locked-out person sees the real lockout even when the request comes from an address shared by many', async () => {
+  const store = s.host.get('Shop')!;
+  const full = store.privilegeSets().find((p) => p.id === 1)!;
+  store.setPassword('Shared', password, full.name);
+  const bearer = store.createApiToken('Shared');
+  // A loopback request that carries forwarding headers nobody configured is "unknown", an address anyone may share.
+  const ask = (sent: string) => fetch(url('recovery-codes'), { method: 'POST', headers: { authorization: `Bearer ${bearer}`, 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.9' }, body: JSON.stringify({ password: sent }) });
+  for (let i = 0; i < LOCKOUT.attempts; i++) await ask(`wrong-${i}`);
+  const locked = await ask(password);
+  assert.equal(locked.status, 401);
+  assert.match(((await locked.json()) as { messages: { message: string }[] }).messages[0].message, /Too many failed sign-ins; try again after/);
+});
+
+test('listing passkeys hashes no password for an account with an ordinary one (the empty-password check is remembered, and never on the main thread)', async () => {
+  const sync = mock.method(crypto, 'scryptSync');
+  const spun = mock.method(crypto, 'scrypt');
+  syncBuiltinESMExports();
+  try {
+    const list = () => fetch(url('passkey'), { headers: { authorization: `Bearer ${token}` } }).then((r) => r.json());
+    await list();
+    assert.equal(sync.mock.callCount(), 0, 'the first listing hashes nothing on the main thread');
+    await list();
+    const before = spun.mock.callCount();
+    for (let i = 0; i < 5; i++) await list();
+    assert.equal(spun.mock.callCount(), before, 'later listings hash nothing at all');
+    assert.equal(sync.mock.callCount(), 0);
+  } finally { mock.restoreAll(); syncBuiltinESMExports(); }
 });

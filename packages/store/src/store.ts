@@ -1295,10 +1295,20 @@ export class Store {
   }
 
   /** Whether the account has a password of its own that is worth asking for again: set in Tabularius (not only the file's own verifier) and not empty. */
-  hasProvingPassword(account: string): boolean {
+  async hasProvingPassword(account: string): Promise<boolean> {
     const hash = (this.sql.prepare('SELECT password_hash FROM _fm_accounts WHERE name = ? COLLATE NOCASE').get(account) as { password_hash: string | null } | undefined)?.password_hash;
-    return hash != null && !checkPassword('', hash);
+    if (hash == null) return false;
+    // Whether a stored hash is the empty password's is worked out once, off the main thread, and remembered by hash
+    // (a changed password is a new hash), so asking again costs nothing and cannot be used to stall other requests.
+    let blank = this.blankHashes.get(hash);
+    if (blank === undefined) {
+      blank = await checkPasswordAsync('', hash);
+      if (this.blankHashes.size >= 1000) this.blankHashes.clear();
+      this.blankHashes.set(hash, blank);
+    }
+    return !blank;
   }
+  private readonly blankHashes = new Map<string, boolean>();
 
   /** Whether the account has a password set in Tabularius (an empty one included), not only the file's own verifier. */
   hasOwnPassword(account: string): boolean {
