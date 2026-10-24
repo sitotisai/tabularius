@@ -54,6 +54,9 @@ export function maxRows(): number {
 }
 /** Connections from one network that may be waiting to sign in at once (this computer is not counted). */
 const MAX_UNSIGNED_PER_ADDRESS = 50;
+/** The longest message a signed-in client may send, and the longest before sign-in (a password), in bytes. */
+const MAX_MESSAGE = 256 * 1024 * 1024;
+const MAX_UNSIGNED_MESSAGE = 10_000;
 const LOCAL_ADDRESSES = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 /** Signed-in SQL connections allowed concurrently on this server. */
 export const PGWIRE_LIMIT = { signedPerAccount: 32, signedGlobal: 256 };
@@ -399,7 +402,14 @@ class Connection {
 
   private listen(socket: Socket | TLSSocket): void {
     socket.on('data', (d: Buffer) => {
-      this.buf = Buffer.concat([this.buf, d]);
+      // The pieces of a large message are kept apart and joined once it is complete: joining them on arrival copies
+      // everything received so far for every piece, time that grows with the square of the message.
+      this.pieces.push(d);
+      this.pieced += d.length;
+      if (this.incomplete()) return;
+      this.buf = Buffer.concat([this.buf, ...this.pieces]);
+      this.pieces = [];
+      this.pieced = 0;
       // One message at a time, in order, even while a query runs.
       this.busy = this.busy.then(() => this.drain()).catch((e) => {
         this.server.log(`sql connection: ${(e as Error).message}`);
@@ -407,6 +417,19 @@ class Connection {
       });
     });
     socket.on('error', () => socket.destroy());
+  }
+
+  /** Received but not yet joined to `buf`: the pieces of a message that is still arriving. */
+  private pieces: Buffer[] = [];
+  private pieced = 0;
+
+  /** Whether `buf` begins a message (after start-up) that the pieces held back do not yet complete. */
+  private incomplete(): boolean {
+    if (!this.started || this.buf.length < 5) return false;
+    const len = this.buf.readInt32BE(1);
+    // A length that will be refused is let through so it is: before sign-in only a password comes, nothing large.
+    if (len < 4 || len > (this.privileges ? MAX_MESSAGE : MAX_UNSIGNED_MESSAGE)) return false;
+    return this.buf.length + this.pieced < len + 1;
   }
 
   private send(...parts: Buffer[]): void {
@@ -440,7 +463,7 @@ class Connection {
       }
       if (this.buf.length < 5) return;
       const len = this.buf.readInt32BE(1);
-      if (len < 4 || len > 256 * 1024 * 1024) throw new Error('bad message length');
+      if (len < 4 || len > MAX_MESSAGE) throw new Error('bad message length');
       if (this.buf.length < len + 1) return;
       const type = String.fromCharCode(this.buf[0]);
       const body = this.buf.subarray(5, len + 1);
@@ -465,6 +488,8 @@ class Connection {
       this.socket = secure;
       this.tls = true;
       this.buf = Buffer.alloc(0);
+      this.pieces = [];
+      this.pieced = 0;
       this.listen(secure);
       return;
     }
@@ -581,7 +606,7 @@ class Connection {
       if (this.buf.length >= 5) {
         const len = this.buf.readInt32BE(1);
         // Before sign-in only a password comes: nothing large.
-        if (len < 4 || len > 10_000) throw new PgError('08P01', 'bad message length');
+        if (len < 4 || len > MAX_UNSIGNED_MESSAGE) throw new PgError('08P01', 'bad message length');
         if (this.buf.length >= len + 1) {
           const t = String.fromCharCode(this.buf[0]);
           const body = this.buf.subarray(5, len + 1);
