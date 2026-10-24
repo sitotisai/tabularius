@@ -14,3 +14,9 @@ export function setOwn<T>(map: Record<string, T>, key: string, value: T): void {
   if (key === '__proto__') Object.defineProperty(map, key, { value, enumerable: true, writable: true, configurable: true });
   else map[key] = value;
 }
+
+/** The map's own entry under `key`, made with `make` the first time (see setOwn). */
+export function ownEntry<T>(map: Record<string, T>, key: string, make: () => T): T {
+  if (!Object.hasOwn(map, key)) setOwn(map, key, make());
+  return map[key];
+}
