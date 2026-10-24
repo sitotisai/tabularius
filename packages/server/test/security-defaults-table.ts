@@ -511,6 +511,14 @@ export const ROWS: Row[] = [
     },
   },
   {
+    id: 'device-storage', section: 'Data at rest', setting: 'Stop keeping record data on devices',
+    default: 'Off: web sign-out sends no Clear-Site-Data header. The forget-device route always sends Clear-Site-Data: "cache", "storage"; never cookies. Data API token logout is unchanged',
+    changedBy: 'Admin console, Connected: Stop keeping record data on devices; POST /tabularius/admin/v1/device-storage {on:true}; stopKeepingRecordData in .openhbam-settings.json',
+    risk: 'When on, web sign-out and web data calls answering 401 (including one with an unrecognised token) request clearing, and web sessions expire 30 days after sign-in (server awake time) despite activity. Clearing is origin-wide and can discard unsent offline edits. Partial: browser writes continue until clearing; clearing depends on browser support in a secure context',
+    how: 'probed', expect: 'false',
+    async observe(ctx) { return String((await ctx.status()).server.stopKeepingRecordData); },
+  },
+  {
     id: 'audit', section: 'Data at rest', setting: 'Audit trail',
     default: 'On: every record created, changed, deleted or duplicated is logged; reads are not logged; record entries are kept 400 days, then removed (security events are kept without limit)',
     changedBy: '`logReads`, `redactSensitive`, `excludeFields` and `retentionDays` in the file\'s audit settings (console)',

@@ -948,6 +948,15 @@ export class Admin {
         } catch (e) {
           send(400, { error: adminErrorText(e, this.host) });
         }
+      } else if (path === '/tabularius/admin/v1/device-storage' && req.method === 'POST') {
+        const body = await readJson(req) as { on?: unknown };
+        if (typeof body.on !== 'boolean') send(400, { error: 'on is true or false' });
+        else {
+          const before = this.host.config.stopKeepingRecordData();
+          this.host.config.setStopKeepingRecordData(body.on);
+          if (body.on !== before) this.log(body.on ? 'Stop keeping record data on devices is on (admin console): web sign-out clears the browser, and web sessions end 30 days after sign-in' : 'Stop keeping record data on devices is off (admin console)');
+          send(200, { stopKeepingRecordData: body.on });
+        }
       } else if (path === '/tabularius/admin/v1/responsive' && req.method === 'POST') {
         // The width below which the web client stacks a layout in one column when the layout has no breakpoint of its own.
         const body = await readJson(req) as { stackBelow?: unknown };
@@ -2794,6 +2803,7 @@ export class Admin {
         webSessionIdleMinutes: this.host.config.webSessionIdleMinutes(),
         // False while the web client's idle time follows the Data API's, so the console can show it empty.
         webSessionIdleOwn: this.host.config.webSessionIdleIsOwn(),
+        stopKeepingRecordData: this.host.config.stopKeepingRecordData(),
         // Below this width (points) the web client stacks a layout that has no breakpoint of its own; 0 is never.
         responsiveStackBelow: this.host.config.responsiveStackBelow(),
         notifications: this.notificationStatus(),
