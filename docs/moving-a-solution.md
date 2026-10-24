@@ -165,6 +165,12 @@ containers stored there show as missing and new ones go under `RC_Data_FMS/<name
 move the files into the folder named by the base directory below
 `RC_Data_FMS/<name>/` (or `Files/<name>/`). Nothing is moved for you.
 
+The folder named after the hosted file, beside it, is used only when the name is
+plain: ASCII letters, digits, space, dash, underscore and dot, not ending in a dot
+or a space, with no `~1` form, and not `Files` or `RC_Data_FMS` in any
+capitalization. For any other name (an accented letter, say), keep external
+containers under `RC_Data_FMS/<name>/` or `Files/<name>/`.
+
 ### What won't work yet
 
 Before you invite anyone in, run:
