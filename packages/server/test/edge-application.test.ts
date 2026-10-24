@@ -227,3 +227,15 @@ test('chunked bodies that trickle to the routes that read before sign-in are end
     assert.match(docs, /^HTTP\/1\.1 200 /);
   }
 });
+
+test('a Data API call with a made-up token is refused before its body is read, so a trickled body holds nothing', async t => {
+  const s = await start(t, undefined, { smallBodyMs: 400, checkMs: 10 });
+  const held: RawClient[] = [];
+  const drip = setInterval(() => { for (const c of held) if (!c.socket.destroyed) c.socket.write('1\r\nx\r\n'); }, 100);
+  t.after(() => { clearInterval(drip); for (const c of held) c.socket.destroy(); });
+  for (let i = 0; i < 25; i++) {
+    const c = await new RawClient(s.port).ready(); held.push(c);
+    c.send(request('/fmi/data/vLatest/databases/Edge/layouts/Items/records', 'Transfer-Encoding: chunked\r\nContent-Type: application/json\r\nAuthorization: Bearer made-up\r\n', 'POST') + '1\r\nx\r\n');
+  }
+  await Promise.all(held.map(c => c.until(text => /^HTTP\/1\.1 401 /.test(text))));
+});
