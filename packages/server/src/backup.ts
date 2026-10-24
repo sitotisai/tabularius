@@ -33,6 +33,7 @@ import { checkedFile, cleanupPath, openSync, copyFileSync, readFileSync, writeFi
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, join, resolve } from 'node:path';
 import { STORE_EXT } from './host.ts';
+import { recordPrunedSets } from './pruned-sets.ts';
 import type { Host } from './host.ts';
 import { decryptFile, encryptFile, ENCRYPTED_EXT } from './encrypt.ts';
 import { checksum, copyVerifiedDatabase, integrity, describeCheck, describeRestore, verifySet, recordChecksum, restoreTestDue, testRestore, verifyAfterBackup } from './backup-verify.ts';
@@ -307,6 +308,8 @@ async function backupOnceHeld(folder: string, dest: string, keep: number, passph
   }
   const sets = backupSets(dest);
   const removed = keep > 0 ? sets.slice(0, Math.max(0, sets.length - keep)) : [];
+  // Said before the sets go, so the off-site mirror removes those, and only those, from the bucket.
+  try { recordPrunedSets(dest, removed); } catch { /* the sets stay off-site: the mirror removes only what is recorded */ }
   for (const old of removed) rmSync(join(dest, old), { recursive: true, force: true });
   crashPoint('backup:after-prune');
   return { dir: join(dest, name), files: names, removed };

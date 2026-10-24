@@ -1305,6 +1305,8 @@ tabularius serve ~/Databases --backup-s3 s3://my-bucket/office --s3-endpoint htt
 tabularius restore ~/Databases --at "2026-10-11 14:05" --from s3://my-bucket/office   # on any machine
 ```
 
+Off-site, a set is removed only when the backup retention (`--keep`) removed it here. A backup folder that is emptied, not mounted or moved never deletes what is already off-site; sets you delete by hand stay in the bucket until you remove them there.
+
 **A standby server**: a second machine keeps copies of every hosted file, a
 second or so behind, ready to take over if the main one fails:
 

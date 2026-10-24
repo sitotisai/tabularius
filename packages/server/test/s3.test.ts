@@ -6,7 +6,7 @@ import { createServer, type IncomingMessage } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Host, S3, STORE_EXT, backupFolder, mirrorDown, mirrorUp, restoreBackup, scheduleOffsite, serve, signV4 } from '../src/index.ts';
-import { Store } from '../../store/src/index.ts';
+import { Store, createStore } from '../../store/src/index.ts';
 
 // Off-site backups: the backup folder mirrored to S3-compatible storage.
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
@@ -251,37 +251,78 @@ test('an off-site mirror reports linked backup sets in its result and log', asyn
   }
 });
 
-test('an off-site mirror of an empty or missing backup folder keeps the remote history', async () => {
+test('an off-site mirror removes only sets that retention pruned, never ones that are just missing', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-s3-empty-'));
   const folder = join(dir, 'Backups');
   const s3 = await fakeS3();
   try {
-    const set = '2026-10-19_120000';
-    mkdirSync(join(folder, set), { recursive: true });
-    writeFileSync(join(folder, set, 'backup.bin'), 'backup');
+    const sets = ['2026-10-19_120000', '2026-10-20_120000'];
+    for (const set of sets) {
+      mkdirSync(join(folder, set), { recursive: true });
+      writeFileSync(join(folder, set, 'backup.bin'), 'backup');
+    }
     const bucket = new S3({ url: 's3://backups/keep', endpoint: s3.endpoint, ...KEYS });
-    assert.equal((await mirrorUp(folder, bucket)).uploaded, 1);
-    const key = `keep/${set}/backup.bin`;
-    assert.ok(s3.objects.has(key));
+    assert.equal((await mirrorUp(folder, bucket)).uploaded, 2);
+    const remote = () => [...s3.objects.keys()].sort();
+    const all = sets.map((set) => `keep/${set}/backup.bin`);
+    assert.deepEqual(remote(), all);
 
-    // The folder is emptied (a new disk, a volume not mounted): nothing is removed there.
-    rmSync(join(folder, set), { recursive: true });
-    await assert.rejects(mirrorUp(folder, bucket), /no backup sets.*nothing was removed/s);
-    assert.ok(s3.objects.has(key));
+    // The folder is emptied (a new disk, a volume not mounted), with its mirror record left: nothing is removed there.
+    for (const set of sets) rmSync(join(folder, set), { recursive: true });
+    assert.equal((await mirrorUp(folder, bucket)).removed, 0);
+    assert.deepEqual(remote(), all);
 
-    // The folder is gone altogether.
+    // One new set in the emptied folder is not a reason to remove the others either (every backup is mirrored at once).
+    const fresh = '2026-10-21_120000';
+    mkdirSync(join(folder, fresh));
+    writeFileSync(join(folder, fresh, 'backup.bin'), 'backup');
+    assert.equal((await mirrorUp(folder, bucket)).removed, 0);
+    assert.deepEqual(remote(), [...all, `keep/${fresh}/backup.bin`]);
+
+    // A folder that is gone altogether and made again, a link in it, and a missing folder: the same.
     rmSync(folder, { recursive: true });
-    await assert.rejects(mirrorUp(folder, bucket), /no backup sets.*nothing was removed/s);
-    assert.ok(s3.objects.has(key));
+    mkdirSync(join(folder, '2026-10-22_120000'), { recursive: true });
+    writeFileSync(join(folder, '2026-10-22_120000', 'backup.bin'), 'backup');
+    mkdirSync(join(dir, 'target'));
+    symlinkSync(join(dir, 'target'), join(folder, '2026-10-23_120000'));
+    assert.equal((await mirrorUp(folder, bucket)).removed, 0);
+    rmSync(folder, { recursive: true });
+    await assert.rejects(mirrorUp(folder, bucket));
+    assert.equal(remote().length, 4);
 
-    // The schedule reports it instead of staying quiet.
-    const logs: string[] = [];
-    const schedule = scheduleOffsite(folder, bucket, { every: 60_000, log: (message) => logs.push(message) });
+    // The schedule runs it without removing anything either.
+    mkdirSync(folder);
+    const schedule = scheduleOffsite(folder, bucket, { every: 60_000, log: () => {} });
     await schedule.run();
     await schedule.stop();
-    assert.equal(schedule.last?.ok, false);
-    assert.ok(logs.some((message) => /off-site backup failed/.test(message)));
-    assert.ok(s3.objects.has(key));
+    assert.equal(remote().length, 4);
+  } finally {
+    s3.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a set that backup retention prunes is removed off-site, and nothing else is', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-s3-retention-'));
+  const dest = join(dir, 'Backups');
+  const s3 = await fakeS3();
+  try {
+    createStore(join(dir, 'Notes' + STORE_EXT));
+    const bucket = new S3({ url: 's3://backups/ret', endpoint: s3.endpoint, ...KEYS });
+    const first = (await backupFolder(dir, dest, 1, '')).dir.split(/[\\/]/).pop()!;
+    await mirrorUp(dest, bucket);
+    // An older set another machine put in the bucket is not this folder's to remove.
+    s3.objects.set('ret/2020-01-01_000000/backup.json', Buffer.from('{}'));
+    t.mock.timers.tick(1100);
+    const second = await backupFolder(dir, dest, 1, '');
+    assert.deepEqual(second.removed, [first]);
+    const r = await mirrorUp(dest, bucket);
+    assert.ok(r.removed >= 1, JSON.stringify(r));
+    const keys = [...s3.objects.keys()];
+    assert.ok(!keys.some((k) => k.startsWith(`ret/${first}/`)), keys.join());
+    assert.ok(keys.some((k) => k.startsWith(`ret/${second.dir.split(/[\\/]/).pop()}/`)));
+    assert.ok(keys.includes('ret/2020-01-01_000000/backup.json'));
   } finally {
     s3.close();
     rmSync(dir, { recursive: true, force: true });
