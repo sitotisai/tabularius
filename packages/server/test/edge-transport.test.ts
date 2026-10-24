@@ -309,6 +309,25 @@ test('the total deadline starts when the handler reads, not when the request arr
   assert.ok(refusedAt >= 700 + 250, `refused after ${refusedAt} ms: the handler began reading at 700 ms and the deadline is 300 ms`);
 });
 
+test('a handler still reading a body that the edge refused is told the body is not coming, so it releases what it holds', async t => {
+  stubCommands(t);
+  let finished = false;
+  const port = await listen(t, createEdgeServer(async (req, res) => {
+    // Like every body reader here: waits for the end of the body or for the request to close.
+    await new Promise<void>(resolve => { req.on('data', () => {}); req.once('end', resolve); req.once('close', resolve); });
+    finished = true;
+    if (!res.writableEnded) res.end();
+  }, { smallBodyMs: 200, checkMs: 10 }));
+  const c = await new RawClient(port).ready();
+  c.send(request('/', 'Content-Length: 200\r\n', 'POST') + '{');
+  const drip = setInterval(() => c.socket.write('x'), 50);
+  t.after(() => clearInterval(drip));
+  await c.until(text => /^HTTP\/1\.1 408 /.test(text));
+  // The answer is out; the stalled sender is cut off within the two-second drain window, which must also end the handler's wait.
+  for (let i = 0; i < 300 && !finished; i++) await sleep(20);
+  assert.equal(finished, true);
+});
+
 test('a response the peer never reads ends the connection and releases its response', async t => {
   stubCommands(t);
   let closed!: () => void;
