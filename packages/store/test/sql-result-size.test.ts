@@ -58,7 +58,7 @@ test('rows that are each small but add up past the budget are refused with error
   });
 });
 
-test('the size is counted in bytes, not characters', () => {
+test('a row is judged in bytes, not characters', () => {
   withStore((store) => {
     // 40 million characters, 80 million bytes.
     assert.throws(() => store.select("SELECT replace(printf('%.*c', 40000000, 'e'), 'e', 'é')"), tooBig);
@@ -150,4 +150,36 @@ test('exporting a file with a row larger than the cap still works', () => {
     assert.equal(report.rows, 1);
     assert.ok(bytes > 70 * 2 ** 20);
   });
+});
+
+test('queries keep the 2000 columns SQLite allows', () => {
+  withStore((store) => {
+    for (const n of [1, 997, 998, 999, 1000, 1001, 1999, 2000]) {
+      const select = `SELECT ${Array.from({ length: n }, (_, i) => `${i} AS c${i}`).join(', ')}`;
+      const r = store.select(select);
+      assert.equal(r.names.length, n, `${n} columns`);
+      assert.deepEqual(r.rows[0].slice(-1), [n - 1]);
+      assert.equal(Object.keys(store.queryWithOrigins(select).rows[0]).length, n);
+    }
+    // And the guard still sees a big value in the last of many columns.
+    const wide = `SELECT ${Array.from({ length: 1500 }, (_, i) => `${i} AS c${i}`).join(', ')}, hex(zeroblob(40000000)) AS big`;
+    assert.throws(() => store.select(wide), tooBig);
+  });
+});
+
+test('rows of numbers and NULLs count too: a result of many cells cannot fill the heap', () => {
+  const child = spawnSync(process.execPath, ['--no-warnings', '--max-old-space-size=640', '--input-type=module', '-e', `
+    import { mkdtempSync } from 'node:fs';
+    import { tmpdir } from 'node:os';
+    import { join } from 'node:path';
+    import { createStore, Store } from ${JSON.stringify(join(import.meta.dirname, '../src/index.ts'))};
+    const dir = mkdtempSync(join(tmpdir(), 'tabularius-sql-cells-'));
+    createStore(join(dir, 'Shop.sqlite'));
+    const store = new Store(join(dir, 'Shop.sqlite'), 'Shop');
+    const columns = Array.from({ length: 900 }, (_, i) => 'x + 0.5 AS a' + i).join(', ');
+    try { store.select('WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 100000) SELECT ' + columns + ' FROM c', [], 100001); console.log('returned'); } catch (e) { console.log(e.code); }
+    store.close();
+  `], { encoding: 'utf8', timeout: 120_000 });
+  assert.equal(child.status, 0, child.stderr.slice(-400));
+  assert.equal(child.stdout.trim(), '812');
 });
