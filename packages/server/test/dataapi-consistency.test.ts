@@ -36,7 +36,7 @@ test('password sign-in reports the documented passkey challenge to Data API and 
     method: 'POST', headers: bearer, body: JSON.stringify({ name: 'Absent' }),
   });
   assert.equal((await missingList.json()).error.code, 108);
-  const options = await fetch(`${endpoint}/passkey/register/options`, { method: 'POST', headers: bearer, body: '{}' });
+  const options = await fetch(`${endpoint}/passkey/register/options`, { method: 'POST', headers: bearer, body: JSON.stringify({ password: 'pw' }) });
   const { response: { challenge } } = await options.json();
   const auth = makeAuthenticator(new URL(url).hostname, new URL(url).origin);
   const registered = await fetch(`${endpoint}/passkey/register`, {

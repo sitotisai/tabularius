@@ -197,6 +197,7 @@ test('AR-web-admin-console-05 overlapping token and recovery-code submissions mi
       await route.continue();
     });
     const generate = page.getByRole('button', { name: 'Generate recovery codes' });
+    await page.getByLabel('Current password').fill('ann-secret-1');
     page.once('dialog', (dialog) => void dialog.accept());
     await generate.click();
     await until(async () => codeRequests, (n) => n === 1);

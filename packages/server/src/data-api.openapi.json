@@ -782,7 +782,7 @@
           "Data API: sessions and sign-in"
         ],
         "summary": "Makes a fresh set of ten recovery codes for the signed-in account, replacing any it had, and returns them once.",
-        "description": "**Permissions:** A valid session token for the file (Bearer or X-FM-Data-Access-Token); acts only on the session's own account.",
+        "description": "**Permissions:** A valid session token for the file (Bearer or X-FM-Data-Access-Token); acts only on the session's own account. The token alone is not enough: the account's current password is asked for again.",
         "security": [
           {
             "bearerAuth": []
@@ -870,6 +870,32 @@
             "$ref": "#/components/responses/FileMakerError"
           }
         },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "password": {
+                    "type": "string",
+                    "description": "The account's current password. A wrong one is 212 (401); a missing one is 960 (400)."
+                  },
+                  "code": {
+                    "type": "string",
+                    "description": "A current one-time code from the authenticator app; required (error 1211, 401) when the account has one set up."
+                  }
+                },
+                "required": [
+                  "password"
+                ]
+              },
+              "example": {
+                "password": "<current-password>"
+              }
+            }
+          }
+        },
         "x-tabularius-only": true
       }
     },
@@ -880,7 +906,7 @@
           "Data API: sessions and sign-in"
         ],
         "summary": "Starts registering a passkey for the signed-in account: returns a challenge and the credential ids it already has.",
-        "description": "**Permissions:** A valid session token for the file; acts only on the session's own account.",
+        "description": "**Permissions:** A valid session token for the file; acts only on the session's own account. The token alone is not enough: the account's current password is asked for again.",
         "security": [
           {
             "bearerAuth": []
@@ -975,6 +1001,32 @@
           },
           "default": {
             "$ref": "#/components/responses/FileMakerError"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "password": {
+                    "type": "string",
+                    "description": "The account's current password. A wrong one is 212 (401); a missing one is 960 (400)."
+                  },
+                  "code": {
+                    "type": "string",
+                    "description": "A current one-time code from the authenticator app; required (error 1211, 401) when the account has one set up."
+                  }
+                },
+                "required": [
+                  "password"
+                ]
+              },
+              "example": {
+                "password": "<current-password>"
+              }
+            }
           }
         },
         "x-tabularius-only": true

@@ -153,9 +153,12 @@ export async function signInWithRecoveryCode(db: string, account: string, code: 
 
 export interface Passkey { id: string; account: string; label?: string; created: string; lastUsed?: string }
 
-/** Register a passkey for the signed-in account: get options, create the credential, hand the attestation back. */
-export async function registerPasskey(db: string, token: string, label: string): Promise<{ id: string }> {
-  const opts = await fmReq(db, 'POST', 'passkey/register/options', token, {});
+/** What the server asks to see again before it makes a credential that outlives the session: the account's password and, when it has one, a one-time code. */
+export interface CredentialProof { password: string; code?: string }
+
+/** Register a passkey for the signed-in account: get options (which asks for the password), create the credential, hand the attestation back. */
+export async function registerPasskey(db: string, token: string, label: string, proof: CredentialProof): Promise<{ id: string }> {
+  const opts = await fmReq(db, 'POST', 'passkey/register/options', token, { ...proof });
   const exclude = (opts.excludeCredentials ?? []) as string[];
   const cred = await navigator.credentials.create({
     publicKey: {
@@ -184,6 +187,6 @@ export async function removeMyPasskey(db: string, token: string, id: string): Pr
   return (await fmReq(db, 'DELETE', `passkey/${enc(id)}`, token)).removed ?? false;
 }
 
-export async function generateMyRecoveryCodes(db: string, token: string): Promise<{ codes: string[]; remaining: number }> {
-  return fmReq(db, 'POST', 'recovery-codes', token, {});
+export async function generateMyRecoveryCodes(db: string, token: string, proof: CredentialProof): Promise<{ codes: string[]; remaining: number }> {
+  return fmReq(db, 'POST', 'recovery-codes', token, { ...proof });
 }
