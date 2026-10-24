@@ -179,8 +179,10 @@ export async function registerPasskey(db: string, token: string, label: string, 
   });
 }
 
-export async function listMyPasskeys(db: string, token: string): Promise<Passkey[]> {
-  return (await fmReq(db, 'GET', 'passkey', token)).passkeys ?? [];
+/** The account's passkeys, and the reason it cannot confirm a credential change (no password of its own, or a passkey as its second factor) when it cannot. */
+export async function listMyPasskeys(db: string, token: string): Promise<{ passkeys: Passkey[]; confirmBlocked?: string }> {
+  const out = await fmReq(db, 'GET', 'passkey', token);
+  return { passkeys: out.passkeys ?? [], ...(typeof out.confirmBlocked === 'string' ? { confirmBlocked: out.confirmBlocked } : {}) };
 }
 
 export async function removeMyPasskey(db: string, token: string, id: string): Promise<boolean> {
