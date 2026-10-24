@@ -3446,7 +3446,10 @@ export class Store {
       // On an existing one, the flag is left as it is unless opts names it, so
       // setting a password doesn't silently clear a standing must-change.
       const keepMust = opts.mustChange === undefined ? '' : ', must_change = excluded.must_change';
-      const existed = !!this.sql.prepare('SELECT 1 FROM _fm_accounts WHERE name = ? COLLATE NOCASE').get(account);
+      const before = this.sql.prepare('SELECT password_hash FROM _fm_accounts WHERE name = ? COLLATE NOCASE').get(account) as { password_hash: string | null } | undefined;
+      const existed = !!before;
+      // The same password set again (an automation that re-applies it) is no reset: nothing is revoked.
+      const same = !!before?.password_hash && checkPassword(password, before.password_hash);
       if (!existed) this.refuseLookalikeAccount(account);
       this.sql.prepare(`INSERT INTO _fm_accounts (name, password_hash, source, must_change, password_changed, password_disabled) VALUES (?, ?, 'openhbam', ?, ?, 0)
         ON CONFLICT(name) DO UPDATE SET password_hash = excluded.password_hash, password_changed = excluded.password_changed, password_disabled = 0${keepMust}`)
@@ -3460,11 +3463,18 @@ export class Store {
       this.sql.prepare("DELETE FROM _fm_api_tokens WHERE account = ? COLLATE NOCASE AND provenance = 'delegated'").run(account);
       // Recovery codes and passkeys sign in without this password, so a reset made because it may be known to someone
       // else must not leave them working. The person changing their own password keeps the passkeys they added.
-      if (existed) {
-        this.sql.prepare('DELETE FROM _fm_recovery_codes WHERE account = ? COLLATE NOCASE').run(account);
-        if (!opts.keepPasskeys) this.sql.prepare('DELETE FROM _fm_passkeys WHERE account = ? COLLATE NOCASE').run(account);
+      // A registration challenge issued before the change must not finish one after it. Service API tokens are not
+      // touched (they are independent of the password); delegated ones are removed above.
+      let revokedRecoveryCodes = 0, revokedPasskeys = 0;
+      if (existed && !same) {
+        revokedRecoveryCodes = Number(this.sql.prepare('DELETE FROM _fm_recovery_codes WHERE account = ? COLLATE NOCASE').run(account).changes);
+        if (!opts.keepPasskeys) revokedPasskeys = Number(this.sql.prepare('DELETE FROM _fm_passkeys WHERE account = ? COLLATE NOCASE').run(account).changes);
+        this.sql.prepare("DELETE FROM _fm_webauthn_challenges WHERE account = ? COLLATE NOCASE AND kind = 'register'").run(account);
       }
-      this.logSecurity(existed ? 'password-changed' : 'account-added', { target: account });
+      this.logSecurity(existed ? 'password-changed' : 'account-added', {
+        target: account,
+        ...(revokedRecoveryCodes || revokedPasskeys ? { detail: { ...(revokedRecoveryCodes ? { revokedRecoveryCodes } : {}), ...(revokedPasskeys ? { revokedPasskeys } : {}) } } : {}),
+      });
       if (privilegeSet !== undefined) this.setAccountPrivilegeSet(account, privilegeSet);
     });
   }
@@ -5615,7 +5625,7 @@ export class Store {
     try {
       this.securityChange(() => {
         this.applyDesign(catalog, opts);
-        this.applySecurity(ops);
+        this.applySecurity(ops, opts.account);
       });
     } catch (e) {
       // applyDesign refreshed caches inside the now-rolled-back transaction.
@@ -5634,7 +5644,7 @@ export class Store {
    * operations that reveal a secret (minting an API token, enrolling a second
    * factor) are not here: they have their own calls.
    */
-  applySecurity(ops: SecurityOp[]): void {
+  applySecurity(ops: SecurityOp[], actor?: string): void {
     this.securityChange(() => {
       for (const op of ops) {
         switch (op.op) {
@@ -5659,7 +5669,8 @@ export class Store {
             break;
           }
           case 'setAccount':
-            if (op.password !== undefined) this.setPassword(op.name, op.password, op.privilegeSet, { mustChange: op.mustChange });
+            // Setting your own password here, as the signed-in account, is a change of your own: you keep your passkeys.
+            if (op.password !== undefined) this.setPassword(op.name, op.password, op.privilegeSet, { mustChange: op.mustChange, keepPasskeys: !!actor && foldSecurityName(actor) === foldSecurityName(op.name) });
             else {
               if (!this.accounts().some((a) => foldSecurityName(a.name) === foldSecurityName(op.name))) throw new StoreError(960, `No account "${op.name}" (give it a password to create it)`);
               if (op.privilegeSet !== undefined) this.setAccountPrivilegeSet(op.name, op.privilegeSet);

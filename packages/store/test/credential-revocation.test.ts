@@ -62,3 +62,50 @@ test('changing your own password ends recovery codes but keeps the passkeys you 
     assert.equal(store.hasPasskey('Victim'), true);
   });
 });
+
+test('a registration challenge issued before a password change cannot register a passkey after it', () => {
+  for (const change of [
+    (store: Store) => store.setPassword('Victim', 'a-new-password-2'),
+    (store: Store) => store.changePassword('Victim', pw('Victim'), 'a-new-password-2'),
+  ]) {
+    withStore((store) => {
+      const challenge = store.issueWebauthnChallenge('register', 'Victim');
+      change(store);
+      assert.throws(() => store.registerPasskey('Victim', forgeRegistration(makeAuthenticator(RP, ORIGIN), challenge), { rpId: RP, origin: ORIGIN, challenge }), /expired/);
+      assert.equal(store.hasPasskey('Victim'), false);
+    });
+  }
+});
+
+test('setting the same password again keeps the credentials; a different one revokes them', () => {
+  withStore((store) => {
+    const [code] = enrol(store, 'Victim');
+    store.setPassword('Victim', pw('Victim'));
+    assert.equal(store.hasPasskey('Victim'), true);
+    assert.equal(store.recoveryCodesRemaining('Victim'), 2);
+    assert.equal(store.verify('Victim', pw('Victim'), ''), true);
+    store.setPassword('Victim', 'a-new-password-2');
+    assert.equal(store.hasPasskey('Victim'), false);
+    assert.equal(store.useRecoveryCode('Victim', code), false);
+  });
+});
+
+test('the password-changed event says how many credentials the change removed', () => {
+  withStore((store) => {
+    enrol(store, 'Victim');
+    store.setPassword('Victim', 'a-new-password-2');
+    const event = store.auditLog({ security: true, limit: 200 }).find((e) => e.kind === 'password-changed' && JSON.stringify(e).includes('Victim'));
+    assert.deepEqual({ passkeys: (event?.changes as Record<string, unknown>)?.revokedPasskeys, codes: (event?.changes as Record<string, unknown>)?.revokedRecoveryCodes }, { passkeys: 1, codes: 2 });
+  });
+});
+
+test('an administrator setting their own password in Manage Security keeps their own passkeys, not anyone else\'s', () => {
+  withStore((store) => {
+    enrol(store, 'Admin');
+    enrol(store, 'Victim');
+    store.applySecurity([{ op: 'setAccount', name: 'Admin', password: 'a-new-password-2' }, { op: 'setAccount', name: 'Victim', password: 'a-new-password-3' }], 'Admin');
+    assert.equal(store.hasPasskey('Admin'), true);
+    assert.equal(store.recoveryCodesRemaining('Admin'), 0);
+    assert.equal(store.hasPasskey('Victim'), false);
+  });
+});

@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Server } from 'node:http';
 import { createStore, LOCKOUT, type Store } from '../../store/src/index.ts';
+import { makeAuthenticator, forgeRegistration } from '../../store/test/forge-webauthn.ts';
 import { serve } from '../src/index.ts';
 
 let dir: string;
@@ -156,4 +157,20 @@ test('the blank-password-from-LAN opt-in is per file, off by default, and toggle
 
   const unknown = await post('/tabularius/admin/v1/accounts/blank-password-lan', { database: 'Nope', on: true });
   assert.equal(unknown.status, 404);
+});
+
+test('a reset that removes the only passkey of a two-factor-required account says so', async () => {
+  const rp = 'host.example', origin = 'https://host.example';
+  store.savePrivilegeSet({ name: 'Clerk3', records: { view: true, edit: false, create: false, delete: false }, layouts: 'none', valueLists: 'none', scripts: 'none', extendedPrivileges: ['fmrest'] });
+  for (const name of ['erin', 'finn']) {
+    store.setPassword(name, `${name}-old-password-1`, 'Clerk3');
+    const challenge = store.issueWebauthnChallenge('register', name);
+    store.registerPasskey(name, forgeRegistration(makeAuthenticator(rp, origin), challenge), { rpId: rp, origin, challenge });
+  }
+  store.setAccountRequire2fa('erin', true);
+  const warned = await (await post('/tabularius/admin/v1/accounts/set-password', { database: 'Charts', account: 'erin', password: 'erin-new-password-1' })).json();
+  assert.match(warned.warning, /requires a second factor and had only a passkey/);
+  assert.equal(store.hasPasskey('erin'), false);
+  const plain = await (await post('/tabularius/admin/v1/accounts/set-password', { database: 'Charts', account: 'finn', password: 'finn-new-password-1' })).json();
+  assert.deepEqual(plain, { ok: true });
 });
