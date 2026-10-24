@@ -91,8 +91,10 @@ test('AR-server-backup-ops-04: case 1', async (t) => {
 
 test('AR-server-backup-ops-04: case 2', async (t) => {
   const { live, dest } = setup(t);
-  rmSync(join(live, file));
+  // A set of no stores (backupFolder refuses to make one, so an empty one is made by hand).
   const set = (await backupFolder(live, dest, 0, '')).dir;
+  rmSync(join(set, file));
+  writeBackupInfo(set, { finished: {}, sha256: {} });
   for (const check of [verifySet, testRestore]) assert.equal((await check(set, '')).ok, true);
   writeBackupInfo(set, {});
   for (const check of [verifySet, testRestore]) assert.equal((await check(set, '')).ok, false);
