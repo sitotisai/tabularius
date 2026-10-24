@@ -2,25 +2,6 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 
 /** Maximum envelope while credentials still need to be verified from the body. */
 export const AUTH_BODY_LIMIT = 64 * 1024;
-/** The most any route reads before it knows who is calling (inbound hooks check a signature over a body of up to this size). */
-export const PRE_AUTH_BODY_LIMIT = 256 * 1024;
-
-/** A Data API call that carries a token: the token is checked before any body is read (an unknown one is refused with no read), so a slow body is an
- * authenticated client's and may take as long as its progress allows. Sign-in (`.../sessions`) takes Basic credentials or a body and reads first. */
-export function tokenCheckedFirst(req: IncomingMessage): boolean {
-  const path = (req.url ?? '').split('?')[0];
-  return /^Bearer\s/i.test(req.headers.authorization ?? '') && path.startsWith('/fmi/data/') && !/\/sessions(?:\/|$)/.test(path);
-}
-
-/** A body that has not fully arrived and that some route may read before the caller is known: one declared at most PRE_AUTH_BODY_LIMIT, or a
- * chunked one, which declares nothing. Routes are not told apart, because the ones that read first (sign-in, MCP with Basic credentials,
- * the XML gateway, OAuth registration, inbound hooks) are not a list that stays true. */
-export function preAuthBodyPending(req: IncomingMessage): boolean {
-  if (req.complete || tokenCheckedFirst(req)) return false;
-  if (req.headers['transfer-encoding']) return true;
-  const length = Number(req.headers['content-length']);
-  return length > 0 && length <= PRE_AUTH_BODY_LIMIT;
-}
 
 /** Discarding is time-bounded, never buffered: even a stalled sender is closed promptly. */
 export const BODY_DRAIN_TIMEOUT_MS = 2000;
