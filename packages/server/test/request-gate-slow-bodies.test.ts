@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { connect } from 'node:net';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { createEdgeServer } from '../src/edge-limits.ts';
-import { RequestGate, SLOW_BODIES_PER_ADDRESS } from '../src/request-gate.ts';
+import { RequestGate } from '../src/request-gate.ts';
 import { listen, RawClient, request, stubCommands } from './edge-test-helpers.ts';
 
-// A gate of 8 slots lets 4 requests wait on a small body in all, and SLOW_BODIES_PER_ADDRESS from one address.
+// A gate of 8 slots lets 4 requests wait on a small body in all, and 2 from one address.
 async function start(t: TestContext) {
   stubCommands(t);
   const gate = new RequestGate(8, 16, 100);
@@ -32,19 +32,19 @@ const until = async (check: () => boolean, what: string) => {
 test('one address may keep only a few sign-in bodies waiting; its others are refused as busy, and a complete sign-in is not counted', async t => {
   const { gate, from, hold } = await start(t);
   const held = [];
-  for (let i = 0; i < SLOW_BODIES_PER_ADDRESS; i++) held.push(await hold('127.0.0.2'));
-  await until(() => gate.unfinishedBodies === SLOW_BODIES_PER_ADDRESS, 'the first bodies take a place');
+  for (let i = 0; i < gate.slowBodiesPerAddress; i++) held.push(await hold('127.0.0.2'));
+  await until(() => gate.unfinishedBodies === gate.slowBodiesPerAddress, 'the first bodies take a place');
   const refused = await hold('127.0.0.2');
   await refused.until(text => /^HTTP\/1\.1 503 /.test(text));
   const whole = await from('127.0.0.2');
   assert.match(await whole.send(request('/tabularius/admin/v1/sign-in', 'Content-Length: 2\r\nConnection: close\r\n', 'POST') + '{}').end(), /^HTTP\/1\.1 200 /);
-  assert.equal(gate.unfinishedBodies, SLOW_BODIES_PER_ADDRESS);
+  assert.equal(gate.unfinishedBodies, gate.slowBodiesPerAddress);
 });
 
 test('a sign-in from another address is served although one address is dripping, also when its body follows the headers or it asks for 100-continue', async t => {
   const { gate, from, hold } = await start(t);
   await hold('127.0.0.2'); await hold('127.0.0.2');
-  await until(() => gate.unfinishedBodies === SLOW_BODIES_PER_ADDRESS, 'the dripping bodies take their places');
+  await until(() => gate.unfinishedBodies === gate.slowBodiesPerAddress, 'the dripping bodies take their places');
   const split = await from('127.0.0.3');
   split.send(request('/tabularius/admin/v1/sign-in', 'Content-Length: 2\r\nConnection: close\r\n', 'POST'));
   await sleep(30);
