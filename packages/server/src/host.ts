@@ -468,7 +468,7 @@ export class Host {
         }
         let check: ReconvertCheck | undefined;
         try {
-          check = reconvertCheck(store, join(dir, f));
+          check = reconvertCheck(store, join(dir, f), { status: true });
         } catch {
           // opened below, where a damaged store is reported
         }
@@ -803,7 +803,8 @@ export class Host {
     const fmp12 = store && join(this.dir, store.name + '.fmp12');
     if (!store || !fmp12 || !existsSync(fmp12)) return undefined;
     try {
-      return reconvertCheck(store.path, fmp12, opts);
+      // Asked again every few seconds by the admin console: the source is not read in full each time (see reconvertCheck).
+      return reconvertCheck(store.path, fmp12, { ...opts, status: true });
     } catch {
       return undefined;
     }
