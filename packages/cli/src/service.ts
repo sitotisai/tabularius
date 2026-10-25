@@ -50,6 +50,7 @@ import { nodeSupports } from './node-version.cjs';
 import { closedBy, refusalFor } from './newer-files.ts';
 import { readSecretFile } from './secret-file.ts';
 import { requestStop } from './stop-request.ts';
+import { refuseWritableSystemTaskCode, type AclProbe } from './windows-acl.ts';
 
 export type Platform = 'darwin' | 'linux' | 'win32';
 
@@ -327,9 +328,11 @@ export function installed(home = defaults().home): Installed | undefined {
   }
 }
 
-export function installService(o: ServiceOptions): void {
+export function installService(o: ServiceOptions, aclProbe?: AclProbe): void {
   o = { ...o, extra: normalizedSecretFiles(o.extra) };
   const f = serviceFile(o);
+  // Before anything is written or registered: the Windows system task must not run code that another account can change.
+  refuseWritableSystemTaskCode(o, aclProbe);
   mkdirSync(o.folder, { recursive: true });
   // Switching between a personal and a system service: the other one goes.
   const was = installed(o.home);

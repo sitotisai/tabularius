@@ -43,10 +43,21 @@ Left out on purpose:
 
 | Setting | Why |
 | --- | --- |
-| `LogonTrigger` or `BootTrigger` | At sign-in, or at boot as the system account (`--system`, from an administrator prompt). |
+| `LogonTrigger` or `BootTrigger` | At sign-in, or at boot as the system account (`--system`, from an administrator prompt). `--system` is refused unless Node and the program can only be changed by administrators: see below. |
 | `LogonType` `InteractiveToken`, `RunLevel` `LeastPrivilege` | Runs as you with no stored password and no elevation. |
 | `RestartOnFailure` 1 minute, 255 times | Starts again a minute after it stops unexpectedly. Microsoft's schema allows 1 to 255 for the count (an earlier version of this file said 999, which the schema does not allow). |
 | `ExecutionTimeLimit` `PT0S`, `MultipleInstancesPolicy` `IgnoreNew` | A server runs for good, and never twice. |
+
+### `--system` and who can change the code it runs
+
+The boot task runs as the system account (`S-1-5-18`). Anything that account starts runs with more privilege than any ordinary account has, so `service install --system` on Windows first reads the access lists of what the task will run and refuses unless only administrators, the system and the Windows installer's own account (TrustedInstaller) can change it:
+
+- Node (the file, and the folder it loads its libraries from) and the whole program folder, every file and folder in it; a link inside it that points outside is followed and checked too;
+- each folder above those, up to the drive root. There, adding a new folder is fine, but deleting, renaming or re-securing one is not (a user who can rename the program folder away could put their own in its place).
+
+The default layout of `scripts/install.ps1` (Node and the app under `%USERPROFILE%\.openhbam`, or a checkout in your own folder) is writable by your own account, so `-System` is refused there. Either install without `--system` (the task then runs as you, at sign-in), or put Node and the program in a folder only administrators can write, for example `C:\Program Files\Tabularius\node` and `C:\Program Files\Tabularius\app`, and run `service install` from there. Under `C:\Program Files` the inherited permissions are normally enough; to set them yourself, from an administrator prompt: `icacls "C:\Program Files\Tabularius" /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-32-545:(OI)(CI)RX" /T`.
+
+What this does not cover: it reads the access lists once, at install time, so it does not stop an administrator from loosening them later; an access list that denies a right is not subtracted from one that allows it (that can only make it refuse a safe layout); the hosted data folder is not checked (it holds data, not code), and neither are `--tls-key`, `--ai-key-file` and the other files named in the serve options. The check runs PowerShell on Windows and has been tested only with simulated access lists, not on a Windows machine. <!-- known-difference: Windows hosting ;; The --system install check of who can change the code has not run on Windows ;; It could refuse a safe layout or accept a writable one ;; Try --system with Node and the app in a user folder (must be refused) and under Program Files (must install) -->
 
 The CLI requests graceful shutdown through a PID-specific file in the hosted folder and waits before task restart/removal. A timeout refuses forced termination. Direct Task Scheduler End, logoff and OS shutdown are still unverified; use the [Windows readiness checklist](audits/audit-windows.md). An older server without this listener must be stopped cleanly before upgrading. <!-- known-difference: Windows hosting ;; Direct Task Scheduler End, logoff and OS shutdown are unverified ;; The server may stop without its graceful cleanup ;; Try each on a Windows machine with the scheduled task installed -->
 

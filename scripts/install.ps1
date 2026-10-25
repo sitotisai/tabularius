@@ -19,7 +19,9 @@
 #
 #   -System      run at boot without anyone signed in, as the system account
 #                (run from an administrator prompt; also opens the port in
-#                Windows Firewall)
+#                Windows Firewall). It is refused unless Node and the app can be
+#                changed only by administrators (not the default per-user folders):
+#                see docs/service-files.md
 #   -Print       show the Task Scheduler task instead of installing it
 #   -Uninstall   stop the service and remove it (hosted files are kept)
 #   -Upgrade     refused here: use tabularius upgrade --from with a trusted local
