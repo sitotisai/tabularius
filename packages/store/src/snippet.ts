@@ -297,12 +297,13 @@ function fieldSpecs(els: XmlElement[], schema: Schema, table: Table | undefined,
     return { el, name };
   });
   const allNames = [...(table?.fields ?? []).map((f) => f.name), ...named.map((n) => n.el.attrs.name ?? '')];
+  const renameNames = renamed.size ? new NameTable({ fields: allNames }) : undefined;
   const ownTos = table ? schema.tableOccurrences.filter((t) => !t.dataSourceId && t.baseTableId === table.id).map((t) => lower(t.name)) : [];
   const follow = (formula: string | undefined) => {
     if (formula === undefined || !renamed.size) return formula;
     let spans;
     try {
-      spans = fieldSpans(formula, new NameTable({ fields: allNames }));
+      spans = fieldSpans(formula, renameNames!);
     } catch {
       return formula;
     }
