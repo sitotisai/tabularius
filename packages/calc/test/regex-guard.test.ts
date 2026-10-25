@@ -124,6 +124,12 @@ test('review fixes: BE_FileReplaceText, huge replacements, astral characters, lo
   assert.throws(() => withRegexBudget(() => guardedTest(evil, trap), 100), /longer than 100 ms/);
 });
 
+test('BE_RegularExpression x preprocessing is linear for repeated unclosed character classes', () => {
+  const started = performance.now();
+  assert.equal(evaluateText(`BE_RegularExpression ( "a" ; "${'['.repeat(20_000)}" ; "x" )`), '?');
+  assert.ok(performance.now() - started < 3000);
+});
+
 test('a pattern with thousands of nested groups is refused instead of aborting the process', () => {
   // V8 aborts the whole process compiling 4,000 nested look-behinds (24,000 characters, under every length cap).
   const nested = '(?<=a'.repeat(4000) + ')'.repeat(4000);

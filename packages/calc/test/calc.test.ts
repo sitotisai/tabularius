@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { compile, evaluate, evaluateText, NameTable, num, text, CalcError, type CalcContext } from '../src/index.ts';
+import { compile, evaluate, evaluateText, fieldRefs, parse, NameTable, num, text, CalcError, type CalcContext, type CalcNames } from '../src/index.ts';
 
 test('owner-only plug-in ids return ? without crashing', () => {
   const formula = '<plugin:PCCC:17> ( 1 )';
@@ -71,6 +71,170 @@ test('text and values', () => {
 test('GetAsURLEncoded replaces lone surrogates and Char bounds very large code points', () => {
   assert.equal(evaluateText('GetAsURLEncoded ( Char ( 55296 ) )'), '%EF%BF%BD');
   assert.equal(evaluateText('Char ( 1e21 )'), '?');
+});
+
+test('text searches keep original offsets around expanding lowercase characters', () => {
+  assert.equal(evaluateText('Position ( "İa" ; "a" ; 1 ; 1 )'), '2');
+  assert.equal(evaluateText('Position ( "İİ ab" ; "ab" ; 1 ; 1 )'), '4');
+  assert.equal(evaluateText('PatternCount ( "İİ" ; "i" )'), '0');
+});
+
+test('digit-led known field names are lexed before numbers, and dotted I does not shift lexer offsets', () => {
+  const fields = new NameTable({ fields: ['2024Sales', 'Ad', 'İsim'] });
+  const context: CalcContext = { names: fields, field: ({ field }) => text(field === '2024Sales' ? 'sales' : field === 'İsim' ? 'name' : 'value') };
+  assert.equal(evaluateText('2024Sales', context), 'sales');
+  assert.equal(evaluateText('"İstanbul" & Ad', context), 'İstanbulvalue');
+  assert.equal(evaluateText('"İstanbul" & İsim', context), 'İstanbulname');
+});
+
+test('a digit-led known name never swallows an operator that the number would leave separate', () => {
+  const refs = (src: string, names: CalcNames) => fieldRefs(parse(src, names)).map((r) => `${r.occurrence ?? ''}::${r.name}`);
+  const secrets: [string, string[]] = ['Secrets', ['Amount']];
+  // A table named like the start of the formula: `1 and Secrets::Amount` still reads Secrets::Amount, as before.
+  const decoy: CalcNames = { occurrences: [secrets, ['1 and Secrets', ['Amount']]] };
+  assert.ok(refs('1 and Secrets::Amount', decoy).includes('Secrets::Amount'));
+  assert.ok(refs('1and Secrets::Amount', decoy).includes('Secrets::Amount'));
+  assert.ok(refs('1 and Secrets::Amount', { occurrences: [secrets] }).includes('Secrets::Amount'));
+  // A field named like it, too: the number, `and` and the field stay three tokens.
+  const decoyField: CalcNames = { fields: ['1 and Secrets', 'Flag'], occurrences: [secrets] };
+  assert.ok(refs('1 and Secrets::Amount', decoyField).includes('Secrets::Amount'));
+  assert.deepEqual(refs('1 or Flag', { fields: ['1 or Flag', 'Flag'] }), ['::Flag']);
+  // A name that runs on from its leading digits is still read as the name (finding #140), for fields and for tables.
+  assert.deepEqual(refs('2024Sales + 1', { fields: ['2024Sales'] }), ['::2024Sales']);
+  assert.deepEqual(refs('2024Sales::Amount', { occurrences: [['2024Sales', ['Amount']]] }), ['2024Sales::Amount']);
+  assert.deepEqual(refs('3D::Size * 2', { occurrences: [['3D', ['Size']]] }), ['3D::Size']);
+});
+
+test('block comment delimiters are paired as before around a star, nesting and a bare opener', () => {
+  // A "*/" in code is a star and a slash: the "/*" that overlaps it still opens a comment.
+  assert.equal(evaluateText('2*/*c*/3'), '6');
+  assert.equal(evaluateText('4 */* c */ 2'), '8');
+  assert.equal(evaluateText('/*/*/ 4'), '4');
+  assert.equal(evaluateText('/* a /* b */ c */ 7'), '7');
+  assert.equal(evaluateText('/* a /* b */ 8'), '8');
+  assert.equal(evaluateText('"/*" & 1 /* x */'), '/*1');
+  // "/*/" does not close itself.
+  assert.equal(evaluateText('/*/ 5'), '?');
+});
+
+test('known names match without regard to case and keep source offsets', () => {
+  const refs = (src: string, names: CalcNames) => fieldRefs(parse(src, names)).map((r) => r.name);
+  // Final sigma lower-cases both ways, a decomposed dotted I stands for the capital one, and the offsets stay in the source.
+  assert.deepEqual(refs('ας β', { fields: ['ΑΣ Β'] }), ['ΑΣ Β']);
+  assert.deepEqual(refs('ΑΣ Β', { fields: ['ας β'] }), ['ας β']);
+  assert.deepEqual(refs('İsim x', { fields: ['i̇sim x'] }), ['i̇sim x']);
+  assert.throws(() => parse('"İsim', { fields: ['İsim'] }), /text constant/);
+});
+
+test('unclosed nested block comments do not rescan their suffix', () => {
+  const started = performance.now();
+  assert.equal(evaluateText('/*'.repeat(60_000)), '?');
+  assert.ok(performance.now() - started < 3000);
+});
+
+// Lexing must cost time proportional to the formula. Every case below was quadratic or worse before; the limits are
+// generous (a linear run takes milliseconds) because the quadratic ones take seconds to minutes. CPU time of the thread,
+// as in complexity.test.ts: wall time on a busy machine says nothing about the engine.
+const cpuNow = (): number => {
+  if (typeof process.threadCpuUsage === 'function') {
+    const { user, system } = process.threadCpuUsage();
+    return (user + system) / 1000;
+  }
+  return performance.now();
+};
+const lexMillis = (src: string, names?: NameTable): number => {
+  const started = cpuNow();
+  try { parse(src, names); } catch { /* the formula is not valid; only the time to read it matters */ }
+  return cpuNow() - started;
+};
+
+test('a long run of numbers that touch each other is lexed in linear time', () => {
+  const fields = new NameTable({ fields: ['2024Sales', 'Amount'], occurrences: [['3D', ['Size']]] });
+  for (const unit of ['.1', '1.1', '1..', '1e1.1', '1.1and']) {
+    const src = unit.repeat(Math.ceil(160_000 / unit.length));
+    assert.ok(lexMillis(src) < 2000, `${unit} without names`);
+    assert.ok(lexMillis(src, fields) < 2000, `${unit} with names`);
+  }
+  const started = cpuNow();
+  evaluateText(`Evaluate ( Substitute ( "${'x'.repeat(20_000)}" ; "x" ; ".1" ) )`);
+  assert.ok(cpuNow() - started < 2000);
+});
+
+test('and, or, xor and not still end a digit-led word; other letters do not', () => {
+  const refs = (src: string, names: CalcNames) => fieldRefs(parse(src, names)).map((r) => r.name);
+  const names: CalcNames = { fields: ['1or2', '1android', '2xory', '3nota', '4 and'] };
+  assert.deepEqual(refs('1or2', names), ['1or2']);
+  assert.deepEqual(refs('1android', names), ['1android']);
+  assert.deepEqual(refs('2xory', names), ['2xory']);
+  assert.deepEqual(refs('3nota', names), ['3nota']);
+  assert.deepEqual(refs('1 or 2', names), []);
+  assert.deepEqual(refs('1or(2)', names), []);
+});
+
+test('block comment pairing is linear when delimiters overlap a star in unclosed nesting', () => {
+  // Each "1*/* /* /* a */" is valid (a star, then a comment that never closes inside its repeat), and the lexer meets a
+  // fresh unclosed opener in every repeat, one that the delimiter walk from the previous opener tokenises differently.
+  for (const k of [1, 2, 7]) assert.equal(evaluateText('1*/* /* /* a */'.repeat(k) + '1'), '1');
+  assert.ok(lexMillis('1*/* /* /* a */'.repeat(10_667) + '1') < 1500, 'comment scan is linear');
+  assert.ok(lexMillis('/*/* a */'.repeat(17_778)) < 1500);
+  assert.ok(lexMillis('/*/*/'.repeat(32_000)) < 1500);
+});
+
+test('text searches fold the Greek sigma however it is typed', () => {
+  assert.equal(evaluateText('PatternCount ( "Οδός" ; "ΟΔΌΣ" )'), '1');
+  assert.equal(evaluateText('PatternCount ( "οδος" ; "ΟΔΟΣ" )'), '1');
+  assert.equal(evaluateText('PatternCount ( "ΟΔΟΣ" ; "οδος" )'), '1');
+  assert.equal(evaluateText('PatternCount ( "οδοσ" ; "οδος" )'), '1');
+  assert.equal(evaluateText('Position ( "Η ΟΔΟΣ" ; "οδος" ; 1 ; 1 )'), '3');
+  assert.equal(evaluateText('PatternCount ( "ΟΔΟΣ ΑΘΗΝΑΣ" ; "αθηνας" )'), '1');
+  assert.equal(evaluateText('Position ( "σσ ς" ; "ΣΣ" ; 1 ; 1 )'), '1');
+  // The dotted capital I keeps its width, so it matches nothing but itself and later offsets stay right.
+  assert.equal(evaluateText('PatternCount ( "İstanbul" ; "istanbul" )'), '0');
+  assert.equal(evaluateText('PatternCount ( "İstanbul" ; "İSTANBUL" )'), '1');
+  assert.equal(evaluateText('Position ( "Σİab" ; "ab" ; 1 ; 1 )'), '3');
+  assert.equal(evaluateText('Position ( "ΣΣİΑΣ" ; "ας" ; 1 ; 1 )'), '4');
+});
+
+test('case-insensitive text searches over millions of characters stay inside the work budget', () => {
+  // Folding by hand per code point cost 17 to 25 times native lower-casing and tipped a 4 MB search over the deadline.
+  const f = 'Let ( t = Substitute ( "' + 'x'.repeat(1000) + '" ; "x" ; "' + 'Ab'.repeat(2000) + '" ) ; PatternCount ( t ; "zz" ) + Position ( t ; "ABZ" ; 1 ; 1 ) )';
+  const started = cpuNow();
+  assert.equal(evaluateText(f), '0');
+  assert.ok(cpuNow() - started < 1500);
+});
+
+test('names that differ only by sigma or case match the way the source is written', () => {
+  const read = (src: string, fields: string[]) => fieldRefs(parse(src, { fields })).map((r) => r.name);
+  // Like lower-casing the source whole: a name whose own lower-case is the source's wins over the first one that only
+  // folds to it, whichever order the names are listed in.
+  for (const fields of [['ΟΔΟΣ', 'οδοσ'], ['οδοσ', 'ΟΔΟΣ']]) {
+    assert.deepEqual(read('οδοσ', fields), ['οδοσ'], fields.join());
+    assert.deepEqual(read('οδος', fields), ['ΟΔΟΣ'], fields.join());
+    assert.deepEqual(read('ΟΔΟΣ', fields), ['ΟΔΟΣ'], fields.join());
+  }
+  for (const fields of [['οδος', 'οδοσ'], ['οδοσ', 'οδος']]) {
+    assert.deepEqual(read('οδοσ', fields), ['οδοσ'], fields.join());
+    assert.deepEqual(read('οδος', fields), ['οδος'], fields.join());
+  }
+  // A lone fold-equal name still matches, and equal lower-case names keep the first listed.
+  assert.deepEqual(read('οδοσ', ['ΟΔΟΣ']), ['ΟΔΟΣ']);
+  assert.deepEqual(read('ΟΔΟΣ', ['οδοσ']), ['οδοσ']);
+  assert.deepEqual(read('abc', ['ABC', 'Abc']), ['ABC']);
+});
+
+test('looking up names in a large schema stays close to a plain prefix test', () => {
+  const fields = Array.from({ length: 4000 }, (_, i) => `Field${i} Name`);
+  const names = new NameTable({ fields });
+  const formula = Array.from({ length: 800 }, (_, i) => `Field${(i * 37) % 4000} Name`).join(' + ');
+  parse(formula, names);
+  const started = cpuNow();
+  for (let r = 0; r < 3; r++) parse(formula, names);
+  assert.ok(cpuNow() - started < 1500);
+});
+
+test('Replace with non-finite start or count returns a calculation error', () => {
+  assert.equal(evaluateText('Replace ( "abc" ; 1/0 ; 1 ; "x" )'), '?');
+  assert.equal(evaluateText('Replace ( "abc" ; 1 ; 1/0 ; "x" )'), '?');
 });
 
 test('numbers', () => {
