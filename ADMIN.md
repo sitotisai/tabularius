@@ -118,19 +118,38 @@ its upload can be deleted or swept. Restart discards partial uploads and their
 reservations. Hosted/parked files and conversion output are outside this quota;
 it is not a total disk-usage limit.
 
-Single-request container uploads reserve their enforced request maximum (1 GiB)
-until stored or rejected, with a separate **8 GiB per-process** spool budget.
-This also bounds chunked HTTP bodies without trusting `Content-Length`; excess
-requests receive **413**. Resumable container uploads keep their existing budget.
-Request spools use the same private temporary folders as resumable uploads.
-Startup and periodic cleanup retain recent files for at least 24 hours. Untracked
-folders from an earlier run with the current PID expire after that grace period;
-other live PIDs get at most seven days, so PID reuse cannot protect leftovers
-forever. Legacy single-request spool files expire after seven days. Admin partial
-files also receive a 24-hour grace period, or seven days for another live PID;
-active owners in this process are protected by their random owner token.
+Single-request container uploads (one multipart POST to the Data API's
+`containers` route) share a separate **8 GiB per-process** spool budget. A body
+with a `Content-Length` and no `Transfer-Encoding` reserves that many bytes until
+it is stored or rejected, so small files cost little. A chunked body, or one that
+does not say its length, reserves the whole enforced limit (1 GiB) because it
+could send that much; the bytes that arrive are counted either way. A
+`Content-Length` over the limit is refused at once with **413**. Each account may
+also have at most **4** such uploads arriving at once in one hosted file, so a few
+slow requests from one account cannot hold the shared budget. An upload over the
+account limit or the budget is a temporary condition: it receives **503** with
+**`Retry-After: 5`** (Data API error code 301), like the other concurrency
+limits above, and can be sent again when one has finished. These two limits are
+fixed in this release and have no setting. Resumable container uploads keep
+their existing budget. Request spools use the same private temporary folders as
+resumable uploads. Startup and periodic cleanup retain recent files for at least
+24 hours, with one exception. In container spool folders, a folder is this
+process's own only when its owner marker carries this run's random token; an
+untracked own folder expires after that grace period. A folder with this PID but
+another or no run token (another container sharing `TABULARIUS_UPLOAD_TMP`, or
+an earlier run) is treated like any other live PID: it gets at most seven days,
+so PID reuse cannot protect leftovers forever. Folders this process still tracks
+(its resumable uploads and open request spools) are never swept. Legacy
+single-request spool files expire after seven days. Admin partial files carry
+their owner's PID and a random token in their names. The token protects the
+partial files of uploads this process is serving (`uploads.ts` keeps a set of
+its live owners), and cleanup never removes those. A file whose owner is another
+PID that is confirmed gone is removed at once, so a server that keeps crashing
+does not pile up files. A file with this PID under another token waits the
+24-hour grace period; one whose owner is alive or cannot be checked waits seven
+days.
 These are Tabularius resource policies; matching behaviour in the compatible
-product is unverified. <!-- known-difference: Server operation ;; Container spool budgets and crash cleanup are Tabularius policies, unverified against the compatible product ;; Excess single-request uploads receive 413 and aged orphan files are reclaimed ;; A compatible server run and an owner decision -->
+product is unverified. <!-- known-difference: Server operation ;; Container spool budgets and crash cleanup are Tabularius policies, unverified against the compatible product ;; Excess single-request uploads receive 503 with Retry-After and aged orphan files are reclaimed ;; A compatible server run and an owner decision -->
 
 `TABULARIUS_MAX_UPLOAD` remains the per-file byte limit (default **10737418240**,
 10 GiB); **0 disables only that per-file limit**, not the aggregate quota.
