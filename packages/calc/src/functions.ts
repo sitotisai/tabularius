@@ -432,19 +432,14 @@ eager('Char', 1, 1, (v) => {
 eager('Code', 1, 1, (v, env) => {
   const t = T(v[0], env);
   if (!t.length) return EMPTY;
-  // Five digits for each character, counted before anything is built.
+  // Five digits for each character, counted before anything is built. Both passes are linear in a text that is under
+  // the text limit, so the work needs no clock reading; it would only refuse a text that fits when the host is busy.
   let count = 0;
-  for (const _ of t) {
-    count++;
-    if ((count & 1023) === 0) env.checkWorkBudget();
-  }
+  for (const _ of t) count++;
   checkCalcTextSize(5 * count);
   // First character in the lowest five digits.
   const out: string[] = [];
-  for (const c of t) {
-    out.push(String(c.codePointAt(0)).padStart(5, '0'));
-    if ((out.length & 1023) === 0) env.checkWorkBudget();
-  }
+  for (const c of t) out.push(String(c.codePointAt(0)).padStart(5, '0'));
   return text(out.reverse().join('').replace(/^0+/, '') || '0');
 });
 eager('SerialIncrement', 2, 2, (v, env) => {
