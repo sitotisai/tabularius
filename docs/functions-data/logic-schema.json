@@ -1,0 +1,628 @@
+[
+  {
+    "name": "Addembeddings",
+    "signature": "addembeddings ( argument1 ; argument2 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Basetableids",
+    "signature": "basetableids (  )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Basetablenames",
+    "signature": "basetablenames (  )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Case",
+    "signature": "case ( argument1 ; argument2 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [
+      {
+        "formula": "Case ( 1 = 1 ; \"yes\" ; \"no\" )",
+        "result": "yes"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "Choose",
+    "signature": "choose ( argument1 ; argument2 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Cosinesimilarity",
+    "signature": "cosinesimilarity ( argument1 ; argument2 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Cryptauthcode",
+    "signature": "cryptauthcode ( argument1 ; argument2 ; argument3 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Cryptdecrypt",
+    "signature": "cryptdecrypt ( argument1 ; argument2 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Cryptdecryptbase64",
+    "signature": "cryptdecryptbase64 ( argument1 ; argument2 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Cryptdigest",
+    "signature": "cryptdigest ( argument1 ; argument2 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Cryptencrypt",
+    "signature": "cryptencrypt ( argument1 ; argument2 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Cryptencryptbase64",
+    "signature": "cryptencryptbase64 ( argument1 ; argument2 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Cryptgeneratesignature",
+    "signature": "cryptgeneratesignature ( argument1 ; argument2 ; argument3 ; argument4 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Cryptverifysignature",
+    "signature": "cryptverifysignature ( argument1 ; argument2 ; argument3 ; argument4 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Databasenames",
+    "signature": "databasenames (  )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Dial_CenterPointOfRect",
+    "signature": "Dial_CenterPointOfRect ( argument1 ; argument2 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Evaluate",
+    "signature": "evaluate ( argument1 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Evaluationerror",
+    "signature": "evaluationerror ( argument1 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Executesql",
+    "signature": "executesql ( argument1 ; argument2 ; argument3 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Executesqle",
+    "signature": "executesqle ( argument1 ; argument2 ; argument3 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Fieldbounds",
+    "signature": "fieldbounds (  )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Fieldcomment",
+    "signature": "fieldcomment (  )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Fieldids",
+    "signature": "fieldids (  )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Fieldnames",
+    "signature": "fieldnames (  )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Fieldrepetitions",
+    "signature": "fieldrepetitions (  )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Fieldtype",
+    "signature": "fieldtype (  )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Get",
+    "signature": "get ( argument1 )",
+    "summary": "Calculates a result from its supplied arguments and the current record or related data.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Getbasetablename",
+    "signature": "getbasetablename ( argument1 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Getcontainerattribute",
+    "signature": "getcontainerattribute ( argument1 ; argument2 )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Getembedding",
+    "signature": "getembedding ( argument1 ; argument2 ; argument3 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Getembeddingasfile",
+    "signature": "getembeddingasfile ( argument1 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Getembeddingastext",
+    "signature": "getembeddingastext ( argument1 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Getfield",
+    "signature": "getfield ( argument1 )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Getfieldname",
+    "signature": "getfieldname ( argument1 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Getfieldsonlayout",
+    "signature": "getfieldsonlayout (  )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Getheight",
+    "signature": "getheight ( argument1 )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Getlayoutobjectattribute",
+    "signature": "getlayoutobjectattribute (  )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Getnextserialvalue",
+    "signature": "getnextserialvalue (  )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Getnthrecord",
+    "signature": "getnthrecord ( argument1 ; argument2 )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Getpersistentdata",
+    "signature": "getpersistentdata ( argument1 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Getragspaceinfo",
+    "signature": "getragspaceinfo ( argument1 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Getrecordidsfromfoundset",
+    "signature": "getrecordidsfromfoundset (  )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Getrepetition",
+    "signature": "getrepetition ( argument1 ; argument2 )",
+    "summary": "Calculates a result from its supplied arguments and the current record or related data.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Getsummary",
+    "signature": "getsummary ( argument1 ; argument2 )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Gettableddl",
+    "signature": "gettableddl (  )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Gettextfrompdf",
+    "signature": "gettextfrompdf ( argument1 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Getthumbnail",
+    "signature": "getthumbnail ( argument1 ; argument2 ; argument3 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Getwidth",
+    "signature": "getwidth ( argument1 )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "If",
+    "signature": "if ( argument1 ; argument2 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [
+      {
+        "formula": "If ( 1 = 1 ; \"yes\" ; \"no\" )",
+        "result": "yes"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "Isempty",
+    "signature": "isempty ( argument1 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [
+      {
+        "formula": "IsEmpty ( \"\" )",
+        "result": "1"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "Isvalid",
+    "signature": "isvalid ( argument1 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Isvalidexpression",
+    "signature": "isvalidexpression ( argument1 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Kanjinumeral",
+    "signature": "kanjinumeral ( argument1 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Last",
+    "signature": "last ( argument1 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Layoutids",
+    "signature": "layoutids (  )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Layoutnames",
+    "signature": "layoutnames (  )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Layoutobjectnames",
+    "signature": "layoutobjectnames (  )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Listpersistentdataids",
+    "signature": "listpersistentdataids ( argument1 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Location",
+    "signature": "location ( argument1 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Locationvalues",
+    "signature": "locationvalues ( argument1 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Lookup",
+    "signature": "lookup ( argument1 )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Lookupnext",
+    "signature": "lookupnext ( argument1 ; argument2 )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "MBS",
+    "signature": "mbs ( argument1 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Normalizeembedding",
+    "signature": "normalizeembedding ( argument1 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Relationinfo",
+    "signature": "relationinfo (  )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Scriptids",
+    "signature": "scriptids (  )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Scriptnames",
+    "signature": "scriptnames (  )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Scriptstepnames",
+    "signature": "scriptstepnames (  )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Serialincrement",
+    "signature": "serialincrement ( argument1 ; argument2 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [
+      {
+        "formula": "SerialIncrement ( \"A9\" ; 1 )",
+        "result": "A10"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "Setrecursion",
+    "signature": "setrecursion ( argument1 ; argument2 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Subtractembeddings",
+    "signature": "subtractembeddings ( argument1 ; argument2 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Tableids",
+    "signature": "tableids (  )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Tablenames",
+    "signature": "tablenames (  )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Valuelistids",
+    "signature": "valuelistids (  )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Valuelistnames",
+    "signature": "valuelistnames (  )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  },
+  {
+    "name": "Verifycontainer",
+    "signature": "verifycontainer ( argument1 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "While",
+    "signature": "while ( argument1 ; argument2 )",
+    "summary": "Calculates a result from its supplied arguments.",
+    "examples": [],
+    "status": "works"
+  },
+  {
+    "name": "Windownames",
+    "signature": "windownames (  )",
+    "summary": "Reads design or current-context information supplied by the host; without that context its result may be empty.",
+    "details": "Host-provided design and layout information can vary with the open file and current context; specific host behavior is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "With no design provider in the calculation context, the implementation returns an empty value."
+  }
+]
