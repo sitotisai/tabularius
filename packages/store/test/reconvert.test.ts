@@ -83,6 +83,38 @@ test('reconverting keeps records created, edited and deleted since, and settings
   }
 });
 
+test('reconverting keeps a new record that took the id of a deleted original', { skip }, async () => {
+  const { dir, path } = oldStore();
+  try {
+    const sql = new DatabaseSync(path, { readOnly: true });
+    const top = Number((sql.prepare('SELECT max(_fm_record_id) AS id FROM MOVIE').get() as { id: number }).id);
+    const original = sql.prepare('SELECT * FROM MOVIE WHERE _fm_record_id = ?').get(top) as Record<string, unknown>;
+    sql.close();
+    const store = new Store(path, 'Flicks');
+    let edited: number;
+    try {
+      store.delete(LAYOUT, top, { account: 'Ann' });
+      // Ids continue after the highest one left, so the new record is given the deleted one's id.
+      const made = store.create(LAYOUT, { title_sort: 'NEW record made by a person' }, { account: 'Ann' });
+      assert.equal(made.recordId, top);
+      // A second one is edited after it is made: the edit must not be laid over the original's other fields.
+      edited = store.create(LAYOUT, { title_sort: 'Second new record' }, { account: 'Ann' }).recordId;
+      store.update(LAYOUT, edited, { director: 'Mine' }, undefined, { account: 'Ann' });
+    } finally {
+      store.close();
+    }
+
+    const result = await reconvert(path, fixture);
+    assert.deepEqual([result.created, result.edited, result.deleted], [2, 0, 0]);
+    const after = row(path, top)!;
+    assert.equal(after.title_sort, 'NEW record made by a person', "the person's record is kept, not the deleted original");
+    assert.notEqual(after.title_sort, original.title_sort);
+    assert.equal(row(path, edited!)!.director, 'Mine');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
 test("reconverting refuses to carry edits it can't place, unless forced", { skip }, async () => {
   const { dir, path, ids: [one, two, three] } = oldStore();
   try {
