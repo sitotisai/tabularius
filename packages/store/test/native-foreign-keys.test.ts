@@ -483,6 +483,9 @@ test('put-back refuses a reused record id and still restores an ordinary deleted
   const child = store.create('Invoices', { ID: 'i9', CustomerID: 'c2' }).recordId;
   const row = store.sql.prepare('SELECT * FROM "Invoices" WHERE _fm_record_id = ?').get(child) as Record<string, string | number | null>;
   store.delete('Invoices', child);
+  // A committed id is not given again, unless the record-id mark went back (a restored backup, a standby that was
+  // behind): the next record then takes the deleted highest id, as stores numbered before the mark.
+  store.sql.prepare(`UPDATE _fm_record_id_high_water SET id = (SELECT max(_fm_record_id) FROM "Invoices") WHERE tbl = 'Invoices'`).run();
   const taken = store.create('Invoices', { ID: 'replacement', CustomerID: 'c1' }).recordId;
   assert.equal(taken, child);
   const before = audits(store);

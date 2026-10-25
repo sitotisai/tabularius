@@ -117,7 +117,9 @@ main();
 node client.mjs
 ```
 
-It signs in, adds a record, finds the leads, deletes the record it made, and always signs out. Signing out ends
+It signs in, adds a record, finds the leads, deletes the record it made, and always signs out. It prints
+`made record 2` and `2 Grace Hopper`: record 1 was deleted in step 4, and a deleted record's id is not given to
+another record. Signing out ends
 the token; a token also ends by itself after a while without use.
 
 ## Where next
