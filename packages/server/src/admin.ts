@@ -2196,6 +2196,9 @@ export class Admin {
         return { database: copy, time: new Date(point.time).toISOString(), mode };
       }
       const securitySnapshot = file.path + '.security-snapshot';
+      // Read before the file is closed: with Encryption at Rest closing removes the plaintext store, and with it the marker that
+      // shows a missing record was lost. The record read here is what the restore merges into, so a file approved while the
+      // restore waits (an upload, say) is not in it and stays held until approved again: held, never wrongly approved.
       const approvalBefore = { record: verifiedHostedRecord(this.host.dir) };
       // Capture the live security database before closeFileEverywhere encrypts
       // it and removes its plaintext source.

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,7 +8,7 @@ import { createStore } from '../../store/src/index.ts';
 import { Admin } from '../src/admin.ts';
 import type { DataApi } from '../src/dataapi.ts';
 import { Host, STORE_EXT } from '../src/host.ts';
-import { approveInRecord, HOSTED_RECORD_FILE, loadHostedRecord } from '../src/hosted-record.ts';
+import { approveInRecord, HOSTED_RECORD_FILE, loadHostedRecord, markerProbes, recordWriteHook } from '../src/hosted-record.ts';
 
 function folder(t: { after(fn: () => void): void }): string {
   const dir = mkdtempSync(join(tmpdir(), 'host-vet-'));
@@ -95,12 +95,16 @@ test('a failed approval write leaves trusted files held; a follower never writes
   const dir = folder(t);
   let host = new Host(dir);
   await host.close();
-  mkdirSync(join(dir, HOSTED_RECORD_FILE + '.tmp'));
   host = new Host(dir);
+  // A write that fails after its temp file is written (a full disk): the record is left as it was.
+  recordWriteHook.run = () => { throw new Error('no space left on device'); };
+  t.after(() => { recordWriteHook.run = undefined; });
   const made = host.create('Created');
   assert.equal(made.held?.reason, 'not seen before');
-  assert.throws(() => host.approve('Created', 'operator'));
+  assert.throws(() => host.approve('Created', 'operator'), /no space left/);
   assert.equal(host.isHeld('Created'), true);
+  assert.deepEqual(readdirSync(dir).filter((n) => n.startsWith(HOSTED_RECORD_FILE) && n !== HOSTED_RECORD_FILE), [], 'the failed write left no temp file');
+  recordWriteHook.run = undefined;
   await host.close();
   const before = readFileSync(join(dir, HOSTED_RECORD_FILE));
   const follower = new Host(dir, () => {}, { follower: true });
@@ -230,4 +234,36 @@ test('a follower trusted add leaves the approval record and store marker untouch
   assert.equal(sql.prepare("SELECT json FROM _fm_meta WHERE key = 'hostedInstance'").get(), undefined);
   sql.close();
   await follower.close();
+});
+
+// Counts how many store files the approval check opens, not how long it takes: each check of a record opened every store in the
+// folder, once per store, so a restart of N stores opened about N squared files.
+test('a restart reads the stores\' markers a bounded number of times, however many stores there are', async (t) => {
+  const dir = folder(t);
+  const N = 30;
+  for (let i = 0; i < N; i++) createStore(join(dir, `S${i}` + STORE_EXT));
+  await new Host(dir).close();
+  for (const follower of [false, true]) {
+    const before = markerProbes.count;
+    const host = new Host(dir, () => {}, { follower });
+    const opened = markerProbes.count - before;
+    assert.equal(host.heldFiles().length, 0, 'every file was approved on the first start');
+    assert.ok(opened <= 4, `${follower ? 'a follower' : 'the leader'} opened ${opened} stores to check ${N}`);
+    await host.close();
+  }
+});
+
+test('files dropped in beside many approved ones are checked once per start, not once per file', async (t) => {
+  const dir = folder(t);
+  const N = 12;
+  for (let i = 0; i < N; i++) createStore(join(dir, `S${i}` + STORE_EXT));
+  await new Host(dir).close();
+  // Unmarked stores never carry the record's instance, so a check that has to look at all of them is the slowest case.
+  for (let i = 0; i < N; i++) createStore(join(dir, `New${i}` + STORE_EXT));
+  const before = markerProbes.count;
+  const host = new Host(dir);
+  const opened = markerProbes.count - before;
+  assert.equal(host.heldFiles().length, N);
+  assert.ok(opened <= 4 * N, `${opened} stores opened to check ${2 * N}`);
+  await host.close();
 });
