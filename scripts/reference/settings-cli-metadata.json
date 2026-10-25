@@ -417,14 +417,14 @@
     },
     "TABULARIUS_MCP_TOKEN": {
       "description": "Administrator bearer token for the MCP endpoint.",
-      "default": "Unset; loopback administration only",
+      "default": "Unset: the server makes an administrator token on first start (.openhbam-mcp-token); every /mcp request needs credentials",
       "accepted": "Token string",
       "restart": "Yes for a running server.",
       "explainedBy": "docs/environment-variables.md"
     },
     "TABULARIUS_MCP_TOKEN_FILE": {
       "description": "A private regular file holding the MCP access token.",
-      "default": "Unset; loopback administration only",
+      "default": "Unset: the server makes an administrator token on first start (.openhbam-mcp-token); every /mcp request needs credentials",
       "accepted": "File path (the file must not be readable by other users)",
       "restart": "Yes for a running server.",
       "explainedBy": "docs/environment-variables.md"
@@ -1083,12 +1083,12 @@
       "explainedBy": "docs/security-defaults.md"
     },
     "--mcp-token": {
-      "default": "unset; loopback administration only",
+      "default": "Unset: the server makes an administrator token on first start (.openhbam-mcp-token); every /mcp request needs credentials",
       "accepted": "Token string",
       "explainedBy": "docs/hosting-and-connecting.md"
     },
     "--mcp-token-file": {
-      "default": "Unset; loopback administration only",
+      "default": "Unset: the server makes an administrator token on first start (.openhbam-mcp-token); every /mcp request needs credentials",
       "accepted": "File path (a private regular file holding the token)",
       "explainedBy": "docs/environment-variables.md"
     },

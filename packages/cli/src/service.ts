@@ -34,13 +34,14 @@ import { renameFileSync as renameSync, removeFileSync as rmSync } from '../../st
 // to date by the new version when it opens it.
 
 import { validatePublicUrl, urlHostname } from '../../server/src/public-origin.ts';
+import { readSettings } from '../../server/src/fms-migrate.ts';
 import { plainHttpRefusal } from './loopback.ts';
 import { crashPoint } from '../../store/src/crash-point.ts';
 import { spawnSync } from 'node:child_process';
 import { closeSync, cpSync, existsSync, fchmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { cleanupPath, openSync, writeFileSync } from '../../store/src/fs-boundary.ts';
 import { homedir, networkInterfaces, tmpdir, userInfo } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, win32 } from 'node:path';
 import { request as httpsRequest } from 'node:https';
 import { request as httpRequest } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
@@ -109,6 +110,48 @@ const serviceEntry = [
   "import(require('node:url').pathToFileURL(main).href);",
 ].join(' ');
 
+// Validate before any file, certificate or service-manager side effect. Keep in step with serve help.
+const serveSwitches = new Set([
+  '--accept-partial-standby', '--ai', '--allow-app-connections', '--allow-blank-passwords',
+  '--allow-inbound-hooks', '--allow-plain-http', '--allow-script-network', '--allow-webhooks',
+  '--capture-only-copies-to-redirect', '--keep-api-tokens-on-takeover', '--list-files-publicly', '--no-backups',
+  '--oidc-trust-email', '--open', '--send-mail', '--sql-writes', '--test-outbound',
+]);
+const serveValues = new Set([
+  '--ai-account-daily-tokens', '--ai-daily-tokens', '--ai-embed-model', '--ai-embed-url', '--ai-exclude',
+  '--ai-fast-model', '--ai-image-embed', '--ai-image-embed-model', '--ai-key-file', '--ai-model',
+  '--ai-monthly-budget', '--ai-run-tokens', '--ai-workspace-id', '--allow-host', '--allow-script-network-to',
+  '--backup-dir', '--backup-every', '--backup-s3', '--capture-only', '--connections-per-address', '--host',
+  '--http-port', '--https', '--https-email', '--keep', '--ldap-base-dn', '--ldap-bind-dn-template',
+  '--ldap-email-attribute', '--ldap-group-attribute', '--ldap-name', '--ldap-search-dn', '--ldap-url',
+  '--ldap-user-attribute', '--log-limit', '--mail-copies', '--mail-from', '--mail-redirect', '--mcp-origin',
+  '--mcp-token', '--mcp-token-file', '--oidc-client-id', '--oidc-config', '--oidc-groups-claim', '--oidc-issuer',
+  '--oidc-name', '--port', '--progressive', '--proxy-header', '--public-url', '--replication-token',
+  '--replication-token-file', '--s3-endpoint', '--sql-port', '--stats-interval', '--tls-cert', '--tls-key',
+  '--trusted-proxies', '--workers', '--acme-directory', '--oidc-data-api-return-urls', '--s3-region',
+]);
+
+export function validateServeOptions(args: readonly string[], service = false): void {
+  const seen = new Set<string>();
+  for (let i = 0; i < args.length; i++) {
+    const option = args[i];
+    if (service && /^(--host|--port)(=|$)/.test(option)) throw new Error(`service: ${option} belongs before "--", with the install options`);
+    if (!serveSwitches.has(option) && !serveValues.has(option)) throw new Error(`serve: unknown option ${option.split('=')[0]}; write options and their values as separate words`);
+    if (seen.has(option) && option !== '--mcp-origin') throw new Error(`serve: ${option} was given more than once`);
+    seen.add(option);
+    if (serveValues.has(option)) {
+      const value = args[++i];
+      if (value === undefined || value.startsWith('--')) throw new Error(`serve: ${option} needs a value`);
+    }
+  }
+}
+
+function normalizedPaths(extra: readonly string[]): string[] {
+  validateServeOptions(extra, true);
+  const paths = new Set(['--tls-cert', '--tls-key', '--backup-dir', '--ai-key-file', '--oidc-config', '--mcp-token-file', '--replication-token-file']);
+  return extra.map((value, i) => i > 0 && paths.has(extra[i - 1]) ? resolve(value) : value);
+}
+
 /** The service's command line, as arguments. */
 function command(o: ServiceOptions): string[] {
   if (o.singleFile) return [o.node, '--no-warnings', 'serve', o.folder, '--port', String(o.port), '--host', o.host, ...o.extra];
@@ -164,6 +207,7 @@ export function refuseUnsafe(o: ServiceOptions, preview = false): void {
 
 /** Where the service file goes, and what it says. */
 export function serviceFile(o: ServiceOptions, preview = false): { path: string; text: string } {
+  o = { ...o, extra: normalizedPaths(o.extra) };
   validateServicePublicUrl(o.extra);
   refuseUnsafe(o, preview);
   if (o.platform === 'darwin') {
@@ -370,7 +414,7 @@ export function installService(o: ServiceOptions, windows: Partial<SystemHost> =
     run(cmd, [...pre, 'enable', '--now', 'openhbam.service']);
     run(cmd, [...pre, 'restart', 'openhbam.service']);
     if (!o.system && !run('loginctl', ['enable-linger', o.user], { ok: true })) say(`Run 'sudo loginctl enable-linger ${o.user}' to keep it running after you log out`);
-    say(o.system ? 'Running at boot (logs: journalctl -u Tabularius)' : 'Running as a systemd user service (logs: journalctl --user -u Tabularius)');
+    say(o.system ? 'Running at boot (logs: journalctl -u openhbam.service)' : 'Running as a systemd user service (logs: journalctl --user -u openhbam.service)');
   } else {
     // Task Scheduler reads its XML as UTF-16.
     const bytes = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(f.text, 'utf16le')]);
@@ -389,7 +433,8 @@ export function installService(o: ServiceOptions, windows: Partial<SystemHost> =
   const kept: Installed = { platform: o.platform, folder: o.folder, port: o.port, host: o.host, system: o.system, extra: o.extra };
   // Installing the service replaces its one complete configuration; no independent records live in this file.
   updateJsonStateSync(record(o.home), kept, () => kept, { mode: 0o600 });
-  for (const line of serviceSummary(o)) say(line);
+  say('Service registered and start requested; checking whether it answers.');
+  for (const line of serviceSummary(o, []).filter((line) => line.startsWith('  Note:'))) say(line);
 }
 
 /**
@@ -420,7 +465,7 @@ function installSystemTask(o: ServiceOptions, was: Installed | undefined, text: 
 
 /** Resolve file options before any service record or manager file is written. */
 function normalizedSecretFiles(extra: readonly string[]): string[] {
-  const result = [...extra];
+  const result = normalizedPaths(extra);
   for (const [inline, file] of [['--mcp-token', '--mcp-token-file'], ['--replication-token', '--replication-token-file']]) {
     if (result.some((a) => a.startsWith(`${file}=`))) throw new Error(`serve: ${file}=value is not read; write ${file} and its path as two words`);
     const i = result.indexOf(file);
@@ -456,8 +501,8 @@ export function defaultServiceHost(extra: string[]): string {
  * Why a service may not run on this address as given (plain HTTP beyond this computer), or undefined. Only the spellings `serve`
  * itself reads count (`--https name`, not `--https=name`), so what install accepts is what the service will start with.
  */
-export function servicePlainRefusal(o: Pick<ServiceOptions, 'host' | 'extra'>): string | undefined {
-  const secure = o.extra.includes('--https') && !!o.extra[o.extra.indexOf('--https') + 1] || o.extra.includes('--tls-cert');
+export function servicePlainRefusal(o: Pick<ServiceOptions, 'host' | 'extra'> & { folder?: string }): string | undefined {
+  const secure = serviceTls(o);
   const why = plainHttpRefusal({ host: o.host, secure, allowed: o.extra.includes('--allow-plain-http') });
   return why && `${why} Options for serve go after "--", for example: tabularius service install <folder> --host ${o.host} -- --https local`;
 }
@@ -471,10 +516,10 @@ export function serviceSummary(o: Pick<ServiceOptions, 'folder' | 'port' | 'host
   const opt = (name: string) => serveOption(o.extra, name);
   const https = opt('--https');
   const local = https === 'local' || https === 'lan';
-  const secure = !!https || o.extra.includes('--tls-cert') || o.extra.some((a) => a.startsWith('--tls-cert='));
+  const secure = serviceTls(o);
   const scheme = secure ? 'https' : 'http';
   const at = (host: string) => `${scheme}://${urlHostname(host)}:${o.port}/`;
-  const lines = [`Hosting ${o.folder} at ${at('localhost')} (backups daily in ${join(o.folder, 'Backups')})`];
+  const lines = [`Hosting ${o.folder} at ${at('localhost')} (backups daily in ${opt('--backup-dir') ?? readSettings(o.folder).backupDir ?? join(o.folder, 'Backups')})`];
   if (https && !local) for (const name of https.split(',').map((n) => n.trim()).filter(Boolean)) lines.push(`  and at https://${urlHostname(name)}${o.port === 443 ? '' : `:${o.port}`}/`);
   const everywhere = o.host === '0.0.0.0' || o.host === '::';
   if (everywhere) for (const ip of lan) lines.push(`  on the network: ${at(ip)}`);
@@ -644,8 +689,12 @@ export async function checkPort(o: Pick<ServiceOptions, 'port' | 'host' | 'home'
 }
 
 /** The service's health check address. */
-export function healthUrl(s: Pick<Installed, 'port' | 'host' | 'extra'>): string {
-  const tls = s.extra.some((a) => a === '--https' || a === '--tls-cert');
+export function serviceTls(s: { extra: string[]; folder?: string }): boolean {
+  return !!(serveOption(s.extra, '--https') ?? process.env.TABULARIUS_HTTPS) || !!serveOption(s.extra, '--tls-cert') || !!(s.folder && readSettings(s.folder).tlsCert);
+}
+
+export function healthUrl(s: Pick<Installed, 'port' | 'host' | 'extra'> & { folder?: string }): string {
+  const tls = serviceTls(s);
   const host = s.host === '0.0.0.0' || s.host === '' ? '127.0.0.1' : s.host === '::' ? '[::1]' : urlHostname(s.host);
   return `${tls ? 'https' : 'http'}://${host}:${s.port}/tabularius/health`;
 }
@@ -721,11 +770,25 @@ const git = (app: string, ...args: string[]) => {
   return r.stdout.trim();
 };
 
+/** Native Windows execution remains unverified; Node receives npm's script as one argument, without cmd.exe. */
+export function dependencyCommand(platform: NodeJS.Platform, node = process.execPath): string[] {
+  const args = ['ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'];
+  if (platform === 'win32') return [node, win32.join(win32.dirname(node), 'node_modules', 'npm', 'bin', 'npm-cli.js'), ...args];
+  const local = join(dirname(node), 'npm');
+  return [existsSync(local) ? local : 'npm', ...args];
+}
+
 function installDependencies(app: string, platform: NodeJS.Platform = process.platform): void {
-  const local = join(dirname(process.execPath), platform === 'win32' ? 'npm.cmd' : 'npm');
-  const npm = existsSync(local) ? local : platform === 'win32' ? 'npm.cmd' : 'npm';
-  const r = spawnSync(npm, ['ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: app, stdio: ['ignore', 'ignore', 'inherit'], shell: platform === 'win32', env: { ...process.env, PATH: `${dirname(process.execPath)}${platform === 'win32' ? ';' : ':'}${process.env.PATH ?? ''}` } });
+  const [command, ...args] = dependencyCommand(platform);
+  const r = spawnSync(command, args, { cwd: app, stdio: ['ignore', 'ignore', 'inherit'], shell: false, env: { ...process.env, PATH: `${dirname(process.execPath)}${platform === 'win32' ? ';' : ':'}${process.env.PATH ?? ''}` } });
   if (r.status !== 0) throw new Error(`installing the dependencies failed (npm ci stopped${r.error ? `: ${r.error.message}` : r.status === null ? ' before it finished' : ` with exit code ${r.status}`}); its output is above`);
+}
+
+/** Check startup before claiming that the registered service is hosting. */
+export async function verifyServiceStarted(o: ServiceOptions, wait = waitForRestart, since = Date.now()): Promise<void> {
+  o = { ...o, extra: normalizedPaths(o.extra) };
+  if (!await wait(healthUrl(o), since, 20_000, { folder: o.folder })) throw new Error('service: registered, but it did not answer its health check; inspect the service log and correct its serve options');
+  for (const line of serviceSummary(o).filter((line) => !line.startsWith('  Note:'))) say(line);
 }
 
 /** What an upgrade put in place, and how to put the previous version back. */
