@@ -1706,22 +1706,33 @@ export class Store {
     // The transaction is suspended and joined again below: what it had changed in sign-in state stays counted.
     const touchedSignIn = this.heldChangedSignInState();
     this.closeSignInSessions();
-    const audit = this.heldAudit.map(({ seq, onAudit }) => ({
+    const heldAudit = this.heldAudit;
+    const audit = heldAudit.map(({ seq, onAudit }) => ({
       row: this.sql.prepare('SELECT * FROM _fm_audit WHERE seq = ?').get(seq) as Record<string, SQLInputValue>, onAudit,
     }));
     this.heldAudit = [];
-    // The security rows the holder wrote (account, password and privilege changes, and the sign-in rows put into it): they are
-    // not in heldAudit, and are replayed below on top of the chain as it then stands, not with the chain state they came with.
-    const security = this.heldChainBase === undefined ? [] : (this.sql.prepare(
+    // The sign-in rows that were written into the transaction ahead of its own security rows are not the transaction's own:
+    // they go out of the file with it and wait again below, as they did before they were written (see #520).
+    const waiting = new Set(this.deferredIntoHold.map((row) => row[3]));
+    // The security rows the holder wrote itself (account, password and privilege changes): they are not in heldAudit, and are
+    // replayed below on top of the chain as it then stands, not with the chain state they came with.
+    const security = (this.heldChainBase === undefined ? [] : (this.sql.prepare(
       `SELECT seq, at, account, kind, changes, agent FROM _fm_audit WHERE seq > ? AND security = 1 ORDER BY chain_seq`)
-      .all(this.heldChainBase) as { seq: number; at: string; account: string | null; kind: string; changes: string | null; agent: number }[]);
+      .all(this.heldChainBase) as { seq: number; at: string; account: string | null; kind: string; changes: string | null; agent: number }[]))
+      .filter((row) => !waiting.has(Number(row.seq)));
     // While the held rows are out of the file, another process opening it must not take their container files for
     // abandoned ones: the journal notes are set aside (a name recovery does not read) until the transaction is back.
     const aside = this.heldExternalMarkers.flatMap((marker) => {
       try { renameSync(marker, `${marker}.held`); return [marker]; } catch { return []; }
     });
     const bringBack = () => { for (const marker of aside) { try { renameSync(`${marker}.held`, marker); } catch { /* recovery looks at the file */ } } };
-    try { this.sql.exec(`ROLLBACK TO ${name}; RELEASE ${name}; COMMIT`); } catch (e) { bringBack(); throw e; }
+    try { this.sql.exec(`ROLLBACK TO ${name}; RELEASE ${name}; COMMIT`); } catch (e) { this.heldAudit = heldAudit; bringBack(); throw e; }
+    // The waiting rows are out of the file with the rest of the transaction and wait again from here on, whatever happens
+    // next (the other window's write, a failed rejoin): they are written before the other window's own security rows, or in
+    // front of the transaction's when it is back, or when the hold ends. None of them is ever only in the file that was undone.
+    const waitingRows = this.deferredIntoHold.splice(0);
+    this.requeueDeferred(waitingRows);
+    const waitingUpTo = waitingRows.reduce((most, row) => Math.max(most, row[1]), -1);
     this.heldBy = undefined;
     this.heldBegan = false;
     tx.files.delete(this);
@@ -1731,7 +1742,8 @@ export class Store {
     try { result = run(); } catch (e) { failed = e; }
     try {
       // Rejoin using the originating transaction, regardless of the current window's writer context.
-      writer.run({ ...writer.getStore(), transaction: { open: tx } }, () => this.joinTransaction());
+      const holder = <R>(fn: () => R): R => writer.run({ ...writer.getStore(), transaction: { open: tx } }, fn);
+      holder(() => this.joinTransaction());
       if (touchedSignIn) this.heldSignInTouched = true;
       // Audit rows have generated sequence numbers and a hash chain. Reinsert and relink them
       // after the independent write, instead of replaying their old sequence numbers.
@@ -1745,6 +1757,9 @@ export class Store {
       if (!applied) throw new StoreError(301, 'The pending transaction could not be restored');
       // What the chain ends at now is the committed part, which the transaction's next independent write starts from.
       this.heldChainBase = this.securityChainHeadAudit();
+      // The waiting rows the other window did not write itself go in again first, ahead of the transaction's own rows (later
+      // waiting rows stay waiting). A row that cannot be written now stays waiting, and is written when the hold ends.
+      holder(() => this.flushDeferredSecurity(true, true, waitingUpTo));
       // Back in the order they were written, security rows appended to the chain as it now ends.
       const replay = [
         ...audit.map(({ row, onAudit }) => ({ seq: Number(row.seq), row, onAudit, security: undefined })),
@@ -3034,7 +3049,7 @@ export class Store {
    * that cannot be written stays, with those behind it, for the next try: the end of a hold, a sign-in check, the next
    * security row, or closing the file.
    */
-  private flushDeferredSecurity(all = false, intoHold = false): void {
+  private flushDeferredSecurity(all = false, intoHold = false, upTo = Infinity): void {
     if (!this.hasDeferredSecurity() || this.flushingSecurity) return;
     // `intoHold`: the transaction holding the file is the caller's own, and the rows go into it (see settleDeferredSecurity).
     if (intoHold ? this.heldBy === undefined || this.heldByOther() : this.heldBy || this.sql.isTransaction) return;
@@ -3046,15 +3061,19 @@ export class Store {
           const chunk: [Map<number, DeferredSecurity>, number, DeferredSecurity][] = [];
           const heads = [this.deferredSignIns.entries(), this.deferredOther.entries()];
           let a = heads[0].next(), b = heads[1].next();
-          while (chunk.length < DEFERRED_SECURITY_CHUNK && (!a.done || !b.done)) {
-            if (!a.done && (b.done || a.value[0] < b.value[0])) { chunk.push([this.deferredSignIns, a.value[0], a.value[1]]); a = heads[0].next(); }
+          const live = (it: IteratorResult<[number, DeferredSecurity]>) => !it.done && it.value[0] <= upTo;
+          while (chunk.length < DEFERRED_SECURITY_CHUNK && (live(a) || live(b))) {
+            if (live(a) && (!live(b) || a.value![0] < b.value![0])) { chunk.push([this.deferredSignIns, a.value![0], a.value![1]]); a = heads[0].next(); }
             else { chunk.push([this.deferredOther, b.value![0], b.value![1]]); b = heads[1].next(); }
           }
-          this.securityChange(() => { for (const [, , e] of chunk) this.appendSecurityRow(e.at, e.kind, e.opts); });
-          for (const [queue, key] of chunk) {
-            if (intoHold) this.deferredIntoHold.push([queue === this.deferredSignIns, key, queue.get(key)!]);
+          if (!chunk.length) break;
+          const written: number[] = [];
+          this.securityChange(() => { for (const [, , e] of chunk) { this.appendSecurityRow(e.at, e.kind, e.opts); written.push(this.securityChainHeadAudit() ?? 0); } });
+          chunk.forEach(([queue, key], i) => {
+            // The audit row each one became is kept with it: the rows of the holder's own are told from these when it is suspended.
+            if (intoHold) this.deferredIntoHold.push([queue === this.deferredSignIns, key, queue.get(key)!, written[i]]);
             queue.delete(key);
-          }
+          });
         } while ((all || intoHold) && this.hasDeferredSecurity());
         this.deferredSecurityFailing = false;
         if (!this.hasDeferredSecurity()) this.deferredSecurityDropped = 0;
@@ -3073,7 +3092,7 @@ export class Store {
   }
 
   /** Waiting rows that were written into the held transaction, ahead of its own security row; they wait again if it is undone. */
-  private deferredIntoHold: [boolean, number, DeferredSecurity][] = [];
+  private deferredIntoHold: [boolean, number, DeferredSecurity, number][] = [];
 
   /**
    * Before a security change, the sign-in rows that are waiting go first, so the audit's order agrees with the times: once
@@ -3087,7 +3106,7 @@ export class Store {
   }
 
   /** Puts rows that were written into a transaction that has been undone back in the queues, in their places. */
-  private requeueDeferred(rows: [boolean, number, DeferredSecurity][]): void {
+  private requeueDeferred(rows: [boolean, number, DeferredSecurity, number][]): void {
     if (!rows.length) return;
     const merge = (queue: Map<number, DeferredSecurity>, extra: [number, DeferredSecurity][]) => {
       const all = [...extra, ...queue].sort((a, b) => a[0] - b[0]);
