@@ -8681,7 +8681,10 @@ export class Store {
       const row: Row = { ...(current as Row) };
       row[field] = value;
       const calcRuns = new Map<string, StyleRun[] | undefined>();
-      this.write(() => this.calc.beforeWrite(table, row, new Set([field]), { isNew: false, account: opts.account, previous: current as Row, noValidation: true, calcRuns }));
+      this.write(() => this.calc.beforeWrite(table, row, new Set([field]), { isNew: false, account: opts.account, previous: current as Row, noValidation: true, performAutoEnter: opts.performAutoEnter, calcRuns }));
+      // An auto-enter can have changed a key: the same checks an update makes.
+      this.checkChildKeys(table, row, current as Row);
+      this.checkParentKeyChange(table, recordId, row, current as Row, opts.privileges);
       const changed = info.fields.map((f) => f.name).filter((n) => n === field || row[n] !== current[n]);
       this.changeOne(table, recordId, current as Row, () => this
         .prepared(`UPDATE ${q(info.table)} SET ${['_fm_mod_id = _fm_mod_id + 1', ...changed.map((n) => `${q(n)} = ?`)].join(', ')} WHERE _fm_record_id = ?`)
