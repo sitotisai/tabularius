@@ -136,7 +136,7 @@ function render(ops: Op[], tag: string): Rendered {
 // ---------------------------------------------------------------------------------------------- the model
 
 interface Rec { name: string | null; qty: number | null; tag: string | null; mod: number }
-interface Snapshot { recs: [number, Rec][]; fs: number[]; idx: number }
+interface Snapshot { recs: [number, Rec][]; fs: number[]; idx: number; mark: number }
 class Reverted {
   readonly code: number;
   readonly owner: number;
@@ -156,7 +156,8 @@ class Model {
   recs = new Map<number, Rec>();
   fs: number[] = [];
   idx = 0;
-  next = 1;
+  /** The highest record id ever committed in the table (its high-water mark): new ids continue after it. */
+  mark = 0;
   revertOnError = true;
   tx?: { snap: Snapshot; owner: number };
   log = '';
@@ -167,11 +168,15 @@ class Model {
   /** Each script starts on every record, at the first. */
   begin() { this.frames = 0; this.fs = [...this.recs.keys()]; this.idx = 0; this.log = ''; this.revertOnError = true; this.tx = undefined; this.exited = false; this.lastError = 0; }
 
-  private snapshot(): Snapshot { return { recs: [...this.recs].map(([id, r]) => [id, { ...r }]), fs: [...this.fs], idx: this.idx }; }
+  private snapshot(): Snapshot { return { recs: [...this.recs].map(([id, r]) => [id, { ...r }]), fs: [...this.fs], idx: this.idx, mark: this.mark }; }
 
-  /** The records come back; a record the transaction made leaves the found set, one it deleted is not put back (KNOWN). */
+  /**
+   * The records come back; a record the transaction made leaves the found set, one it deleted is not put back (KNOWN). The
+   * mark comes back with them: the ids the transaction's records had were never committed, and are given again (KNOWN).
+   */
   private restore(snap: Snapshot) {
     this.recs = new Map(snap.recs.map(([id, r]) => [id, { ...r }]));
+    this.mark = snap.mark;
     const current = this.fs[this.idx];
     const kept = this.fs.filter((id) => this.recs.has(id));
     // When the record it is on was made inside the transaction, the last one is current (KNOWN).
@@ -219,6 +224,8 @@ class Model {
     return returned;
   }
 
+  private nextId(): number { return Math.max(this.mark, ...this.recs.keys()) + 1; }
+
   private run(ops: Op[], frame: number) { for (const op of ops) this.step(op, frame); }
 
   private step(op: Op, frame: number) {
@@ -228,11 +235,12 @@ class Model {
         const code = this.validate(rec);
         if (code) {
           // The record exists, uncommitted, when the commit fails: a reverting transaction finds it in the found set.
-          if (this.tx && this.revertOnError) { this.fs.push(Math.max(0, ...this.recs.keys()) + 1); this.idx = this.fs.length - 1; }
+          if (this.tx && this.revertOnError) { this.fs.push(this.nextId()); this.idx = this.fs.length - 1; }
           return this.commitFailure(code, true);
         }
-        // Record ids are the table's row ids: the highest one is used again after its record is deleted (KNOWN).
-        const id = Math.max(0, ...this.recs.keys()) + 1;
+        // A deleted record's id is not given again, even the highest one's (KNOWN): ids continue after the mark.
+        const id = this.nextId();
+        this.mark = id;
         this.recs.set(id, rec);
         this.fs.push(id);
         this.idx = this.fs.length - 1;
