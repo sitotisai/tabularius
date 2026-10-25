@@ -8700,6 +8700,7 @@ export class ScriptEngine {
       .map((r) => ({ ...r, criteria: Object.fromEntries(Object.entries(r.criteria).filter(([, v]) => v !== '')) }))
       .filter((r) => Object.keys(r.criteria).length)
       .map((r) => ({ ...r.criteria, ...(r.omit ? { omit: 'true' } : {}) }));
+    if (query.some((r) => Object.values(r).some((v) => typeof v === 'string' && v.includes('\0')))) throw new ScriptError(ERROR.findCriteria, 'Find criteria contain a NUL character');
     const info = this.layoutOf(win);
     // Which fields were asked for (names only, never the criteria: they can hold client data).
     const named = [...new Set(requests.flatMap((r) => Object.keys(r.criteria)))];
@@ -8762,13 +8763,22 @@ export class ScriptEngine {
   }
 
   private quickFind(win: Window, phrase: string): void {
+    if (phrase.includes('\0')) throw new ScriptError(ERROR.findCriteria, 'Quick Find text contains a NUL character');
     this.commit(win);
     const info = this.layoutOf(win);
     const words = phrase.split(/\s+/).filter(Boolean);
     const fields = info.fields.filter((x) => x.type !== 'container');
     let ids: number[] | undefined;
     for (const w of words) {
-      const hits = new Set(info.owner.findIds(info, { query: fields.map((x) => ({ [x.name]: w })), ...this.reading }));
+      // Quick Find receives plain text. Use a one-character wildcard to get candidates for a quote,
+      // then check the literal text; a bare quote is a find-phrase delimiter in the store.
+      const quoted = w.includes('"');
+      const matching = quoted ? fields.filter((x) => x.type === 'text') : fields;
+      const candidates = info.owner.findIds(info, { query: matching.map((x) => ({ [x.name]: quoted ? w.replaceAll('"', '@') : w })), ...this.reading });
+      const hits = new Set(quoted ? candidates.filter((id) => {
+        const data = info.owner.get(info, id, 'iso', undefined, this.reading.privileges, { fields: matching.map((x) => x.name) }).fieldData;
+        return matching.some((x) => String(data[x.name] ?? '').toLowerCase().includes(w.toLowerCase()));
+      }) : candidates);
       ids = (ids ?? info.owner.findIds(info, this.reading)).filter((x) => hits.has(x));
     }
     win.mode = 'browse';

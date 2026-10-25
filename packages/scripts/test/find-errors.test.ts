@@ -24,10 +24,10 @@ after(() => {
   rmSync(dir, { recursive: true });
 });
 
-const run = (text: string) => runScript(store, {
+const run = (text: string, parameter?: string) => runScript(store, {
   id: 9999, name: 'test',
   steps: parseScriptText(text.trim().split('\n').map((l) => l.trim()).join('\n'), store.schema).map((s) => ({ stepId: s.stepId!, name: s.name!, enabled: s.enabled !== false, params: s.params })),
-} as Script, { layout: 'Clients', trace: true });
+} as Script, { layout: 'Clients', trace: true, parameter });
 const message = (r: Awaited<ReturnType<typeof run>>) => [...(r.trace ?? [])].reverse().find((t) => t.error)?.message ?? '';
 
 test('no criteria: names the fields set to nothing', async () => {
@@ -50,4 +50,21 @@ test('no records: names the fields searched, not what was searched for', async (
   assert.equal(r.error, 401);
   assert.equal(message(r), 'No records match the request (by Name, Status)');
   assert.doesNotMatch(JSON.stringify(r.trace), /Secret Client/);
+});
+
+test('find and quick find reject NUL criteria with a script find error', async () => {
+  const find = await run('Enter Find Mode [ Pause: Off ]\nSet Field [ Clients::Name ; Get ( ScriptParameter ) ]\nPerform Find []', 'a\0b');
+  assert.equal(find.error, 400);
+  assert.match(message(find), /NUL/);
+  const quick = await run('Perform Quick Find [ Get ( ScriptParameter ) ]', 'a\0b');
+  assert.equal(quick.error, 400);
+  assert.match(message(quick), /NUL/);
+});
+
+test('quick find treats an unmatched quote as text or reports no matching records', async () => {
+  const result = await run('Perform Quick Find [ Get ( ScriptParameter ) ]', 'no"match');
+  assert.equal(result.error, 401);
+  store.create('Clients', { Name: 'a"b' });
+  const matching = await run('Perform Quick Find [ Get ( ScriptParameter ) ]', 'a"b');
+  assert.equal(matching.error, 0);
 });

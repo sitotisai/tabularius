@@ -67,3 +67,31 @@ test('a limit above the cap is refused with 960 and the way to page, and the cap
   delete process.env.TABULARIUS_DATA_API_MAX_LIMIT;
   assert.equal((await call(`${L}/records?_limit=0`, bearer)).body.response.data.length, 0);
 });
+
+test('portal paging and record offsets refuse negative, fractional and unsafe numbers', async () => {
+  const token = (await call('/databases/L/sessions', 'Basic ' + btoa('Admin:pw'), 'POST', {})).body.response.token;
+  const bearer = 'Bearer ' + token;
+  const L = '/databases/L/layouts/Items';
+  for (const query of ['_limit.Rows=-1', '_limit.Rows=2.5', '_offset.Rows=-1', '_offset.Rows=1e21', '_offset=1e21']) {
+    const r = await call(`${L}/records?${query}`, bearer);
+    assert.equal(r.status, 400, query);
+    assert.equal(r.body.messages[0].code, '960', query);
+  }
+  for (const extra of [{ 'limit.Rows': -1 }, { 'limit.Rows': 2.5 }, { 'offset.Rows': 1e21 }, { offset: 1e21 }, { sort: Array.from({ length: 2100 }, () => ({ fieldName: 'Name', sortOrder: 'ascend' })) }]) {
+    const r = await call(`${L}/_find`, bearer, 'POST', { query: [{ Name: '*' }], ...extra });
+    assert.equal(r.status, 400, JSON.stringify(extra).slice(0, 80));
+    assert.equal(r.body.messages[0].code, '960');
+  }
+});
+
+test('Data API refuses NUL field values and find criteria', async () => {
+  const token = (await call('/databases/L/sessions', 'Basic ' + btoa('Admin:pw'), 'POST', {})).body.response.token;
+  const bearer = 'Bearer ' + token;
+  const L = '/databases/L/layouts/Items';
+  for (const [path, body] of [[`${L}/records`, { fieldData: { Name: 'a\0b' } }], [`${L}/_find`, { query: [{ Name: 'a\0b' }] }]] as const) {
+    const r = await call(path, bearer, 'POST', body);
+    assert.equal(r.status, 400);
+    assert.equal(r.body.messages[0].code, '960');
+    assert.match(r.body.messages[0].message, /NUL/);
+  }
+});
