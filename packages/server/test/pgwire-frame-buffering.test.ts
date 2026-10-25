@@ -64,9 +64,9 @@ test('a message sent in many pieces is joined once, not once per piece', async (
     c.socket.write(message.subarray(at, at + piece));
     await new Promise((resolve) => setImmediate(resolve));
   }
+  // The server takes the whole message in, then refuses SQL text over its limit (1 MB): the answer is not what is measured.
   const result = await c.untilReady();
-  assert.equal(result.error, undefined);
-  assert.deepEqual(result.rows, [['1']]);
+  assert.match(result.error?.message ?? '', /larger than 1 MB/);
   // Joined once is about one message; once per piece would be about 48 times that.
   assert.ok(copied < 4 * message.length, `${(copied / message.length).toFixed(1)} times the message was copied`);
 });
@@ -92,7 +92,9 @@ test('the pieces of a large message are joined once even when a complete message
     c.socket.write(big.subarray(at, at + piece));
     await turn();
   }
-  for (let i = 0; i < 3; i++) assert.equal((await c.untilReady()).error, undefined);
+  for (let i = 0; i < 2; i++) assert.equal((await c.untilReady()).error, undefined);
+  // The large query is refused for its size (SQL text is limited to 1 MB) once it has been taken in whole.
+  assert.match((await c.untilReady()).error?.message ?? '', /larger than 1 MB/);
   assert.ok(copied < 4 * big.length, `${(copied / big.length).toFixed(1)} times the large message was copied`);
 });
 
