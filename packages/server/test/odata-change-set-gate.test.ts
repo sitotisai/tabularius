@@ -222,6 +222,27 @@ test('a slow request body does not count as a request using the file', { skip },
   assert.equal(count(), before + 3);
 });
 
+test('a slow container upload, once the account may send it, does not count as a request using the file either', { skip }, async () => {
+  BATCH_LIMIT.changeSetWaitMs = 1500;
+  store.applyDesign([{ op: 'createTable', name: 'Docs', fields: [{ name: 'Title', type: 'text' }, { name: 'File', type: 'container' }] }] as never);
+  const id = Number(store.create('Docs', { Title: 'one' }).recordId);
+  const before = count();
+  const seen = received;
+  const u = new URL(`${root}/Docs(${id})/File`);
+  const slow = request({ host: u.hostname, port: u.port, path: u.pathname, method: 'PATCH', headers: { ...basic('Ann'), 'content-type': 'image/png', 'content-length': '10' } });
+  const finished = new Promise<number>((resolve, reject) => { slow.on('response', (res) => { res.resume(); resolve(res.statusCode ?? 0); }); slow.on('error', reject); });
+  slow.write('12345');
+  while (received === seen) await tick();
+  await new Promise<void>((r) => setTimeout(r, 200));
+  const set = await batch([post('During Upload')]);
+  assert.deepEqual(set.answers.map((a) => a.status), [201]);
+  assert.equal((await fetch(`${root}/Congress/$count`, { headers: basic('Ann') })).status, 200);
+  slow.end('67890');
+  assert.equal(await finished, 204);
+  assert.equal(count(), before + 1);
+  assert.ok(store.containerId('Docs', id, 'File') !== undefined);
+});
+
 test('a request that waited for a change set and whose client has gone is not run', { skip }, async () => {
   const before = count();
   const release = await inside().hold(store);
