@@ -596,6 +596,8 @@ export interface WriteOptions {
   dateOrder?: DateStyle;
   /** Putting back values a field had before (an undo): its validation isn't checked again. */
   restoring?: boolean;
+  /** restoreDeletedRow: the seq of the audit entry that deleted the record, when the caller knows it (the data cleanup's journal does). */
+  undoesDelete?: number;
   /** delete: `false` leaves the records related through "delete related records" relationships alone (live sync's pulled deletions). */
   cascade?: boolean;
   /** create: a record a script's New Record made: like FileMaker, its fields are validated when it is committed, not now. */
@@ -2499,7 +2501,7 @@ export class Store {
         this.checkChildKeys(t, then as Row);
         this.sql.prepare(`INSERT INTO ${T} (_fm_record_id${this.fileMode === 'native' ? ', _fm_uuid' : ''}${cols.length ? `, ${cols.map(q).join(', ')}` : ''}) VALUES (?${this.fileMode === 'native' ? ', ?' : ''}${', ?'.repeat(cols.length)})`)
           .run(recordId, ...(this.fileMode === 'native' ? [this.uuid.next()] : []), ...cols.map((c) => then[c]));
-        this.audit('create', t.name, recordId, Object.fromEntries(cols.filter((c) => then[c] !== null).map((c) => [c, then[c]])), opts, undefined, this.deleteBeingUndone(t.name, recordId));
+        this.audit('create', t.name, recordId, Object.fromEntries(cols.filter((c) => then[c] !== null).map((c) => [c, then[c]])), opts, undefined, this.deleteEndingTheLifeAt(t.name, recordId, seq));
         this.notify('create', t.name, recordId, 0);
         return { action: 'created', fields: cols.filter((c) => then[c] !== null) };
       }
@@ -10035,13 +10037,34 @@ export class Store {
   }
 
   /**
-   * What a create that puts a deleted record back says it reverts: the record's latest delete entry (0 when the log no
+   * What a create that puts a deleted record back says it reverts: the audit entry that deleted it (0 when the log no
    * longer has it). Without a mark such a create reads as the record being made, and readers that look for where a
-   * record's life began (converting again, record history, revert) would start there.
+   * record's life began (converting again, record history, revert) would start there. An id can have been given to
+   * another record in between, whose delete is a later one, so the entry is the one the caller names, or else the
+   * latest delete whose logged values are the row's.
    */
-  private deleteBeingUndone(table: string, recordId: number): number {
-    const row = this.sql.prepare("SELECT max(seq) AS seq FROM _fm_audit WHERE security = 0 AND kind = 'delete' AND tbl = ? COLLATE NOCASE AND record_id = ?").get(table, recordId) as { seq: number | null } | undefined;
+  private deleteBeingUndone(table: string, recordId: number, row: Record<string, SqlValue>, named?: number): number {
+    if (named !== undefined && Number.isInteger(named) && named > 0) return named;
+    const deletes = this.sql.prepare("SELECT seq, changes FROM _fm_audit WHERE security = 0 AND kind = 'delete' AND tbl = ? COLLATE NOCASE AND record_id = ? ORDER BY seq DESC").all(table, recordId) as { seq: number; changes: string | null }[];
+    for (const d of deletes) {
+      const logged = d.changes ? JSON.parse(d.changes) as Record<string, unknown> : {};
+      // Values the log does not keep (hidden fields, container bytes) can't tell the records apart.
+      const keeps = Object.entries(logged).filter(([, v]) => v !== NOT_LOGGED && !(typeof v === 'string' && /^<\d+ bytes>$/.test(v)));
+      if (keeps.every(([k, v]) => row[k] !== null && row[k] !== undefined && String(row[k]) === String(v))) return Number(d.seq);
+    }
+    return 0;
+  }
+
+  /** The first delete entry of the record at or after `seq`: the one that ended the life a restore to `seq` brings back (0 when none). */
+  private deleteEndingTheLifeAt(table: string, recordId: number, seq: number): number {
+    const row = this.sql.prepare("SELECT min(seq) AS seq FROM _fm_audit WHERE security = 0 AND kind = 'delete' AND tbl = ? COLLATE NOCASE AND record_id = ? AND seq >= ?").get(table, recordId, seq) as { seq: number | null } | undefined;
     return Number(row?.seq ?? 0);
+  }
+
+  /** The seq of the latest audit entry that deleted the record (undefined when none is logged). */
+  latestDeleteSeq(table: string, recordId: number): number | undefined {
+    const row = this.sql.prepare("SELECT max(seq) AS seq FROM _fm_audit WHERE security = 0 AND kind = 'delete' AND tbl = ? COLLATE NOCASE AND record_id = ?").get(table, recordId) as { seq: number | null } | undefined;
+    return row?.seq === null || row?.seq === undefined ? undefined : Number(row.seq);
   }
 
   /**
@@ -10076,7 +10099,7 @@ export class Store {
       }
     }
     this.sql.prepare(`INSERT INTO ${q(table)} (${names.map(q).join(', ')}) VALUES (${names.map(() => '?').join(', ')})`).run(...names.map((n) => kept[n]));
-    this.audit('create', table, id, Object.fromEntries(names.filter((n) => !n.startsWith('_fm_') && row[n] !== null).map((n) => [n, row[n]])), opts, undefined, this.deleteBeingUndone(table, id));
+    this.audit('create', table, id, Object.fromEntries(names.filter((n) => !n.startsWith('_fm_') && row[n] !== null).map((n) => [n, row[n]])), opts, undefined, this.deleteBeingUndone(table, id, row, opts.undoesDelete));
     this.notify('create', table, id, Number(row._fm_mod_id ?? 0));
   }
 
