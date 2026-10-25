@@ -154,10 +154,10 @@ test('the admin config reports invalid settings instead of treating them as empt
   const other = mkdtempSync(join(tmpdir(), 'tabularius-settings-bad-'));
   try {
     writeFileSync(join(other, '.openhbam-settings.json'), '{ half');
-    const c = new ServerConfig(other);
-    assert.throws(() => c.blockNewUsers(), /\.openhbam-settings\.json isn't valid JSON/);
+    // A server starting on a settings file that is not valid JSON fails at once and says so.
+    assert.throws(() => new ServerConfig(other), /\.openhbam-settings\.json isn't valid JSON/);
     writeFileSync(join(other, '.openhbam-settings.json'), '{"keep":"abc"}');
-    assert.throws(() => c.backupDir(), /\.openhbam-settings\.json: keep must be a number/);
+    assert.throws(() => new ServerConfig(other).backupDir(), /\.openhbam-settings\.json: keep must be a number/);
     assert.equal(readFileSync(join(other, '.openhbam-settings.json'), 'utf8'), '{"keep":"abc"}');
   } finally {
     rmSync(other, { recursive: true });
