@@ -3,7 +3,7 @@
 // another hosted file's storage must not widen the roots.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createStore, Store } from '../src/index.ts';
@@ -125,7 +125,7 @@ test('fmp12-94: a name with a ~digit (a Windows short name, ACMEIN~1) has no roo
   assert.ok(externalRoots(folder, 'Acme~Inc', []).length === 2, 'a tilde that is not followed by a digit is an ordinary character');
 });
 
-test('fmp12-94: what is refused is reported, so an operator can see why a container goes missing', () => {
+test('fmp12-94: what is refused is reported, so an operator can see why a container goes missing', (t) => {
   const refused: string[] = [];
   externalRoots(folder, 'Mine', ['Docs', '../Other', 'C:/Elsewhere', '.. /x', 'Acme Inc./Scans'], refused);
   assert.deepEqual(refused, ['../Other', 'C:/Elsewhere', '.. /x']);
@@ -133,10 +133,29 @@ test('fmp12-94: what is refused is reported, so an operator can see why a contai
   assert.deepEqual(externalRoots(folder, '..', ['Docs'], named), []);
   assert.equal(named.length, 1);
   assert.match(named[0], /file name/);
-  // A base directory whose letter case differs from the file's name is refused, as another folder on a disk that tells case.
+
+  // The old setup: a base directory that is a folder beside the hosted file, which is no longer searched. Said with
+  // both paths when the folder is there, and not for a base nobody has stored anything under.
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-external-roots-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  for (const beside of ['Acme', 'Docs', 'mine/Docs', 'Backups']) mkdirSync(join(dir, beside), { recursive: true });
+  const found: string[] = [];
+  externalRoots(dir, 'Acme', ['Acme/', 'Docs/', 'Elsewhere/', 'Files/Acme/Inside', ''], found);
+  const text = found.join('\n');
+  assert.equal(found.length, 2, text);
+  assert.ok(found[0].includes(join(dir, 'Acme')) && found[0].includes(join(dir, 'RC_Data_FMS', 'Acme', 'Acme')), found[0]);
+  assert.ok(found[1].includes(join(dir, 'Docs')) && found[1].includes(join(dir, 'RC_Data_FMS', 'Acme', 'Docs')), found[1]);
+  // A base whose letter case differs from the file's name leads to a folder beside the file too.
   const cased: string[] = [];
-  assert.ok(!externalRoots(folder, 'Mine', ['mine/Docs'], cased).includes(at('mine', 'Docs')));
-  assert.deepEqual(cased, []);
+  assert.ok(!externalRoots(dir, 'Mine', ['mine/Docs'], cased).includes(join(dir, 'mine', 'Docs')));
+  assert.equal(cased.length, 1, cased.join('\n'));
+  assert.ok(cased[0].includes(join(dir, 'mine', 'Docs')), cased[0]);
+  // Nothing there, nothing to report.
+  assert.deepEqual((() => { const none: string[] = []; externalRoots(dir, 'Mine', ['mine/Nothing'], none); return none; })(), []);
+  // A base that is not there is reported once, not once for the folder and once for being skipped.
+  const once: string[] = [];
+  externalRoots(dir, 'Mine', ['../Backups'], once);
+  assert.equal(once.length, 1, once.join('\n'));
 });
 
 test('fmp12-94: opening a file with a refused name warns once, naming the file', (t) => {
@@ -150,4 +169,28 @@ test('fmp12-94: opening a file with a refused name warns once, naming the file',
   const mine = warnings.filter((w) => w.includes('ACMEIN~1'));
   assert.equal(mine.length, 1, warnings.join('\n'));
   assert.match(mine[0], /container/);
+});
+
+test('fmp12-94: a folder beside the file that is no longer searched is named in one warning per file, however often it is opened', (t) => {
+  const warnings: string[] = [];
+  t.mock.method(console, 'warn', (message: string) => { warnings.push(String(message)); });
+  const open = (where: string) => {
+    const dir = mkdtempSync(join(tmpdir(), `tabularius-external-roots-${where}-`));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const path = join(dir, 'Besides.openhbam.sqlite');
+    createStore(path);
+    const store = new Store(path, 'Besides');
+    store.applyDesign([{ op: 'createContainerDirectory', path: 'Attachments' }]);
+    store.close();
+    mkdirSync(join(dir, 'Attachments'));
+    new Store(path, 'Besides').close();
+    return dir;
+  };
+  const dir = open('a');
+  const mine = warnings.filter((w) => w.includes('Besides'));
+  assert.equal(mine.length, 1, mine.join('\n'));
+  assert.ok(mine[0].includes(join(dir, 'Attachments')) && mine[0].includes(join(dir, 'RC_Data_FMS', 'Besides', 'Attachments')), mine[0]);
+  // A copy of the file at a new place (a dry run, a debug copy) does not warn again.
+  open('b');
+  assert.equal(warnings.filter((w) => w.includes('Besides')).length, 1, warnings.join('\n'));
 });

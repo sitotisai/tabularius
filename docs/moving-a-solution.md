@@ -164,8 +164,9 @@ Letter case matters: for a file called `Mine`, a base directory `mine/Docs` is n
 read as `Mine/Docs`, even on a disk that ignores case. The folder named after the
 hosted file beside it is not searched. If your base directory points somewhere
 else (a folder beside the hosted file, say), containers stored there show as
-missing and new ones go under `RC_Data_FMS/<name>/`; the server logs a line naming
-the base directories it left out when it opens the file. Move the files into the
+missing and new ones go under `RC_Data_FMS/<name>/`; when it opens the file the server
+logs a line (once per file name per run) naming each such folder that exists and where
+to move it, and any other base directory it left out. Move the files into the
 folder named by the base directory below `RC_Data_FMS/<name>/` (or
 `Files/<name>/`). Nothing is moved for you. A file whose name is empty, `.`, `..`
 or has a `~1` form (`ACMEIN~1`) reads no external containers.
