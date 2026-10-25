@@ -116,10 +116,20 @@ test('a lock this process holds is refused under a spelling the in-process guard
     rmSync(`${b}.lock`, { force: true });
   }
   assert.equal(existsSync(`${a}.lock`), false);
-  // A lock with this pid that this process does not hold (an earlier process had the same pid) is still taken over.
-  writeFileSync(`${a}.lock`, JSON.stringify({ pid: process.pid, startedAt: Date.now(), id: 'an-earlier-process' }), { mode: 0o600 });
-  takeProcessLock(a, 'busy').release();
-  assert.equal(existsSync(`${a}.lock`), false);
+});
+
+test('a lock with this pid that this process does not hold is refused while fresh and replaced once it is a minute old', () => {
+  // Containers usually run node as pid 1, so two containers that share a volume share a pid: the pid alone proves nothing.
+  const a = join(dir, 'same-pid');
+  const busy = 'an export to that folder is already running';
+  for (const held of [{ id: 'another-container' }, {}]) {
+    writeFileSync(`${a}.lock`, JSON.stringify({ pid: process.pid, startedAt: Date.now(), ...held }), { mode: 0o600 });
+    assert.throws(() => takeProcessLock(a, busy), (e: ExitBundleError) => e.status === 409 && /already running/.test(e.message));
+    assert.equal(JSON.parse(readFileSync(`${a}.lock`, 'utf8')).pid, process.pid);
+    writeFileSync(`${a}.lock`, JSON.stringify({ pid: process.pid, startedAt: Date.now() - 61_000, ...held }), { mode: 0o600 });
+    takeProcessLock(a, busy).release();
+    assert.equal(existsSync(`${a}.lock`), false);
+  }
 });
 
 test('no credential material from any column of any internal table reaches the bundle', async () => {
