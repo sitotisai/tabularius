@@ -1,4 +1,6 @@
 import { clientAddress } from './client-address.ts';
+import { AddressBudget } from './address-budget.ts';
+import { addressBucket } from '../../store/src/client-ip.ts';
 // Sign-in through an identity provider (OpenID Connect), like FileMaker's
 // external accounts with Microsoft Entra ID, Google, Okta, Apple or another
 // OAuth provider. More than one can be set up at once, so the sign-in screen
@@ -149,6 +151,14 @@ interface ProviderState {
 const PENDING_MS = 10 * 60 * 1000;
 const GRANT_MS = 5 * 60 * 1000;
 const MAX_PENDING = 2000;
+/** Sign-ins one client address (an IPv6 /64 counts as one) may have waiting: a real person has one, a few behind one shared address. */
+const MAX_PENDING_PER_ADDRESS = 20;
+/** Starts one address may make: a burst, then a steady rate. Starting a sign-in needs no sign-in, so this bounds what anyone may ask for. */
+const START_BURST = 30;
+const START_PER_SECOND = 1;
+
+/** What a test may change: the size of the pending table, one address's share of it, and the rate of starts. */
+export interface OidcLimits { maxPending?: number; perAddress?: number; starts?: AddressBudget }
 const OIDC_DIR = '.openhbam-oidc';
 const OIDC_DB = 'pending.sqlite';
 const b64url = (b: Buffer) => b.toString('base64url');
@@ -170,7 +180,14 @@ export class Oidc {
   readonly storageWarning?: string;
   private closed = false;
 
-  constructor(host: Host, api: DataApi, providers: OidcProvider | OidcProvider[], publicUrl?: string) {
+  private readonly starts: AddressBudget;
+  private readonly maxPending: number;
+  private readonly perAddress: number;
+
+  constructor(host: Host, api: DataApi, providers: OidcProvider | OidcProvider[], publicUrl?: string, limits: OidcLimits = {}) {
+    this.starts = limits.starts ?? new AddressBudget(START_BURST, START_PER_SECOND);
+    this.maxPending = limits.maxPending ?? MAX_PENDING;
+    this.perAddress = limits.perAddress ?? MAX_PENDING_PER_ADDRESS;
     this.host = host;
     this.api = api;
     this.publicUrl = publicUrl?.replace(/\/$/, '');
@@ -192,6 +209,8 @@ export class Oidc {
         if (!columns.includes('created')) this.db.exec('ALTER TABLE pending ADD COLUMN created INTEGER NOT NULL DEFAULT 0');
         // A Data API app's sign-in (getoauthurl): where to send the person back, kept with the pending sign-in.
         if (!columns.includes('data_api')) this.db.exec('ALTER TABLE pending ADD COLUMN data_api TEXT');
+        // The client address (its bucket) that started it. Rows from before this was kept have none, and are never evicted to make room.
+        if (!columns.includes('address')) this.db.exec("ALTER TABLE pending ADD COLUMN address TEXT NOT NULL DEFAULT ''");
         // Who the provider vouched for in a Data API app's sign-in, until the app logs in (once, within five minutes).
         this.db.exec('CREATE TABLE IF NOT EXISTS grants (request_id TEXT PRIMARY KEY, identifier TEXT NOT NULL, provider TEXT NOT NULL, email TEXT, claimed TEXT, groups TEXT NOT NULL, sub TEXT NOT NULL, expires INTEGER NOT NULL)');
         const grantColumns = (this.db.prepare('PRAGMA table_info(grants)').all() as { name: string }[]).map((c) => c.name);
@@ -378,8 +397,33 @@ export class Oidc {
     res.writeHead(302, { location: await this.authorizeUrl(s, db, req, resume), 'cache-control': 'no-store' }).end();
   }
 
+  /**
+   * Room for one more pending sign-in from `address`, inside the transaction that adds it. An address over its share loses its own
+   * oldest rows, so a flood from one address only ever replaces that address's sign-ins. With the table full, the address that holds
+   * the most rows (when it holds more than one) loses its oldest row; a table where every address holds one refuses the new
+   * sign-in and removes nobody's, and so does one full of rows with no recorded address (they expire in ten minutes).
+   * Throws SignInError when there is no room. Returns the states it removed, for the caller to forget once the transaction commits.
+   */
+  private makeRoom(address: string): string[] {
+    const removed: string[] = [];
+    const evict = (rows: { state: string }[]) => { for (const r of rows) removed.push(r.state); };
+    const mine = (this.db.prepare('SELECT COUNT(*) AS n FROM pending WHERE address = ?').get(address) as { n: number }).n;
+    if (mine >= this.perAddress) evict(this.db.prepare('DELETE FROM pending WHERE state IN (SELECT state FROM pending WHERE address = ? ORDER BY created, rowid LIMIT ?) RETURNING state').all(address, mine - this.perAddress + 1) as { state: string }[]);
+    const count = (this.db.prepare('SELECT COUNT(*) AS n FROM pending').get() as { n: number }).n;
+    if (count < this.maxPending) return removed;
+    const heaviest = this.db.prepare("SELECT address, COUNT(*) AS n FROM pending WHERE address <> '' GROUP BY address ORDER BY n DESC, MIN(created), MIN(rowid) LIMIT 1").get() as { address: string; n: number } | undefined;
+    if (heaviest && heaviest.n > 1) {
+      evict(this.db.prepare('DELETE FROM pending WHERE state = (SELECT state FROM pending WHERE address = ? ORDER BY created, rowid LIMIT 1) RETURNING state').all(heaviest.address) as { state: string }[]);
+      return removed;
+    }
+    throw new SignInError('Too many sign-ins are in progress; try again in a minute');
+  }
+
   /** Starts a sign-in: the provider's address to send the person to. */
   private async authorizeUrl(s: ProviderState, db: string, req: IncomingMessage, resume?: Resume, dataApi?: Pending['dataApi']): Promise<string> {
+    // Before anything is fetched or written: starting a sign-in needs no sign-in.
+    const address = addressBucket(clientAddress(req));
+    if (!this.starts.take(address)) throw new SignInError('Too many sign-in attempts from this address; try again in a minute');
     const d = await this.config(s);
     const state = b64url(randomBytes(24));
     const verifier = b64url(randomBytes(32));
@@ -391,11 +435,11 @@ export class Oidc {
       const now = expiryClock.now();
       this.pruneResumes(performance.now());
       this.db.prepare('DELETE FROM pending WHERE expires <= ?').run(expiryClock.now());
-      const count = (this.db.prepare('SELECT COUNT(*) AS n FROM pending').get() as { n: number }).n;
-      if (count >= MAX_PENDING) throw new SignInError('Too many sign-ins are in progress; try again in a minute');
+      const evicted = this.makeRoom(address);
       const expires = now + PENDING_MS;
-      this.db.prepare('INSERT INTO pending (state,provider,database,verifier,nonce,redirect_uri,expires,flow,created,data_api) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(state, s.slug, db, verifier, nonce, redirectUri, expires, resume ? 'ai' : dataApi ? 'data' : 'web', now, dataApi ? JSON.stringify(dataApi) : null);
+      this.db.prepare('INSERT INTO pending (state,provider,database,verifier,nonce,redirect_uri,expires,flow,created,data_api,address) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(state, s.slug, db, verifier, nonce, redirectUri, expires, resume ? 'ai' : dataApi ? 'data' : 'web', now, dataApi ? JSON.stringify(dataApi) : null, address);
       this.db.exec('COMMIT');
+      for (const gone of evicted) this.resumes.delete(gone);
       if (resume) this.resumes.set(state, { resume, expires: performance.now() + PENDING_MS });
     } catch (e) {
       this.db.exec('ROLLBACK');
