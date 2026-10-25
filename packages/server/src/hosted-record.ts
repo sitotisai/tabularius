@@ -1,5 +1,5 @@
 // Approval memory for files in a hosted folder. It is local state, never a backup input.
-import { closeSync, constants, existsSync, fstatSync, fsyncSync, lstatSync, openSync, readFileSync, readdirSync, renameSync, rmSync, writeSync } from 'node:fs';
+import { closeSync, constants, existsSync, fstatSync, fsyncSync, lstatSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
@@ -18,16 +18,22 @@ export function validFileId(value: unknown): value is string { return typeof val
 /** undefined means absent; null means damaged and must never be replaced. */
 export function loadHostedRecord(dir: string): HostedRecord | null | undefined {
   const path = join(dir, HOSTED_RECORD_FILE);
-  let raw: string;
-  try {
-    const fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  let raw = '';
+  // A write renames a new record over this one: a reader that opened the old file just before sees it unlinked (no links left)
+  // and must open the path again, not call the record damaged.
+  for (let attempt = 0; ; attempt++) {
     try {
-      const stat = fstatSync(fd);
-      if (!stat.isFile() || stat.nlink !== 1) return null;
-      raw = readFileSync(fd, 'utf8');
-    } finally { closeSync(fd); }
+      const fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+      try {
+        const stat = fstatSync(fd);
+        if (!stat.isFile() || stat.nlink > 1) return null;
+        if (stat.nlink === 0 && attempt < 20) continue;
+        raw = readFileSync(fd, 'utf8');
+        break;
+      } finally { closeSync(fd); }
+    }
+    catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT' && !existsSync(path)) return undefined; return null; }
   }
-  catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT' && !existsSync(path)) return undefined; return null; }
   try {
     const value: unknown = JSON.parse(raw);
     if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -47,8 +53,12 @@ export function loadHostedRecord(dir: string): HostedRecord | null | undefined {
   } catch { return null; }
 }
 
+/** How many store files the approval check has opened in this process (a test counts them; nothing else reads it). */
+export const markerProbes = { count: 0 };
+
 /** This probe never creates a store or changes its metadata. */
 function peekInstance(path: string): string | undefined {
+  markerProbes.count++;
   let sql: DatabaseSync | undefined;
   try {
     const stat = lstatSync(path);
@@ -65,14 +75,25 @@ function peekInstance(path: string): string | undefined {
 
 function storeNames(dir: string): string[] { return readdirSync(dir).filter((name) => name.endsWith(STORE_EXT)); }
 
-/** A missing or swapped record cannot claim a folder that contains an earlier approval marker. */
+/**
+ * A missing or swapped record cannot claim a folder that contains an earlier approval marker. Every store is opened to read
+ * its marker, so the walk stops at the first answer: a store that carries the record's instance settles it, and with no
+ * record any marker does. Only a folder where no store matches is read in full.
+ */
 export function verifiedHostedRecord(dir: string, exclude: readonly string[] = []): HostedRecord | null | undefined {
   const record = loadHostedRecord(dir);
   if (record === null) return null;
   const excluded = new Set(exclude.map((name) => name.toLowerCase() + STORE_EXT));
-  const instances = storeNames(dir).filter((name) => !excluded.has(name.toLowerCase())).map((name) => peekInstance(join(dir, name))).filter((id) => id !== undefined);
-  if (instances.length && (!record || !instances.includes(record.instance))) return null;
-  return record;
+  let marked = false;
+  for (const name of storeNames(dir)) {
+    if (excluded.has(name.toLowerCase())) continue;
+    const instance = peekInstance(join(dir, name));
+    if (instance === undefined) continue;
+    if (record && instance === record.instance) return record;
+    if (!record) return null;
+    marked = true;
+  }
+  return marked ? null : record;
 }
 
 export const LOST_RECORD_MESSAGE = 'the approval record is missing, so every file is held; it must be restored or approved again (the admin controls for this arrive in the next change)';
@@ -102,23 +123,45 @@ export function vet(record: HostedRecord | null | undefined, name: string, id: s
   return entry?.id === id ? 'approved' : 'held';
 }
 
+/** A test sets `run` to make a write fail after its temp file is written (a full disk, say); nothing else touches it. */
+export const recordWriteHook: { run?: () => void } = {};
+
+/** Temp files of an interrupted write older than this are removed by the next one. */
+const STALE_TEMP_MS = 10 * 60_000;
+
 function writeRecord(dir: string, record: HostedRecord): void {
   const path = join(dir, HOSTED_RECORD_FILE);
-  const temp = path + '.tmp';
+  // A name of its own: two processes (a leader and a restore, say) writing at once must not share a temp file, or one rename
+  // could publish the other's half-written record.
+  const temp = `${path}.${process.pid}.${randomUUID()}.tmp`;
   let fd: number | undefined;
   let created = false;
+  sweepTemps(dir, path);
   try {
-    rmSync(temp, { force: true });
     fd = openSync(temp, 'wx', 0o600);
     created = true;
     writeSync(fd, JSON.stringify(record) + '\n');
     fsyncSync(fd);
     closeSync(fd);
     fd = undefined;
+    recordWriteHook.run?.();
     renameSync(temp, path);
   } finally {
     if (fd !== undefined) closeSync(fd);
     if (created) rmSync(temp, { force: true });
+  }
+}
+
+/** Removes the fixed-name temp an earlier version left, and temps an interrupted write left more than STALE_TEMP_MS ago. */
+function sweepTemps(dir: string, path: string): void {
+  try { rmSync(path + '.tmp', { force: true }); } catch { /* not ours to clear */ }
+  const prefix = HOSTED_RECORD_FILE + '.';
+  for (const name of readdirSync(dir)) {
+    if (!name.startsWith(prefix) || !name.endsWith('.tmp') || name === HOSTED_RECORD_FILE + '.tmp') continue;
+    try {
+      const file = join(dir, name);
+      if (Date.now() - statSync(file).mtimeMs > STALE_TEMP_MS) rmSync(file, { force: true });
+    } catch { /* another writer finished with it first */ }
   }
 }
 

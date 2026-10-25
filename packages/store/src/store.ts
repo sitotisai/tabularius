@@ -10944,7 +10944,7 @@ export class Store {
       // one in between must not be queried as if it were it.
       if (this.fileIdSaved && this.storedFileId(reader) !== this.fileId) {
         try { reader.close(); } catch { /* the file is refused either way */ }
-        throw new StoreError(8310, `The file at ${this.name} is not the file that was opened; it was replaced while hosted`);
+        throw new StoreError(100, `The file at ${this.name} is not the file that was opened; it was replaced while hosted`);
       }
       this.readOnlySql = traceDatabase(watchDatabase(reader, this.name.replace(/\.tabularius$/i, ''), this.damageWatch));
       defineFold(this.readOnlySql);
