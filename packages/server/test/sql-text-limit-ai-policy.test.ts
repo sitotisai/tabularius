@@ -26,23 +26,29 @@ async function fixture(t: import('node:test').TestContext) {
   return (name: string, args: Record<string, unknown>) => client.callTool({ name, arguments: { database: 'Shop', ...args } });
 }
 
-const big = ` ${' '.repeat(MAX_SQL_TEXT)}`;
+// Token-heavy on purpose: the planner reads each token several times over, so this is what costs seconds (padding with
+// spaces would pass quickly even without the check).
+const heavy = `SELECT Name FROM Items WHERE Name IN (${"'a',".repeat(MAX_SQL_TEXT / 4)}'a')`;
 
 test('a long sql_query is refused for its size, quickly, on a file with the AI policy on', async (t) => {
   const call = await fixture(t);
   assert.equal((await call('sql_query', { sql: 'SELECT Name FROM Items' })).isError, undefined, 'short SQL is not affected');
+  assert.ok(heavy.length > MAX_SQL_TEXT);
   const began = Date.now();
-  const result = await call('sql_query', { sql: `SELECT Name FROM Items${big}` });
+  const result = await call('sql_query', { sql: heavy });
   assert.equal(result.isError, true);
   assert.match(JSON.stringify(result), /larger than 1 MB/);
-  assert.ok(Date.now() - began < 5000, 'refused at once');
+  assert.ok(Date.now() - began < 5000, 'refused at once, not after the planner has read it');
 });
 
-test('an ExecuteSQL literal that long in a formula is refused quickly (the formula analysis limit speaks first)', async (t) => {
+// The check on an ExecuteSQL literal in a formula (ai-policy.ts, next to sqlFieldRefs) cannot be reached from an MCP
+// formula today: a formula over the analysis limit is refused before its literals are read, and a literal over 1 MB
+// makes the formula that long. This pins what a caller sees, and that it is quick.
+test('a formula holding a 1 MB ExecuteSQL literal is refused quickly by the formula analysis limit', async (t) => {
   const call = await fixture(t);
   const began = Date.now();
-  const result = await call('evaluate_calculation', { layout: 'Items', recordId: 1, formula: `ExecuteSQL ( "SELECT Name FROM Items${big}" ; "" ; "" )` });
+  const result = await call('evaluate_calculation', { layout: 'Items', recordId: 1, formula: `ExecuteSQL ( "${heavy}" ; "" ; "" )` });
   assert.equal(result.isError, true);
-  assert.match(JSON.stringify(result), /larger than 1 MB|analysis limit/);
+  assert.match(JSON.stringify(result), /analysis limit/);
   assert.ok(Date.now() - began < 5000, 'refused at once');
 });
