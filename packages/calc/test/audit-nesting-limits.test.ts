@@ -99,3 +99,34 @@ test('Evaluate still nests a reasonable number of levels, and the count comes ba
   const ctx = withField('Evaluate ( F )');
   assert.equal(evaluateText('Let ( e = EvaluationError ( Evaluate ( F ) ) ; Evaluate ( "1 + 1" ) )', ctx), '2');
 });
+
+test('a text that evaluates itself twice per level, with EvaluationError catching each, takes linear work', () => {
+  const g = 'EvaluationError ( Evaluate ( G ) ) + EvaluationError ( Evaluate ( G ) )';
+  const ctx = { field: (ref: { field: string }) => (ref.field === 'G' ? text(g) : undefined) } as CalcContext;
+  const started = performance.now();
+  // The caught refusals add up to a number; what matters is that it is an answer, soon, not the work-budget error.
+  assert.match(evaluateText('Evaluate ( G )', ctx), /^\d+$/);
+  assert.ok(performance.now() - started < 3000, `took ${Math.round(performance.now() - started)} ms`);
+  // The refusal ends with the outermost Evaluate: the next one at the top level runs again.
+  assert.equal(evaluateText('Let ( e = Evaluate ( G ) ; Evaluate ( "1 + 1" ) )', ctx), '2');
+});
+
+test('a stack that runs out inside a JSON function gives the error text without claiming the document is deep', () => {
+  const ctx = {
+    field: (ref: { field: string }) => (ref.field === 'F' ? text(nested(512)) : undefined),
+    customFunction: (name: string) => (name === 'D' ? { parameters: ['n'], formula: 'If ( n = 0 ; JSONFormatElements ( F ) ; D ( n - 1 ) & "" )' } : undefined),
+  } as CalcContext;
+  assert.match(evaluateText('D ( 0 )', ctx), /^\[\r\t/);
+  // The custom function nests deeper and deeper; where the stack runs out inside the JSON call itself depends on the
+  // stack size, so step through depths until the stack has run out everywhere (the plain "?" ten times in a row).
+  const answers = new Set<string>();
+  for (let n = 500, plain = 0; plain < 10; n += 5) {
+    assert.ok(n < 100_000, 'the stack never ran out');
+    const result = evaluateText(`D ( ${n} )`, ctx);
+    answers.add(result.startsWith('[') ? 'document' : result);
+    plain = result === '?' ? plain + 1 : 0;
+  }
+  const messages = [...answers].filter((r) => r !== '?' && r !== 'document');
+  assert.ok(messages.length > 0, `no depth ended inside a JSON function: ${[...answers].join(' | ').slice(0, 300)}`);
+  for (const m of messages) assert.match(m, /^\? The document or formula is nested too deeply for this server's stack$/);
+});
