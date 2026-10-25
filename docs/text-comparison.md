@@ -37,6 +37,13 @@ letter are *canonically* equal (the same letters); the others are *compatibility
   still lists it. Files that already hold two accounts that share a lockout keep them; there one account's correct sign-in
   clears the other's failed guesses from the same address.
 - **Unique values and value lists** treat the two forms of one letter as one value (this changed: they used to differ).
+- **Case in `Position`, `PatternCount` and names in a formula**: letters are folded to lower case one character at a time,
+  so a character keeps its width and every offset found in the folded text is an offset in the original. The Greek sigma
+  in its three forms (**Σ**, **σ** and the final **ς**) is one letter here, so `PatternCount ( "ΟΔΟΣ" ; "οδος" )` and
+  `PatternCount ( "οδος" ; "ΟΔΟΣ" )` are both 1, and a field named **ΟΔΟΣ** is read when a formula writes **οδοσ**; when a
+  table has both spellings as two names, the formula's own spelling wins. The dotted capital **İ** is equal only to itself:
+  it no longer matches **i** (a lower-cased **İ** is two characters, which moved every later offset by one before), and
+  `Position ( "İa" ; "a" ; 1 ; 1 )` is 2. Whether FileMaker matches **İ** with **i** is unverified.
 - **Lone surrogates** (half of an emoji) cannot be stored: SQLite keeps U+FFFD in their place, so two values that differ
   only in such a character are equal once saved.
 - **File names** (the files a server hosts, container file names) are kept as given. A name typed with the composed form
