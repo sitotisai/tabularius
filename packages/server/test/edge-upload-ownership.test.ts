@@ -1,12 +1,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import type { IncomingMessage } from 'node:http';
 import { Host } from '../src/host.ts';
 import { Uploads } from '../src/uploads.ts';
+
+function stubPath(t: { after(fn: () => void): void }): string {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-command-stubs-'));
+  const marker = join(dir, 'forbidden-command-used');
+  for (const command of ['launchctl', 'systemctl', 'sc', 'git', 'npm', 'curl', 'sudo']) {
+    writeFileSync(join(dir, command), `#!/bin/sh\nprintf x > '${marker}'\nexit 99\n`, { mode: 0o700 });
+  }
+  t.after(() => { const used = existsSync(marker); rmSync(dir, { recursive: true, force: true }); assert.equal(used, false); });
+  return dir;
+}
 
 const piece = (bytes: string) => Object.assign(Readable.from([Buffer.from(bytes)]), {
   headers: { 'content-length': String(bytes.length) },
@@ -30,7 +40,8 @@ test('AR-server-edge-02', async () => {
   } finally { await host.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('AR-server-edge-02 cluster', async () => {
+test('AR-server-edge-02 cluster', async (t) => {
+  const PATH = stubPath(t);
   const { spawnSync } = await import('node:child_process');
   const child = spawnSync(process.execPath, ['--no-warnings', '--input-type=module', '-e', `
     import assert from 'node:assert/strict';
@@ -76,12 +87,13 @@ test('AR-server-edge-02 cluster', async () => {
       clearTimeout(watchdog);
       rmSync(dir, { recursive: true, force: true });
     }
-  `], { cwd: process.cwd(), encoding: 'utf8', timeout: 25_000, killSignal: 'SIGKILL' });
+  `], { env: { ...process.env, PATH }, cwd: process.cwd(), encoding: 'utf8', timeout: 25_000, killSignal: 'SIGKILL' });
   assert.equal(child.error, undefined, String(child.error));
   assert.equal(child.status, 0, child.stderr + child.stdout);
 });
 
-test('AR-server-edge-02 cleanup', async () => {
+test('AR-server-edge-02 cleanup', async (t) => {
+  const PATH = stubPath(t);
   const { spawnSync } = await import('node:child_process');
   const { existsSync, writeFileSync } = await import('node:fs');
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-owner-exit-'));
@@ -94,10 +106,16 @@ test('AR-server-edge-02 cleanup', async () => {
       const uploads = new Uploads(host, undefined, { idleMs: 0 });
       console.log(uploads.start({ name: 'Generated.fmp12', size: 3 }).id);
       await host.close();
-    `, dir], { cwd: process.cwd(), timeout: 10_000, killSignal: 'SIGKILL', encoding: 'utf8' });
+    `, dir], { env: { ...process.env, PATH }, cwd: process.cwd(), timeout: 10_000, killSignal: 'SIGKILL', encoding: 'utf8' });
     assert.equal(child.status, 0, child.stderr);
     const abandoned = join(dir, '.openhbam-uploads', child.stdout.trim() + '.part');
     assert.equal(existsSync(abandoned), true);
+    // Even a dead owner's files get a safe grace period before startup removes them.
+    const recent = new Uploads(host, undefined, { idleMs: 0 });
+    recent.stop();
+    assert.equal(existsSync(abandoned), true);
+    const old = new Date(Date.now() - 2 * 86400000);
+    utimesSync(abandoned, old, old);
     const unknown = join(dir, '.openhbam-uploads', 'legacy.part');
     writeFileSync(unknown, 'legacy');
     new Uploads(host, undefined, { idleMs: 0 });
