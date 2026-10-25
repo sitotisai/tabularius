@@ -32,3 +32,24 @@ test('the history of a record does not include the record that had its id before
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('a record put back by the cleanup undo keeps the history from before it was deleted', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-history-restore-'));
+  createStore(join(dir, 'Notes.sqlite'));
+  const store = new Store(join(dir, 'Notes.sqlite'));
+  try {
+    store.applyDesign([{ op: 'createTable', name: 'Docs', fields: [{ name: 'Title', type: 'text' }] }] as never);
+    const id = store.create('Docs', { Title: 'a' }, { account: 'Ann' }).recordId;
+    store.update('Docs', id, { Title: 'b' }, undefined, { account: 'Ann' });
+    const before = store.sql.prepare('SELECT * FROM Docs WHERE _fm_record_id = ?').get(id) as Record<string, never>;
+    store.delete('Docs', id, { account: 'Ann' });
+    store.restoreDeletedRow('Docs', before, { account: 'Ann' });
+    const events = recordHistory(store, 'Docs', id).events;
+    // The create, the edit and the delete from before, and the put-back (an edit straight after a create folds into it).
+    assert.equal(events.flatMap((e) => e.seqs).length, 4);
+    assert.ok(events.some((e) => e.revertOf !== undefined), 'the put-back says it puts something back');
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
