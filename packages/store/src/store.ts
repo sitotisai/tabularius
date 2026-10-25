@@ -19,7 +19,7 @@ import { boundedStatement, collectRows } from './sql-result.ts';
 import { DatabaseSync, backup, type Session, type StatementSync, type SQLInputValue, type SQLOutputValue } from 'node:sqlite';
 import { createHash, createHmac, pbkdf2Sync, scrypt, scryptSync, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { isIP } from 'node:net';
-import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { closeSync, constants as fsConstants, copyFileSync, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, readdirSync, readSync, renameSync, rmSync, statSync } from 'node:fs';
 import { checkedFile, cleanupPath, openSync, readFileSync, writeFileSync, writeSync } from './fs-boundary.ts';
 import { externalFieldNames, parseDate, parseTime, parseTimestamp, type DateStyle, type Field, type FieldType, type LayoutDesign, type LayoutDesigns, type LayoutObject, type Schema, type Table } from '../../fmp12/src/index.ts';
@@ -514,14 +514,30 @@ export function externalRoots(folder: string, name: string, baseDirs: string[], 
     }
     if (!used) refused.push(base);
     else if (b && !add(b) && isDirectory(resolve(folder, b))) {
-      // Older versions also looked in this folder beside the hosted file; containers kept there are no longer found.
-      refused.push(`${resolve(folder, b)} (move it to ${resolve(folder, 'RC_Data_FMS', name, b)})`);
+      // Older versions also looked in this folder beside the hosted file; containers kept there are no longer found. Say
+      // where to move it only when that is safe: never for the hosted folder itself, the two storage folders or anything
+      // in them (that would make another file's containers this file's), or a folder the server keeps its own data in.
+      const old = resolve(folder, b);
+      const first = relative(folder, old).split(sep)[0].toLowerCase();
+      const ordinary = old !== folder && !first.startsWith('.') && first !== '..' && !isAbsolute(relative(folder, old))
+        && first !== 'rc_data_fms' && first !== 'files' && !SERVER_FOLDERS.some((f) => f.toLowerCase() === first);
+      refused.push(ordinary
+        ? `${old} (move it to ${resolve(folder, 'RC_Data_FMS', name, b)})`
+        : `${old} (not used: it is the hosted folder, a storage folder of other files or a folder the server keeps its own data in; container files are read only below RC_Data_FMS/${name} and Files/${name})`);
     }
   }
   add('RC_Data_FMS', name);
   add('Files', name);
   return roots;
 }
+
+/**
+ * Folders the server keeps its own data in, directly in the hosted folder (backups, logs, exports, scripts' Documents,
+ * the outbox), besides every dot folder (settings, secrets, tokens). A folder named after a file is
+ * never one of them; the warning about a container folder that is no longer searched gives no advice to move files into
+ * or out of these. A test fails when server code joins a capitalized folder name onto the hosted folder that is not here.
+ */
+export const SERVER_FOLDERS = ['Backups', 'Logs', 'Documents', 'Exports', 'Outbox'];
 
 /** Files (by name and base directories) whose refused container folders have been reported in this process. */
 const warnedRoots = new Set<string>();
