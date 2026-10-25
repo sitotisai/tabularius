@@ -23,7 +23,7 @@ test('debug Current reads the paused execution store and returns the ended-run f
   let storeOpen = true;
   const call = async (method: string, pathAndQuery: string, body?: unknown) => {
     const bytes = body === undefined ? undefined : Buffer.from(JSON.stringify(body));
-    const req = Object.assign(Readable.from(bytes ? [bytes] : []), { method, url: pathAndQuery, headers: {} }) as IncomingMessage;
+    const req = Object.assign(Readable.from(bytes ? [bytes] : []), { method, url: pathAndQuery, headers: {}, socket: { remoteAddress: '127.0.0.1' } }) as unknown as IncomingMessage;
     let status = 0, text = '';
     const res = { writeHead: (code: number) => { status = code; }, end: (value: string) => { text = value; } } as unknown as ServerResponse;
     await debug.handle(req, res, new URL(`http://test${pathAndQuery}`));
