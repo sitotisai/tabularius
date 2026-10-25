@@ -45,6 +45,7 @@ import { checkTotp, generateTotpSecret, totpUri } from './totp.ts';
 import { verifyRegistration, verifyAssertion, type RegisteredCredential } from './webauthn.ts';
 import { existingDirectoryLinks, safeExistingPath, safeWritePath } from './safe-path.ts';
 import { ensureRecordChain, linkRecordEntry, pruneRecordEntries, verifyRecordAudit, type RecordAuditVerification } from './record-chain.ts';
+import { inLife, lifeRanges, type LifeRange } from './record-life.ts';
 import { ensureSecurityChain, appendSecurityEvent, securityWrite, verifySecurityAudit, type SecurityAuditVerification } from './security-chain.ts';
 
 export { FindError, type FindRequest };
@@ -2518,15 +2519,15 @@ export class Store {
   }
 
   /**
-   * The audit entry that began the record's present life: its latest creation that is not a revert putting the same
-   * record back (0 when none is logged, as for a record that came with the file). New ids continue after the highest
-   * one left, so a deleted last record's id is given to the next new one, and the log, keyed by table and id, holds both
-   * records' entries: those before this one belong to an earlier record.
+   * The ranges of audit entries that belong to the record's present life (see record-life.ts): from its latest creation
+   * that is not a put-back of a deleted record, plus, for a put-back, the life that delete ended. New ids continue after
+   * the highest one left, so a deleted last record's id is given to the next new one, and the log, keyed by table and id,
+   * holds every record that had the id: the entries outside these ranges belong to another one.
    */
-  recordLifeStart(table: string, recordId: number): number {
-    const row = this.sql.prepare("SELECT max(seq) AS seq FROM _fm_audit WHERE security = 0 AND kind = 'create' AND revert_of IS NULL AND tbl = ? COLLATE NOCASE AND record_id = ?")
-      .get(table, recordId) as { seq: number | null } | undefined;
-    return Number(row?.seq ?? 0);
+  recordLife(table: string, recordId: number): LifeRange[] {
+    const creates = this.sql.prepare("SELECT seq, revert_of FROM _fm_audit WHERE security = 0 AND kind = 'create' AND tbl = ? COLLATE NOCASE AND record_id = ?")
+      .all(table, recordId) as { seq: number; revert_of: number | null }[];
+    return lifeRanges(creates);
   }
 
   /**
@@ -2541,12 +2542,13 @@ export class Store {
     // account that cannot see the record gets the one answer for every entry, before any of it is looked at.
     const pv = this.local(opts.privileges);
     const there = !!pv && info.owner === this && !!this.sql.prepare(`SELECT 1 FROM ${q(info.table)} WHERE _fm_record_id = ?`).get(recordId);
-    if (pv && !(there ? this.canViewRecord(info.table, recordId, opts.privileges) : pv.table(info.table).view !== false)) {
+    // A record that is gone has no row to judge a view rule on: only a table the account may view whole counts.
+    if (pv && !(there ? this.canViewRecord(info.table, recordId, opts.privileges) : pv.table(info.table).view === true)) {
       throw new StoreError(101, `Audit entry ${seq} is not a change to this record`);
     }
     const entry = Number.isInteger(seq) && seq > 0 ? this.auditLog({ afterSeq: seq - 1, limit: 1 })[0] : undefined;
     if (!entry || entry.seq !== seq || entry.security || entry.recordId !== recordId || entry.table.toLowerCase() !== info.table.toLowerCase()
-      || entry.seq < this.recordLifeStart(info.table, recordId)) {
+      || !inLife(this.recordLife(info.table, recordId), entry.seq)) {
       throw new StoreError(101, `Audit entry ${seq} is not a change to this record`);
     }
     const w = { ...writer.getStore(), revertOf: seq, ...(opts.account ? { account: opts.account } : {}) };

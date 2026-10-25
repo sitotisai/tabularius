@@ -763,6 +763,10 @@ revert, the data cleanup's undo or the console's restore keeps its whole
 history; those put-backs made before they were marked in the log count as new
 records, and the earlier history is no longer shown for them.
 
+An account whose view of a table depends on a rule can put back changes to
+records it can see, but not a deleted record: with no values left to judge the
+rule on, only an account that may view the whole table can.
+
 ## Putting a record back
 
 In the admin console's **Audit log**, **History** on any record change lists
