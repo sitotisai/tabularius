@@ -1199,6 +1199,16 @@ const blockCache = new WeakMap<Script, Blocks>();
 const calcType = (t: Field['type']): ValueType | 'unknown' =>
   t === 'boolean' || t === 'integer' ? 'number' : t === 'decimal' || t === 'json' || t === 'uuid' ? 'text' : t;
 
+/** Whether a find criterion has a quote that is never closed (a backslash escapes the next character). */
+function unbalancedQuote(text: string): boolean {
+  let open = false;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '\\') i++;
+    else if (text[i] === '"') open = !open;
+  }
+  return open;
+}
+
 export class ScriptEngine {
   private readonly session: ScriptSession;
   /** This run's global field values, for the store to read and write. */
@@ -8770,9 +8780,9 @@ export class ScriptEngine {
     const fields = info.fields.filter((x) => x.type !== 'container');
     let ids: number[] | undefined;
     for (const w of words) {
-      // Quick Find receives plain text. Use a one-character wildcard to get candidates for a quote,
-      // then check the literal text; a bare quote is a find-phrase delimiter in the store.
-      const quoted = w.includes('"');
+      // A balanced quote is a find phrase and goes to the store as typed. An unbalanced one would be refused as an
+      // unclosed phrase, so it is plain text: use a one-character wildcard to get candidates, then check the literal text.
+      const quoted = unbalancedQuote(w);
       const matching = quoted ? fields.filter((x) => x.type === 'text') : fields;
       const candidates = info.owner.findIds(info, { query: matching.map((x) => ({ [x.name]: quoted ? w.replaceAll('"', '@') : w })), ...this.reading });
       const hits = new Set(quoted ? candidates.filter((id) => {

@@ -44,6 +44,14 @@ test('record writes refuse embedded NUL before a duplicate can lose text', (t) =
   assert.equal(store.get('Items', id).fieldData.Owner, 'reader');
 });
 
+test('a pending NUL edit is read as typed and refused where the record is written', (t) => {
+  const { store, id } = setup(t);
+  const info = store.layout('Items');
+  assert.equal(store.get(info, id, 'iso', undefined, undefined, { edits: { Owner: 'a\0b' } }).fieldData.Owner, 'a\0b');
+  assert.throws(() => store.update('Items', id, { Owner: 'a\0b' }), (e: unknown) => e instanceof StoreError && /NUL/.test(e.message));
+  assert.equal(store.get(info, id).fieldData.Owner, 'reader');
+});
+
 test('pending edits cannot make a forbidden record viewable or expose masked inputs', (t) => {
   const { store, id } = setup(t);
   store.savePrivilegeSet({
