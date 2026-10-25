@@ -42,24 +42,28 @@ function builtinFunctions(): Set<string> {
   return builtins;
 }
 
-/** A function the program calls that SQLite does not have built in (one the store defined), if any: the child does not have it. */
-export function customFunction(ops: Op[]): string | undefined {
+/** A function the store defined that the child process can import: the export `export` of the module at address `module`. */
+export interface PortableFunction { module: string; export: string }
+
+/** The functions the program calls that SQLite does not have built in (ones the store defined), lower case, each once: the child does not have them. */
+export function customFunctions(ops: Op[]): string[] {
+  const names = new Set<string>();
   for (const op of ops) {
     if (!['Function', 'PureFunc', 'AggStep', 'AggStep0', 'AggFinal', 'AggValue', 'AggInverse'].includes(op.opcode)) continue;
     const name = (op.p4 ?? '').replace(/\(-?\d+\)$/, '').toLowerCase();
-    if (name && !builtinFunctions().has(name)) return name;
+    if (name && !builtinFunctions().has(name)) names.add(name);
   }
-  return undefined;
+  return [...names];
 }
 
 const MAX_OUTPUT = 300 * 2 ** 20;
 
 /** The rows of `text` (a checked, read-only query), read by a child process of this file that is killed after RECURSIVE_SQL.ms. */
-export function recursiveRows(file: string, text: string, params: SqlValue[], names: string[], limit: number, views: string[]): SqlValue[][] {
+export function recursiveRows(file: string, text: string, params: SqlValue[], names: string[], limit: number, views: string[], functions: (PortableFunction & { name: string })[] = []): SqlValue[][] {
   const seconds = RECURSIVE_SQL.ms / 1000;
   const stopped = () => new StoreError(812, `Exceeded host's capacity: a recursive query ran longer than ${seconds} seconds and was stopped; make it end sooner (a condition in the recursive part, or a smaller range)`);
   const child = spawnSync(process.execPath, ['--max-old-space-size=1024', fileURLToPath(new URL('./sql-child.ts', import.meta.url))], {
-    input: JSON.stringify({ path: file, text, params: params.map(encodeValue), names, limit, views }),
+    input: JSON.stringify({ path: file, text, params: params.map(encodeValue), names, limit, views, functions }),
     encoding: 'utf8', timeout: RECURSIVE_SQL.ms, killSignal: 'SIGKILL', maxBuffer: MAX_OUTPUT, cwd: tmpdir(), windowsHide: true,
   });
   if (child.error) {
