@@ -50,16 +50,18 @@ interface Model {
   /** The password each account had after that edit: for signing in over the Data API. */
   passwords: Map<string, string>;
   containers: { id: number; sha: string }[];
+  /** The highest record id the table ever committed (its record-id mark): a new record is numbered after it, never below. */
+  mark: number;
 }
 
-const newModel = (): Model => ({ fields: ['Name', 'Qty'], rows: new Map(), scripts: [], accounts: new Map(), passwords: new Map(), containers: [] });
+const newModel = (): Model => ({ fields: ['Name', 'Qty'], rows: new Map(), scripts: [], accounts: new Map(), passwords: new Map(), containers: [], mark: 0 });
 const cloneModel = (m: Model): Model => ({
   fields: [...m.fields], rows: new Map([...m.rows].map(([k, v]) => [k, { ...v }])), scripts: [...m.scripts],
-  accounts: new Map(m.accounts), passwords: new Map(m.passwords), containers: m.containers.map((c) => ({ ...c })),
+  accounts: new Map(m.accounts), passwords: new Map(m.passwords), containers: m.containers.map((c) => ({ ...c })), mark: m.mark,
 });
 
 /** What a state looks like to a comparison: the same shape from the model and from a file. */
-function digestOf(parts: { fields: string[]; rows: [number, Cells][]; scripts: string[]; accounts: [string, string][]; containers: { id: number; sha: string }[] }): string {
+function digestOf(parts: { fields: string[]; rows: [number, Cells][]; scripts: string[]; accounts: [string, string][]; containers: { id: number; sha: string }[]; mark: number }): string {
   const fields = [...parts.fields].sort();
   return JSON.stringify({
     fields,
@@ -67,9 +69,10 @@ function digestOf(parts: { fields: string[]; rows: [number, Cells][]; scripts: s
     scripts: [...parts.scripts].sort(),
     accounts: [...parts.accounts].sort((a, b) => (a[0] < b[0] ? -1 : 1)),
     containers: [...parts.containers].sort((a, b) => a.id - b.id),
+    mark: parts.mark,
   });
 }
-const modelDigest = (m: Model) => digestOf({ fields: m.fields, rows: [...m.rows], scripts: m.scripts, accounts: [...m.accounts], containers: m.containers });
+const modelDigest = (m: Model) => digestOf({ fields: m.fields, rows: [...m.rows], scripts: m.scripts, accounts: [...m.accounts], containers: m.containers, mark: m.mark });
 
 /** The same digest read from a file (a copy of it, so nothing here touches the original). */
 function fileDigest(path: string, accounts: string[]): string {
@@ -80,7 +83,9 @@ function fileDigest(path: string, accounts: string[]): string {
     const rows: [number, Cells][] = s.find('Items', { limit: 1_000_000 }).records.map((r) => [r.recordId, Object.fromEntries(fields.map((f) => [f, String((r.fieldData as Record<string, unknown>)[f] ?? '')]))]);
     const hashes = new Map((s.sql.prepare('SELECT name, password_hash FROM _fm_accounts').all() as { name: string; password_hash: string | null }[]).map((a) => [a.name, a.password_hash ?? '']));
     const containers = (s.sql.prepare('SELECT id FROM _fm_containers ORDER BY id').all() as { id: number }[]).map((c) => ({ id: Number(c.id), sha: sha(s.container(Number(c.id))!.data) }));
-    return digestOf({ fields, rows, scripts: (s.schema.scripts ?? []).map((x: { name: string }) => x.name), accounts: accounts.filter((a) => hashes.has(a)).map((a) => [a, hashes.get(a)!]), containers });
+    // The mark travels with the file: a standby that holds a state holds that state's mark.
+    const mark = Number((s.sql.prepare("SELECT id FROM _fm_record_id_high_water WHERE tbl = 'Items'").get() as { id: number } | undefined)?.id ?? 0);
+    return digestOf({ fields, rows, scripts: (s.schema.scripts ?? []).map((x: { name: string }) => x.name), accounts: accounts.filter((a) => hashes.has(a)).map((a) => [a, hashes.get(a)!]), containers, mark });
   } finally {
     s.close();
   }
@@ -212,10 +217,11 @@ class World {
       case 'create': {
         const cells: Cells = { Name: word(), Qty: String(Math.floor(r() * 50)) };
         for (const f of m.fields.slice(2)) if (r() < 0.5) cells[f] = word();
-        const expected = ids.length ? Math.max(...ids) + 1 : 1;
+        const expected = Math.max(m.mark, ...ids) + 1;
         const res = s.create('Items', { ...cells, Qty: Number(cells.Qty) });
-        assert.equal(res.recordId, expected, 'the primary numbers a new record one above the highest');
+        assert.equal(res.recordId, expected, 'the primary numbers a new record one above the highest it ever committed, deleted or not');
         m.rows.set(res.recordId, cells);
+        m.mark = res.recordId;
         this.note(`create #${res.recordId} ${JSON.stringify(cells)}`);
         break;
       }
