@@ -1,0 +1,237 @@
+import { test, type TestContext } from 'node:test';
+import assert from 'node:assert/strict';
+import { existsSync, mkdirSync, readdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createStore, Store } from '../../store/src/index.ts';
+import { serve, Schedules } from '../src/index.ts';
+import { AdminApi } from '../src/adminapi.ts';
+import { Admin } from '../src/admin.ts';
+import { DataApi } from '../src/dataapi.ts';
+import { backupFolder, defaultBackupDir, scheduleProgressive } from '../src/backup.ts';
+import { ServerConfig } from '../src/server-config.ts';
+
+async function setup(t: TestContext) {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-console-errors-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  for (const name of ['Test', 'Second']) {
+    const path = join(dir, name + '.openhbam.sqlite');
+    createStore(path);
+    const store = new Store(path, name);
+    store.applyDesign([{ op: 'createTable', name: 'Items', fields: [{ name: 'Title' }] }]);
+    store.savePrivilegeSet({ name: 'Reader', records: { view: true, edit: false, create: false, delete: false }, layouts: 'viewOnly', valueLists: 'viewOnly', scripts: 'none', extendedPrivileges: ['fmrest'] });
+    store.create('Items', { Title: 'generated' });
+    store.close();
+  }
+  const hosted = await serve({ dir, port: 0, log: () => {} });
+  t.after(() => new Promise<void>((resolve) => hosted.server.close(() => resolve())));
+  const call = async (path: string, body?: unknown, method = body === undefined ? 'GET' : 'POST') => {
+    const r = await fetch(hosted.url + '/tabularius/admin/v1' + path, {
+      method, headers: { 'x-tabularius-admin': '1', 'content-type': 'application/json' },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    return { status: r.status, body: await r.json() as Record<string, any> };
+  };
+  return { ...hosted, dir, call };
+}
+
+test('#33 missing reconvert source is actionable on both routes', async (t) => {
+  const { call } = await setup(t);
+  for (const route of ['reconvert-preview', 'reconvert']) {
+    const r = await call('/files/Test/' + route, {});
+    assert.equal(r.status, 404, JSON.stringify(r));
+    assert.match(r.body.error, /Test\.fmp12/);
+    assert.match(r.body.error, /restore|read|source/i);
+  }
+});
+
+test('#40 unknown layout and table parameters are actionable client errors', async (t) => {
+  const { call } = await setup(t);
+  for (const path of ['/pii/Test?layout=nope', '/who-can?database=Test&table=nope', '/who-can?database=Test']) {
+    const r = await call(path);
+    assert.equal(r.status, 400, path + JSON.stringify(r));
+    assert.match(r.body.error, /layout|table/i);
+    assert.doesNotMatch(r.body.error, /Unknown error|Internal server error/);
+  }
+});
+
+test('#38 an SSO mapping named test can be removed and preview still works', async (t) => {
+  const { call } = await setup(t);
+  assert.equal((await call('/sso-mapping', { database: 'Test', name: 'test', privilegeSet: 'Reader' })).status, 200);
+  const removed = await call('/sso-mapping/test?database=Test', undefined, 'DELETE');
+  assert.equal(removed.status, 200);
+  assert.equal(removed.body.removed, true);
+  assert.equal((await call('/sso-mapping/test?database=Test')).status, 200);
+});
+
+test('#34 wrong body types on connections, records and restore return 400', async (t) => {
+  const { call, host } = await setup(t);
+  assert.equal((await call('/backup', {})).status, 200);
+  const cases: [string, unknown][] = [
+    ['/connections', []], ['/connections', null],
+    ['/connections', { name: ['bad'], type: 's3', config: { bucket: 'generated' } }],
+    ['/connections', { name: { toString: 'bad' }, type: 's3', config: { bucket: 'generated' } }],
+    ['/records/restore', { database: 42, table: 'Items', recordId: 1, seq: 1 }],
+    ['/records/restore', { database: 'Test', table: {}, recordId: 1, seq: 1 }],
+    ['/restore', { database: 'Test', at: Date.now(), name: {} }],
+    ['/restore', { database: 'Test', at: Date.now(), name: ['Copy'] }],
+  ];
+  for (const [path, body] of cases) {
+    const r = await call(path, body);
+    assert.equal(r.status, 400, path + JSON.stringify(r));
+    assert.doesNotMatch(r.body.error, /Unknown error|Internal server error/);
+  }
+  assert.equal(host.names().length, 2, 'no restored copy was created');
+  assert.equal((await call('/connections')).body.connections.length, 0);
+});
+
+test('#32 settings type errors fail at startup with the key and type', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-config-errors-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, '.openhbam-settings.json'), JSON.stringify({ sessionIdleMinutes: 'bad' }));
+  assert.throws(() => new ServerConfig(dir), /sessionIdleMinutes must be a number/);
+});
+
+test('#32 invalid edits keep the last valid settings on sign-in hot paths', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-config-edits-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const warnings = t.mock.method(process, 'emitWarning', () => {});
+  const config = new ServerConfig(dir);
+  config.setBlockNewUsers(true);
+  assert.equal(config.blockNewUsers(), true);
+  writeFileSync(join(dir, '.openhbam-settings.json'), JSON.stringify({ sessionIdleMinutes: 'bad' }));
+  assert.equal(config.blockNewUsers(), true);
+  assert.equal(config.sessionIdleMinutes(), 15);
+  assert.equal(warnings.mock.callCount(), 1, 'one warning per changed invalid file');
+  assert.match(String(warnings.mock.calls[0].arguments[0]), /sessionIdleMinutes must be a number/);
+  writeFileSync(join(dir, '.openhbam-settings.json'), JSON.stringify({ sessionIdleMinutes: 30 }));
+  assert.equal(config.sessionIdleMinutes(), 30);
+  assert.equal(config.blockNewUsers(), false);
+});
+
+test('#30 replace restore refuses closed and paused files before disrupting them', async (t) => {
+  const { call, host } = await setup(t);
+  assert.equal((await call('/backup', {})).status, 200);
+  for (const state of ['paused', 'closed']) {
+    if (state === 'paused') await host.pauseFileEverywhere('Test');
+    else await host.closeFileEverywhere('Test');
+    const r = await call('/restore', { database: 'Test', at: Date.now(), mode: 'replace' });
+    assert.equal(r.status, 409, JSON.stringify(r));
+    assert.match(r.body.error, /open.*file|file.*open/i);
+    assert.equal(host.files().find((f) => f.name === 'Test')!.status, state);
+  }
+});
+
+test('#35 external container copy restore is refused without disrupting the live file', async (t) => {
+  const { call, dir, host } = await setup(t);
+  mkdirSync(join(dir, 'Files', 'Test'), { recursive: true });
+  writeFileSync(join(dir, 'Files', 'Test', 'generated.txt'), 'generated container');
+  assert.equal((await call('/backup', {})).status, 200);
+  const before = host.get('Test');
+  const r = await call('/restore', { database: 'Test', at: Date.now(), name: 'Copy' });
+  assert.equal(r.status, 409, JSON.stringify(r));
+  assert.match(r.body.error, /external container.*replace/i);
+  assert.equal(host.get('Test'), before);
+  assert.equal(existsSync(join(dir, 'Copy.openhbam.sqlite')), false);
+});
+
+test('#31 backup schedules follow the configured folder and later edits', async (t) => {
+  const { host, dir } = await setup(t);
+  const schedules = new Schedules(host);
+  t.after(() => schedules.stop());
+  const s = schedules.create({ kind: 'backup', name: 'Generated', everyMinutes: 60, enabled: false });
+  for (const folder of ['first', 'edited']) {
+    const dest = join(dir, folder);
+    mkdirSync(dest);
+    host.config.setBackupDir(dest);
+    const r = await schedules.run(s.id);
+    assert.equal(r.error, 0, r.message);
+    assert.equal(existsSync(join(dest, r.result)), true, 'backup uses current configured folder');
+  }
+});
+
+// Exercise the state transitions directly: no HTTP authentication is changed by this fix.
+test('#37 RUNNING reopens the remaining stopped files after an individual open', async (t) => {
+  const { host } = await setup(t);
+  const api = new DataApi(host);
+  const admin = new Admin(host, api);
+  const control = new AdminApi(admin, host, api);
+  // Private methods are the same transitions used by the authenticated routes.
+  const status = (body: Record<string, unknown>) => control['serverStatus'](body);
+  await status({ status: 'STOPPED' });
+  await control['setStatus']('Test', 'OPENED', {});
+  await status({ status: 'RUNNING' });
+  assert.ok(host.get('Test'));
+  assert.ok(host.get('Second'));
+});
+
+test('#37 a partially failed stop retains files for a later RUNNING', async (t) => {
+  const { host } = await setup(t);
+  const api = new DataApi(host);
+  const control = new AdminApi(new Admin(host, api), host, api);
+  const close = host.closeFileEverywhere.bind(host);
+  let calls = 0;
+  const mocked = t.mock.method(host, 'closeFileEverywhere', async (name: string) => {
+    if (++calls === 2) throw new Error('synthetic close failure');
+    await close(name);
+  });
+  await assert.rejects(control['serverStatus']({ status: 'STOPPED' }), /synthetic close failure/);
+  mocked.mock.restore();
+  await control['serverStatus']({ status: 'RUNNING' });
+  assert.ok(host.get('Test'));
+  assert.ok(host.get('Second'));
+});
+
+test('#35 external containers with progressive logs are refused before closing', async (t) => {
+  const { call, dir, host } = await setup(t);
+  mkdirSync(join(dir, 'Files', 'Test'), { recursive: true });
+  writeFileSync(join(dir, 'Files', 'Test', 'generated.txt'), 'generated container');
+  const progressive = await scheduleProgressive(host, { every: 3_600_000 });
+  t.after(() => progressive.stop());
+  host.get('Test')!.update('Items', 1, { Title: 'edited' });
+  progressive.run();
+  const before = host.get('Test');
+  const closed = t.mock.method(host, 'closeFileEverywhere');
+  const r = await call('/restore', { database: 'Test', at: Date.now(), mode: 'replace' });
+  assert.equal(r.status, 409, JSON.stringify(r));
+  assert.match(r.body.error, /external container.*base snapshot/i);
+  assert.equal(closed.mock.callCount(), 0);
+  assert.equal(host.get('Test'), before);
+});
+
+test('#33 unexpected reconvert faults stay generic and log their cause; source access errors are actionable', async (t) => {
+  const { call, host, dir } = await setup(t);
+  const logs = t.mock.method(console, 'error', () => {});
+  const preview = t.mock.method(host, 'previewReconvert', async () => { throw new Error('synthetic server fault'); });
+  const fault = await call('/files/Test/reconvert-preview', {});
+  assert.equal(fault.status, 500);
+  assert.equal(fault.body.error, 'Internal server error');
+  assert.match(logs.mock.calls.map((c) => String(c.arguments[0])).join('\n'), /synthetic server fault/);
+  preview.mock.mockImplementation(async () => { throw Object.assign(new Error('synthetic access denial'), { code: 'EACCES', path: join(dir, 'Test.fmp12') }); });
+  const denied = await call('/files/Test/reconvert-preview', {});
+  assert.equal(denied.status, 409);
+  assert.match(denied.body.error, /Allow the server to read.*Test.fmp12/);
+  assert.equal(logs.mock.callCount(), 1, 'a user mistake is not a server fault');
+});
+
+test('#31 console schedules honor folder edits, explicit destinations and preserve unrelated sets', async (t) => {
+  const { call, dir } = await setup(t);
+  const first = join(dir, 'console-backups');
+  const explicit = join(dir, 'explicit-backups');
+  mkdirSync(first);
+  mkdirSync(explicit);
+  await backupFolder(dir, defaultBackupDir(dir), 0, undefined, { now: () => Date.now() - 86_400_000 });
+  const before = readdirSync(defaultBackupDir(dir));
+  assert.equal((await call('/backup-folder', { folder: first })).status, 200);
+  const made = await call('/schedules', { kind: 'backup', name: 'Console generated', everyMinutes: 60, enabled: false, keep: 1 });
+  assert.equal(made.status, 201, JSON.stringify(made));
+  const id = made.body.id;
+  const run = await call(`/schedules/${id}/run`, {});
+  assert.equal(run.body.error, 0, JSON.stringify(run));
+  assert.ok(existsSync(join(first, run.body.result)));
+  assert.deepEqual(readdirSync(defaultBackupDir(dir)), before, 'retention does not prune the default folder');
+  assert.equal((await call(`/schedules/${id}`, { dest: explicit }, 'PATCH')).status, 200);
+  const overridden = await call(`/schedules/${id}/run`, {});
+  assert.equal(overridden.body.error, 0, JSON.stringify(overridden));
+  assert.ok(existsSync(join(explicit, overridden.body.result)));
+});

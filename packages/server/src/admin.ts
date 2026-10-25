@@ -185,6 +185,7 @@ import { WebhookError, type Webhooks } from './changes.ts';
 import { ConnectionError, type Connections } from './connections.ts';
 import type { Profiler } from './profiler.ts';
 import type { McpTokens } from './mcp-tokens.ts';
+import { externalManifest } from './backup-external.ts';
 import { whoCan } from './who-can.ts';
 import { dropScratch, scratchCopy, SCRATCH_MAX_BYTES } from './debug.ts';
 import { AdminPasskeyError, adminPasskeyIds, adminPasskeys, hasAdminPasskey, registerAdminPasskey, removeAdminPasskey, verifyAdminPasskeyAssertion } from './admin-passkey.ts';
@@ -293,6 +294,7 @@ function consoleMethods(path: string): string | undefined {
     'health/revoke-token', 'health/fix-account', 'accounts/set-password', 'accounts/unlock',
     'accounts/migrate-all', 'sessions/end', 'message', 'exit-bundle', 'exit-bundle/discard',
   ]);
+  if (name === 'sso-mapping/test') return 'GET, DELETE';
   if (get.has(name)) return 'GET';
   if (post.has(name)) return 'POST';
   const both: Record<string, string> = {
@@ -495,7 +497,12 @@ export class Admin {
   backupDest(): string {
     return this.backups?.dest ?? this.backupDirInUse ?? this.host.config.backupDir() ?? defaultBackupDir(this.host.dir);
   }
-  schedules?: Schedules;
+  private schedules_?: Schedules;
+  get schedules(): Schedules | undefined { return this.schedules_; }
+  set schedules(value: Schedules | undefined) {
+    this.schedules_ = value;
+    if (value) value.backupDest = () => this.backupDest();
+  }
   sync?: SyncConsole;
   metrics?: Metrics;
   uploads?: Uploads;
@@ -1343,8 +1350,13 @@ export class Admin {
         const m = /^\/tabularius\/admin\/v1\/pii\/([^/]+)(\/field)?$/.exec(path);
         const store = m ? this.host.get(decodeURIComponent(m[1])) : undefined;
         if (!store) send(404, { error: 'No such hosted file' });
-        else if (!m![2] && req.method === 'GET') send(200, piiPreview(store, url.searchParams.get('layout') ?? undefined));
-        else if (req.method === 'POST') {
+        else if (!m![2] && req.method === 'GET') {
+          const layout = url.searchParams.get('layout') ?? undefined;
+          if (layout !== undefined && !store.schema.layouts.some((l) => l.name.toLowerCase() === layout.toLowerCase())) {
+            throw new ApiError(960, `No layout named "${layout}"; choose a layout from this file`, 400);
+          }
+          send(200, piiPreview(store, layout));
+        } else if (req.method === 'POST') {
           const body = await readJson(req).catch(lenient({})) as { on?: unknown; table?: unknown; field?: unknown; pii?: unknown };
           if (m![2]) {
             if (typeof body.table !== 'string' || typeof body.field !== 'string' || (body.pii !== null && typeof body.pii !== 'boolean')) send(400, { error: 'Send {"table", "field", "pii": true, false or null}' });
@@ -1470,8 +1482,8 @@ export class Admin {
       } else if (path === '/tabularius/admin/v1/records/restore' && req.method === 'POST') {
         // A record put back as it was at a point in its audit history.
         const b = await readJson(req) as { database?: string; table?: string; recordId?: number; seq?: number };
-        const store = b.database ? this.host.get(b.database) : undefined;
-        if (!store || !b.table || !Number.isInteger(b.recordId) || !Number.isInteger(b.seq)) send(400, { error: 'give database, table, recordId and seq' });
+        const store = typeof b.database === 'string' ? this.host.get(b.database) : undefined;
+        if (!store || typeof b.table !== 'string' || !b.table || !Number.isInteger(b.recordId) || !Number.isInteger(b.seq)) send(400, { error: 'give database, table, recordId and seq' });
         else {
           const r = store.restoreRecord(b.table, b.recordId!, b.seq!, { account: 'admin console' });
           this.log(`${store.name}: ${b.table} #${b.recordId} put back as it was after audit entry ${b.seq} (${r.action})`);
@@ -1659,7 +1671,14 @@ export class Admin {
         const store = name ? this.host.get(name) : undefined;
         if (!store) send(200, { error: 'name a hosted database with ?database=' });
         else {
-          try { send(200, whoCan(store, url.searchParams.get('table') ?? '', url.searchParams.get('field') ?? undefined)); } catch (e) { send(200, { error: adminErrorText(e, this.host) }); }
+          const tableName = url.searchParams.get('table') ?? '';
+          const table = store.schema.tables.find((t) => t.name.toLowerCase() === tableName.toLowerCase());
+          if (!table) throw new ApiError(960, `No table named "${tableName}"; name a table from this file with ?table=`, 400);
+          const field = url.searchParams.get('field') ?? undefined;
+          if (field !== undefined && !table.fields.some((f) => f.name.toLowerCase() === field.toLowerCase())) {
+            throw new ApiError(960, `No field named "${field}"; choose a field from ${table.name}`, 400);
+          }
+          send(200, whoCan(store, tableName, field));
         }
       } else if (path === '/tabularius/admin/v1/usage' && req.method === 'GET') {
         send(200, this.usage(url));
@@ -2034,12 +2053,20 @@ export class Admin {
     const c = this.connections!;
     const m = /^\/tabularius\/admin\/v1\/connections(?:\/([0-9a-f]+)(?:\/(approve|test)|\/secrets\/([A-Za-z][A-Za-z0-9]*))?)?$/.exec(path);
     if (!m) return send(404, { error: 'not found' });
+    const input = async () => {
+      const body = await readJson(req);
+      for (const key of ['name', 'type', 'note']) {
+        if (body[key] !== undefined && typeof body[key] !== 'string') throw new ConnectionError(`${key} must be a string`);
+      }
+      if (body.enabled !== undefined && typeof body.enabled !== 'boolean') throw new ConnectionError('enabled must be a boolean');
+      return body;
+    };
     const all = () => ({ types: c.types(), connections: c.list(), ...(c.problem ? { problem: c.problem } : {}) });
     try {
       if (!m[1]) {
         if (req.method === 'GET') return send(200, all());
         if (req.method !== 'POST') return send(405, { error: 'method not allowed' });
-        const made = c.create(await readJson(req) as Record<string, unknown>);
+        const made = c.create(await input());
         return send(201, c.get(made.id));
       }
       const id = m[1];
@@ -2058,10 +2085,11 @@ export class Admin {
         return send(200, c.get(id));
       }
       if (req.method === 'GET') return send(200, c.get(id));
-      if (req.method === 'PATCH') return send(200, c.get(c.update(id, await readJson(req) as Record<string, unknown>).id));
+      if (req.method === 'PATCH') return send(200, c.get(c.update(id, await input()).id));
       if (req.method === 'DELETE') return send(c.remove(id) ? 200 : 404, {});
       return send(405, { error: 'method not allowed' });
     } catch (e) {
+      if (e instanceof ApiError) throw e;
       if (!(e instanceof ConnectionError)) logFaultFor(this.host)(e);
       return send(e instanceof ConnectionError ? (/no connection/i.test(e.message) ? 404 : 400) : 500, { error: e instanceof ConnectionError ? e.message : 'Internal server error' });
     }
@@ -2171,6 +2199,10 @@ export class Admin {
    * restores it in place and opens it again, and has to be asked for.
    */
   async restore(body: Record<string, unknown>): Promise<{ database: string; time: string; mode: string }> {
+    for (const key of ['database', 'name']) {
+      if (body[key] !== undefined && typeof body[key] !== 'string') throw new RestoreError(400, `${key} must be a string`);
+    }
+    if (typeof body.at !== 'number' && typeof body.at !== 'string') throw new RestoreError(400, 'at must be a timestamp number or date string');
     // A copy unless "replace" is asked for by name; a mode that is neither is refused rather than guessed at.
     const mode = body.mode === undefined ? 'copy' : body.mode;
     if (mode !== 'copy' && mode !== 'replace') throw new RestoreError(400, 'mode must be "copy" or "replace" (copy, the default, hosts the restored file next to the current one; replace puts it over the live file)');
@@ -2205,6 +2237,7 @@ export class Admin {
       // are spelled (a folder given with // or /./ in it appears in messages in its plain form).
       const refused = (e: unknown, status: number) => {
         const where = [dest, this.host.dir].flatMap((d) => [d, resolve(d)]).map((d) => d.replace(/[\\/]+$/, '') + sep);
+        if (status === 500 && e instanceof Error && /^cannot restore external container files for /.test(e.message)) status = 409;
         return new RestoreError(status, where.reduce((text, d) => text.split(d).join(''), (e as Error).message));
       };
       let point: ReturnType<typeof restorePoint>;
@@ -2213,6 +2246,9 @@ export class Admin {
         if (point) await checkRestorePoint(point);
       } catch (e) { throw refused(e, 409); }
       if (!point) throw new RestoreError(400, `There is no backup of ${file.name} from before ${new Date(at).toLocaleString()}`);
+      const hasExternal = Object.keys(externalManifest(dirname(point.copy), false)).some((rel) => rel.split('/')[1] === file.name);
+      if (hasExternal && mode === 'copy') throw new RestoreError(409, 'Copy restore is unavailable for external container files; use replace mode with the base snapshot');
+      if (hasExternal && point.logs.length) throw new RestoreError(409, 'Cannot restore external container files with progressive logs; choose the base snapshot');
       if (mode === 'copy') {
         const d = new Date(point.time);
         const p2 = (n: number) => String(n).padStart(2, '0');
@@ -2233,6 +2269,8 @@ export class Admin {
         await this.host.openFileEverywhere(copy);
         return { database: copy, time: new Date(point.time).toISOString(), mode };
       }
+      const live = this.host.get(file.name);
+      if (!live) throw new RestoreError(409, 'Open the file before using replace restore; for a damaged file, restore it offline with tabularius restore');
       const securitySnapshot = file.path + '.security-snapshot';
       // Read before the file is closed: with Encryption at Rest closing removes the plaintext store, and with it the marker that
       // shows a missing record was lost. The record read here is what the restore merges into, so a file approved while the
@@ -2240,7 +2278,7 @@ export class Admin {
       const approvalBefore = { record: verifiedHostedRecord(this.host.dir) };
       // Capture the live security database before closeFileEverywhere encrypts
       // it and removes its plaintext source.
-      this.host.get(file.name)!.checkpoint();
+      live.checkpoint();
       copyFileSync(file.path, securitySnapshot);
       this.api.endByDb(file.name);
       await this.host.closeFileEverywhere(file.name);
@@ -2714,10 +2752,18 @@ export class Admin {
     try {
       await run();
     } catch (e) {
+      const source = (e as NodeJS.ErrnoException).path;
+      const code = (e as NodeJS.ErrnoException).code;
       if (e instanceof PassphraseNeeded) send(409, { error: e.message, needsPassphrase: true, ...(e.hint ? { hint: e.hint } : {}) });
       else if ((e as Error).message === 'wrong passphrase') send(400, { error: 'wrong passphrase', needsPassphrase: true });
       else if (e instanceof Error && /^a native file .* can't be converted again$/.test(e.message)) send(400, { error: e.message });
-      else throw e;
+      else if (e instanceof Error && /\.fmp12 isn't there to convert from$/.test(e.message)) {
+        send(404, { error: `Restore the source file ${basename(e.message.slice(0, -" isn't there to convert from".length))} before converting again` });
+      } else if (typeof source === 'string' && /\.fmp12$/i.test(source) &&
+          ['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM'].includes(code ?? '')) {
+        const missing = ['ENOENT', 'ENOTDIR'].includes(code!);
+        send(missing ? 404 : 409, { error: `${missing ? 'Restore' : 'Allow the server to read'} the source file ${basename(source)} before converting again` });
+      } else throw e;
     }
   }
 
