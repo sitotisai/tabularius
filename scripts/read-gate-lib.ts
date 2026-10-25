@@ -35,7 +35,7 @@ export const READ_APIS = [
   'find', 'get', 'getMany', 'selectIds', 'countIds', 'computeValues', 'findIds', 'groupSummaries', 'sortIds', 'matchIds',
   'select', 'foundSetRows', 'portalCounts', 'fieldIndex', 'valueListItems', 'evaluate', 'evaluateEach', 'evaluateRows',
   'recordCount', 'recordAsOf', 'container', 'containerInfo', 'containerRange', 'auditLog', 'query', 'queryWithOrigins',
-  'iterateCommitted', 'row', 'previewRow', 'viewableIds', 'viewableCount', 'summaryMasked',
+  'iterateCommitted', 'row', 'previewRow', 'viewableIds', 'viewableSet', 'viewableCount', 'summaryMasked',
 ] as const;
 const READ_SET = new Set<string>(READ_APIS);
 
