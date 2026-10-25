@@ -155,6 +155,35 @@ export function tidy(n: number): number {
   return Math.abs(rounded - n) <= 2 * ulp ? rounded : n;
 }
 
+/** The decimal places a number is written with (its shortest text), or -1 when it has an exponent or more than 15. */
+function placesOf(n: number): number {
+  if (Number.isInteger(n)) return Math.abs(n) < 1e21 ? 0 : -1;
+  const s = String(n);
+  if (/e/i.test(s)) return -1;
+  const places = s.length - s.indexOf('.') - 1;
+  return places <= 15 ? places : -1;
+}
+
+/**
+ * x + y as FileMaker's decimal arithmetic gives it. A sum has no more decimal places than the operand with the most,
+ * so when both are short decimals and the result fits in 15 digits it is rounded to that many places: 123.45 - 123 is
+ * 0.45, not the 0.4500000000000028 the doubles give. Tidy cannot do this, because it accepts a correction only within
+ * a few units in the last place of the result, and a difference of nearly equal values has an error of that size in
+ * the larger operand, which is many units of the small result. Other operands (1/3, a square root) take tidy.
+ */
+export function tidySum(x: number, y: number): number {
+  const r = x + y;
+  if (!Number.isFinite(r)) return r;
+  const px = placesOf(x);
+  const py = placesOf(y);
+  if (px < 0 || py < 0) return tidy(r);
+  const places = Math.max(px, py);
+  if (places === 0) return r;
+  // Within this size the operands' doubles are off by well under half a unit of the last decimal place.
+  if (Math.max(Math.abs(x), Math.abs(y)) >= 10 ** (15 - places)) return tidy(r);
+  return Number(r.toFixed(places)) + 0;
+}
+
 export function formatNumber(n: number): string {
   if (!Number.isFinite(n)) return '?';
   if (n === 0) return '0';
