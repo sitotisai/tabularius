@@ -11,7 +11,7 @@ import { request as httpRequest, type IncomingHttpHeaders } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import type { Check } from './doctor.ts';
 import { isLoopbackHost } from './loopback.ts';
-import type { Installed } from './service.ts';
+import { serviceTls, type Installed } from './service.ts';
 
 /** What an answer to a request was: the status, the headers and the start of the body. Undefined when nothing answered. */
 export interface Answer { status: number; headers: IncomingHttpHeaders; body: string }
@@ -83,7 +83,7 @@ const brackets = (host: string) => (host.includes(':') && !host.startsWith('[') 
 export async function runExposure(opts: ExposureOptions = {}): Promise<Check[]> {
   const probes = opts.probes ?? realProbes;
   const extra = opts.service?.extra ?? [];
-  const tls = extra.some((a) => a === '--https' || a === '--tls-cert' || a.startsWith('--https='));
+  const tls = serviceTls({ extra, folder: opts.service?.folder });
   const port = opts.port ?? opts.service?.port ?? 8080;
   // Without --url the server is where the installed service listens: its --host if that names one address, else loopback.
   const serviceHost = opts.service?.host && !['0.0.0.0', '::', '[::]', ''].includes(opts.service.host) ? opts.service.host : undefined;
