@@ -457,7 +457,8 @@ function watchMemory(req) {
           sampled(err ? 0 : Number(/^VmRSS:\s+(\d+)/m.exec(data)?.[1] ?? 0) * 1024);
         });
       } else if (process.platform === 'win32') {
-        execFile('tasklist.exe', ['/FI', 'PID eq ' + mine.pid, '/FO', 'CSV', '/NH'], { timeout: 1000, windowsHide: true }, (err, data) => {
+        // A full path: a bare name is looked for in the current folder first, and a service's current folder can be writable by others.
+        execFile((process.env.SystemRoot || 'C:\\Windows') + '\\System32\\tasklist.exe', ['/FI', 'PID eq ' + mine.pid, '/FO', 'CSV', '/NH'], { timeout: 1000, windowsHide: true }, (err, data) => {
           sampled(err ? 0 : Number((data.trim().split('","')[4] ?? '').replace(/\D/g, '')) * 1024);
         });
       } else {
