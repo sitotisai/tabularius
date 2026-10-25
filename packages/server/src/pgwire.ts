@@ -1071,11 +1071,12 @@ class Connection {
     // Outside BEGIN, a query made only of writes is one unit: a later statement that fails undoes the earlier ones.
     if (this.transaction === 'I' && statements.length > 1 && this.writesOnly(statements)) {
       // Each statement's result is kept as rows (not encoded) until the unit has ended, and they are sent after it, a batch at
-      // a time: the file is not held while the client reads, and what is kept is capped like the rows of portals.
+      // a time: the file is not held while the client reads, and what is kept, with what the portals hold, is capped like the
+      // rows of portals.
       const results: WriteAnswer[] = [];
       try {
         await this.inUnit(async (tx) => {
-          let held = 0;
+          let held = this.portalRows();
           for (const sql of statements) {
             const answer = await this.simpleWrite(this.session(sql, true)!.write!, tx);
             held += answer.rows.length;
@@ -1111,6 +1112,8 @@ class Connection {
         this.send(rowDescription(r.cols));
         if (!await this.sendRows(r.rows, 0, r.rows.length, r.cols)) return;
         this.send(complete(`SELECT ${r.rows.length}`));
+        await this.flushed();
+        if (this.gone()) return;
       } catch (e) {
         // The rest of a multi-statement query is skipped, as PostgreSQL does.
         this.sendError(e);
@@ -1136,7 +1139,9 @@ class Connection {
       if (!await this.sendRows(answer.rows, 0, answer.rows.length, answer.cols)) return false;
     }
     this.send(complete(answer.tag));
-    return true;
+    // However few rows it had: a client that is not reading has not asked for the next statement's answer either.
+    await this.flushed();
+    return !this.gone();
   }
 
   /**
@@ -1159,7 +1164,15 @@ class Connection {
     return true;
   }
 
-  /** The rows a connection's statements keep together are limited as the rows of its portals are (see keepPortalResult). */
+  /** The rows the connection's portals hold now. */
+  private portalRows(): number {
+    return [...this.portals.values()].reduce((n, portal) => n + (portal.result?.rows.length ?? 0), 0);
+  }
+
+  /**
+   * The rows a query's statements keep together, counted with those the portals hold (see keepPortalResult), are limited as
+   * the rows of portals are.
+   */
   private checkBufferedRows(rows: number): void {
     const perQuery = maxRows();
     const cap = perQuery === 0 ? Infinity : Math.max(perQuery, this.server.maxBufferedRows);
@@ -1398,7 +1411,7 @@ class Connection {
 
   /** A suspended result remains in its portal, so cap the sum held by this connection. */
   private keepPortalResult(p: Portal, result: { cols: Column[]; rows: SqlValue[][] }): void {
-    const alreadyBuffered = [...this.portals.values()].reduce((n, portal) => n + (portal.result?.rows.length ?? 0), 0);
+    const alreadyBuffered = this.portalRows();
     // TABULARIUS_PGWIRE_MAX_BUFFERED_ROWS (default 100,000) caps what this connection's portals hold together, but at
     // least one full result always fits: a larger TABULARIUS_PGWIRE_MAX_ROWS raises it, and 0 (no row cap) lifts it.
     const perQuery = maxRows();
