@@ -4429,7 +4429,7 @@ async function loadHealth() {
       try {
         const res = await call('POST', '/tabularius/admin/v1/health/fix-account', { database: db, account, action });
         if (res.password) alert(`Temporary password for ${res.account}:\n\n${res.password}\n\nGive it to the account holder now — it is shown only once, and they must change it at next sign-in.`);
-        if (res.warning) alert(res.warning);
+        if (res.warning) say(res.warning);
         loadHealth();
       } catch (err) { btn.disabled = false; say("Couldn't apply the fix: " + err.message); }
     });
