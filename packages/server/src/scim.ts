@@ -226,7 +226,7 @@ export class ScimDirectory {
     const rows = this.store.sql.prepare('SELECT * FROM _fm_scim_users ORDER BY created, id').all() as unknown as UserRow[];
     // Old bindings without an identity must be provisioned again; a name cannot establish ownership.
     const current = (r: UserRow) => accounts.has(r.account.toLowerCase()) && !!r.account_identity
-      && r.account_identity === this.store.accountIdentityId(r.account);
+      && r.account_identity === this.store.accountIdentityIdIfSet(r.account);
     const gone = rows.filter((r) => !current(r));
     for (const r of gone) this.store.sql.prepare('DELETE FROM _fm_scim_users WHERE id = ?').run(r.id);
     return gone.length ? rows.filter(current) : rows;
