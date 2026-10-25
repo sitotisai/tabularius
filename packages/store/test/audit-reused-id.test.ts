@@ -1,5 +1,4 @@
-// A record id is given again after the last record is deleted. The audit log is keyed by (table, record id), so an
-// entry from the record that had the id before must not be reverted onto the one that has it now.
+// Older stores could give a deleted record's id to another record. Their audit entries must stay separate.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -20,6 +19,13 @@ function withStore(fn: (store: Store) => void) {
   }
 }
 
+function legacyCreate(store: Store, id: number, Title: string, account: string, Pin?: string): number {
+  store.sql.prepare('INSERT INTO Docs (_fm_record_id, Title, Pin) VALUES (?, ?, ?)').run(id, Title, Pin ?? null);
+  (store as unknown as { audit: (kind: 'create', table: string, id: number, changes: object, opts: object) => void })
+    .audit('create', 'Docs', id, { Title, ...(Pin ? { Pin } : {}) }, { account });
+  return id;
+}
+
 test('entries of an earlier record that had the same id are not reverted onto the current one', () => {
   withStore((store) => {
     const first = store.create('Docs', { Title: 'secret-A', Pin: '1111' }, { account: 'Admin' }).recordId;
@@ -28,8 +34,8 @@ test('entries of an earlier record that had the same id are not reverted onto th
     const old = store.auditLog({ table: 'Docs', recordId: first });
     assert.deepEqual(old.map((e) => e.kind), ['create', 'update', 'delete']);
 
-    // The highest id was deleted, so the next record is given it again.
-    const second = store.create('Docs', { Title: 'mine', Pin: '2222' }, { account: 'Bea' }).recordId;
+    // Simulate an already reused id in a store written before the high-water mark.
+    const second = legacyCreate(store, first, 'mine', 'Bea', '2222');
     assert.equal(second, first);
     for (const entry of old) {
       assert.throws(() => store.revertAuditEntry('Docs', second, entry.seq, { account: 'Bea' }), /not a change to this record/, entry.kind);
@@ -95,7 +101,7 @@ test('an account that cannot see a record learns nothing about it being made aga
     const first = store.create('Docs', { Title: 'secret-A' }, { account: 'Admin' }).recordId;
     store.delete('Docs', first, { account: 'Admin' });
     const old = store.auditLog({ table: 'Docs', recordId: first, kind: 'create' })[0];
-    const second = store.create('Docs', { Title: 'secret-B' }, { account: 'Admin' }).recordId;
+    const second = legacyCreate(store, first, 'secret-B', 'Admin');
     assert.equal(second, first);
     const mine = store.auditLog({ table: 'Docs', recordId: second, kind: 'create' }).at(-1)!;
     assert.ok(mine.seq > old.seq);
@@ -132,7 +138,7 @@ test('an original put back after another record had and gave up its id: the othe
     const rowA = store.sql.prepare('SELECT * FROM Docs WHERE _fm_record_id = ?').get(a) as Record<string, never>;
     store.delete('Docs', a, { account: 'Ann' }); // a merge of duplicates
     const deleteA = store.auditLog({ table: 'Docs', recordId: a, kind: 'delete' }).at(-1)!;
-    const b = store.create('Docs', { Title: 'secret-B' }, { account: 'Bo' }).recordId;
+    const b = legacyCreate(store, a, 'secret-B', 'Bo');
     assert.equal(b, a);
     store.update('Docs', b, { Title: 'secret-B2' }, undefined, { account: 'Bo' });
     const bEdit = store.auditLog({ table: 'Docs', recordId: b, kind: 'update' }).at(-1)!;

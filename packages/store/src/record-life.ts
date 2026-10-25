@@ -1,7 +1,7 @@
 // Which audit entries belong to a record that is there now.
 //
-// The audit log is keyed by table and record id, and an id is given again after the last record is deleted (new ids
-// continue after the highest one left), so one id can name several records over time. A record's present life starts
+// The audit log is keyed by table and record id. Older stores could reuse an id after a deletion, so one id can name
+// several records over time. A record's present life starts
 // at its latest creation. A create that puts a deleted record back (a revert of a delete, the data cleanup's undo, the
 // console's restore) is logged with revert_of naming the delete entry it undoes: it carries on the life that delete
 // ended, so that life's entries are the record's too, and what was logged between that delete and the put-back is

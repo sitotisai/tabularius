@@ -6,21 +6,21 @@ want the old version back. The rehearsal that backs it is `npm run rehearse-upgr
 ## What a hosted file records
 
 Every hosted file (`<name>.openhbam.sqlite`) records the **file format** it is in, a whole number. This version writes
-and reads format **1**; the number is kept in `docs/upgrading.md` and in `packages/store/src/store-format.ts`, and a test
+and reads format **2**; the number is kept in `docs/upgrading.md` and in `packages/store/src/store-format.ts`, and a test
 fails if they disagree.
 
 - A version opens a file in **its own format or an older one**, and brings an older file up to date in place when it opens
   it. Your records, accounts, privilege sets, value lists, scripts, backups, schedules and settings carry over.
 - A version **refuses a file in a newer format** than it reads, and leaves it exactly as it was (no byte is written).
   The message names the file, the two numbers and the way out:
-  `Shop was written by a newer Tabularius (file format 2; this version reads up to format 1), so it is not opened. Update Tabularius to open it, or put back a backup made before the newer version first opened it`
+  `Shop was written by a newer Tabularius (file format 3; this version reads up to format 2), so it is not opened. Update Tabularius to open it, or put back a backup made before the newer version first opened it`
   The server skips that one file, still serves the others, and lists it as closed in the admin console with that text.
   `tabularius doctor <folder>` names it too.
-- The format number goes up only for a change an older version could not read or would damage (a column that changes
-  meaning, a table an older version would write into wrongly). Adding a table, a column or a setting does not raise it:
-  an older version that does not know the addition leaves it alone.
+- The format number goes up only for a change an older version could not read or would damage. This version's
+  per-table record-id mark requires format 2 because an older writer would ignore it and could reuse a deleted id.
+  Additions an older version safely leaves alone do not raise the number.
 
-Current store format: **1**
+Current store format: **2**
 
 Versions older than the one that introduced this number (the change that added `packages/store/src/store-format.ts`) do not check it. They open a file
 a newer version wrote, whatever its format. Until the first public release the rule is therefore: go back by restoring
@@ -167,15 +167,15 @@ this project's own history (the oldest, three spread through it, and main when t
 |---|---|---|
 | Forward | The old build makes a folder: two files with tables, 80 records, a container, two accounts and a privilege set, a value list, a script, an API token, a backup, a schedule and settings. This build opens it. | Every table, field, record (id, modification id and values), account and privilege set, value list, script and container reads the same; SQLite's integrity check is clean; the schedule is read and runs; `tabularius doctor` reads the pages cleanly. |
 | Forward | The old build's backup is restored with this build, over the folder (after this build changed it) and into an empty folder. | The data is identical; over the folder the passwords are kept; in an empty folder they are not (documented). |
-| Backward | This build makes a folder. The old build opens it, adds a record, edits it and adds a field. This build reads it again. | Nothing this build wrote is changed or lost; the integrity check is clean. Old builds do not refuse (they predate the format number); the table says what they did. |
-| Future | A build whose format number is one higher opens a format-1 folder, then this build opens the result. | This build refuses both files and does not change a byte of them. |
+| Backward | This build makes a folder. The old build opens it, adds a record, edits it and adds a field. This build reads it again. | Nothing this build wrote is changed or lost; the integrity check is clean. Older builds with a format guard refuse format 2; builds predating the guard may still open it. |
+| Future | A build whose format number is one higher opens a folder in this build's format, then this build opens the result. | This build refuses both files and does not change a byte of them. |
 
 Run it before a release that raises the format number, and after any change to how a file is read or upgraded
 (`packages/store/src/store.ts` opening path, `packages/server/src/backup.ts`).
 
-Result on 2026-10-17: all five old builds' folders open with identical data, restore identically, and run their
-schedule; the old builds open this build's files without damage (they have no refusal to give); the future build's files
-are refused without being touched. `--report <file.md>` writes the full table. The script exits with an error when this
+Result on 2026-10-17, when the current format was 1: all five old builds' folders opened with identical data, restored
+identically, and ran their schedule; the old builds opened that format-1 build's files without damage (they had no
+refusal to give); the future build's files were refused without being touched. `--report <file.md>` writes the full table. The script exits with an error when this
 build reads an old build's folder differently or cannot read part of it, when an old build's write is not read back, when
 a restore or the integrity check differs, or when the future build's files are not refused untouched.
 
@@ -200,7 +200,7 @@ These are true today and are not papered over:
 - **`tabularius restore` across file formats.** The current credentials are copied into the restored file by column name.
   When the two files are in different formats, a column only the current file has is added to the restored table so its
   values are carried; a column only the backup has makes the restore stop (what it means is not known), and so does a backup
-  in a format newer than the build running (it would be left closed). While the format is 1 neither case can arise.
+  in a format newer than the build running (it would be left closed).
 
 ## For contributors: changing the format number
 
