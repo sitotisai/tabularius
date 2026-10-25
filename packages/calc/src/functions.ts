@@ -320,7 +320,28 @@ eager('Length', 1, 1, (v, env) => (isEmpty(v[0]) ? num(0) : num(charCount(T(v[0]
 eager('Upper', 1, 1, (v, env) => text(T(v[0], env).toUpperCase()));
 eager('Lower', 1, 1, (v, env) => text(T(v[0], env).toLowerCase()));
 eager('Proper', 1, 1, (v, env) => text(T(v[0], env).toLowerCase().replace(/(^|[^\p{L}\p{N}'’])(\p{L})/gu, (_m, p, c) => p + c.toUpperCase())));
-eager('Trim', 1, 1, (v, env) => text(T(v[0], env).replace(/^ +| +$/g, '')));
+// Trim and the path helpers below scan from the ends: a pattern such as / +$/ retries from every position of a long run.
+const trimSpaces = (t: string) => {
+  let start = 0;
+  let end = t.length;
+  while (start < end && t[start] === ' ') start++;
+  while (end > start && t[end - 1] === ' ') end--;
+  return t.slice(start, end);
+};
+const isSeparator = (c: string | undefined) => c === '/' || c === '\\';
+/** The text without the separators (slash or backslash) at its end. */
+const stripTrailingSeparators = (t: string) => {
+  let end = t.length;
+  while (end > 0 && isSeparator(t[end - 1])) end--;
+  return t.slice(0, end);
+};
+/** The text up to and including its last separator ('/' only when `slashOnly`); empty when there is none. */
+const upToLastSeparator = (t: string, slashOnly = false) => {
+  let end = t.length;
+  while (end > 0 && t[end - 1] !== '/' && (slashOnly || t[end - 1] !== '\\')) end--;
+  return t.slice(0, end);
+};
+eager('Trim', 1, 1, (v, env) => text(trimSpaces(T(v[0], env))));
 eager('TrimAll', 1, 3, (v, env) => {
   const t = T(v[0], env);
   // trimSpaces includes full-width spaces; trimType 3 removes every space.
@@ -1392,7 +1413,7 @@ const MBS: Record<string, (v: Value[], env: Env) => Value> = {
   'version': () => text('tabularius'),
   'register': () => text('OK'),
   'isregistered': () => num(1),
-  'path.lastpathcomponent': (v, env) => text(T(v[0], env).replace(/[/\\]+$/, '').replace(/^.*[/\\:]/, '')),
+  'path.lastpathcomponent': (v, env) => text(stripTrailingSeparators(T(v[0], env)).replace(/^.*[/\\:]/, '')),
   'path.filemakerpathtonativepath': (v, env) => text(convertFromFileMakerPath(T(v[0], env), (env.ctx.platform ?? process.platform) === 'win32' ? 2 : 1)),
   'files.fileextension': (v, env) => text(extensionOf(fileNameOf(v[0], env))),
   'container.getbase64': (v, env) => text(Buffer.from(bytesOf(v[0], env)).toString('base64')),
@@ -1729,7 +1750,7 @@ eager('BE_FilePatternCount', 2, 2, (v, env) => {
 // container data, deflated into a zip at archive, by default the first file's path (or the container's name) plus
 // ".zip". The result is 0, 2 when a file is missing, or 12 when two have the same name, ignoring case; then the
 // last one goes in. Entries are in name order, as BaseElements' map keeps them.
-const baseName = (path: string) => path.replace(/[/\\]+$/, '').split(/[/\\]/).pop() ?? '';
+const baseName = (path: string) => stripTrailingSeparators(path).split(/[/\\]/).pop() ?? '';
 const BE_NAME_EXISTS = 12;
 const BE_ZIP_ERROR = 10200;
 eager('BE_Zip', 1, 2, (v, env) => {
@@ -1751,13 +1772,13 @@ eager('BE_Zip', 1, 2, (v, env) => {
     const paths = [...unique.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, p]) => p);
     const exists = (p: string) => files?.size(p) !== undefined || files?.list?.(p, false) !== undefined;
     if (!paths.length || !exists(paths[0])) return beResult(env, BE_NO_FILE, num(BE_NO_FILE));
-    archive ||= paths[0].replace(/[/\\]+$/, '') + '.zip';
+    archive ||= stripTrailingSeparators(paths[0]) + '.zip';
     for (const path of paths) {
       const name = baseName(path);
       const folder = files?.list?.(path, true);
       if (folder) {
         entries.push({ name: name + '/', data: new Uint8Array(0) });
-        const base = path.replace(/[/\\]+$/, '') + '/';
+        const base = stripTrailingSeparators(path) + '/';
         for (const e of folder) {
           if (e.path.split('/').some((x) => x.startsWith('.'))) continue;
           const data = e.folder ? new Uint8Array(0) : files?.read(base + e.path);
@@ -1783,7 +1804,7 @@ const beUnzip = (paths: boolean) => (v: Value[], env: Env): Value => {
   const container = v[0].type === 'container' && v[0].data ? v[0].data : undefined;
   const archive = container ? '' : T(v[0], env);
   let folder = v[1] === undefined ? '' : T(v[1], env);
-  if (!folder && archive) folder = archive.replace(/[^/\\]*$/, '');
+  if (!folder && archive) folder = upToLastSeparator(archive);
   const bytes = container ?? files?.read(archive);
   if (!bytes || !folder) return beResult(env, BE_NO_FILE, text('?'));
   let entries: ZipEntry[];
@@ -1803,10 +1824,10 @@ const beUnzip = (paths: boolean) => (v: Value[], env: Env): Value => {
     beErrors.set(env.ctx, `the archive holds ${JSON.stringify(odd.name)}, and a file name with a colon or a backslash is not unpacked; nothing was written`);
     return beResult(env, BE_ZIP_ERROR, text('?'));
   }
-  const base = folder.replace(/[/\\]+$/, '') + '/';
+  const base = stripTrailingSeparators(folder) + '/';
   const done: string[] = [];
   for (const e of entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
-    const dir = e.name.endsWith('/') ? e.name : e.name.replace(/[^/]*$/, '');
+    const dir = e.name.endsWith('/') ? e.name : upToLastSeparator(e.name, true);
     if (dir) {
       const code = files?.makeFolder?.(base + dir) ?? BE_NO_FILE;
       if (code !== 0 && code !== 17) return beResult(env, code, text('?'));

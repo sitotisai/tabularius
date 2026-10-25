@@ -48,6 +48,9 @@ const sourceFields = new WeakMap<Node, FieldSpan>();
 
 const DELIMS = new Set([...' \t\r\n ()[];,"+-*/^&=≠<>≤≥¶:']);
 const isWordChar = (c: string | undefined) => c !== undefined && !DELIMS.has(c);
+/** A character that ends a word inside a custom function name. */
+const CALL_WORD_END = /[\s()\[\];,"+\-*/^&=≠<>≤≥¶:]/;
+const KEYWORD = /^(and|or|xor|not)$/i;
 
 /** Names sorted longest first, with a lower-cased copy for case-insensitive matching. */
 class NameSet {
@@ -130,6 +133,35 @@ function lex(src: string, names: NameTable, localNames: Iterable<string> = []): 
     let j = at;
     while (isWordChar(src[j])) j++;
     return src.slice(at, j);
+  };
+  // The run of space-separated words that starts at `from` and is followed by "(" (a custom function name with
+  // spaces): where it ends, and where the last of its and/or/xor/not words starts (-1 for none). A formula of many
+  // words is scanned once: every later word inside a run already scanned reuses its answer, so the cost is linear.
+  let runFrom = 0;
+  let runEnd = -1;
+  let runKeyword = -1;
+  let runIsCall = false;
+  const spacedRun = (from: number): { end: number; keyword: number } | undefined => {
+    if (from < runFrom || from >= runEnd) {
+      let j = from;
+      let keyword = -1;
+      for (;;) {
+        let k = j;
+        while (src[k] === ' ' || src[k] === '\t') k++;
+        let m = k;
+        while (m < src.length && !CALL_WORD_END.test(src[m])) m++;
+        if (k === j || m === k) break;
+        if (m - k <= 3 && KEYWORD.test(src.slice(k, m))) keyword = k;
+        j = m;
+      }
+      runFrom = from;
+      runEnd = j;
+      runKeyword = keyword;
+      let after = j;
+      while (after < src.length && /\s/.test(src[after])) after++;
+      runIsCall = j > from && src[after] === '(';
+    }
+    return runIsCall ? { end: runEnd, keyword: runKeyword } : undefined;
   };
   while (i < src.length) {
     const c = src[i];
@@ -249,8 +281,10 @@ function lex(src: string, names: NameTable, localNames: Iterable<string> = []): 
       }
       // Custom function names may hold spaces too: "Get Original Window Name ( x )".
       // Words run together before "(" can mean nothing else.
-      const call = /^(?:[ \t]+[^\s()\[\];,"+\-*/^&=≠<>≤≥¶:]+)+(?=\s*\()/.exec(src.slice(i + v.length));
-      if (!w.startsWith('$') && call && !/(^|\s)(and|or|xor|not)(?=\s|$)/i.test(w + call[0]) && !/^(and|or|xor|not)$/i.test(w)) v += call[0];
+      if (!w.startsWith('$') && !/(^|\s)(and|or|xor|not)(?=\s|$)/i.test(`${w} `)) {
+        const run = spacedRun(i + v.length);
+        if (run && run.keyword < i + v.length) v = src.slice(i, run.end);
+      }
       out.push({ t: 'word', v, at: i });
       i += v.length;
     }
