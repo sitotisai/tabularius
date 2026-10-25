@@ -337,7 +337,7 @@ export async function serve(opts: ServeOptions): Promise<{ server: Server; host:
     releaseFolder = link ? undefined : claimFolder(opts.dir);
     // Shared results keep a reader open, so exclude encryption, backups and standbys.
     const share = !opts.encryptionKey && !opts.progressive && !opts.replicationToken;
-    const host = new Host(opts.dir, log, { background: opts.background && opts.watch !== false, encryptionKey: opts.encryptionKey, shareResults: share, ...link?.hostOptions() });
+    const host = new Host(opts.dir, log, { strictSettings: true, background: opts.background && opts.watch !== false, encryptionKey: opts.encryptionKey, shareResults: share, ...link?.hostOptions() });
     if (link) disposers.push(() => link.close());
     disposers.push(() => host.notifier.stop());
     disposers.push(() => host.close({ unlocked: !started && !!link?.role.restart }));

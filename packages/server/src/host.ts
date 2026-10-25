@@ -394,13 +394,14 @@ export class Host {
   private readonly warmer?: Warmer;
   private readonly share: boolean;
 
-  constructor(dir: string, log: (msg: string) => void = () => {}, opts: { background?: boolean; encryptionKey?: string; urlKey?: Buffer; locks?: (store: Store) => RecordLocks; follower?: boolean; shareResults?: boolean; warmSettleMs?: number; compactionWorker?: (path: string, convert?: boolean, checkpoint?: boolean) => Promise<CompactionReport>; startupImport?: typeof importFmp12 } = {}) {
+  constructor(dir: string, log: (msg: string) => void = () => {}, opts: { background?: boolean; strictSettings?: boolean; encryptionKey?: string; urlKey?: Buffer; locks?: (store: Store) => RecordLocks; follower?: boolean; shareResults?: boolean; warmSettleMs?: number; compactionWorker?: (path: string, convert?: boolean, checkpoint?: boolean) => Promise<CompactionReport>; startupImport?: typeof importFmp12 } = {}) {
     this.dir = dir;
     this.follower = !!opts.follower;
     this.log = log;
     this.compactionWorker = opts.compactionWorker ?? compactInWorker;
     this.mayCompact = !opts.follower;
-    this.config = new ServerConfig(dir);
+    // A server refuses a settings file it cannot use; the offline commands that repair or inspect a folder warn and use defaults.
+    this.config = new ServerConfig(dir, { lenient: !opts.strictSettings });
     // Plug-ins the server's own folder installs and enables (plugins/), before any file is hosted.
     loadPlugins(this.plugins, dir, log);
     this.urlKey = opts.urlKey ?? randomBytes(32);
