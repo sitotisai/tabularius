@@ -1,4 +1,4 @@
-import { test, type TestContext } from 'node:test';
+import { test as nodeTest, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { connect } from 'node:net';
@@ -7,6 +7,10 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { createEdgeServer } from '../src/edge-limits.ts';
 import { RequestGate, requestClass } from '../src/request-gate.ts';
 import { listen, RawClient, request, stubCommands } from './edge-test-helpers.ts';
+
+// Each address below is a different client, bound as the source of a connection; macOS has only 127.0.0.1 on its loopback, so there they cannot be, and Linux (which answers to all of 127.0.0.0/8) runs them.
+const test = (name: string, fn: (t: TestContext) => Promise<void>) =>
+  nodeTest(name, { skip: process.platform === 'darwin' && 'macOS has only 127.0.0.1 on the loopback' }, fn);
 
 // A gate of 8 slots lets 4 ordinary requests wait on a small body in all and 2 from one address; sign-in and the like have 1 place, taken from a pool of their own.
 const EACH = 2, TOTAL = 4;
