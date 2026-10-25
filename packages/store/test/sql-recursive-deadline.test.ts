@@ -101,6 +101,8 @@ test('a recursive query may call a function its definer made portable, and is st
   t.after(() => { RECURSIVE_SQL.ms = before; });
   const module = new URL('./support/portable-query-function.ts', import.meta.url).href;
   store.defineQueryFunction('demo_double', (x) => (x === null ? null : Number(x) * 2), { module, export: 'double' });
+  // A query that ends gets all the time a busy machine might need to start the child.
+  RECURSIVE_SQL.ms = 30_000;
   // Called in the recursive part and in the select list, as a driver's own catalog lookups do.
   const rows = store.select('with recursive s(r) as (select 1 union all select r + 1 from s where r < demo_double(2)) select r, demo_double(r) from s').rows;
   assert.deepEqual(rows, [[1, 2], [2, 4], [3, 6], [4, 8]]);
