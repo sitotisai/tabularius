@@ -102,6 +102,30 @@ test('an outside creation keeps a distinct ID from the transaction creation and 
   assert.deepEqual(records, [...ids, ids[2] + 2]);
   assert.equal(store.get('Items', records.at(-1)!).fieldData.Name, 'outside new');
   assert.equal(verifyRecordAudit(path).ok, true);
+  // The record-id mark is the outside record's: the reverted record's id was never committed, the outside one's was.
+  assert.equal(store.create('Items', { Name: 'after' }).recordId, ids[2] + 3);
+}));
+
+test('an outside creation while the transaction holds a new record: both commit, and the mark ends at the higher id', withStore(async (store, path, ids) => {
+  store.applyDesign([{ op: 'createScript', name: 'Two kept records', text: [
+    'Open Transaction',
+    'New Record/Request',
+    'Set Field [ Items::Name ; "pending new" ]',
+    'Commit Records/Requests [ With dialog: Off ]',
+    'New Window [ "Outside" ]',
+    'New Record/Request',
+    'Set Field [ Items::Name ; "outside new" ]',
+    'Commit Records/Requests [ With dialog: Off ]',
+    'Select Window [ Name: "Items" ]',
+    'Commit Transaction',
+  ].join('\n') }]);
+  const result = await runScript(store, 'Two kept records', { layout: 'Items', foundSet: ids, recordId: ids[0] });
+  assert.equal(result.error, 0);
+  assert.deepEqual(store.findIds('Items'), [...ids, ids[2] + 1, ids[2] + 2]);
+  assert.deepEqual([ids[2] + 1, ids[2] + 2].map((id) => store.get('Items', id).fieldData.Name), ['pending new', 'outside new']);
+  assert.equal(verifyRecordAudit(path).ok, true);
+  store.delete('Items', ids[2] + 2);
+  assert.equal(store.create('Items', { Name: 'after' }).recordId, ids[2] + 3, 'the deleted outside id is not given again');
 }));
 
 test('repeated outside writes stay committed when the originating transaction commits later', withStore(async (store, path, ids) => {
