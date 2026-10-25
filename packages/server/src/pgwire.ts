@@ -57,6 +57,8 @@ const MAX_UNSIGNED_PER_ADDRESS = 50;
 /** The longest message a signed-in client may send, and the longest before sign-in (a password), in bytes. */
 const MAX_MESSAGE = 256 * 1024 * 1024;
 const MAX_UNSIGNED_MESSAGE = 10_000;
+/** Result rows are sent in batches of at most this many bytes (and 1,000 rows), the server waiting for the client to read after each. */
+const OUTPUT_BATCH_BYTES = 1024 * 1024;
 const LOCAL_ADDRESSES = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 /** Signed-in SQL connections allowed concurrently on this server. */
 export const PGWIRE_LIMIT = { signedPerAccount: 32, signedGlobal: 256 };
@@ -250,6 +252,13 @@ interface Prepared {
   types: number[];
 }
 
+/** What a write sent as a simple query answers: its RETURNING columns and rows (if any) and its command tag. */
+interface WriteAnswer {
+  cols?: Column[];
+  rows: SqlValue[][];
+  tag: string;
+}
+
 interface Portal {
   sql: string;
   params: SqlValue[];
@@ -386,6 +395,10 @@ class Connection {
         ? `terminating connection: idle in a transaction for more than ${limit} ms; the transaction was rolled back`
         : `terminating connection: a transaction was open for more than ${age} ms, however busy; it was rolled back`));
       this.socket.end();
+      // A client that is not reading cannot take the FATAL: do not keep the connection for it, whatever the stall limit is.
+      const grace = setTimeout(() => this.socket.destroy(), 2000);
+      grace.unref();
+      this.socket.once('close', () => clearTimeout(grace));
     }, Math.min(1000, Math.max(5, Math.floor(Math.min(limit || age, age || limit) / 4))));
     this.idleTimer.unref();
   }
@@ -455,9 +468,10 @@ class Connection {
 
   /**
    * Waits while the client is not reading what was sent (the socket's write buffer is over its limit), and stops reading
-   * its input meanwhile, so answers to queries it has pipelined do not pile up in memory. A client that stays blocked
-   * for TABULARIUS_PGWIRE_OUTPUT_STALL_MS (a minute) is disconnected. Nothing runs during the wait, so it does not count
-   * as work: a transaction's idle and age limits apply to it as they do between messages.
+   * its input meanwhile, so answers to queries it has pipelined do not pile up in memory. A client that takes nothing
+   * from what is queued for it for TABULARIUS_PGWIRE_OUTPUT_STALL_MS (a minute) is disconnected; one that reads, however
+   * slowly, is not. Nothing runs during the wait, so it does not count as work: a transaction's idle and age limits apply
+   * to it as they do between messages.
    */
   private async flushed(): Promise<void> {
     const socket = this.socket;
@@ -469,14 +483,28 @@ class Connection {
     this.lastActive = monotonicClock.now();
     try {
       await new Promise<void>((resolve) => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
         const done = () => {
           clearTimeout(timer);
           socket.off('drain', done);
           socket.off('close', done);
           resolve();
         };
-        const timer = stall > 0 ? setTimeout(() => socket.destroy(), stall) : undefined;
-        timer?.unref();
+        // The client is reading as long as the queue for it keeps shrinking: the limit counts a time with no progress, not
+        // the time a whole batch takes, so a slow but steady reader is not cut off.
+        let queued = socket.writableLength;
+        const check = () => {
+          if (socket.writableLength < queued) {
+            queued = socket.writableLength;
+            this.lastActive = monotonicClock.now();
+            timer = setTimeout(check, stall);
+            timer.unref();
+          } else socket.destroy();
+        };
+        if (stall > 0) {
+          timer = setTimeout(check, stall);
+          timer.unref();
+        }
         socket.once('drain', done);
         socket.once('close', done);
       });
@@ -1042,36 +1070,46 @@ class Connection {
     }
     // Outside BEGIN, a query made only of writes is one unit: a later statement that fails undoes the earlier ones.
     if (this.transaction === 'I' && statements.length > 1 && this.writesOnly(statements)) {
+      // Each statement's result is kept as rows (not encoded) until the unit has ended, and they are sent after it, a batch at
+      // a time: the file is not held while the client reads, and what is kept is capped like the rows of portals.
+      const results: WriteAnswer[] = [];
       try {
         await this.inUnit(async (tx) => {
-          for (const sql of statements) await this.simpleWrite(this.session(sql, true)!.write!, tx);
+          let held = 0;
+          for (const sql of statements) {
+            const answer = await this.simpleWrite(this.session(sql, true)!.write!, tx);
+            held += answer.rows.length;
+            this.checkBufferedRows(held);
+            results.push(answer);
+          }
         });
       } catch (e) { this.sendError(e); return; }
-      await this.flushed();
+      for (const answer of results) if (!await this.sendWriteAnswer(answer)) return;
       return;
     }
     for (const sql of statements) {
       try {
         const own = this.session(sql, true);
         if (own?.write) {
-          await this.inUnit((tx) => this.simpleWrite(own.write!, tx));
+          const answer = await this.inUnit((tx) => this.simpleWrite(own.write!, tx));
           // The write is kept (or, inside BEGIN, held as the transaction is) before the wait for the client to read it.
-          await this.flushed();
-          if (this.gone()) return;
+          if (!await this.sendWriteAnswer(answer)) return;
           continue;
         }
         if (own) {
-          if (own.cols) this.send(rowDescription(own.cols), ...own.rows!.map((r) => dataRow(r, own.cols!)));
+          if (own.cols) {
+            this.send(rowDescription(own.cols));
+            if (!await this.sendRows(own.rows!, 0, own.rows!.length, own.cols)) return;
+          }
           this.send(complete(own.tag));
+          // A long run of statements the server answers itself (COMMIT; COMMIT; ...) must not queue its answers either.
+          await this.flushed();
+          if (this.gone()) return;
           continue;
         }
         const r = this.run(sql, []);
         this.send(rowDescription(r.cols));
-        for (let i = 0; i < r.rows.length; i += 1000) {
-          this.send(...r.rows.slice(i, i + 1000).map((row) => dataRow(row, r.cols)));
-          await this.flushed();
-          if (this.gone()) return;
-        }
+        if (!await this.sendRows(r.rows, 0, r.rows.length, r.cols)) return;
         this.send(complete(`SELECT ${r.rows.length}`));
       } catch (e) {
         // The rest of a multi-statement query is skipped, as PostgreSQL does.
@@ -1083,16 +1121,49 @@ class Connection {
   }
 
   /**
-   * A write sent as a simple query: its RETURNING rows, then its tag. Nothing here waits for the client to read: the
-   * unit this runs in is kept or undone when it ends, and the file is not held while the client is slow (the caller waits).
+   * A write sent as a simple query: what it answers, kept as rows. Nothing is sent or waited for here: the unit this runs in
+   * is kept or undone when it ends, and the file is not held while the client is slow (the caller sends the answer after).
    */
-  private async simpleWrite(plan: WritePlan, tx: Transaction): Promise<void> {
+  private async simpleWrite(plan: WritePlan, tx: Transaction): Promise<WriteAnswer> {
     const { result, cols } = await this.runWrite(plan, [], tx);
-    if (cols) {
-      this.send(rowDescription(cols));
-      for (let i = 0; i < result.rows!.length; i += 1000) this.send(...result.rows!.slice(i, i + 1000).map((row) => dataRow(row, cols)));
+    return { cols, rows: result.rows ?? [], tag: result.tag };
+  }
+
+  /** A write's RETURNING rows (if it has any), then its tag, sent a batch at a time. False when the client has gone. */
+  private async sendWriteAnswer(answer: WriteAnswer): Promise<boolean> {
+    if (answer.cols) {
+      this.send(rowDescription(answer.cols));
+      if (!await this.sendRows(answer.rows, 0, answer.rows.length, answer.cols)) return false;
     }
-    this.send(complete(result.tag));
+    this.send(complete(answer.tag));
+    return true;
+  }
+
+  /**
+   * Sends rows[from, to) in batches of at most 1,000 rows or about 1 MiB, waiting for the client to read after each, so
+   * what is queued for a client that is not reading stays small however large its rows are. False when the client has gone.
+   */
+  private async sendRows(rows: SqlValue[][], from: number, to: number, cols: Column[], formats?: number[]): Promise<boolean> {
+    for (let i = from; i < to;) {
+      const parts: Buffer[] = [];
+      let bytes = 0;
+      while (i < to && parts.length < 1000 && bytes < OUTPUT_BATCH_BYTES) {
+        const row = dataRow(rows[i++], cols, formats);
+        parts.push(row);
+        bytes += row.length;
+      }
+      this.send(...parts);
+      await this.flushed();
+      if (this.gone()) return false;
+    }
+    return true;
+  }
+
+  /** The rows a connection's statements keep together are limited as the rows of its portals are (see keepPortalResult). */
+  private checkBufferedRows(rows: number): void {
+    const perQuery = maxRows();
+    const cap = perQuery === 0 ? Infinity : Math.max(perQuery, this.server.maxBufferedRows);
+    if (rows > cap) throw new PgError('54000', `buffered SQL results on this connection are limited to ${cap} rows; send the statements separately`);
   }
 
   private validateSyntax(sql: string): void {
@@ -1275,11 +1346,7 @@ class Connection {
           }
           const r = p.result!;
           const end = max > 0 ? Math.min(r.rows.length, p.sent + max) : r.rows.length;
-          for (let i = p.sent; i < end; i += 1000) {
-            this.send(...r.rows.slice(i, Math.min(end, i + 1000)).map((row) => dataRow(row, r.cols, p.formats)));
-            await this.flushed();
-            if (this.gone()) return;
-          }
+          if (!await this.sendRows(r.rows, p.sent, end, r.cols, p.formats)) return;
           p.sent = end;
           this.send(end < r.rows.length ? message('s') : complete(p.tag!));
           return;
@@ -1290,11 +1357,7 @@ class Connection {
         }
         const r = this.resultOf(p)!;
         const end = max > 0 ? Math.min(r.rows.length, p.sent + max) : r.rows.length;
-        for (let i = p.sent; i < end; i += 1000) {
-          this.send(...r.rows.slice(i, Math.min(end, i + 1000)).map((row) => dataRow(row, r.cols, p.formats)));
-          await this.flushed();
-          if (this.gone()) return;
-        }
+        if (!await this.sendRows(r.rows, p.sent, end, r.cols, p.formats)) return;
         p.sent = end;
         this.send(end < r.rows.length ? message('s') : complete(`${own ? own.tag : 'SELECT'} ${own ? '' : r.rows.length}`.trim()));
         return;
