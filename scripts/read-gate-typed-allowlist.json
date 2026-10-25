@@ -2043,9 +2043,9 @@
   "file": "packages/store/src/store.ts",
   "within": "Store.independentWindowWrite",
   "api": "sql.prepare",
-  "count": 1,
+  "count": 2,
   "gate": "store-internal",
-  "why": "Reads back the audit row of a change this same transaction wrote, by its seq, to hand it to that change's own onAudit when the transaction resumes; nothing is returned to a caller."
+  "why": "Two store-internal audit reads, nothing returned to a caller: the audit row of a change this same transaction wrote, by its seq, to hand it to that change's own onAudit when the transaction resumes; and the security audit rows this transaction wrote (after the chain end recorded when it took the file), read only to append them again onto the chain after another window's commit. Neither reads a table of record data."
  },
  {
   "file": "packages/store/src/store.ts",
