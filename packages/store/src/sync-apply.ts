@@ -683,7 +683,7 @@ async function applySyncRun(store: SyncLocal & Partial<Pick<Store, 'present' | '
     };
     // Sets or empties the container fields of a record here, under the caller's savepoint; returns the record's modId then.
     const setContainers = (table: string, recordId: number, changes: { field: string; file: RemoteFile | null }[], modId: number): number => {
-      for (const c of changes) modId = ls.setContainer(table, recordId, c.field, 1, c.file).modId;
+      for (const c of changes) modId = ls.setContainer(table, recordId, c.field, 1, c.file, { performAutoEnter: false }).modId;
       return modId;
     };
     const countContainers = (changes: { file: RemoteFile | null }[]) => {

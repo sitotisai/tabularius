@@ -66,3 +66,39 @@ test('the audit row of a container upload lists the fields the auto-enters chang
   assert.ok(text.includes('File') && text.includes('ModifiedBy') && text.includes('FileName'), text);
   assert.ok(!text.includes('xyz'), 'never the contents');
 });
+
+test('performAutoEnter: false keeps the modification fields and the stored values as they were, as an update does', (t) => {
+  const s = setup(t);
+  const id = s.create('Docs', { Title: 'a' }, { account: 'alice' }).recordId;
+  const read = () => s.get('Docs', id).fieldData;
+  const stamped = String(read().ModifiedAt);
+  t.mock.timers.enable({ apis: ['Date'], now: new Date(Date.now() + 5000) });
+  s.setContainer('Docs', id, 'File', 1, file('hello.txt', 'hello world'), { performAutoEnter: false, account: 'importer' });
+  assert.equal(read().ModifiedBy, 'alice', 'the account that makes the change is not stamped');
+  assert.equal(String(read().ModifiedAt), stamped, 'the timestamp does not move');
+  assert.equal(read().FileName, 'hello.txt', 'a stored calculation is still worked out: only auto-enter is skipped');
+});
+
+test('a key an auto-enter fills in on a container upload is checked like an update\'s: a child key with no parent refuses the upload', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-set-container-fk-'));
+  const path = join(dir, 'Keys.sqlite');
+  createStore(path, { mode: 'native' });
+  const s = new Store(path, 'Keys');
+  t.after(() => { s.close(); rmSync(dir, { recursive: true, force: true }); });
+  // The key comes from an auto-enter over the container: the name of the file put in.
+  s.applyDesign([
+    { op: 'createTable', name: 'Owners', fields: [{ name: 'ID' }] },
+    { op: 'createTable', name: 'Scans', fields: [
+      { name: 'File', type: 'container' },
+      { name: 'OwnerID', calculation: 'GetAsText ( File )', options: { autoEnter: { calculation: true, replaceExisting: true } } },
+    ] },
+    { op: 'createRelationship', left: 'Scans', right: 'Owners', predicates: [{ left: 'OwnerID', right: 'ID' }],
+      foreignKey: { name: 'scan_owner', child: { table: 'Scans', field: 'OwnerID' }, parent: { table: 'Owners', field: 'ID' } } },
+  ] as never);
+  s.create('Owners', { ID: 'x.txt' });
+  const id = s.create('Scans', {}).recordId;
+  s.setContainer('Scans', id, 'File', 1, file('x.txt', 'a'));
+  assert.equal(s.get('Scans', id).fieldData.OwnerID, 'x.txt', 'a key that has a parent is let through');
+  assert.throws(() => s.setContainer('Scans', id, 'File', 1, file('nobody.txt', 'b')), (e: { code?: number }) => e.code === 505);
+  assert.equal(s.get('Scans', id).fieldData.OwnerID, 'x.txt', 'the refused upload changed nothing');
+});

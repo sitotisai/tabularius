@@ -2333,8 +2333,8 @@ export class DataApi {
         if (expected !== null && Number(expected) !== store.get(layout, Number(p[5]), 'iso', undefined, privileges, { fields: [] }).modId) {
           throw new ApiError(306, 'Record modification ID does not match');
         }
-        if (portal) store.setPortalContainer(layout, Number(p[5]), portal.name, portal.recordId, p[7], rep, upload, { privileges });
-        else store.setContainer(layout, Number(p[5]), p[7], rep, upload, { privileges });
+        if (portal) store.setPortalContainer(layout, Number(p[5]), portal.name, portal.recordId, p[7], rep, upload, { account, privileges });
+        else store.setContainer(layout, Number(p[5]), p[7], rep, upload, { account, privileges });
       } finally {
         upload.release();
       }
@@ -2373,7 +2373,7 @@ export class DataApi {
       if (p.length === 7) {
         const { upload, file } = step(() => this.containerUploads.complete(p[5], who, layout));
         try {
-          const target = { privileges };
+          const target = { account, privileges };
           if (upload.modId !== undefined && Number(upload.modId) !== store.get(layout, upload.recordId, 'iso', undefined, privileges, { fields: [] }).modId) {
             throw new ApiError(306, 'Record modification ID does not match');
           }
@@ -2415,8 +2415,8 @@ export class DataApi {
         throw new ApiError(306, 'Record modification ID does not match');
       }
       const portal = portalRow(url.searchParams);
-      if (portal) store.setPortalContainer(layout, Number(p[5]), portal.name, portal.recordId, p[7], rep, null, { privileges });
-      else store.setContainer(layout, Number(p[5]), p[7], rep, null, { privileges });
+      if (portal) store.setPortalContainer(layout, Number(p[5]), portal.name, portal.recordId, p[7], rep, null, { account, privileges });
+      else store.setContainer(layout, Number(p[5]), p[7], rep, null, { account, privileges });
       return {};
     }
 
