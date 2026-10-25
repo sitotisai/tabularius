@@ -118,6 +118,20 @@ its upload can be deleted or swept. Restart discards partial uploads and their
 reservations. Hosted/parked files and conversion output are outside this quota;
 it is not a total disk-usage limit.
 
+Single-request container uploads reserve their enforced request maximum (1 GiB)
+until stored or rejected, with a separate **8 GiB per-process** spool budget.
+This also bounds chunked HTTP bodies without trusting `Content-Length`; excess
+requests receive **413**. Resumable container uploads keep their existing budget.
+Request spools use the same private temporary folders as resumable uploads.
+Startup and periodic cleanup retain recent files for at least 24 hours. Untracked
+folders from an earlier run with the current PID expire after that grace period;
+other live PIDs get at most seven days, so PID reuse cannot protect leftovers
+forever. Legacy single-request spool files expire after seven days. Admin partial
+files also receive a 24-hour grace period, or seven days for another live PID;
+active owners in this process are protected by their random owner token.
+These are Tabularius resource policies; matching behaviour in the compatible
+product is unverified. <!-- known-difference: Server operation ;; Container spool budgets and crash cleanup are Tabularius policies, unverified against the compatible product ;; Excess single-request uploads receive 413 and aged orphan files are reclaimed ;; A compatible server run and an owner decision -->
+
 `TABULARIUS_MAX_UPLOAD` remains the per-file byte limit (default **10737418240**,
 10 GiB); **0 disables only that per-file limit**, not the aggregate quota.
 The aggregate setting must be a positive whole number written in digits; zero,

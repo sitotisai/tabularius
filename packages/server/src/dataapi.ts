@@ -43,7 +43,6 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { closeSync, fstatSync, openSync, readFileSync, readSync, rmSync, statSync } from 'node:fs';
 import { open } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MultipartLimits, MultipartLimitError } from './multipart-limits.ts';
 import { type ContainerFile, plainMessage, explainAccessDenial, fieldDisplayTypes, fieldMetaData, type AccessDenial, PrivilegeError, StoreError, endTransaction, spendPasswordCheck, spendRecoveryCodeCheck, writer, type DateFormat, type FindOptions, type PortalPaging, type SortSpec, Privileges, type Store, type StoredRecord, type Transaction } from '../../store/src/index.ts';
@@ -55,7 +54,7 @@ import type { DirectoryAuthenticator } from './ldap.ts';
 import type { OAuthGrant } from './oidc.ts';
 import { redactPath } from './server-logs.ts';
 import { narrowPrivileges } from './token-scope.ts';
-import { ContainerUploadError, ContainerUploads, MAX_CONTAINER_FILE, MAX_CONTAINER_PIECE } from './container-uploads.ts';
+import { ContainerUploadError, ContainerUploads, requestUploadSpool, MAX_CONTAINER_FILE, MAX_CONTAINER_PIECE } from './container-uploads.ts';
 
 import { captureDenial, DenialCollector, denialOperation } from './denial-audit.ts';
 import { denialOf, type DenialAudit } from '../../store/src/access-denial.ts';
@@ -629,9 +628,6 @@ function fieldDataOf(body: Record<string, unknown>, nativeType?: (name: string) 
 const MAX_UPLOAD = MAX_CONTAINER_FILE;
 export const MAX_MULTIPART_BUFFER = 50 * 1024 * 1024;
 
-/** Where streamed uploads land while arriving; its own folder can hold a lot. */
-const UPLOAD_TMP = process.env.TABULARIUS_UPLOAD_TMP || tmpdir();
-
 /**
  * A container upload, streamed to a temp file as it arrives rather than held
  * whole in the JS heap, then the single "upload" part is read back from disk.
@@ -646,7 +642,14 @@ export async function multipartUploadStream(
   const boundary = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType);
   if (!/^multipart\/form-data/i.test(contentType) || !boundary) throw new ApiError(960, 'Expected multipart/form-data', 400);
   const delim = Buffer.from(`--${boundary[1] ?? boundary[2]}`);
-  const tmp = join(UPLOAD_TMP, `tabularius-upload-${randomBytes(12).toString('hex')}`);
+  if (req.socket.destroyed) throw new Error('The request was closed before its body arrived');
+  let spool: ReturnType<typeof requestUploadSpool>;
+  try { spool = requestUploadSpool(max); }
+  catch (error) {
+    if (error instanceof ContainerUploadError) throw new ApiError(960, error.message, error.status);
+    throw error;
+  }
+  const tmp = spool.path;
   let size = 0;
   // The file stays where it was written until the caller has put it in the field (`release`): the part is read from it
   // in pieces, never all at once.
@@ -701,16 +704,17 @@ export async function multipartUploadStream(
       const contentStart = headerEnd + 4;
       const contentEnd = total - tailLen + rel;
       if (contentEnd < contentStart) throw new ApiError(10, 'Requested data is missing: empty "upload" part', 400);
-      keep = true;
-      return {
+      const file = {
         filename: baseName(filename ? decodeUpload(filename) : plain || null), mime: /content-type:\s*([^\r\n;]+)/i.exec(headers)?.[1].trim() ?? 'application/octet-stream',
-        path: tmp, offset: contentStart, size: contentEnd - contentStart, release: () => rmSync(tmp, { force: true }),
+        path: tmp, offset: contentStart, size: contentEnd - contentStart, release: spool.release,
       };
+      keep = true;
+      return file;
     } finally {
       closeSync(fd);
     }
   } finally {
-    if (!keep) rmSync(tmp, { force: true });
+    if (!keep) spool.release();
   }
 }
 
