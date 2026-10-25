@@ -16,8 +16,13 @@ import { STATUS_CODES } from 'node:http';
 export const MAX_BATCH_BYTES = 32 * 1024 * 1024;
 /** The most requests one $batch may hold. */
 export const MAX_BATCH_REQUESTS = 1000;
-/** Once a $batch's answers add up to this, the requests after it aren't run (and a change set past it fails); the most $crossjoin requests one $batch may hold. Tests lower them. */
-export const BATCH_LIMIT = { responseBytes: 64 * 1024 * 1024, crossjoins: 5 };
+/**
+ * Once a $batch's answers add up to this, the requests after it aren't run (and a change set past it fails); the most $crossjoin
+ * requests one $batch may hold; the most requests in one change set, and the longest one may run (a change set doesn't give
+ * other clients a turn, so these bound how long it can hold the server); how long a request waits for a change set that holds
+ * its file (or a change set for the requests already running) before a busy answer. Tests lower them.
+ */
+export const BATCH_LIMIT = { responseBytes: 64 * 1024 * 1024, crossjoins: 5, changeSetRequests: 100, changeSetMs: 2000, changeSetWaitMs: 30_000 };
 
 export interface BatchRequest {
   /** The Content-ID (multipart) or id (JSON): later requests can address what it created as $id. */
@@ -50,6 +55,8 @@ export interface BatchResult {
   unit: BatchUnit;
   answers: BatchAnswer[];
   failed?: BatchAnswer;
+  /** The change set never started (`failed` says why, for each of its requests): none of its requests ran. */
+  notRun?: boolean;
 }
 
 /** A $batch body that can't be read: the whole batch is refused (400). */
@@ -303,6 +310,8 @@ function jsonResponse(results: BatchResult[]): { type: string; data: Buffer } {
   for (const r of results) {
     r.unit.requests.forEach((req, i) => {
       if (!r.failed) return one(r.answers[i], req, r.unit.group);
+      // It never started: each request has the same reason.
+      if (r.notRun) return one(r.failed, req, r.unit.group);
       // The group failed: the request that failed says why; the others weren't kept (424, Failed Dependency).
       one(r.answers[i] === r.failed ? r.failed : failure(424, '3', 'Another request in its atomicity group failed, so nothing in the group was kept'), req, r.unit.group);
     });
