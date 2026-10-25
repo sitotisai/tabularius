@@ -510,8 +510,14 @@ function typedNumber(s: string, kind: number, env: Env): number | undefined {
     default: return undefined;
   }
 }
-/** Charged before a sort of `n` values, about n log n comparisons: a list too long for the work budget is refused before any of it is sorted. */
+/**
+ * Charged before `n` values are sorted, about n log n comparisons, and before they are de-duplicated (16 steps for each,
+ * about what a sort of 65,000 charges for each). The list is refused before any of it is handled when it is too long for
+ * the step budget (about 275,000 values to sort); the time the work takes is not read while it runs, so a list that is
+ * within the budget answers on a busy host as it does on an idle one.
+ */
 const chargeSort = (env: Env, n: number) => env.checkWorkBudget(Math.ceil(n * Math.log2(n + 1)));
+const chargeUnique = (env: Env, n: number) => env.checkWorkBudget(16 * n);
 eager('UniqueValues', 1, 3, (v, env) => {
   if (!validLocale(v, env)) return text('?');
   const seen = new Set<string>();
@@ -521,9 +527,8 @@ eager('UniqueValues', 1, 3, (v, env) => {
   const language = sortLanguage(locale);
   const textKey = (s: string) => `t${locale.trim().toLowerCase() === 'unicode_raw' ? s : sortKey(s, language)}`;
   const vals = splitValues(T(v[0], env));
-  env.checkWorkBudget(vals.length);
-  for (const [i, s] of vals.entries()) {
-    if ((i & 1023) === 0) env.checkWorkBudget();
+  chargeUnique(env, vals.length);
+  for (const s of vals) {
     // With a number, date, time or timestamp type, 18 and 18.0 (or 7/4/2026 and 07/04/2026) are one value.
     const n = typedNumber(s, kind, env);
     const k = n !== undefined ? `#${n}` : textKey(s);
@@ -544,10 +549,8 @@ eager('SortValues', 1, 3, (v, env) => {
   chargeSort(env, vals.length);
   // Each value's sort key is made once, when it is first compared, not at every comparison.
   const items = vals.map((s) => ({ s, n: kind < 2 || kind > 5 ? undefined : typedNumber(s, kind, env), key: undefined as string | undefined }));
-  let compared = 0;
   // English keeps the evaluator's own text comparison; another language compares the keys its order gives.
   const compareText = (x: (typeof items)[number], y: (typeof items)[number]): number => {
-    if ((++compared & 4095) === 0) env.checkWorkBudget(0);
     if (language === 'en') return compare(text(x.s), text(y.s));
     return compareKeys(x.key ??= sortKey(x.s, language), y.key ??= sortKey(y.s, language));
   };
@@ -1032,13 +1035,17 @@ eager('CryptVerifySignature', 4, 4, (v, env) => {
 // the data back as the type it was. A wrong key or data that isn't this format gives empty (inferred: Claris doesn't say).
 const CRYPT_MAGIC = Buffer.from('OHBC\x01', 'latin1');
 const cryptKey = (key: string, salt: Uint8Array) => pbkdf2Sync(key, salt, 10000, 32, 'sha256');
-const cryptEncrypt = (v: Value[], env: Env): Buffer => {
+/** `base64`: the result is read as Base64 text, whose size is checked before anything is encrypted. */
+const cryptEncrypt = (v: Value[], env: Env, base64 = false): Buffer => {
   const container = v[0].type === 'container' && !!v[0].data;
   const name = Buffer.from(container ? String(v[0].value).replace(/^.*\//, '') : '', 'utf8');
+  const data = bytesOf(v[0], env);
+  // The magic, type and name length, the name (cut at 65,535 bytes), the salt, the IV, the data and the tag.
+  if (base64) checkEncodedSize(v[0], base64Length(CRYPT_MAGIC.length + 3 + Math.min(name.length, 0xffff) + 16 + 12 + data.length + 16));
   const salt = randomBytes(16);
   const iv = randomBytes(12);
   const c = createCipheriv('aes-256-gcm', cryptKey(T(v[1], env), salt), iv);
-  const body = Buffer.concat([c.update(bytesOf(v[0], env)), c.final()]);
+  const body = Buffer.concat([c.update(data), c.final()]);
   const head = Buffer.alloc(3);
   head[0] = container ? 1 : 0;
   head.writeUInt16BE(Math.min(name.length, 0xffff), 1);
@@ -1065,10 +1072,16 @@ const cryptDecrypt = (data: Uint8Array, key: string): Value => {
   }
 };
 eager('CryptEncrypt', 2, 2, (v, env) => ({ type: 'container', value: 'encrypted.data', data: new Uint8Array(cryptEncrypt(v, env)) }));
-eager('CryptEncryptBase64', 2, 2, (v, env) => text(cryptEncrypt(v, env).toString('base64')));
+eager('CryptEncryptBase64', 2, 2, (v, env) => text(cryptEncrypt(v, env, true).toString('base64')));
 eager('CryptDecrypt', 2, 2, (v, env) => (v[0].type === 'container' && v[0].data ? cryptDecrypt(v[0].data, T(v[1], env)) : EMPTY));
 eager('CryptDecryptBase64', 2, 2, (v, env) => cryptDecrypt(Buffer.from(T(v[0], env).replace(/\s/g, ''), 'base64'), T(v[1], env)));
-eager('TextEncode', 1, 3, (v, env) => ({ type: 'container', value: 'Untitled.txt', data: new TextEncoder().encode(T(v[0], env)) }));
+eager('TextEncode', 1, 3, (v, env) => {
+  const t = T(v[0], env);
+  // The container is exempt from the text limit when it is encoded (see checkEncodedSize), so the text it is made from
+  // is held to it: text cannot be turned into a container, encoded to longer text and turned into a container again.
+  checkCalcTextSize(Buffer.byteLength(t, 'utf8'));
+  return { type: 'container', value: 'Untitled.txt', data: new TextEncoder().encode(t) };
+});
 eager('TextDecode', 1, 2, (v, env) => text(new TextDecoder().decode(bytesOf(v[0], env))));
 // FileMaker 2025: "?" for an empty container, a file that isn't a PDF, an encrypted one, or one with no text.
 eager('GetTextFromPDF', 1, 1, (v) => {
@@ -1473,7 +1486,11 @@ const MBS: Record<string, (v: Value[], env: Env) => Value> = {
   'path.lastpathcomponent': (v, env) => text(stripTrailingSeparators(T(v[0], env)).replace(/^.*[/\\:]/, '')),
   'path.filemakerpathtonativepath': (v, env) => text(convertFromFileMakerPath(T(v[0], env), (env.ctx.platform ?? process.platform) === 'win32' ? 2 : 1)),
   'files.fileextension': (v, env) => text(extensionOf(fileNameOf(v[0], env))),
-  'container.getbase64': (v, env) => text(Buffer.from(bytesOf(v[0], env)).toString('base64')),
+  'container.getbase64': (v, env) => {
+    const data = bytesOf(v[0], env);
+    checkEncodedSize(v[0], base64Length(data.length));
+    return text(Buffer.from(data).toString('base64'));
+  },
   'container.gettotalsize': (v, env) => num(bytesOf(v[0], env).length),
   'container.gettypes': (v, env) => {
     const ext = extensionOf(fileNameOf(v[0], env)).toUpperCase();
@@ -1481,7 +1498,10 @@ const MBS: Record<string, (v: Value[], env: Env) => Value> = {
   },
   'container.getdataurl': (v, env) => {
     const mime = MIME[extensionOf(fileNameOf(v[0], env)).toLowerCase()] ?? 'application/octet-stream';
-    return text(`data:${mime};base64,` + Buffer.from(bytesOf(v[0], env)).toString('base64'));
+    const data = bytesOf(v[0], env);
+    const prefix = `data:${mime};base64,`;
+    checkEncodedSize(v[0], prefix.length + base64Length(data.length));
+    return text(prefix + Buffer.from(data).toString('base64'));
   },
   'folders.systemtemporary': () => text(tmpdir()),
 };
@@ -2613,10 +2633,13 @@ const beKeyAndIV = (password: string) => {
   return { key: all.subarray(0, 32), iv: Buffer.concat([all.subarray(32, 48), Buffer.alloc(16)]) };
 };
 eager('BE_EncryptAES', 2, 2, (v, env) => {
+  const plain = T(v[1], env);
+  // The 32-byte IV buffer, a return and the encrypted text (as many bytes as the text), as Base64.
+  checkCalcTextSize(base64Length(33 + Buffer.byteLength(plain, 'utf8')));
   const { key, iv } = beKeyAndIV(T(v[0], env));
   for (let i = 0; i < iv.length; i++) if (iv[i] === 0x0d) iv[i] = 0x0a;
   const c = createCipheriv('aes-256-cfb', key, iv.subarray(0, 16));
-  const encrypted = Buffer.concat([c.update(T(v[1], env), 'utf8'), c.final()]);
+  const encrypted = Buffer.concat([c.update(plain, 'utf8'), c.final()]);
   return text(Buffer.concat([iv, Buffer.from([0x0d]), encrypted]).toString('base64'));
 });
 eager('BE_DecryptAES', 2, 2, (v, env) => {
@@ -2631,16 +2654,19 @@ eager('BE_DecryptAES', 2, 2, (v, env) => {
 // (AES-256-CFB when empty). Data, key and IV are hex text or containers; the result is uppercase hex, or a container
 // with that file name.
 const hexOrContainer = (v: Value | undefined, env: Env) =>
-  v === undefined ? Buffer.alloc(0) : v.type === 'container' && v.data ? Buffer.from(v.data) : Buffer.from(T(v, env), 'hex');
+  v === undefined ? Buffer.alloc(0) : v.type === 'container' && v.data ? Buffer.from(v.data.buffer, v.data.byteOffset, v.data.byteLength) : Buffer.from(T(v, env), 'hex');
 const beCipher = (decrypt: boolean) => (v: Value[], env: Env): Value => {
   const name = T(v[0], env) || 'aes-256-cfb';
+  const data = hexOrContainer(v[1], env);
+  const file = T(v[5], env);
+  // Hex text of the data and, when encrypting, the padding of one more block (at most 16 bytes), checked before encrypting.
+  if (!file) checkEncodedSize(v[1], 2 * (data.length + (decrypt ? 0 : 16)));
   try {
     const key = hexOrContainer(v[2], env);
     const iv = hexOrContainer(v[3], env);
     const c = decrypt ? createDecipheriv(name, key, iv.length ? iv : null) : createCipheriv(name, key, iv.length ? iv : null);
     c.setAutoPadding(beBool(v[4], true));
-    const out = Buffer.concat([c.update(hexOrContainer(v[1], env)), c.final()]);
-    const file = T(v[5], env);
+    const out = Buffer.concat([c.update(data), c.final()]);
     return beResult(env, 0, file ? { type: 'container', value: file, data: new Uint8Array(out) } : text(out.toString('hex').toUpperCase()));
   } catch (e) {
     rethrowExecutionRefusal(e);
