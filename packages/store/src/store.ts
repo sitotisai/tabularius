@@ -1761,6 +1761,7 @@ export class Store {
     const parentMarkers = this.writeExternalMarkers;
     // Audit rows a held transaction has been told about: a rolled back savepoint takes its own back out.
     const auditMark = this.heldAudit.length;
+    const waitingMark = this.deferredIntoHold.length;
     let result: T;
     this.sql.exec(name ? `SAVEPOINT ${name}` : 'BEGIN IMMEDIATE');
     this.writePublications = publications;
@@ -1772,6 +1773,8 @@ export class Store {
     } catch (e) {
       if (this.sql.isTransaction) this.sql.exec(name ? `ROLLBACK TO ${name}; RELEASE ${name}` : 'ROLLBACK');
       if (this.heldAudit.length > auditMark) this.heldAudit.length = auditMark;
+      // Sign-in rows written into the held transaction inside this savepoint go with it: they wait again.
+      this.requeueDeferred(this.deferredIntoHold.splice(waitingMark));
       this.resetCaches();
       this.finishExternalFiles(files, markers, false);
       throw e;
@@ -2236,6 +2239,9 @@ export class Store {
 
   applyDesign(ops: DesignOp[], opts: WriteOptions = {}): { applied: DesignOp[] } {
     this.joinTransaction();
+    // Sign-in rows that are waiting go first, before this change opens its own transaction or savepoint (it logs its own row).
+    this.settleDeferredSecurity();
+    const intoHold = this.deferredIntoHold.length;
     const was = this.schema;
     let result;
     // Renames and deletes must follow through to privilege sets (per-object
@@ -2290,6 +2296,8 @@ export class Store {
       crashPoint('design-apply:after-commit');
     } catch (e) {
       if (this.sql.isTransaction) this.sql.exec(nested ? 'ROLLBACK TO security_design; RELEASE security_design' : 'ROLLBACK');
+      // Waiting rows written into the holder's transaction inside the savepoint just undone wait again.
+      this.requeueDeferred(this.deferredIntoHold.splice(intoHold));
       this.resetCaches();
       throw e instanceof DesignError ? new StoreError(e.code, e.message) : e;
     }
@@ -2880,10 +2888,8 @@ export class Store {
     if (kind === 'sign-in-failed' && !this.failureAuditRoom()) return;
     const at = new Date().toISOString();
     if (!DEFERRABLE_SECURITY_KINDS.has(kind)) {
-      // Rows that happened before this one go first, so the chain and the times agree (securityChange writes them, or puts
-      // them into the holder's own transaction). A row that could not go first is refused, not written ahead of them.
-      this.settleDeferredSecurity();
-      if (this.hasDeferredSecurity()) throw new StoreError(301, 'Record is in use by another user (a transaction is open)');
+      // Rows that happened before this one go first, so the chain and the times agree: securityChange writes them before it
+      // opens its own savepoint (or, when the holder writes this row, puts them into the holder's transaction ahead of it).
       this.appendSecurity(at, kind, opts);
       return;
     }
@@ -3025,6 +3031,7 @@ export class Store {
 
   /** Puts rows that were written into a transaction that has been undone back in the queues, in their places. */
   private requeueDeferred(rows: [boolean, number, DeferredSecurity][]): void {
+    if (!rows.length) return;
     const merge = (queue: Map<number, DeferredSecurity>, extra: [number, DeferredSecurity][]) => {
       const all = [...extra, ...queue].sort((a, b) => a[0] - b[0]);
       queue.clear();
@@ -4989,6 +4996,7 @@ export class Store {
     const schemaMapping = this.schema.accounts.some((a) => a.external && a.name.toLowerCase() === name.toLowerCase());
     if (!row || (row.source !== 'external' && !(row.source === 'fmp12' && schemaMapping))) return undefined;
     if (row.identity_id) return row.identity_id;
+    this.requireFreeOfOthers();
     const id = randomUUID();
     this.sql.prepare("UPDATE _fm_accounts SET identity_id = ? WHERE name = ? COLLATE NOCASE AND source IN ('external', 'fmp12') AND identity_id IS NULL").run(id, name);
     return (this.sql.prepare('SELECT identity_id FROM _fm_accounts WHERE name = ? COLLATE NOCASE').get(name) as { identity_id: string } | undefined)?.identity_id;
@@ -5018,7 +5026,6 @@ export class Store {
    * still a different sign-in: a code, token or session made before the change is not the same one after it was undone.
    */
   signInMark(account: string, via?: string, person?: string): string {
-    this.requireSignInStateSettled();
     const key = this.signInKey(account, via, person);
     const base = this.signInBase(account, via, person);
     // First look, or it changed: record that under the write lock, with the state read again under it, so two writers
@@ -5026,8 +5033,10 @@ export class Store {
     try {
       const known = this.ledgerRow(key);
       if (known?.mark === base) return `${known.gen}:${base}`;
-      // The ledger is written on the shared connection: another session's open transaction would take the row, and give it
-      // back if it were undone, so a generation could be issued twice. Refused as busy instead (not an unrecorded mark).
+      // A mark that matches what is recorded is returned whatever another session's transaction is doing. One that does not
+      // (the state changed, in that transaction or not) needs the ledger written on the shared connection: another session's
+      // open transaction would take the row, and give it back if it were undone, so a generation could be issued twice, and
+      // a mark worked out from state that may be undone must not be recorded. Refused as busy instead (not an unrecorded mark).
       this.requireFreeOfOthers();
       return this.ledgerWrite(() => {
         const fresh = this.signInBase(account, via, person);
@@ -5424,6 +5433,9 @@ export class Store {
     const want = Buffer.from(row.token_hash, 'hex');
     const got = createHash('sha256').update(token).digest();
     if (want.length !== got.length || !timingSafeEqual(want, got)) return undefined;
+    // A token (or the account, authority or expiry it depends on) another session's open transaction has changed may yet be
+    // undone: refused as busy until that transaction ends, as every token check was while any transaction held the file.
+    this.requireSignInStateSettled();
     // A token made before every token had to expire has no date: it is refused until it is made again (listed with needsReissue).
     if (!row.expires || !(Date.parse(row.expires) > expiryClock.now())) return undefined;
     if (this.accountInactive(row.account) || this.mustChangePassword(row.account)) return undefined;
@@ -5431,7 +5443,9 @@ export class Store {
     if (this.isExternal(row.account) && row.provenance !== 'service' && (!identity || identity.mapping.toLowerCase() !== row.account.toLowerCase())) return undefined;
     if (identity?.person && this.accountInactive(identity.person)) return undefined;
     if (identity && (!this.isExternal(identity.mapping) || !this.canonicalAccount(identity.mapping) || this.accountInactive(identity.mapping))) return undefined;
-    if (touch) this.sql.prepare('UPDATE _fm_api_tokens SET last_used = ? WHERE id = ?').run(new Date().toISOString(), m[1]);
+    // When it was last used is a convenience: not written while a transaction holds the file, where it would land inside that
+    // transaction (and count as a change to sign-in state, or vanish with a rollback).
+    if (touch && this.heldBy === undefined) this.sql.prepare('UPDATE _fm_api_tokens SET last_used = ? WHERE id = ?').run(new Date().toISOString(), m[1]);
     return { account: row.account, readOnly: !!row.read_only, ...(row.surfaces ? { surfaces: JSON.parse(row.surfaces) as string[] } : {}), ...(row.layouts ? { layouts: JSON.parse(row.layouts) as string[] } : {}), ...(identity ? { identity } : {}), ...(row.provenance === 'service' || row.provenance === 'delegated' ? { provenance: row.provenance } : {}) };
   }
 
