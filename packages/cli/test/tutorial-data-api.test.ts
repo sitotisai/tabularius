@@ -65,7 +65,8 @@ test('the Data API tutorial works as written', { skip: !hasCurl && 'curl missing
     assert.match(out.stdout, /"foundCount":1/);
     assert.match(out.stdout, /"Name":"Ada Lovelace"/);
     assert.match(out.stdout, /"modId":"1"/);
-    assert.match(out.stdout, /made record 1\n1 Grace Hopper\n/, 'the Node client made, found and removed its record');
+    // Record 1 was deleted in step 4, and a deleted record's id is not given again: the client's record is number 2.
+    assert.match(out.stdout, /made record 2\n2 Grace Hopper\n/, 'the Node client made, found and removed its record');
   } finally {
     // Stop the server and wait for it to go: it writes a backup into the folder, and removing the folder under it fails.
     if (server && server.exitCode === null) {
