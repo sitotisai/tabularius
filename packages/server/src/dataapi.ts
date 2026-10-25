@@ -637,17 +637,24 @@ export const MAX_MULTIPART_BUFFER = 50 * 1024 * 1024;
  * body isn't a plain single "upload" part.
  */
 export async function multipartUploadStream(
-  req: IncomingMessage, contentType: string, max: number, maxBuffered = MAX_MULTIPART_BUFFER,
+  req: IncomingMessage, contentType: string, max: number, maxBuffered = MAX_MULTIPART_BUFFER, who: { db: string; account: string } = { db: '', account: '' },
 ): Promise<ContainerFile & { release(): void }> {
   const boundary = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType);
   if (!/^multipart\/form-data/i.test(contentType) || !boundary) throw new ApiError(960, 'Expected multipart/form-data', 400);
   const delim = Buffer.from(`--${boundary[1] ?? boundary[2]}`);
   if (req.socket.destroyed) throw new Error('The request was closed before its body arrived');
+  // The body is read to its declared length and no further, so that length is all it can need; a chunked body, or one
+  // that does not say, could send up to the limit, so it holds the limit. Either way the arriving bytes are counted.
+  const declared = req.headers['content-length'];
+  const length = declared !== undefined && req.headers['transfer-encoding'] === undefined && /^\d+$/.test(declared) ? Number(declared) : NaN;
+  if (length > max) throw new ApiError(960, 'Request body too large', 413);
+  const reserved = Number.isSafeInteger(length) ? Math.max(1, length) : max;
   let spool: ReturnType<typeof requestUploadSpool>;
-  try { spool = requestUploadSpool(max); }
+  try { spool = requestUploadSpool(reserved, who); }
   catch (error) {
-    if (error instanceof ContainerUploadError) throw new ApiError(960, error.message, error.status);
-    throw error;
+    if (!(error instanceof ContainerUploadError)) throw error;
+    // Busy for now: 301 as for the other "server is busy" answers, with the time to wait.
+    throw error.status === 503 ? new ApiError(301, error.message, 503, undefined, error.retryAfter) : new ApiError(960, error.message, error.status);
   }
   const tmp = spool.path;
   let size = 0;
@@ -655,7 +662,6 @@ export async function multipartUploadStream(
   // in pieces, never all at once.
   let keep = false;
   try {
-    if (Number(req.headers['content-length']) > max) throw new ApiError(960, 'Request body too large', 413);
     const limits = multipartLimits(contentType);
     if (req.socket.destroyed) throw new Error('The request was closed before its body arrived');
     const out = await open(tmp, 'wx', 0o600);
@@ -663,7 +669,7 @@ export async function multipartUploadStream(
       if (req.socket.destroyed) throw new Error('The request was closed before its body arrived');
       await eachChunk(req, async c => {
         size += c.length;
-        if (size > max) throw new ApiError(960, 'Request body too large', 413);
+        if (size > reserved) throw new ApiError(960, 'Request body too large', 413);
         checkMultipart(limits, c);
         for (let at = 0; at < c.length;) {
           if (req.socket.destroyed) throw new Error('The request was closed before its body arrived');
@@ -2351,7 +2357,7 @@ export class DataApi {
       // privilege must not be able to make the server take in a gigabyte.
       if (portal) store.checkPortalContainerWrite(layout, Number(p[5]), portal.name, portal.recordId, p[7], rep, { privileges });
       else store.checkContainerWrite(layout, Number(p[5]), p[7], rep, { privileges });
-      const upload = await multipartUploadStream(req, req.headers['content-type'] ?? '', MAX_UPLOAD);
+      const upload = await multipartUploadStream(req, req.headers['content-type'] ?? '', MAX_UPLOAD, undefined, { db: store.name, account });
       try {
         checkCurrent();
         const expected = url.searchParams.get('modId');

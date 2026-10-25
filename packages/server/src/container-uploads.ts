@@ -27,6 +27,10 @@ export const MAX_CONTAINER_PIECE = 64 * 1024 * 1024;
 /** How many uploads one account may have going at once in one file, and how many bytes (their declared sizes) all accounts together. */
 export const MAX_CONTAINER_UPLOADS_PER_ACCOUNT = 4;
 export const MAX_CONTAINER_UPLOAD_BYTES = 8 * 1024 * 1024 * 1024;
+/** How many single-request container uploads (one POST each) one account may have arriving at once in one file, so a few slow ones cannot use up the shared byte budget. */
+export const MAX_REQUEST_SPOOLS_PER_ACCOUNT = 4;
+/** What a client is told to wait, in seconds, when a single-request spool is refused for now. */
+const REQUEST_SPOOL_RETRY_SECONDS = 5;
 /** An upload that has received nothing for this long is abandoned (TABULARIUS_UPLOAD_IDLE_HOURS, default 24; 0 keeps them). */
 const IDLE_MS = Math.max(0, Number(process.env.TABULARIUS_UPLOAD_IDLE_HOURS ?? 24) || 0) * 60 * 60 * 1000;
 
@@ -35,6 +39,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
 const RUN_ID = randomBytes(18).toString('hex');
 let requestSpoolBytes = 0;
+const requestSpoolsByAccount = new Map<string, number>();
 
 export interface UploadSweepOptions {
   tmp: string;
@@ -127,10 +132,13 @@ export class ContainerUploadError extends Error {
   readonly status: number;
   /** How many bytes have arrived, when the refusal is about where to send the next piece. */
   readonly received?: number;
-  constructor(status: number, message: string, received?: number) {
+  /** Seconds to wait before asking again, when the refusal is for now (a 503). */
+  readonly retryAfter?: number;
+  constructor(status: number, message: string, received?: number, retryAfter?: number) {
     super(message);
     this.status = status;
     this.received = received;
+    this.retryAfter = retryAfter;
   }
 }
 
@@ -173,21 +181,32 @@ interface Held extends ContainerUpload {
 const folders = new Map<string, () => void>();
 process.once('exit', () => { for (const cleanup of folders.values()) cleanup(); });
 
-/** Reserve the request's enforced maximum before opening a spool, including chunked bodies.
- * This process-wide 8 GiB budget is separate from resumable uploads' declared-byte budget.
+/**
+ * Reserve `bytes` of the 8 GiB single-request budget, and one of the account's slots, before opening a spool: the
+ * caller passes the most the request can send (its Content-Length, or the enforced maximum when the length is unknown).
+ * Both refusals are for now, so they answer 503 with a Retry-After, not a final 413.
  * A Tabularius resource policy; compatible-product behaviour is unverified.
  */
-export function requestUploadSpool(max: number, tmp = process.env.TABULARIUS_UPLOAD_TMP || tmpdir()): { path: string; release(): void } {
-  if (!Number.isSafeInteger(max) || max <= 0 || requestSpoolBytes + max > MAX_CONTAINER_UPLOAD_BYTES) {
-    throw new ContainerUploadError(413, 'Too many bytes are being uploaded at once; try again when one has finished');
+export function requestUploadSpool(bytes: number, who: { db: string; account: string }, tmp = process.env.TABULARIUS_UPLOAD_TMP || tmpdir()): { path: string; release(): void } {
+  if (!Number.isSafeInteger(bytes) || bytes <= 0) throw new ContainerUploadError(400, 'The upload has no usable size');
+  const key = `${who.db}\0${who.account.toLowerCase()}`;
+  const mine = requestSpoolsByAccount.get(key) ?? 0;
+  if (mine >= MAX_REQUEST_SPOOLS_PER_ACCOUNT) {
+    throw new ContainerUploadError(503, `This account already has ${mine} uploads arriving; try again when one has finished`, undefined, REQUEST_SPOOL_RETRY_SECONDS);
   }
-  requestSpoolBytes += max;
+  if (requestSpoolBytes + bytes > MAX_CONTAINER_UPLOAD_BYTES) {
+    throw new ContainerUploadError(503, 'Too many bytes are being uploaded at once; try again when one has finished', undefined, REQUEST_SPOOL_RETRY_SECONDS);
+  }
+  requestSpoolBytes += bytes;
+  requestSpoolsByAccount.set(key, mine + 1);
   let dir: string | undefined;
   let released = false;
   const release = () => {
     if (released) return;
     released = true;
-    requestSpoolBytes -= max;
+    requestSpoolBytes -= bytes;
+    const left = (requestSpoolsByAccount.get(key) ?? 1) - 1;
+    if (left > 0) requestSpoolsByAccount.set(key, left); else requestSpoolsByAccount.delete(key);
     if (dir) {
       folders.delete(dir);
       rmSync(dir, { recursive: true, force: true });
