@@ -11,7 +11,7 @@ import { checkCalcTextSize } from './text-budget.ts';
 import { Decimal, decimalFunction, decimalNumberText, supportsDecimalFunction, withDecimalBudget } from './decimal.ts';
 import { assertTraversalDepth, NameTable, parse, type CalcNames, type Node } from './parser.ts';
 import {
-  CalcError, ERR, EMPTY, asBoolean, asNumber, asNumberOrEmpty, asText, bool, exactOf, exactPow, fromExact, isBeyondDouble, isEmpty, isOverlongWholeText, num, text, tidy,
+  CalcError, ERR, EMPTY, asBoolean, asNumber, asNumberOrEmpty, asText, bool, exactOf, exactPow, fromExact, isBeyondDouble, isEmpty, isOverlongWholeText, num, text, tidy, tidySum,
   type DateStyle, type Value,
 } from './values.ts';
 
@@ -945,7 +945,7 @@ function add(a: Value, b: Value, sign: 1 | -1): Value {
   if (dated(b) && !dated(a) && sign === 1) return { type: b.type as 'date', value: (b.value as number) + asNumber(a) };
   if (a.type === 'date' && b.type === 'time') return { type: 'timestamp', value: (a.value - 1) * 86400 + sign * b.value };
   if (a.type === 'timestamp' && b.type === 'time') return { type: 'timestamp', value: a.value + sign * b.value };
-  return whole(a, b, (x, y) => (sign === 1 ? x + y : x - y)) ?? num(tidy(asNumber(a) + sign * asNumber(b)));
+  return whole(a, b, (x, y) => (sign === 1 ? x + y : x - y)) ?? num(tidySum(asNumber(a), sign * asNumber(b)));
 }
 
 function subtract(a: Value, b: Value): Value {
