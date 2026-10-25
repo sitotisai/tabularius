@@ -4,7 +4,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { evaluateText, parse } from '../src/index.ts';
 
-const LIMIT_MS = 1500;
+// A linear scan takes milliseconds; the quadratic ones this guards against take tens of seconds, so the limit can
+// leave a wide margin for a loaded host.
+const LIMIT_MS = 5000;
 function quick<T>(f: () => T): T {
   const started = performance.now();
   try {
@@ -21,6 +23,15 @@ test('the tokenizer reads many space-separated words in linear time', () => {
   quick(() => attempt(() => parse('not '.repeat(30_000))));
   // A run of words ending in "and (" is not a function name, and every word before it must not rescan the run.
   quick(() => attempt(() => parse(`${'a '.repeat(30_000)}and (1)`)));
+});
+
+test('the tokenizer is linear on a long run of whitespace that is not a word separator', () => {
+  // A vertical tab, a form feed and a full-width space are not word separators; the look-ahead after a word must not
+  // walk over all of them when no word run precedes them.
+  for (const ws of ['\n\v', '\v ', '\n\u3000', '\r ', '\v\n', '\f ']) {
+    quick(() => attempt(() => parse('x' + ws.repeat(20_000))));
+    quick(() => attempt(() => parse('x' + ws.repeat(20_000) + 'y ( 1 )')));
+  }
 });
 
 test('words run together before "(" still make one function name', () => {
@@ -57,4 +68,13 @@ test('Path.LastPathComponent is linear on a long run of separators', () => {
   assert.equal(quick(() => evaluateText(formula(`x/a${'/'.repeat(k)}`))), 'a');
   assert.equal(evaluateText(formula('/one/two//')), 'two');
   assert.equal(evaluateText(formula('C:\\\\dir\\\\file.txt')), 'file.txt');
+});
+
+test('Path.AddPathComponent is linear on a long run of separators at the end of the path', () => {
+  const k = 60_000;
+  const formula = (path: string, part: string) => `MBS ( "Path.AddPathComponent" ; "${path}" ; "${part}" )`;
+  assert.equal(quick(() => evaluateText(formula(`a${'/'.repeat(k)}`, 'b'))), 'a/b');
+  assert.equal(quick(() => evaluateText(formula(`a${'/'.repeat(k)}x${'/'.repeat(k)}`, 'b'))), `a${'/'.repeat(k)}x/b`);
+  assert.equal(evaluateText(formula('C:\\\\dir\\\\', 'f')), 'C:\\dir\\f');
+  assert.equal(evaluateText(formula('/a//', '//b')), '/a/b');
 });

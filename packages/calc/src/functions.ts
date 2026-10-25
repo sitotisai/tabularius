@@ -5,7 +5,7 @@ import { withXmlWorkBudget } from './work-budget.ts';
 // aggregates can decide what to evaluate. Names are matched without regard
 // to case.
 
-import { charCount, charsBefore, unitAt } from './text.ts';
+import { charCount, charsBefore, stripTrailingSeparators, unitAt } from './text.ts';
 import { Decimal } from './decimal.ts';
 import { rethrowExecutionRefusal } from './execution-refusal.ts';
 import { checkCalcTextSize, joinCalcText, substituteText } from './text-budget.ts';
@@ -328,13 +328,6 @@ const trimSpaces = (t: string) => {
   while (end > start && t[end - 1] === ' ') end--;
   return t.slice(start, end);
 };
-const isSeparator = (c: string | undefined) => c === '/' || c === '\\';
-/** The text without the separators (slash or backslash) at its end. */
-const stripTrailingSeparators = (t: string) => {
-  let end = t.length;
-  while (end > 0 && isSeparator(t[end - 1])) end--;
-  return t.slice(0, end);
-};
 /** The text up to and including its last separator ('/' only when `slashOnly`); empty when there is none. */
 const upToLastSeparator = (t: string, slashOnly = false) => {
   let end = t.length;
@@ -344,7 +337,7 @@ const upToLastSeparator = (t: string, slashOnly = false) => {
 eager('Trim', 1, 1, (v, env) => text(trimSpaces(T(v[0], env))));
 eager('TrimAll', 1, 3, (v, env) => {
   const t = T(v[0], env);
-  // trimSpaces includes full-width spaces; trimType 3 removes every space.
+  // A second argument other than 0 makes full-width spaces count as spaces; trimType 3 removes every space.
   const sp = v[1] !== undefined && N(v[1]) ? '[ \u3000]' : ' ';
   if (v[2] !== undefined && Math.trunc(N(v[2])) === 3) return text(t.replace(new RegExp(sp, 'g'), ''));
   return text(t.replace(new RegExp(`${sp}{2,}`, 'g'), ' ').replace(new RegExp(`^${sp}+|${sp}+$`, 'g'), ''));
