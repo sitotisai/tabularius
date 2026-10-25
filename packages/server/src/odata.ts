@@ -245,8 +245,16 @@ function toJson(v: string | number | undefined, type: string): string | number |
 /** A timestamp from OData (with a time zone) as stored: UTC, without one. */
 function storedTimestamp(s: string): string {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?$/i.test(s)) throw bad(`"${s}" is not a timestamp`, '500');
+  const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(s)!;
+  const [year, month, day, hour, minute, second] = parts.slice(1).map(Number);
+  const days = [31, year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  const zone = /[+-](\d{2}):(\d{2})$/.exec(s);
+  if (month < 1 || month > 12 || day < 1 || day > (days ?? 0) || hour > 23 || minute > 59 || (second ?? 0) > 59 ||
+      (zone && (Number(zone[1]) > 23 || Number(zone[2]) > 59))) throw bad(`"${s}" is not a valid timestamp`, '500');
   if (!/(Z|[+-]\d{2}:\d{2})$/i.test(s)) return s;
-  const iso = new Date(s).toISOString();
+  const date = new Date(s);
+  if (!Number.isFinite(date.getTime())) throw bad(`"${s}" is not a valid timestamp`, '500');
+  const iso = date.toISOString();
   return iso.endsWith('.000Z') ? iso.slice(0, 19) : iso.slice(0, -1);
 }
 
@@ -255,6 +263,7 @@ function fromJson(v: unknown, p: Prop): string | number {
   if (v === null) return '';
   if (p.type === 'json' && typeof v === 'object') return stringifyJsonPreservingNumbers(v);
   if (typeof v === 'number') {
+    if (!Number.isFinite(v)) throw bad(`${p.name}: numbers must be finite`, '500');
     if (p.type === 'decimal') {
       const exact = decimalNumberText(v);
       if (exact === undefined) throw bad(`${p.name}: send a decimal string for numbers with more than 15 significant digits`, '500');
@@ -264,6 +273,7 @@ function fromJson(v: unknown, p: Prop): string | number {
   }
   if (typeof v === 'boolean') return v ? 1 : 0;
   if (typeof v !== 'string') throw bad(`${p.name}: a ${p.edm} value is expected`, '500');
+  if (v.includes('\0')) throw bad(`${p.name}: text contains a NUL character`, '500');
   // Text that is not a number would be stored as nothing in a number field: refused, as a number for a text field is.
   if (p.type === 'number' && v.trim() !== '' && !Number.isFinite(Number(v))) throw bad(`${p.name}: a ${p.edm} value is expected, not "${v.length > 40 ? `${v.slice(0, 40)}...` : v}"`, '500');
   return p.type === 'timestamp' && v ? storedTimestamp(v) : v;
@@ -677,8 +687,8 @@ function filtered<T>(hasFilter: boolean, run: () => T): T {
   try {
     return run();
   } catch (e) {
-    if (hasFilter && (e as { code?: string }).code === 'ERR_SQLITE_ERROR' && /Expression tree is too large|too many SQL variables/.test((e as Error).message)) {
-      throw new ODataError(400, '3', `$filter is too complex: ${(e as Error).message}`);
+    if (hasFilter && (e as { code?: string }).code === 'ERR_SQLITE_ERROR' && /Expression tree is too large|too many SQL variables|too many terms in ORDER BY clause|parser stack overflow|string or blob too big/i.test((e as Error).message)) {
+      throw new ODataError(400, '3', `Query is too complex: ${(e as Error).message}`);
     }
     throw e;
   }
@@ -748,7 +758,9 @@ function crossJoin(job: JoinJob): Promise<JoinResult> {
 
 /** $orderby as sort specs. */
 function orderBy(text: string, props: Prop[]): SortSpec[] {
-  return text.split(',').map((part) => {
+  const parts = text.split(',');
+  if (parts.length > 32) throw bad('$orderby: at most 32 sort terms are allowed');
+  return parts.map((part) => {
     const [name, dir, extra] = part.trim().split(/\s+/);
     if (!name || extra || (dir && !/^(asc|desc)$/i.test(dir))) throw bad(`$orderby: "${part.trim()}" is not a property and asc or desc`);
     if (/^rowid$/i.test(name)) throw bad('$orderby: records are in ROWID order when no other order is given', '102');
@@ -1436,7 +1448,7 @@ export class ODataEndpoint {
     const ids = wanted.slice(0, page);
     // OData entity sets exclude summary fields, so no full found set is needed.
     const records = set.info.owner.getMany(set.info, ids, ids, { dateFormat: 'iso', privileges: p, fields: set.props.map((x) => x.field) });
-    const values = shown.length ? set.info.owner.computeValues(set.info, ids, shown, p) : undefined;
+    const values = shown.length ? filtered(true, () => set.info.owner.computeValues(set.info, ids, shown, p)) : undefined;
     const budget: Budget = { left: EXPAND_LIMIT.records };
     const body: Record<string, unknown> = {
       '@odata.context': `${base}/$metadata#${set.name}${select && select.trim() !== '*' ? `(${['ROWID', 'ROWMODID', ...(set.info.owner.fileMode === 'native' ? ['ROWUUID'] : []), ...props.map((x) => x.name), ...shown.map((c) => c.name), ...expand.map((e) => e.name)].join(',')})` : ''}`,
@@ -1607,7 +1619,7 @@ export class ODataEndpoint {
     }
     const ids = sets.map((s, i) => {
       const f = own[i].length ? filterSql(own[i].map((x) => `(${x})`).join(' and '), s.props.map((x) => ({ ...x, name: `${s.name}/${x.name}` }))) : undefined;
-      const found = s.info.owner.selectIds(s.info, { where: f?.where, params: f?.params, fields: f?.fields, privileges: p, limit: CROSSJOIN_LIMIT.records + 1 });
+      const found = filtered(!!f, () => s.info.owner.selectIds(s.info, { where: f?.where, params: f?.params, fields: f?.fields, privileges: p, limit: CROSSJOIN_LIMIT.records + 1 }));
       if (found.length > CROSSJOIN_LIMIT.records) throw bad(`$crossjoin reads at most ${CROSSJOIN_LIMIT.records.toLocaleString('en-US')} records of each set and ${s.name} has more: narrow it in $filter with a condition on ${s.name} alone`);
       return found;
     });
