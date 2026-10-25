@@ -363,16 +363,16 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/server/src/oauth.ts:85](../../packages/server/src/oauth.ts#L85) `legacyPasswordMark` | `SQLite.get` (85); `SQLite.prepare` (85); `Store.sql` (85) | AUTH |
 | [packages/server/src/oauth.ts:72](../../packages/server/src/oauth.ts#L72) `storedName` | `SQLite.get` (72); `SQLite.prepare` (72); `Store.sql` (72) | AUTH |
 | [packages/server/src/odata-crossjoin-worker.ts:40](../../packages/server/src/odata-crossjoin-worker.ts#L40) `join` | `SQLite.prepare` (40, 49, 58, 73); `SQLite.get` (58); `SQLite.all` (73) | JOIN |
-| [packages/server/src/odata.ts:1339](../../packages/server/src/odata.ts#L1339) `ODataEndpoint/applied` | `Store.selectIds` (1339); `SQLite.prepare` (1354, 1391, 1404, 1408); `Store.getMany` (1365); `SQLite.all` (1404); `SQLite.get` (1408) | ODATA |
-| [packages/server/src/odata.ts:1458](../../packages/server/src/odata.ts#L1458) `ODataEndpoint/crossjoined` | `Store.selectIds` (1458); `Store.getMany` (1487, 1522) | ODATA |
-| [packages/server/src/odata.ts:1558](../../packages/server/src/odata.ts#L1558) `ODataEndpoint/entity` | `Store.getMany` (1558) | ODATA |
-| [packages/server/src/odata.ts:1218](../../packages/server/src/odata.ts#L1218) `ODataEndpoint/lambdaFor` | `Store.selectIds` (1218); `Store.row` (1227); `relatedIdList` (1228) | ODATA |
-| [packages/server/src/odata.ts:1281](../../packages/server/src/odata.ts#L1281) `ODataEndpoint/list` | `Store.selectIds` (1281); `Store.getMany` (1286); `Store.computeValues` (1287); `Store.countIds` (1292) | ODATA |
-| [packages/server/src/odata.ts:1657](../../packages/server/src/odata.ts#L1657) `ODataEndpoint/property` | `Store.containerId` (1657); `Store.container` (1663) | ODATA |
-| [packages/server/src/odata.ts:1599](../../packages/server/src/odata.ts#L1599) `ODataEndpoint/relatedIds` | `Store.row` (1599); `relatedIdList` (1602, 1617); `Store.selectIds` (1606) | ODATA |
-| [packages/server/src/odata.ts:1633](../../packages/server/src/odata.ts#L1633) `ODataEndpoint/relatedRecords` | `Store.getMany` (1633) | ODATA |
-| [packages/server/src/odata.ts:932](../../packages/server/src/odata.ts#L932) `ODataEndpoint/resource` | `Store.countIds` (932); `Store.get` (972, 979, 1086) | ODATA |
-| [packages/server/src/odata.ts:1628](../../packages/server/src/odata.ts#L1628) `ODataEndpoint/viewableIn` | `Store.viewableSet` (1628) | ODATA |
+| [packages/server/src/odata.ts:1491](../../packages/server/src/odata.ts#L1491) `ODataEndpoint/applied` | `Store.selectIds` (1491); `SQLite.prepare` (1506, 1543, 1556, 1560); `Store.getMany` (1517); `SQLite.all` (1556); `SQLite.get` (1560) | ODATA |
+| [packages/server/src/odata.ts:1610](../../packages/server/src/odata.ts#L1610) `ODataEndpoint/crossjoined` | `Store.selectIds` (1610); `Store.getMany` (1639, 1674) | ODATA |
+| [packages/server/src/odata.ts:1710](../../packages/server/src/odata.ts#L1710) `ODataEndpoint/entity` | `Store.getMany` (1710) | ODATA |
+| [packages/server/src/odata.ts:1370](../../packages/server/src/odata.ts#L1370) `ODataEndpoint/lambdaFor` | `Store.selectIds` (1370); `Store.row` (1379); `relatedIdList` (1380) | ODATA |
+| [packages/server/src/odata.ts:1433](../../packages/server/src/odata.ts#L1433) `ODataEndpoint/list` | `Store.selectIds` (1433); `Store.getMany` (1438); `Store.computeValues` (1439); `Store.countIds` (1444) | ODATA |
+| [packages/server/src/odata.ts:1809](../../packages/server/src/odata.ts#L1809) `ODataEndpoint/property` | `Store.containerId` (1809); `Store.container` (1815) | ODATA |
+| [packages/server/src/odata.ts:1751](../../packages/server/src/odata.ts#L1751) `ODataEndpoint/relatedIds` | `Store.row` (1751); `relatedIdList` (1754, 1769); `Store.selectIds` (1758) | ODATA |
+| [packages/server/src/odata.ts:1785](../../packages/server/src/odata.ts#L1785) `ODataEndpoint/relatedRecords` | `Store.getMany` (1785) | ODATA |
+| [packages/server/src/odata.ts:1045](../../packages/server/src/odata.ts#L1045) `ODataEndpoint/resource` | `Store.countIds` (1045); `Store.get` (1085, 1092, 1199) | ODATA |
+| [packages/server/src/odata.ts:1780](../../packages/server/src/odata.ts#L1780) `ODataEndpoint/viewableIn` | `Store.viewableSet` (1780) | ODATA |
 | [packages/server/src/oidc.ts:456](../../packages/server/src/oidc.ts#L456) `Oidc/authorizeUrl` | `SQLite.prepare` (456, 459) | AUTH |
 | [packages/server/src/oidc.ts:509](../../packages/server/src/oidc.ts#L509) `Oidc/callback` | `SQLite.all` (509); `SQLite.prepare` (509, 513) | AUTH |
 | [packages/server/src/oidc.ts:215](../../packages/server/src/oidc.ts#L215) `Oidc/constructor` | `SQLite.all` (215, 225); `SQLite.prepare` (215, 225, 235, 236, 241, 241) | AUTH |
