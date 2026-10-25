@@ -334,16 +334,16 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/server/src/logs.ts:77](../../packages/server/src/logs.ts#L77) `LogShipper/follow` | `SQLite.get` (77); `SQLite.prepare` (77); `Store.sql` (77, 78, 79, 80) | ADMIN |
 | [packages/server/src/logs.ts:89](../../packages/server/src/logs.ts#L89) `LogShipper/releaseIfIdle` | `Store.sql` (89) | ADMIN |
 | [packages/server/src/mcp-design.ts:510](../../packages/server/src/mcp-design.ts#L510) `registerDesignTools/audit_log` | `Store.auditLog` (510) | DESIGN |
-| [packages/server/src/mcp.ts:1445](../../packages/server/src/mcp.ts#L1445) `createMcpServer/check_record` | `Store.get` (1445); `Store.row` (1447) | MCP |
-| [packages/server/src/mcp.ts:1166](../../packages/server/src/mcp.ts#L1166) `createMcpServer/evaluate_calculation` | `Store.get` (1166, 1174); `Store.find` (1167); `Store.evaluate` (1168); `Store.row` (1173) | SQL |
-| [packages/server/src/mcp.ts:1469](../../packages/server/src/mcp.ts#L1469) `createMcpServer/explain_related` | `Store.get` (1469) | MCP |
-| [packages/server/src/mcp.ts:1422](../../packages/server/src/mcp.ts#L1422) `createMcpServer/explain_value` | `Store.get` (1422); `Store.row` (1423) | MCP |
-| [packages/server/src/mcp.ts:1046](../../packages/server/src/mcp.ts#L1046) `createMcpServer/find_records` | `Store.find` (1046) | MCP |
-| [packages/server/src/mcp.ts:1241](../../packages/server/src/mcp.ts#L1241) `createMcpServer/get_container` | `Store.container` (1241) | SQL |
-| [packages/server/src/mcp.ts:1059](../../packages/server/src/mcp.ts#L1059) `createMcpServer/get_record` | `Store.get` (1059) | MCP |
-| [packages/server/src/mcp.ts:1265](../../packages/server/src/mcp.ts#L1265) `createMcpServer/sql_query` | `Store.queryWithOrigins` (1265) | SQL |
-| [packages/server/src/mcp.ts:1109](../../packages/server/src/mcp.ts#L1109) `createMcpServer/update_record` | `Store.get` (1109, 1113) | MCP |
-| [packages/server/src/mcp.ts:2366](../../packages/server/src/mcp.ts#L2366) `registerResources/audit` | `Store.auditLog` (2366) | MCP |
+| [packages/server/src/mcp.ts:1472](../../packages/server/src/mcp.ts#L1472) `createMcpServer/check_record` | `Store.get` (1472); `Store.row` (1474) | MCP |
+| [packages/server/src/mcp.ts:1193](../../packages/server/src/mcp.ts#L1193) `createMcpServer/evaluate_calculation` | `Store.get` (1193, 1201); `Store.find` (1194); `Store.evaluate` (1195); `Store.row` (1200) | SQL |
+| [packages/server/src/mcp.ts:1496](../../packages/server/src/mcp.ts#L1496) `createMcpServer/explain_related` | `Store.get` (1496) | MCP |
+| [packages/server/src/mcp.ts:1449](../../packages/server/src/mcp.ts#L1449) `createMcpServer/explain_value` | `Store.get` (1449); `Store.row` (1450) | MCP |
+| [packages/server/src/mcp.ts:1073](../../packages/server/src/mcp.ts#L1073) `createMcpServer/find_records` | `Store.find` (1073) | MCP |
+| [packages/server/src/mcp.ts:1268](../../packages/server/src/mcp.ts#L1268) `createMcpServer/get_container` | `Store.container` (1268) | SQL |
+| [packages/server/src/mcp.ts:1086](../../packages/server/src/mcp.ts#L1086) `createMcpServer/get_record` | `Store.get` (1086) | MCP |
+| [packages/server/src/mcp.ts:1292](../../packages/server/src/mcp.ts#L1292) `createMcpServer/sql_query` | `Store.queryWithOrigins` (1292) | SQL |
+| [packages/server/src/mcp.ts:1136](../../packages/server/src/mcp.ts#L1136) `createMcpServer/update_record` | `Store.get` (1136, 1140) | MCP |
+| [packages/server/src/mcp.ts:2393](../../packages/server/src/mcp.ts#L2393) `registerResources/audit` | `Store.auditLog` (2393) | MCP |
 | [packages/server/src/oauth.ts:883](../../packages/server/src/oauth.ts#L883) `OAuthServer/accessAllowed` | `SQLite.get` (883); `SQLite.prepare` (883) | AUTH |
 | [packages/server/src/oauth.ts:509](../../packages/server/src/oauth.ts#L509) `OAuthServer/authorize` | `SQLite.get` (509); `SQLite.prepare` (509, 513, 515, 522, 545, 546) | AUTH |
 | [packages/server/src/oauth.ts:490](../../packages/server/src/oauth.ts#L490) `OAuthServer/authorize/done` | `SQLite.prepare` (490, 491) | AUTH |
