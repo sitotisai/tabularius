@@ -1,20 +1,37 @@
 // `service install --system` on Windows registers a boot task that runs as the system account. Everything that task starts
-// (Node, the program folder, and the folders above them) must be writable only by administrators and the system, or any
-// account on the machine could edit the code and have it run with more privilege than the account has.
-// These tests inject the platform and the ACL probe; nothing here reads a real Windows ACL.
+// (Node, the program folder, the folder the program folder is in, and the folders above them) must be writable only by
+// administrators and the system, or any account on the machine could edit the code and have it run with more privilege than
+// the account has; and the task file itself must not be somewhere an ordinary account can swap it.
+// These tests inject the platform and the ACL probe; nothing here reads a real Windows ACL, and none of this has run on Windows.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { installService, type ServiceOptions } from '../src/service.ts';
-import { refuseWritableSystemTaskCode, writableBy, type AclProbe } from '../src/windows-acl.ts';
+import { installService, serviceFile, type ServiceOptions } from '../src/service.ts';
+import {
+  parseProbeOutput, parseSddl, refuseWritableSystemTaskCode, trustedEnv, windowsAclProbe, windowsHost, writableBy,
+  type AclDepth, type AclProbe, type SystemHost,
+} from '../src/windows-acl.ts';
+import { stageSystemTaskXml, taskDifferences } from '../src/windows-task.ts';
 
-// Owner and groups: Administrators (BA) and the system (SY); read and execute for Users (BU).
-const ADMIN_ONLY = 'O:BAD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)';
-// A per-user folder: the user (a made-up SID) has full control and owns it.
+const TI = 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464';
 const USER_SID = 'S-1-5-21-1111111111-2222222222-3333333333-1001';
-const USER_OWNED = `O:${USER_SID}D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;${USER_SID})`;
+
+// Access lists as `Get-Acl <path> | % Sddl` prints them (owner and access list; the Windows 10 and 11 defaults). They are
+// written out here in that format, not captured by this change from a machine. Each is the shape a real install meets, so a
+// reader that only knows hand-written entries fails on them.
+/** C:\ : Authenticated Users may create folders here (LC) and, inherited, write what they create; Users read and execute. */
+const STOCK_ROOT = `O:${TI}D:PAI(A;OICIIO;SDGXGWGR;;;AU)(A;;LC;;;AU)(A;OICIIO;GA;;;SY)(A;;FA;;;SY)(A;OICI;0x1200a9;;;BU)(A;OICIIO;GA;;;BA)(A;;FA;;;BA)`;
+const STOCK_PROGRAM_FILES = `O:${TI}D:PAI(A;;FA;;;${TI})(A;CIIO;GA;;;${TI})(A;;0x1301bf;;;SY)(A;OICIIO;GA;;;SY)(A;;0x1301bf;;;BA)(A;OICIIO;GA;;;BA)(A;;0x1200a9;;;BU)(A;OICIIO;GXGR;;;BU)(A;OICIIO;GA;;;CO)(A;;0x1200a9;;;AC)(A;OICIIO;GXGR;;;AC)(A;;0x1200a9;;;S-1-15-2-2)(A;OICIIO;GXGR;;;S-1-15-2-2)`;
+/** A folder an elevated administrator made under Program Files: everything inherited (ID), owned by Administrators. */
+const UNDER_PROGRAM_FILES = `O:BAD:PAI(A;OICIID;FA;;;${TI})(A;OICIID;0x1301bf;;;SY)(A;CIIOID;GA;;;SY)(A;OICIID;0x1301bf;;;BA)(A;CIIOID;GA;;;BA)(A;OICIID;0x1200a9;;;BU)(A;CIIOID;GXGR;;;BU)(A;CIIOID;GA;;;CO)(A;OICIID;0x1200a9;;;AC)(A;OICIID;0x1200a9;;;S-1-15-2-2)`;
+const STOCK_PROGRAM_DATA = 'O:SYD:PAI(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)(A;OICIIO;FA;;;CO)(A;OICI;0x1200a9;;;BU)(A;CI;LC;;;BU)(A;CI;DC;;;BU)';
+const STOCK_USERS = 'O:SYD:PAI(A;;0x1200a9;;;BU)(A;OICIIO;GXGR;;;BU)(A;OICIIO;GA;;;SY)(A;;0x1301bf;;;SY)(A;OICIIO;GA;;;BA)(A;;0x1301bf;;;BA)(A;;0x1200a9;;;WD)(A;OICIIO;GXGR;;;WD)';
+const USER_PROFILE = `O:${USER_SID}D:PAI(A;OICI;FA;;;${USER_SID})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)`;
+const USER_OWNED = USER_PROFILE;
+/** A folder Users can only read and run from. */
+const ADMIN_ONLY = 'O:BAD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)';
 
 const APP = 'C:\\Program Files\\Tabularius\\app';
 const NODE = 'C:\\Program Files\\Tabularius\\node\\node.exe';
@@ -23,143 +40,448 @@ const options = (over: Partial<ServiceOptions> = {}): ServiceOptions => ({
   node: NODE, main: `${APP}\\packages\\cli\\src\\main.ts`, user: 'HOST\\admin', home: 'C:\\Users\\admin\\.openhbam', ...over,
 });
 
-/** A probe over a made-up disk: a map from a lower-case path to its SDDL, and the paths asked about. */
+const key = (p: string) => p.replace(/\\+$/, '').toLowerCase();
+/** A probe over a made-up disk: lower-case path (no trailing backslash) to SDDL. `children` and `tree` list what is under a path. */
 function probeOf(disk: Record<string, string>, asked: string[] = []): AclProbe {
-  return (path, recursive) => {
-    asked.push(`${path}${recursive ? ' (and everything in it)' : ''}`);
-    const sddl = disk[path.toLowerCase()];
-    if (sddl === undefined) throw new Error(`no such path ${path}`);
-    return [{ path, sddl }];
+  const entries = Object.entries(disk);
+  return (path: string, depth: AclDepth) => {
+    asked.push(`${path} [${depth}]`);
+    const self = disk[key(path)];
+    if (self === undefined) throw new Error(`no such path ${path}`);
+    const under = depth === 'self' ? [] : entries.filter(([p]) => {
+      const rest = p.startsWith(`${key(path)}\\`) ? p.slice(key(path).length + 1) : undefined;
+      return rest !== undefined && (depth === 'tree' || !rest.includes('\\'));
+    });
+    return [{ path, sddl: self }, ...under.map(([p, sddl]) => ({ path: p, sddl }))];
   };
 }
-const protectedDisk = (over: Record<string, string> = {}): Record<string, string> => ({
-  'c:\\': 'O:BAD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)(A;CI;0x4;;;AU)',
-  'c:\\program files': ADMIN_ONLY,
-  'c:\\program files\\tabularius': ADMIN_ONLY,
-  'c:\\program files\\tabularius\\app': ADMIN_ONLY,
-  'c:\\program files\\tabularius\\node': ADMIN_ONLY,
-  'c:\\program files\\tabularius\\node\\node.exe': ADMIN_ONLY,
+const stockDisk = (over: Record<string, string> = {}): Record<string, string> => ({
+  'c:': STOCK_ROOT,
+  'c:\\program files': STOCK_PROGRAM_FILES,
+  'c:\\program files\\tabularius': UNDER_PROGRAM_FILES,
+  'c:\\program files\\tabularius\\app': UNDER_PROGRAM_FILES,
+  'c:\\program files\\tabularius\\app\\packages\\cli\\src\\main.ts': UNDER_PROGRAM_FILES,
+  'c:\\program files\\tabularius\\node': UNDER_PROGRAM_FILES,
+  'c:\\program files\\tabularius\\node\\node.exe': UNDER_PROGRAM_FILES,
   ...over,
 });
 
 test('the SDDL reader names who besides administrators and the system may write', () => {
+  const NOTE = 'an account or group of this computer or its domain';
   assert.deepEqual(writableBy(ADMIN_ONLY, 'object'), []);
-  assert.deepEqual(writableBy(USER_OWNED, 'object'), [`owner ${USER_SID}`, `${USER_SID} (full control)`]);
-  // Users with modify, the common "everyone may write here" grant.
-  assert.deepEqual(writableBy('O:BAD:PAI(A;OICI;FA;;;BA)(A;OICI;0x1301bf;;;BU)', 'object').length, 1);
-  assert.deepEqual(writableBy('O:BAD:(A;;FA;;;BA)(A;;FW;;;WD)', 'object').length, 1, 'Everyone with write');
-  assert.deepEqual(writableBy('O:BAD:(A;;GA;;;AU)', 'object').length, 1, 'generic all');
+  assert.deepEqual(writableBy(USER_OWNED, 'object'), [`owner ${USER_SID} (${NOTE})`, `${USER_SID} (${NOTE}) (full control)`]);
+  assert.deepEqual(writableBy('O:BAD:PAI(A;OICI;FA;;;BA)(A;OICI;0x1301bf;;;BU)', 'object'), ['Users (BU) (write)']);
+  assert.deepEqual(writableBy('O:BAD:(A;;FA;;;BA)(A;;FW;;;WD)', 'object'), ['Everyone (WD) (write)']);
+  assert.equal(writableBy('O:BAD:(A;;GA;;;AU)', 'object').length, 1, 'generic all');
   // Read, and read and execute, are fine for anyone.
   assert.deepEqual(writableBy('O:BAD:(A;;FA;;;BA)(A;;FR;;;WD)(A;;FX;;;AU)(A;;GR;;;BU)', 'object'), []);
   // An entry that only passes to children, or only denies, gives this folder nobody new.
   assert.deepEqual(writableBy('O:BAD:(A;OICIIO;FA;;;BU)(D;;FA;;;BU)(A;;FA;;;BA)', 'object'), []);
-  // The Windows installer's own owner and the template owner.
-  assert.deepEqual(writableBy('O:S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464D:(A;;FA;;;S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464)', 'object'), []);
+  assert.deepEqual(writableBy(`O:${TI}D:(A;;FA;;;${TI})`, 'object'), []);
   assert.equal(writableBy('O:BAD:(A;;FA;;;CO)', 'object').length, 1, 'creator owner without inherit-only is the owner, who is not an administrator here');
-  // No DACL at all means everyone has full control; an unreadable string is refused rather than trusted.
-  assert.equal(writableBy('O:BAG:BA', 'object').length, 1);
   assert.equal(writableBy('not an sddl', 'object').length, 1);
-  assert.equal(writableBy('O:BAD:(A;;QQ;;;BU)', 'object').length, 1, 'a right the reader does not know counts as write');
-  // Above the code, adding a new child (the default for Users on C:\) is harmless; removing or replacing the folder is not.
-  assert.deepEqual(writableBy('O:BAD:(A;;FA;;;BA)(A;CI;0x4;;;AU)(A;;0x2;;;BU)', 'above'), []);
-  assert.equal(writableBy('O:BAD:(A;;FA;;;BA)(A;;0x40;;;BU)', 'above').length, 1, 'delete child');
-  assert.equal(writableBy('O:BAD:(A;;FA;;;BA)(A;;WD;;;BU)', 'above').length, 1, 'change permissions');
+  assert.deepEqual(writableBy('O:BAD:(A;;FA;;;BA)(A;;FR;;;OW)', 'object'), [], 'owner rights under a trusted owner');
 });
 
-test('--system on Windows is allowed when Node, the program and everything above them are administrator-only', () => {
+test('the SDDL reader reads what Windows prints for the stock folders', () => {
+  assert.deepEqual(writableBy(STOCK_ROOT, 'above'), [], 'C:\\ : Authenticated Users may add a folder (LC), which does not replace one');
+  assert.deepEqual(writableBy(STOCK_PROGRAM_FILES, 'above'), []);
+  assert.deepEqual(writableBy(STOCK_PROGRAM_FILES, 'object'), [], 'nothing writable by Users under Program Files itself');
+  assert.deepEqual(writableBy(UNDER_PROGRAM_FILES, 'object'), []);
+  assert.deepEqual(writableBy(STOCK_PROGRAM_DATA, 'above'), []);
+  assert.deepEqual(writableBy(STOCK_USERS, 'above'), []);
+  // The same C:\ as code: Authenticated Users can create folders there (LC is append data / add subfolder).
+  assert.deepEqual(writableBy(STOCK_ROOT, 'object'), ['Authenticated Users (AU) (write)']);
+  // The user profile is the user's (owner and an allow entry).
+  assert.equal(writableBy(USER_PROFILE, 'above').length, 2);
+});
+
+test('directory-service rights letters mean their bits on a file or folder', () => {
+  // Read and execute without the synchronize bit prints as letters; it must not be taken for full control.
+  assert.deepEqual(writableBy('O:BAD:(A;;FA;;;BA)(A;;CCSWWPLORC;;;BU)', 'object'), []);
+  assert.deepEqual(writableBy('O:BAD:(A;;FA;;;BA)(A;;CCSWWPLORC;;;BU)', 'above'), []);
+  // CC list, SW read EA, RP write EA, WP traverse, LO read attributes, CR write attributes: none of them changes code.
+  for (const letters of ['CC', 'SW', 'RP', 'WP', 'LO', 'CR', 'CCSWRPWPLOCR', 'RC']) assert.deepEqual(writableBy(`O:BAD:(A;;${letters};;;BU)`, 'object'), [], letters);
+  // DC is write data (create a file), LC is append data (create a folder), DT is delete child.
+  for (const letters of ['DC', 'LC', 'DT', 'CCDC', 'CCLCRC']) assert.equal(writableBy(`O:BAD:(A;;${letters};;;BU)`, 'object').length, 1, letters);
+  // Far above the code only replacing the folder matters: adding to it (DC, LC) is fine, deleting a child (DT) is not.
+  assert.deepEqual(writableBy('O:BAD:(A;;DC;;;BU)(A;;LC;;;AU)', 'above'), []);
+  assert.equal(writableBy('O:BAD:(A;;DT;;;BU)', 'above').length, 1);
+  // A letter this reader does not know stays fail-closed, and so do bits no access list should carry.
+  for (const rights of ['QQ', 'KA', 'NW', 'FAQ', '', '0x2000000', '0x1000000', '0x1ffffffffff', '0777']) assert.equal(writableBy(`O:BAD:(A;;${rights};;;BU)`, 'object').length, 1, `[${rights}]`);
+  assert.equal(writableBy('O:BAD:(A;;0x40000000;;;BU)', 'object').length, 1, 'generic write');
+  assert.equal(writableBy('O:BAD:AI(A;OICIID;0x1301bf;;;AU)', 'object').length, 1, 'modify');
+  assert.deepEqual(writableBy('O:BAD:(A;;1179817;;;BU)', 'object'), [], 'decimal 0x1200a9');
+});
+
+test('the SDDL reader fails closed on forms it cannot read in full', () => {
+  // A conditional entry holds parentheses; the entry after it must still be read (it used to be skipped).
+  assert.deepEqual(writableBy('O:BAD:(A;;FA;;;BA)(XA;;FR;;;WD;(Member_of {SID(BA)}))(A;;FA;;;BU)', 'object'), ['Users (BU) (full control)']);
+  assert.deepEqual(writableBy('O:BAD:(XA;;FA;;;BU;(@User.x == 1))', 'object'), ['Users (BU) (full control)'], 'a conditional allow counts as met');
+  assert.deepEqual(writableBy('O:BAD:(XA;;FA;;;BA;(@User.x == ")(" && Member_of {SID(BU)}))(A;;FA;;;BU)', 'object'), ['Users (BU) (full control)'], 'quoted parentheses');
+  // A null access list means everyone has full control.
+  assert.deepEqual(writableBy('O:BAD:NO_ACCESS_CONTROL', 'object'), ['everyone (there is no access list, which lets anyone do anything)']);
+  assert.equal(writableBy('O:BA', 'object').length, 1, 'no D: part at all');
+  assert.equal(writableBy('O:BAD:NO_ACCESS_CONTROL(A;;FA;;;BA)', 'object').length, 1);
+  assert.deepEqual(writableBy('O:BAD:', 'object'), [], 'an empty access list lets nobody in');
+  assert.deepEqual(writableBy('O:BAD:PAI', 'object'), [], 'an empty protected access list lets nobody in');
+  // An entry type this reader does not know is refused, not skipped; so is anything it cannot read to the end.
+  assert.equal(writableBy('O:BAD:(ZA;;FA;;;BU;;;)', 'object').length, 1);
+  assert.match(writableBy('O:BAD:(ZZ;;FR;;;BU)', 'object')[0], /type "ZZ"/);
+  assert.equal(writableBy('O:BAD:(A;;FA;;;BA)(A;;FA;;;BU', 'object').length, 1, 'unbalanced');
+  assert.equal(writableBy('O:BAD:(A;;FA;;;BA)junk', 'object').length, 1, 'trailing text');
+  assert.equal(writableBy('O:BAD:(A;;FA)', 'object').length, 1, 'too few fields');
+  assert.equal(writableBy('O:BAD:(A;;FA;;;BA)S:(AU;SA;FA;;;WD)', 'object').length, 1, 'an audit list is not asked for, so it is not read');
+  assert.equal(writableBy('', 'object').length, 1);
+  // A deny never hides an allow.
+  assert.deepEqual(writableBy('O:BAD:(D;;FA;;;BU)(A;;FA;;;BU)', 'object'), ['Users (BU) (full control)']);
+  assert.equal(parseSddl('O:BAG:SYD:PAI(A;;FA;;;BA)')?.aces?.length, 1, 'a group part is read');
+});
+
+test('an account is named by its name and short form, or for an unknown one by its SID', () => {
+  assert.deepEqual(writableBy('O:BAD:(A;;FA;;;S-1-5-32-545)(A;;FA;;;S-1-1-0)(A;;FA;;;S-1-9-9-9)', 'object'), ['Users (S-1-5-32-545) (full control)', 'Everyone (S-1-1-0) (full control)', 'S-1-9-9-9 (full control)']);
+});
+
+test('--system on Windows is allowed for a stock Program Files layout', () => {
   const asked: string[] = [];
-  refuseWritableSystemTaskCode(options(), probeOf(protectedDisk(), asked));
-  assert.ok(asked.includes(`${APP} (and everything in it)`), asked.join('\n'));
-  assert.ok(asked.includes('C:\\Program Files\\Tabularius\\node'), 'the folder Node loads its libraries from');
-  assert.ok(asked.includes('C:\\Program Files\\Tabularius'), 'the folder above the program: it can be renamed away and replaced');
-  assert.ok(asked.includes('C:\\'));
+  refuseWritableSystemTaskCode(options(), probeOf(stockDisk(), asked));
+  assert.ok(asked.includes(`${APP} [tree]`), asked.join('\n'));
+  assert.ok(asked.includes('C:\\Program Files\\Tabularius\\node [children]'), 'the folder Node loads its libraries from, with what is in it');
+  assert.ok(asked.includes('C:\\Program Files\\Tabularius [self]'), 'the folder above the program');
+  assert.ok(asked.includes('C:\\ [self]'));
+  // The program directly under Program Files works too.
+  refuseWritableSystemTaskCode(options({ main: 'C:\\Program Files\\app\\packages\\cli\\src\\main.ts', node: 'C:\\Program Files\\node.exe' }), probeOf(stockDisk({
+    'c:\\program files\\app': UNDER_PROGRAM_FILES, 'c:\\program files\\node.exe': UNDER_PROGRAM_FILES,
+  })));
 });
 
-test('--system on Windows is refused for the default per-user layout, and says what to do', () => {
+test('--system is refused for a program directly under C:\\ (anyone can make app.previous or win app.incoming there)', () => {
+  const disk = stockDisk({ 'c:\\app': UNDER_PROGRAM_FILES, 'c:\\tabularius': UNDER_PROGRAM_FILES, 'c:\\tabularius\\node': UNDER_PROGRAM_FILES, 'c:\\tabularius\\node\\node.exe': UNDER_PROGRAM_FILES });
+  const o = options({ node: 'C:\\tabularius\\node\\node.exe', main: 'C:\\app\\packages\\cli\\src\\main.ts' });
+  assert.throws(() => refuseWritableSystemTaskCode(o, probeOf(disk)), /C:\\: Authenticated Users \(AU\) \(write\)/);
+  // The reviewer's variant: the root only gives Authenticated Users the right to add a subfolder (0x4).
+  const bare = { ...disk, 'c:': 'O:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x4;;;AU)' };
+  assert.throws(() => refuseWritableSystemTaskCode(o, probeOf(bare)), /Authenticated Users/);
+  // The same grant on a folder far above the program is harmless.
+  refuseWritableSystemTaskCode(options(), probeOf(stockDisk({ 'c:': 'O:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x4;;;AU)' })));
+});
+
+test('--system is refused for the default per-user layout, and says what to do', () => {
   const home = 'C:\\Users\\jo\\.openhbam';
-  const disk = {
-    ...protectedDisk(),
-    'c:\\users': ADMIN_ONLY,
-    'c:\\users\\jo': USER_OWNED,
+  const disk = stockDisk({
+    'c:\\users': STOCK_USERS, 'c:\\users\\jo': USER_OWNED,
     [`${home}`.toLowerCase()]: USER_OWNED,
     [`${home}\\app`.toLowerCase()]: USER_OWNED,
+    [`${home}\\app\\packages\\cli\\src\\main.ts`.toLowerCase()]: USER_OWNED,
     [`${home}\\node`.toLowerCase()]: USER_OWNED,
     [`${home}\\node\\node.exe`.toLowerCase()]: USER_OWNED,
-  };
+  });
   const o = options({ node: `${home}\\node\\node.exe`, main: `${home}\\app\\packages\\cli\\src\\main.ts` });
   assert.throws(() => refuseWritableSystemTaskCode(o, probeOf(disk)), (e: Error) => {
     assert.match(e.message, /--system/);
     assert.match(e.message, /system account/);
     assert.ok(e.message.includes(`${home}\\app`), e.message);
     assert.ok(e.message.includes(USER_SID), 'names who can write');
+    assert.match(e.message, /an account or group of this computer or its domain/);
+    assert.match(e.message, /icacls/);
     assert.match(e.message, /without --system|Program Files/);
     return true;
   });
 });
 
-test('--system is refused when only the folder above the program, or a file inside it, can be changed by others', () => {
-  const aboveOnly = protectedDisk({ 'c:\\program files\\tabularius': 'O:BAD:PAI(A;OICI;FA;;;BA)(A;;0x40;;;BU)' });
-  assert.throws(() => refuseWritableSystemTaskCode(options(), probeOf(aboveOnly)), /C:\\Program Files\\Tabularius\b/);
-  // A file deep inside the program folder with its own, wider ACL.
-  const probe: AclProbe = (path, recursive) => path === APP && recursive
-    ? [{ path: APP, sddl: ADMIN_ONLY }, { path: `${APP}\\packages\\cli\\src\\main.ts`, sddl: USER_OWNED }]
-    : probeOf(protectedDisk())(path, recursive);
-  assert.throws(() => refuseWritableSystemTaskCode(options(), probe), /main\.ts/);
+test('--system is refused when only a folder above, a file inside the program, or a file next to Node can be changed by others', () => {
+  const aboveOnly = stockDisk({ 'c:\\program files\\tabularius': 'O:BAD:PAI(A;OICI;FA;;;BA)(A;;0x4;;;BU)' });
+  assert.throws(() => refuseWritableSystemTaskCode(options(), probeOf(aboveOnly)), /C:\\Program Files\\Tabularius\b/, 'the program folder\'s folder may not be added to');
+  const deleteChild = stockDisk({ 'c:\\program files': 'O:BAD:PAI(A;OICI;FA;;;BA)(A;;0x40;;;BU)' });
+  assert.throws(() => refuseWritableSystemTaskCode(options(), probeOf(deleteChild)), /C:\\Program Files\b/);
+  assert.throws(() => refuseWritableSystemTaskCode(options(), probeOf(stockDisk({ 'c:\\program files\\tabularius\\app\\packages\\cli\\src\\main.ts': USER_OWNED }))), /main\.ts/);
+  // Node's own folder: a library beside node.exe is loaded by it.
+  assert.throws(() => refuseWritableSystemTaskCode(options(), probeOf(stockDisk({ 'c:\\program files\\tabularius\\node\\libfoo.dll': USER_OWNED }))), /libfoo\.dll/);
+  // node.exe.local redirects the libraries Node loads; what is in it is checked too.
+  const local = stockDisk({ 'c:\\program files\\tabularius\\node\\node.exe.local': UNDER_PROGRAM_FILES, 'c:\\program files\\tabularius\\node\\node.exe.local\\x.dll': USER_OWNED });
+  assert.throws(() => refuseWritableSystemTaskCode(options(), probeOf(local)), /x\.dll/);
 });
 
 test('--system is refused when a link inside the program points to a folder others can write', () => {
   const outside = 'C:\\Users\\jo\\scratch';
-  const probe: AclProbe = (path, recursive) => {
-    if (path === APP) return [{ path: APP, sddl: ADMIN_ONLY }, { path: `${APP}\\node_modules\\dep`, sddl: ADMIN_ONLY, link: outside }];
-    if (path === outside) return [{ path: outside, sddl: USER_OWNED }];
-    return probeOf(protectedDisk({ 'c:\\users': ADMIN_ONLY, 'c:\\users\\jo': ADMIN_ONLY }))(path, recursive);
-  };
+  const base = probeOf(stockDisk({ 'c:\\users': STOCK_USERS, 'c:\\users\\jo': STOCK_USERS, [outside.toLowerCase()]: USER_OWNED }));
+  const probe: AclProbe = (path, depth) => path === APP
+    ? [{ path: APP, sddl: UNDER_PROGRAM_FILES }, { path: `${APP}\\node_modules\\dep`, sddl: UNDER_PROGRAM_FILES, link: outside }]
+    : base(path, depth);
   assert.throws(() => refuseWritableSystemTaskCode(options(), probe), /C:\\Users\\jo\\scratch/);
   // A link that stays inside the program folder is covered by the walk of that folder.
-  const inside: AclProbe = (path, recursive) => path === APP
-    ? [{ path: APP, sddl: ADMIN_ONLY }, { path: `${APP}\\node_modules\\@x\\y`, sddl: ADMIN_ONLY, link: `${APP}\\packages\\y` }]
-    : probeOf(protectedDisk())(path, recursive);
+  const inside: AclProbe = (path, depth) => path === APP
+    ? [{ path: APP, sddl: UNDER_PROGRAM_FILES }, { path: `${APP}\\node_modules\\@x\\y`, sddl: UNDER_PROGRAM_FILES, link: `${APP}\\packages\\y` }]
+    : probeOf(stockDisk())(path, depth);
   refuseWritableSystemTaskCode(options(), inside);
 });
 
-test('--system is refused when the ACLs cannot be read (it fails closed)', () => {
+test('--system is refused when the ACLs cannot be read, or the answer leaves out what was asked about (it fails closed)', () => {
   assert.throws(() => refuseWritableSystemTaskCode(options(), () => { throw new Error('powershell is not available'); }), /could not check[^]*powershell is not available/);
   assert.throws(() => refuseWritableSystemTaskCode(options(), probeOf({})), /could not check/);
+  // An empty answer is not "nobody can write": the path itself has to be in it.
+  assert.throws(() => refuseWritableSystemTaskCode(options(), () => []), /could not check[^]*left out/);
+  const base = probeOf(stockDisk());
+  assert.throws(() => refuseWritableSystemTaskCode(options(), (p, d) => (p === APP ? [] : base(p, d))), /left out C:\\Program Files\\Tabularius\\app itself/);
+  assert.throws(() => refuseWritableSystemTaskCode(options(), (p, d) => (p === APP ? [{ path: 'C:\\somewhere\\else', sddl: ADMIN_ONLY }] : base(p, d))), /left out/);
 });
 
 test('the single-file program has no app folder to check, and a task for the logged-in user checks nothing', () => {
   const asked: string[] = [];
-  refuseWritableSystemTaskCode(options({ singleFile: true, node: NODE, main: 'ignored' }), probeOf(protectedDisk(), asked));
-  assert.ok(!asked.some((a) => a.includes('and everything')), 'no recursive walk of an app folder');
+  refuseWritableSystemTaskCode(options({ singleFile: true, node: NODE, main: 'ignored' }), probeOf(stockDisk(), asked));
+  assert.ok(!asked.some((a) => a.includes('[tree]')), 'no walk of an app folder');
   const never: AclProbe = () => { throw new Error('should not be asked'); };
   refuseWritableSystemTaskCode(options({ system: false }), never);
   refuseWritableSystemTaskCode(options({ platform: 'linux', main: '/x/y/z/main.ts', node: '/usr/bin/node', folder: '/d' }), never);
 });
 
-test('installService writes and registers nothing when the system task would run writable code', { skip: process.platform === 'win32' }, () => {
-  const dir = mkdtempSync(join(tmpdir(), 'tabularius-system-acl-'));
-  const bin = join(dir, 'bin');
-  const home = join(dir, 'home');
-  mkdirSync(bin);
-  mkdirSync(home);
-  const calls = join(dir, 'calls');
-  writeFileSync(join(bin, 'schtasks'), `#!/bin/sh\necho "$@" >> ${calls}\nexit 0\n`);
-  chmodSync(join(bin, 'schtasks'), 0o755);
-  const previousPath = process.env.PATH;
+test('the PowerShell probe is started from fixed places with a fixed environment, and fails closed', () => {
+  const host = windowsHost();
+  assert.equal(host.tool('powershell'), 'C:\\Windows\\System32\\powershell.exe');
+  assert.equal(host.cwd, 'C:\\Windows\\System32');
+  const hostile: Record<string, string> = { SystemRoot: 'C:\\Users\\jo\\fake', windir: 'C:\\Users\\jo\\fake', COR_ENABLE_PROFILING: '1', COR_PROFILER_PATH: 'C:\\Users\\jo\\p.dll', PSModulePath: 'C:\\Users\\jo\\modules' };
+  const previous = Object.fromEntries(Object.keys(hostile).map((k) => [k, process.env[k]]));
   try {
-    process.env.PATH = bin;
+    Object.assign(process.env, hostile);
+    const env = windowsHost().env;
+    assert.equal(env.SystemRoot, 'C:\\Windows');
+    assert.equal(env.windir, 'C:\\Windows');
+    assert.equal(env.COR_ENABLE_PROFILING, undefined);
+    assert.equal(env.COR_PROFILER_PATH, undefined);
+    assert.equal(env.PSModulePath, 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules');
+    assert.equal(env.PATH, 'C:\\Windows\\System32');
+    assert.deepEqual(trustedEnv({ X: '1' }).X, '1');
+    assert.equal(windowsHost().tool('icacls'), 'C:\\Windows\\System32\\icacls.exe', 'the user environment does not move it');
+  } finally {
+    for (const [k, v] of Object.entries(previous)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
+  if (process.platform !== 'win32') assert.throws(() => windowsAclProbe('C:\\x', 'self'), 'no PowerShell here: an error, not an empty answer');
+  const entry = { path: 'C:\\x', sddl: ADMIN_ONLY, link: null };
+  const encode = (v: unknown) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');
+  assert.deepEqual(parseProbeOutput(encode([entry])), [{ path: 'C:\\x', sddl: ADMIN_ONLY }]);
+  assert.deepEqual(parseProbeOutput(`${encode([{ ...entry, link: 'D:\\t' }])}\r\n`), [{ path: 'C:\\x', sddl: ADMIN_ONLY, link: 'D:\\t' }]);
+  assert.throws(() => parseProbeOutput(encode([])), /anything in it/);
+  assert.throws(() => parseProbeOutput(''), /readable|anything/);
+  assert.throws(() => parseProbeOutput('not base64 json!'), /readable/);
+  assert.throws(() => parseProbeOutput(encode({ path: 'C:\\x' })), /anything in it/);
+  assert.throws(() => parseProbeOutput(encode([{ path: 'C:\\x' }])), /without a path or an access list/);
+  assert.throws(() => parseProbeOutput(encode([null])), /without a path or an access list/);
+});
+
+// ----- the task file ------------------------------------------------------------------------------------------------------
+
+/** What Task Scheduler reports for the XML this command writes: its own additions (date, author, task path, logon type). */
+const registeredFrom = (text: string): string => text
+  .replace('<RegistrationInfo>', '<RegistrationInfo>\n    <Date>2026-10-25T08:00:00</Date>\n    <Author>HOST\\admin</Author>\n    <URI>\\openhbam</URI>')
+  .replace('<RunLevel>HighestAvailable</RunLevel>', '<LogonType>ServiceAccount</LogonType>\n      <RunLevel>HighestAvailable</RunLevel>');
+const systemXml = (over: Partial<ServiceOptions> = {}) => serviceFile(options(over)).text;
+
+test('taskDifferences accepts what Task Scheduler reports for the task that was written', () => {
+  const text = systemXml();
+  assert.deepEqual(taskDifferences(text, text), []);
+  assert.deepEqual(taskDifferences(text, registeredFrom(text)), []);
+  assert.deepEqual(taskDifferences(text, registeredFrom(text).replace('S-1-5-18', 'SYSTEM')), [], 'the account by name');
+  assert.deepEqual(taskDifferences(text, registeredFrom(text).replace(/<Command>([^<]*)<\/Command>/, (_, c: string) => `<Command>${c.toUpperCase()}</Command>`)), [], 'a path in another case is the same path');
+  // Characters XML escapes are compared as what they stand for.
+  const odd = systemXml({ folder: 'D:\\Data & <more>' });
+  assert.deepEqual(taskDifferences(odd, registeredFrom(odd)), []);
+});
+
+test('taskDifferences names what changed in who it runs as, when it starts and what it runs', () => {
+  const text = systemXml();
+  const registered = registeredFrom(text);
+  const swap = (from: string | RegExp, to: string) => registered.replace(from, to);
+  const cases: Array<[string, string, RegExp]> = [
+    ['another program', swap(/<Command>[^<]*<\/Command>/, '<Command>C:\\Users\\jo\\evil.exe</Command>'), /Command is "C:\\\\Users\\\\jo\\\\evil\.exe"/],
+    ['other arguments', swap(/<Arguments>/, '<Arguments>--eval evil() '), /Arguments is/],
+    ['another working folder', swap(/<WorkingDirectory>[^<]*<\/WorkingDirectory>/, '<WorkingDirectory>C:\\Users\\jo</WorkingDirectory>'), /WorkingDirectory is/],
+    ['a second program', swap('</Exec>', '</Exec><Exec><Command>C:\\evil.exe</Command></Exec>'), /actions are Exec, Exec/],
+    ['a COM handler instead', swap(/<Exec>[^]*<\/Exec>/, '<ComHandler><ClassId>{00000000-0000-0000-0000-000000000000}</ClassId></ComHandler>'), /actions are ComHandler/],
+    ['a program and a COM handler', swap('</Exec>', '</Exec><ComHandler><ClassId>{0}</ClassId></ComHandler>'), /actions are Exec, ComHandler/],
+    ['no action', swap(/<Actions[^]*<\/Actions>/, '<Actions Context="Author"></Actions>'), /actions are none/],
+    ['a trigger that starts at once', swap('<Triggers>', '<Triggers><RegistrationTrigger><Enabled>true</Enabled></RegistrationTrigger>'), /starts on BootTrigger, RegistrationTrigger, not BootTrigger/],
+    ['a time trigger instead', swap('<BootTrigger><Enabled>true</Enabled></BootTrigger>', '<TimeTrigger><StartBoundary>2026-01-01T00:00:00</StartBoundary></TimeTrigger>'), /starts on TimeTrigger, not BootTrigger/],
+    ['another account', swap('S-1-5-18', 'S-1-5-21-1-2-3-1001'), /runs as S-1-5-21-1-2-3-1001, not S-1-5-18/],
+    ['a lower run level', swap('HighestAvailable', 'LeastPrivilege'), /run level is LeastPrivilege/],
+    ['a group to run as', swap('<UserId>S-1-5-18</UserId>', '<UserId>S-1-5-18</UserId><GroupId>S-1-5-32-545</GroupId>'), /names a group/],
+    ['an extra entry in the program', swap('</Exec>', '<Extra>x</Extra></Exec>'), /also has Extra/],
+  ];
+  for (const [name, xml, expected] of cases) {
+    const differences = taskDifferences(text, xml);
+    assert.ok(differences.some((d) => expected.test(d)), `${name}: ${JSON.stringify(differences)}`);
+  }
+  for (const bad of ['', 'not xml', '<Task><Actions></Task>', '<a/><b/>', registered.replace('</Task>', '')]) assert.ok(taskDifferences(text, bad).length, `[${bad.slice(0, 20)}]`);
+  assert.ok(taskDifferences('<broken', registered)[0].includes('this command wrote'));
+});
+
+/** A host over a real folder for the private task-file folder, a made-up disk for access lists, and fake tools. */
+function fakeHost(dir: string, over: { disk?: Record<string, string>; icacls?: string; query?: string; queryStatus?: number; asked?: string[] } = {}): SystemHost & { log: string } {
+  const bin = join(dir, 'bin');
+  mkdirSync(bin, { recursive: true });
+  const log = join(dir, 'calls');
+  const base = join(dir, 'ProgramData');
+  mkdirSync(base, { recursive: true });
+  writeFileSync(join(bin, 'icacls'), `#!/bin/sh\necho "icacls $@" >> ${log}\n${over.icacls ?? ''}\nexit 0\n`);
+  writeFileSync(join(bin, 'schtasks'), [
+    '#!/bin/sh',
+    `echo "schtasks $@" >> ${log}`,
+    // On /Create keep a copy of the file it was given, and where it was.
+    `if [ "$1" = "/Create" ]; then cp "$5" ${join(dir, 'created.xml')}; echo "$5" > ${join(dir, 'created.path')}; fi`,
+    `if [ "$1" = "/Query" ]; then ${over.query !== undefined ? `cat ${join(dir, 'query.xml')}; exit ${over.queryStatus ?? 0}` : 'exit 1'}; fi`,
+    'exit 0', '',
+  ].join('\n'));
+  if (over.query !== undefined) writeFileSync(join(dir, 'query.xml'), over.query);
+  for (const t of ['icacls', 'schtasks']) chmodSync(join(bin, t), 0o755);
+  const disk = over.disk ?? {};
+  const probe: AclProbe = (path, depth) => {
+    over.asked?.push(`${path} [${depth}]`);
+    // Whatever is under the folder for the task file (and the temp folders above it) is administrator-only; the rest comes from the disk.
+    const sddl = disk[key(path)] ?? (path.startsWith(dir) || dir.startsWith(path) ? ADMIN_ONLY : undefined);
+    if (sddl === undefined) throw new Error(`no such path ${path}`);
+    return [{ path, sddl }];
+  };
+  return { probe, tool: (name) => join(bin, name), cwd: undefined, env: { ...process.env, PATH: '/usr/bin:/bin' }, baseDir: base, log };
+}
+const tmp = () => mkdtempSync(join(tmpdir(), 'tabularius-system-task-'));
+
+test('the task file is written in a folder only administrators can use, after its access list is set and checked', { skip: process.platform === 'win32' }, () => {
+  const dir = tmp();
+  try {
+    const asked: string[] = [];
+    const host = fakeHost(dir, { asked });
+    const staged = stageSystemTaskXml(Buffer.from('<Task/>'), host);
+    const prefix = join(dir, 'ProgramData', 'tabularius-task-');
+    assert.ok(staged.path.startsWith(prefix), staged.path);
+    assert.match(staged.path.slice(prefix.length), /^[0-9a-f]{24}[\\/]task\.xml$/, 'a name nobody can guess');
+    assert.equal(readFileSync(staged.path, 'utf8'), '<Task/>');
+    const calls = readFileSync(host.log, 'utf8');
+    assert.match(calls, /^icacls .*tabularius-task-[0-9a-f]{24} \/inheritance:r \/grant:r \*S-1-5-18:\(OI\)\(CI\)F \*S-1-5-32-544:\(OI\)\(CI\)F$/m, 'inheritance removed, only the system and administrators granted');
+    const folder = staged.path.replace(/[\\/]task\.xml$/, '');
+    assert.ok(asked.includes(`${folder} [tree]`), 'the folder\'s access list was read after icacls');
+    assert.ok(asked.includes(`${staged.path} [self]`), 'and the file\'s');
+    staged.remove();
+    assert.equal(existsSync(folder), false, 'removed once registered');
+    assert.deepEqual(readdirSync(join(dir, 'ProgramData')), []);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('the task file is not written when its folder could not be made private', { skip: process.platform === 'win32' }, () => {
+  const dir = tmp();
+  try {
+    const base = join(dir, 'ProgramData');
+    const left = () => assert.deepEqual(readdirSync(base), [], 'the folder was removed and no file is left');
+    // icacls fails.
+    let host = fakeHost(dir, { icacls: 'echo "Access is denied." >&2; exit 5' });
+    assert.throws(() => stageSystemTaskXml(Buffer.from('x'), host), /could not make a folder only administrators can use[^]*Access is denied/);
+    left();
+    // icacls is missing.
+    host = fakeHost(dir);
+    host.tool = () => join(dir, 'bin', 'nonexistent');
+    assert.throws(() => stageSystemTaskXml(Buffer.from('x'), host), /could not make a folder/);
+    left();
+    // The access list read back is not administrator-only: Users can write (and the owner is not an administrator either).
+    host = fakeHost(dir);
+    const probe = host.probe;
+    host.probe = (p, d) => (/tabularius-task-[0-9a-f]+$/.test(p) ? [{ path: p, sddl: `O:${USER_SID}D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BU)` }] : probe(p, d));
+    assert.throws(() => stageSystemTaskXml(Buffer.from('x'), host), /the folder the task file is written in[^]*Users \(BU\)/);
+    left();
+    // Something is already in the folder when it is checked (it was put there before the access list was set).
+    host = fakeHost(dir, { icacls: 'touch "$1/planted"' });
+    assert.throws(() => stageSystemTaskXml(Buffer.from('x'), host), /found something in the new folder/);
+    left();
+    // The base folder can be replaced by Users, so the private folder could be swapped out from above.
+    host = fakeHost(dir, { disk: { [key(base)]: 'O:BAD:(A;;FA;;;BA)(A;;0x40;;;BU)' } });
+    assert.throws(() => stageSystemTaskXml(Buffer.from('x'), host), /folders above it[^]*Users \(BU\)/);
+    left();
+    // The ACLs cannot be read.
+    host = fakeHost(dir);
+    host.probe = () => { throw new Error('PowerShell exited with 1'); };
+    assert.throws(() => stageSystemTaskXml(Buffer.from('x'), host), /could not check[^]*PowerShell exited with 1/);
+    left();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// ----- installService -----------------------------------------------------------------------------------------------------
+
+test('installService registers the system task from the private folder, checks what was registered, and only then starts it', { skip: process.platform === 'win32' }, () => {
+  const dir = tmp();
+  try {
+    const home = join(dir, 'home');
+    mkdirSync(home);
     const o = options({ folder: join(dir, 'data'), home });
-    assert.throws(() => installService(o, probeOf({ ...protectedDisk(), 'c:\\program files\\tabularius\\app': USER_OWNED })), /system account/);
+    const host = fakeHost(dir, { disk: stockDisk(), query: registeredFrom(serviceFile(o).text) });
+    // An earlier file in the user's own folder (the old location) is not what is registered.
+    writeFileSync(join(home, 'openhbam-task.xml'), 'user wrote this');
+    installService(o, host);
+    const calls = readFileSync(host.log, 'utf8').trim().split('\n');
+    const at = (prefix: string) => calls.findIndex((c) => c.startsWith(prefix));
+    assert.ok(at('schtasks /End') >= 0 && at('schtasks /End') < at('icacls'), calls.join('\n'));
+    assert.ok(at('icacls') < at('schtasks /Create') && at('schtasks /Create') < at('schtasks /Query') && at('schtasks /Query') < at('schtasks /Run'), calls.join('\n'));
+    const createdFrom = readFileSync(join(dir, 'created.path'), 'utf8').trim();
+    assert.ok(createdFrom.startsWith(join(dir, 'ProgramData', 'tabularius-task-')), `registered from ${createdFrom}, not from the user's folder`);
+    assert.equal(readFileSync(join(home, 'openhbam-task.xml'), 'utf8'), 'user wrote this', 'the user-writable copy is neither used nor changed');
+    assert.equal(existsSync(createdFrom), false, 'the staged copy is gone');
+    assert.equal(readFileSync(join(dir, 'created.xml')).subarray(0, 2).toString('hex'), 'fffe', 'UTF-16 with a byte order mark');
+    assert.equal(existsSync(join(home, 'service.json')), true);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('installService deletes the task and does not start it when what Windows registered differs, or cannot be read back', { skip: process.platform === 'win32' }, () => {
+  for (const [name, query, status] of [
+    ['a different program', registeredFrom(systemXml()).replace(/<Command>[^<]*<\/Command>/, '<Command>C:\\Users\\jo\\evil.exe</Command>'), 0],
+    ['a trigger that starts at once', registeredFrom(systemXml()).replace('<Triggers>', '<Triggers><RegistrationTrigger/>'), 0],
+    ['garbage', 'not xml', 0],
+    ['a failed query', '', 1],
+  ] as const) {
+    const dir = tmp();
+    try {
+      const home = join(dir, 'home');
+      mkdirSync(home);
+      const o = options({ folder: join(dir, 'data'), home });
+      const host = fakeHost(dir, { disk: stockDisk(), query, queryStatus: status });
+      assert.throws(() => installService(o, host), /registered is not the one this command wrote[^]*deleted and not started/, name);
+      const calls = readFileSync(host.log, 'utf8');
+      assert.match(calls, /^schtasks \/Delete \/TN openhbam \/F$/m, name);
+      assert.doesNotMatch(calls, /\/Run/, `${name}: not started`);
+      assert.equal(existsSync(join(home, 'service.json')), false, `${name}: nothing recorded`);
+      assert.deepEqual(readdirSync(join(dir, 'ProgramData')), [], `${name}: the staged folder is removed`);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }
+});
+
+test('installService writes and registers nothing when the system task would run writable code', { skip: process.platform === 'win32' }, () => {
+  const dir = tmp();
+  try {
+    const home = join(dir, 'home');
+    mkdirSync(home);
+    const o = options({ folder: join(dir, 'data'), home });
+    const unsafe = fakeHost(dir, { disk: stockDisk({ 'c:\\program files\\tabularius\\app': USER_OWNED }) });
+    assert.throws(() => installService(o, unsafe), /system account/);
     assert.equal(existsSync(join(home, 'service.json')), false);
     assert.equal(existsSync(join(home, 'openhbam-task.xml')), false);
-    assert.equal(existsSync(calls), false, 'no task was created or started');
+    assert.equal(existsSync(unsafe.log), false, 'no task was created, started or even asked about');
+    assert.deepEqual(readdirSync(join(dir, 'ProgramData')), [], 'no folder was made for the task file');
     assert.equal(existsSync(join(dir, 'data')), false);
-    installService(o, probeOf(protectedDisk()));
-    assert.equal(existsSync(join(home, 'service.json')), true);
-    assert.equal(existsSync(calls), true, 'the second install registered the task');
-  } finally {
-    if (previousPath === undefined) delete process.env.PATH;
-    else process.env.PATH = previousPath;
-    rmSync(dir, { recursive: true, force: true });
-  }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a task for the logged-in user keeps its file in the user\'s folder and checks nothing', { skip: process.platform === 'win32' }, () => {
+  const dir = tmp();
+  try {
+    const home = join(dir, 'home');
+    mkdirSync(home);
+    const bin = join(dir, 'bin');
+    mkdirSync(bin);
+    writeFileSync(join(bin, 'schtasks'), '#!/bin/sh\nexit 0\n');
+    chmodSync(join(bin, 'schtasks'), 0o755);
+    const previousPath = process.env.PATH;
+    try {
+      process.env.PATH = bin;
+      installService(options({ system: false, folder: join(dir, 'data'), home }), { probe: () => { throw new Error('should not be asked'); } });
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+    }
+    assert.equal(existsSync(join(home, 'openhbam-task.xml')), true);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

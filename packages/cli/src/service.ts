@@ -50,7 +50,8 @@ import { nodeSupports } from './node-version.cjs';
 import { closedBy, refusalFor } from './newer-files.ts';
 import { readSecretFile } from './secret-file.ts';
 import { requestStop } from './stop-request.ts';
-import { refuseWritableSystemTaskCode, type AclProbe } from './windows-acl.ts';
+import { refuseWritableSystemTaskCode, windowsHost, type SystemHost } from './windows-acl.ts';
+import { queryRegisteredTask, stageSystemTaskXml, taskDifferences } from './windows-task.ts';
 
 export type Platform = 'darwin' | 'linux' | 'win32';
 
@@ -273,8 +274,8 @@ WantedBy=${o.system ? 'multi-user.target' : 'default.target'}
 }
 
 /** Runs a command where the person can see it (and answer sudo); throws when it fails. */
-function run(cmd: string, args: string[], opts: { ok?: boolean; cwd?: string } = {}): boolean {
-  const r = spawnSync(cmd, args, { stdio: 'inherit', cwd: opts.cwd });
+function run(cmd: string, args: string[], opts: { ok?: boolean; cwd?: string; env?: NodeJS.ProcessEnv } = {}): boolean {
+  const r = spawnSync(cmd, args, { stdio: 'inherit', cwd: opts.cwd, env: opts.env });
   if (r.status !== 0 && !opts.ok) throw new Error(`${cmd} ${args.join(' ')} failed${r.error ? `: ${r.error.message}` : ''}`);
   return r.status === 0;
 }
@@ -328,11 +329,13 @@ export function installed(home = defaults().home): Installed | undefined {
   }
 }
 
-export function installService(o: ServiceOptions, aclProbe?: AclProbe): void {
+/** `windows` replaces how the Windows system task is checked and staged (tests give their own; the default asks Windows). */
+export function installService(o: ServiceOptions, windows: Partial<SystemHost> = {}): void {
   o = { ...o, extra: normalizedSecretFiles(o.extra) };
   const f = serviceFile(o);
   // Before anything is written or registered: the Windows system task must not run code that another account can change.
-  refuseWritableSystemTaskCode(o, aclProbe);
+  const host: SystemHost = { ...windowsHost(), ...windows };
+  refuseWritableSystemTaskCode(o, host.probe);
   mkdirSync(o.folder, { recursive: true });
   // Switching between a personal and a system service: the other one goes.
   const was = installed(o.home);
@@ -355,15 +358,17 @@ export function installService(o: ServiceOptions, aclProbe?: AclProbe): void {
     if (!o.system && !run('loginctl', ['enable-linger', o.user], { ok: true })) say(`Run 'sudo loginctl enable-linger ${o.user}' to keep it running after you log out`);
     say(o.system ? 'Running at boot (logs: journalctl -u Tabularius)' : 'Running as a systemd user service (logs: journalctl --user -u Tabularius)');
   } else {
-    mkdirSync(dirname(f.path), { recursive: true });
     // Task Scheduler reads its XML as UTF-16.
-    writeFileSync(f.path, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(f.text, 'utf16le')]));
-    stopOwnServer(was?.folder ?? o.folder, o.platform);
-    run('schtasks', ['/End', '/TN', TASK], { ok: true });
-    if (!run('schtasks', ['/Create', '/TN', TASK, '/XML', f.path, '/F'], { ok: true })) {
-      throw new Error(o.system ? 'could not create the task: run this from an administrator prompt for --system' : 'could not create the task');
+    const bytes = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(f.text, 'utf16le')]);
+    if (o.system) installSystemTask(o, was, f.text, bytes, host);
+    else {
+      mkdirSync(dirname(f.path), { recursive: true });
+      writeFileSync(f.path, bytes);
+      stopOwnServer(was?.folder ?? o.folder, o.platform);
+      run('schtasks', ['/End', '/TN', TASK], { ok: true });
+      if (!run('schtasks', ['/Create', '/TN', TASK, '/XML', f.path, '/F'], { ok: true })) throw new Error('could not create the task');
+      run('schtasks', ['/Run', '/TN', TASK]);
     }
-    run('schtasks', ['/Run', '/TN', TASK]);
     say(o.system ? 'Running at boot as the system account' : 'Running whenever you are signed in to Windows. Add --system (as administrator) to run at boot.');
   }
   mkdirSync(o.home, { recursive: true });
@@ -371,6 +376,30 @@ export function installService(o: ServiceOptions, aclProbe?: AclProbe): void {
   // Installing the service replaces its one complete configuration; no independent records live in this file.
   updateJsonStateSync(record(o.home), kept, () => kept, { mode: 0o600 });
   for (const line of serviceSummary(o)) say(line);
+}
+
+/**
+ * Registers and starts the Windows boot task that runs as the system account. The task file is staged in a folder only
+ * administrators can use (not in the user's own folder, where it could be swapped after the checks passed), and what Windows
+ * registered is compared with what was meant before the task is started; a difference deletes it. See windows-task.ts.
+ */
+function installSystemTask(o: ServiceOptions, was: Installed | undefined, text: string, bytes: Buffer, host: SystemHost): void {
+  const schtasks = host.tool('schtasks');
+  const opts = { cwd: host.cwd, env: host.env };
+  stopOwnServer(was?.folder ?? o.folder, o.platform);
+  run(schtasks, ['/End', '/TN', TASK], { ok: true, ...opts });
+  const staged = stageSystemTaskXml(bytes, host);
+  try {
+    if (!run(schtasks, ['/Create', '/TN', TASK, '/XML', staged.path, '/F'], { ok: true, ...opts })) throw new Error('could not create the task: run this from an administrator prompt for --system');
+  } finally { staged.remove(); }
+  let differences: string[];
+  try { differences = taskDifferences(text, queryRegisteredTask(TASK, host)); }
+  catch (e) { differences = [`it could not be read back (${(e as Error).message})`]; }
+  if (differences.length) {
+    run(schtasks, ['/Delete', '/TN', TASK, '/F'], { ok: true, ...opts });
+    throw new Error(`service: the task Windows registered is not the one this command wrote (${differences.join('; ')}), so it was deleted and not started. Run this again from an administrator prompt; if it keeps happening, report it: that check has not been run on Windows before.`);
+  }
+  run(schtasks, ['/Run', '/TN', TASK], opts);
 }
 
 /** Resolve file options before any service record or manager file is written. */
