@@ -967,6 +967,8 @@ export class Store {
   readonly path: string;
   readonly name: string;
   readonly fileId: string;
+  /** Whether `fileId` is stored in the file, so a later open of the same path can be checked against it. */
+  private readonly fileIdSaved: boolean;
   held?: { reason: string; since: string };
   private readOnlySql?: DatabaseSync;
   private decimalSqlViewVersion = -1;
@@ -1157,6 +1159,7 @@ export class Store {
     // or damaged store keeps its existing open behaviour; an ephemeral id cannot
     // match an approval until the identity can be saved.
     let fileId: string | undefined;
+    let fileIdSaved = false;
     try {
       const row = this.sql.prepare("SELECT json FROM _fm_meta WHERE key = 'fileId'").get() as { json: string } | undefined;
       if (row) {
@@ -1169,8 +1172,10 @@ export class Store {
         this.sql.prepare("INSERT OR REPLACE INTO _fm_meta (key, json) VALUES ('fileId', ?)").run(JSON.stringify(next));
         fileId = next;
       }
+      fileIdSaved = true;
     } catch { /* no new failure for a read-only or damaged older file */ }
     this.fileId = fileId ?? randomUUID();
+    this.fileIdSaved = fileIdSaved;
     // WAL: readers (finds, MCP SQL, backups, other processes) don't wait on writers.
     // synchronous NORMAL syncs the log at checkpoints rather than on every save: the
     // file can't be corrupted, but a power cut may lose the last moments of edits
@@ -10903,6 +10908,14 @@ export class Store {
     return this.readOnly(sqlText).iterate() as IterableIterator<Record<string, SqlValue>>;
   }
 
+  private storedFileId(db: DatabaseSync): string | undefined {
+    try {
+      const row = db.prepare("SELECT json FROM _fm_meta WHERE key = 'fileId'").get() as { json: string } | undefined;
+      const value: unknown = row ? JSON.parse(row.json) : undefined;
+      return typeof value === 'string' ? value : undefined;
+    } catch { return undefined; }
+  }
+
   private readOnly(sqlText: string): StatementSync {
     return this.readOnlyChecked(sqlText).statement;
   }
@@ -10926,7 +10939,14 @@ export class Store {
     const catalog = catalogRef(sqlText);
     if (catalog) throw new StoreError(8310, `"${catalog}" lists the file's internal tables and can't be read through SQL; use describe_database for the tables and fields`);
     if (!this.readOnlySql) {
-      this.readOnlySql = traceDatabase(watchDatabase(new DatabaseSync(this.path, { readOnly: true }), this.name.replace(/\.tabularius$/i, ''), this.damageWatch));
+      const reader = new DatabaseSync(this.path, { readOnly: true });
+      // This connection opens by path, long after the identity was read and vetted. A file that replaced the opened
+      // one in between must not be queried as if it were it.
+      if (this.fileIdSaved && this.storedFileId(reader) !== this.fileId) {
+        try { reader.close(); } catch { /* the file is refused either way */ }
+        throw new StoreError(8310, `The file at ${this.name} is not the file that was opened; it was replaced while hosted`);
+      }
+      this.readOnlySql = traceDatabase(watchDatabase(reader, this.name.replace(/\.tabularius$/i, ''), this.damageWatch));
       defineFold(this.readOnlySql);
       for (const id of SORT_LANGUAGE_IDS) this.readOnlySql.function(sortFunction(id), { deterministic: true }, (v) => (typeof v === 'string' ? keptSortKey(v, id) : v));
       if (this.fileMode === 'native') this.readOnlySql.function('fm_decimal_key', { deterministic: true }, (v) => decimalKey(v as string | number | null));

@@ -77,7 +77,8 @@ export function verifiedHostedRecord(dir: string, exclude: readonly string[] = [
 
 export const LOST_RECORD_MESSAGE = 'the approval record is missing, so every file is held; it must be restored or approved again (the admin controls for this arrive in the next change)';
 
-function markStore(dir: string, name: string, instance: string, log: (line: string) => void): void {
+/** The marker goes only into the store that carries the approved identity: the path may hold a different file by now. */
+function markStore(dir: string, name: string, id: string, instance: string, log: (line: string) => void): void {
   let sql: DatabaseSync | undefined;
   try {
     const path = join(dir, name + STORE_EXT);
@@ -85,6 +86,10 @@ function markStore(dir: string, name: string, instance: string, log: (line: stri
     const stat = lstatSync(path);
     if (!stat.isFile()) throw new Error('the store is not a local regular file');
     sql = new DatabaseSync(path);
+    const row = sql.prepare("SELECT json FROM _fm_meta WHERE key = 'fileId'").get() as { json: string } | undefined;
+    let stored: unknown;
+    try { stored = row ? JSON.parse(row.json) : undefined; } catch { /* not the approved identity */ }
+    if (stored !== id) throw new Error('the file at that name is not the file that was approved');
     sql.prepare("INSERT OR REPLACE INTO _fm_meta (key, json) VALUES ('hostedInstance', ?)").run(JSON.stringify(instance));
   } catch (e) { log(`${name}: approval marker could not be saved: ${(e as Error).message}`); }
   finally { sql?.close(); }
@@ -127,7 +132,7 @@ export function approveInRecord(dir: string, name: string, id: string, by: strin
   const next: HostedRecord = { version: 1, instance: record?.instance ?? randomUUID(), files: Object.assign(Object.create(null) as HostedRecord['files'], record?.files) };
   next.files[name.toLowerCase()] = { id, approvedAt: new Date().toISOString(), by, how };
   writeRecord(dir, next);
-  markStore(dir, name, next.instance, log);
+  markStore(dir, name, id, next.instance, log);
 }
 
 /** Called once by the leader, after startup conversions and before hosting files. */
@@ -138,7 +143,7 @@ export function firstStartRecord(dir: string, files: { name: string; id: string 
   for (const file of files) entries[file.name.toLowerCase()] = { id: file.id, approvedAt: now, by: 'first start', how: 'first-start' };
   const instance = randomUUID();
   writeRecord(dir, { version: 1, instance, files: entries });
-  for (const file of files) markStore(dir, file.name, instance, log);
+  for (const file of files) markStore(dir, file.name, file.id, instance, log);
 }
 
 /** Merge restored stores in one publication, preserving all other approvals. */
@@ -151,6 +156,7 @@ export function approveRestoredFiles(dir: string, names: string[], log: (line: s
     }
     const first = record === undefined;
     const files: HostedRecord['files'] = Object.assign(Object.create(null) as HostedRecord['files'], record?.files);
+    const ids = new Map<string, string>();
     const approved = first ? storeNames(dir).map((file) => file.slice(0, -STORE_EXT.length)) : names;
     for (const name of approved) {
       const sql = new DatabaseSync(join(dir, name + STORE_EXT));
@@ -160,11 +166,12 @@ export function approveRestoredFiles(dir: string, names: string[], log: (line: s
         try { parsed = row ? JSON.parse(row.json) : undefined; } catch { /* replace below */ }
         const id = validFileId(parsed) ? parsed : randomUUID();
         if (!validFileId(parsed)) sql.prepare("INSERT OR REPLACE INTO _fm_meta (key, json) VALUES ('fileId', ?)").run(JSON.stringify(id));
+        ids.set(name, id);
         files[name.toLowerCase()] = { id, approvedAt: new Date().toISOString(), by: first && !names.includes(name) ? 'first start' : 'restore', how: first && !names.includes(name) ? 'first-start' : 'restore' };
       } finally { sql.close(); }
     }
     const instance = record?.instance ?? randomUUID();
     writeRecord(dir, { version: 1, instance, files });
-    for (const name of approved) markStore(dir, name, instance, log);
+    for (const name of approved) markStore(dir, name, ids.get(name)!, instance, log);
   } catch (e) { log(`${HOSTED_RECORD_FILE} could not record restored files; they remain held: ${(e as Error).message}`); }
 }
