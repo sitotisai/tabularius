@@ -2655,6 +2655,7 @@ export class Store {
         else if (/\(\d+\)$/.test(field)) skipped.push({ field, reason: 'a repetition can\'t be put back from the log' });
         else if (!def) skipped.push({ field, reason: 'not on this layout' });
         else if (def.type === 'container') skipped.push({ field, reason: 'a container\'s file isn\'t kept in the log' });
+        else if (def.calculated) skipped.push({ field, reason: 'a calculation is worked out again, not put back' });
         else if (pair[0] === NOT_LOGGED) skipped.push({ field, reason: 'its value was not logged' });
         else data[field] = pair[0] === null ? '' : String(pair[0]);
       }
@@ -8682,6 +8683,9 @@ export class Store {
       row[field] = value;
       const calcRuns = new Map<string, StyleRun[] | undefined>();
       this.write(() => this.calc.beforeWrite(table, row, new Set([field]), { isNew: false, account: opts.account, previous: current as Row, noValidation: true, performAutoEnter: opts.performAutoEnter, calcRuns }));
+      // A field that is itself a container (a thumbnail, a calculated file) keeps what it held: the pass can only store the
+      // text of a file name there, which would destroy the file.
+      for (const f of table.fields) if (f.type === 'container' && f.name !== field) row[f.name] = current[f.name];
       // An auto-enter can have changed a key: the same checks an update makes.
       this.checkChildKeys(table, row, current as Row);
       this.checkParentKeyChange(table, recordId, row, current as Row, opts.privileges);
@@ -8693,7 +8697,9 @@ export class Store {
       const diff = changed.filter((n) => row[n] !== current[n]);
       // Never the contents: the name, size and a hash that identifies them.
       const described = file && `${file.filename ?? '(file)'} (${containerFileSize(file)} bytes, sha256 ${containerFileHash(file)})`;
-      const entered = Object.fromEntries(diff.filter((n) => n !== field).map((n) => [n, [current[n] ?? null, row[n] ?? null]]));
+      // A calculation can read the file's contents: a long result is logged as its length and hash, not its text.
+      const brief = (v: unknown): unknown => typeof v === 'string' && v.length > 256 ? `(${v.length} characters, sha256 ${createHash('sha256').update(v).digest('hex')})` : v ?? null;
+      const entered = Object.fromEntries(diff.filter((n) => n !== field).map((n) => [n, [brief(current[n]), brief(row[n])]]));
       this.audit('update', info.table, recordId, { [repetition > 1 ? `${field}(${repetition})` : field]: [current[field] ?? null, described ?? null], ...entered }, opts);
       this.notify('update', info.table, recordId, Number(current._fm_mod_id) + 1, undefined, [...new Set([field, ...diff, ...kept])]);
       return { modId: Number(current._fm_mod_id) + 1 };
