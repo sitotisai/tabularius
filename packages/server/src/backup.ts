@@ -1264,13 +1264,16 @@ async function checkedPoint(point: { copy: string; logs: SavedLog[] }, passphras
 /**
  * Refuses a restore point whose set cannot be trusted (no signature, a signature that does not match, logs that were removed or
  * changed) without touching anything. For a caller that has to close a live file before restoring it: it checks first, so a set
- * that is going to be refused does not cost the file's users their connection.
+ * that is going to be refused does not cost the file's users their connection. Returns the container files the checked manifest
+ * lists and the saved logs it counts.
  */
-export async function checkRestorePoint(point: { copy: string; logs: SavedLog[] }, passphrase = backupKey(), acceptUnsigned = false): Promise<void> {
-  const { sums } = await checkedPoint(point, passphrase, acceptUnsigned);
+export async function checkRestorePoint(point: { copy: string; logs: SavedLog[] }, passphrase = backupKey(), acceptUnsigned = false): Promise<{ external: ExternalManifest; logs: SavedLog[] }> {
+  const { sums, external, logs } = await checkedPoint(point, passphrase, acceptUnsigned);
   // The copy itself is read once, so a changed one is found out here too (the restore reads it again, into a file of its own, and checks it again).
   const name = plain(basename(point.copy));
   if (sums && await checksum(point.copy) !== sums[name]) throw new Error(`${name}: changed on disk since it was taken (checksum)`);
+  // What the check read, for a caller that decides on it (a second read of the manifest could differ, or not be there).
+  return { external, logs };
 }
 
 /** Stage without touching any live database, so a folder restore can commit once. */
