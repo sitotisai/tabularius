@@ -13,8 +13,12 @@ import { StoreError } from './errors.ts';
 import { decodeValue, encodeValue, type SqlValue } from './sql-recursive-codec.ts';
 import { SQL_RESULT_LIMIT } from './sql-result.ts';
 
-/** How long a recursive query may run before it is stopped (a property so a test can shorten it). */
-export const RECURSIVE_SQL = { ms: 5000 };
+/**
+ * How long a recursive query may run before it is stopped, and the heap its process may use (properties so a test can change
+ * them), and the program that runs the child: this process's own executable, which in the release is the single-file program.
+ * The deadline is a constant of the server, not a setting.
+ */
+export const RECURSIVE_SQL = { ms: 5000, heapMb: 1024, execPath: process.execPath };
 
 /** One instruction of a compiled query, as EXPLAIN lists it. */
 export interface Op { addr: number; opcode: string; p1: number; p2: number; p3: number; p4: string | null }
@@ -45,37 +49,73 @@ function builtinFunctions(): Set<string> {
 /** A function the store defined that the child process can import: the export `export` of the module at address `module`. */
 export interface PortableFunction { module: string; export: string }
 
-/** The functions the program calls that SQLite does not have built in (ones the store defined), lower case, each once: the child does not have them. */
-export function customFunctions(ops: Op[]): string[] {
+/** Whether SQLite has a function of this name built in (a fresh connection has no others). */
+export function isBuiltinFunction(name: string): boolean {
+  return builtinFunctions().has(name.toLowerCase());
+}
+
+/** The functions the program calls, lower case, each once. */
+export function calledFunctions(ops: Op[]): string[] {
   const names = new Set<string>();
   for (const op of ops) {
     if (!['Function', 'PureFunc', 'AggStep', 'AggStep0', 'AggFinal', 'AggValue', 'AggInverse'].includes(op.opcode)) continue;
     const name = (op.p4 ?? '').replace(/\(-?\d+\)$/, '').toLowerCase();
-    if (name && !builtinFunctions().has(name)) names.add(name);
+    if (name) names.add(name);
   }
   return [...names];
 }
 
 const MAX_OUTPUT = 300 * 2 ** 20;
 
+/** The program, arguments and environment that start the child, for a launcher that runs a helper script only as its first argument. */
+export function childCommand(): { file: string; args: string[]; env: NodeJS.ProcessEnv } {
+  // Started the way the server starts its other helper processes (odata.ts, cluster.ts): the single-file program's launcher
+  // (scripts/release/launcher.cjs) skips `--no-warnings`, then runs the script that comes first as the helper; it does not read
+  // Node's flags from its command line, so the heap cap goes in NODE_OPTIONS, which it reads. The child gets only the
+  // environment it needs, not the server's secrets.
+  const env: NodeJS.ProcessEnv = { NODE_OPTIONS: `--max-old-space-size=${RECURSIVE_SQL.heapMb}` };
+  for (const k of ['PATH', 'HOME', 'USERPROFILE', 'TMPDIR', 'TEMP', 'TMP', 'SystemRoot', 'TABULARIUS_HOME', 'OPENHBAM_HOME']) {
+    if (process.env[k] !== undefined) env[k] = process.env[k];
+  }
+  return { file: RECURSIVE_SQL.execPath, args: ['--no-warnings', fileURLToPath(new URL('./sql-child.ts', import.meta.url))], env };
+}
+
+const OUT_OF_MEMORY = /heap out of memory|allocation failed/i;
+
 /** The rows of `text` (a checked, read-only query), read by a child process of this file that is killed after RECURSIVE_SQL.ms. */
 export function recursiveRows(file: string, text: string, params: SqlValue[], names: string[], limit: number, views: string[], functions: (PortableFunction & { name: string })[] = []): SqlValue[][] {
   const seconds = RECURSIVE_SQL.ms / 1000;
   const stopped = () => new StoreError(812, `Exceeded host's capacity: a recursive query ran longer than ${seconds} seconds and was stopped; make it end sooner (a condition in the recursive part, or a smaller range)`);
-  const child = spawnSync(process.execPath, ['--max-old-space-size=1024', fileURLToPath(new URL('./sql-child.ts', import.meta.url))], {
-    input: JSON.stringify({ path: file, text, params: params.map(encodeValue), names, limit, views, functions }),
-    encoding: 'utf8', timeout: RECURSIVE_SQL.ms, killSignal: 'SIGKILL', maxBuffer: MAX_OUTPUT, cwd: tmpdir(), windowsHide: true,
+  const memory = () => new StoreError(812, `Exceeded host's capacity: a recursive query used more than ${RECURSIVE_SQL.heapMb} MB of memory and was stopped; make it produce fewer or smaller rows`);
+  const command = childCommand();
+  // The limit and the values go as JSON, which has no form for Infinity (a request for every row), a blob or a bigint.
+  const child = spawnSync(command.file, command.args, {
+    input: JSON.stringify({ path: file, text, params: params.map(encodeValue), names, limit: encodeValue(limit), views, functions }),
+    encoding: 'utf8', timeout: RECURSIVE_SQL.ms, killSignal: 'SIGKILL', maxBuffer: MAX_OUTPUT, cwd: tmpdir(), windowsHide: true, env: command.env,
   });
-  if (child.error) {
+  const stderr = (child.stderr ?? '').slice(-2000).trim();
+  // EPIPE: the child ended before it read the request (it was killed, or could not start Node), which the signal or the
+  // missing answer below tells.
+  if (child.error && (child.error as NodeJS.ErrnoException).code !== 'EPIPE') {
     const code = (child.error as NodeJS.ErrnoException).code;
     if (code === 'ETIMEDOUT') throw stopped();
     if (code === 'ENOBUFS') throw new StoreError(812, `Exceeded host's capacity: the query's result is larger than ${Math.round(SQL_RESULT_LIMIT / 2 ** 20)} MB; select fewer columns or rows (LIMIT) or smaller values`);
     throw new StoreError(8310, 'A recursive query could not be run: the process for it did not start');
   }
-  if (child.signal) throw stopped();
+  // Killed, but not by the deadline (that is the ETIMEDOUT above): out of memory, in V8 (it aborts, naming the heap) or for
+  // the system (a kill with no word). Anything else is a fault, which the server's log gets and the client does not.
+  if (child.signal) {
+    if (OUT_OF_MEMORY.test(stderr) || child.signal === 'SIGKILL') throw memory();
+    console.error(`A recursive query's process stopped (${child.signal})${stderr ? `: ${stderr.split('\n').slice(-3).join(' ')}` : ''}`);
+    throw new StoreError(8310, 'A recursive query could not be run: the process for it stopped unexpectedly');
+  }
   let answer: { rows?: unknown[][]; error?: { code: number; message: string } };
   try { answer = JSON.parse(child.stdout); }
-  catch { throw new StoreError(8310, 'A recursive query could not be run: the process for it did not answer'); }
+  catch {
+    if (OUT_OF_MEMORY.test(stderr)) throw memory();
+    console.error(`A recursive query's process gave no answer (exit ${child.status})${stderr ? `: ${stderr.split('\n').slice(-3).join(' ')}` : ''}`);
+    throw new StoreError(8310, 'A recursive query could not be run: the process for it did not answer');
+  }
   if (answer.error) throw new StoreError(answer.error.code, answer.error.message);
   return (answer.rows ?? []).map((r) => r.map(decodeValue));
 }
