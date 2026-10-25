@@ -168,3 +168,24 @@ test('restore with missing approval record and prior marker leaves committed fil
   assert.equal(host.isHeld('A'), true);
   await host.close();
 });
+
+test('an approval marks only the store that carries the approved identity', (t) => {
+  const dir = folder(t);
+  const path = join(dir, 'A.openhbam.sqlite');
+  createStore(path);
+  const marker = (): string | undefined => {
+    const db = new DatabaseSync(path, { readOnly: true });
+    try { return (db.prepare("SELECT json FROM _fm_meta WHERE key = 'hostedInstance'").get() as { json: string } | undefined)?.json; }
+    finally { db.close(); }
+  };
+  // The approval is for another identity: the file now at the path was swapped in after it was opened.
+  const logged: string[] = [];
+  approveInRecord(dir, 'A', '00000000-0000-4000-8000-0000000000aa', 'operator', 'admin', (line) => logged.push(line));
+  assert.equal(marker(), undefined);
+  assert.match(logged.join('\n'), /not the file that was approved/);
+  const db = new DatabaseSync(path, { readOnly: true });
+  const own = JSON.parse((db.prepare("SELECT json FROM _fm_meta WHERE key = 'fileId'").get() as { json: string }).json) as string;
+  db.close();
+  approveInRecord(dir, 'A', own, 'operator', 'admin');
+  assert.equal(marker(), JSON.stringify(loadHostedRecord(dir)?.instance));
+});
