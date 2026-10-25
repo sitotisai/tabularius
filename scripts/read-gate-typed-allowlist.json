@@ -1755,9 +1755,9 @@
   "file": "packages/store/src/store.ts",
   "within": "Store.create",
   "api": "sql.prepare",
-  "count": 2,
+  "count": 1,
   "gate": "store-internal",
-  "why": "Next id = max(id)+1 (FileMaker-style) and lastVisited read filtered by allows(view rule); returns only the new id."
+  "why": "lastVisited read filtered by allows(view rule); the new id comes from nextRecordId (record ids only)."
  },
  {
   "file": "packages/store/src/store.ts",
@@ -1833,14 +1833,6 @@
  },
  {
   "file": "packages/store/src/store.ts",
-  "within": "Store.duplicate",
-  "api": "sql.prepare",
-  "count": 1,
-  "gate": "store-internal",
-  "why": "Next id computation."
- },
- {
-  "file": "packages/store/src/store.ts",
   "within": "Store.embeddedContainerCount",
   "api": "sql.prepare",
   "count": 1,
@@ -1862,6 +1854,14 @@
   "count": 1,
   "gate": "store-internal",
   "why": "Reads record ids to give each a uuid when a native file is opened or converted; nothing is returned."
+ },
+ {
+  "file": "packages/store/src/store.ts",
+  "within": "Store.ensureRecordIdMarks",
+  "api": "sql.prepare",
+  "count": 3,
+  "gate": "store-internal",
+  "why": "Record-id bookkeeping when a store is opened or a design change makes, renames or puts back a table: reads which tables have a mark, the table ids the design log renamed, the highest record_id per table in the audit log and the highest _fm_record_id per table, and writes them into _fm_record_id_high_water in SQL. Only id numbers are read, no field values, and nothing is returned; its callers are the Store constructor and designEffect (applyDesign), not an account-facing read."
  },
  {
   "file": "packages/store/src/store.ts",
@@ -2126,6 +2126,14 @@
   "count": 1,
   "gate": "trusted-process",
   "why": "Container storage maintenance; returns counts/ids; admin optimization."
+ },
+ {
+  "file": "packages/store/src/store.ts",
+  "within": "Store.nextRecordId",
+  "api": "sql.prepare",
+  "count": 1,
+  "gate": "store-internal",
+  "why": "The next record id for create and duplicate: the highest _fm_record_id and the table's mark, read as one number. No field values; it runs after those callers' checkWrite / create-privilege checks and gives the caller only the id of the record it is making (as max(id)+1 did before)."
  },
  {
   "file": "packages/store/src/store.ts",
