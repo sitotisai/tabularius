@@ -199,8 +199,11 @@ import { said } from './said.ts';
 
 const PASSWORD_FILE = '.openhbam-admin';
 
-/** Only errors deliberately written for an administrator may cross this API boundary. */
 /** Whole seconds left of a wait given in milliseconds; the clock has fractions, so a sum like (now + 900000) - now can come out a hair over 900000. */
+function secondsLeft(ms: number): number {
+  return Math.ceil(Math.round(ms) / 1000);
+}
+
 /**
  * The text of a portable-copy error with every spelling of the server's paths replaced by the names the console uses. The store
  * words its messages with the absolute path it resolved, which is not how a relative hosted folder (`serve ./files`) was given,
@@ -230,10 +233,7 @@ function hideServerPaths(message: string, places: [path: string, shown: string][
   return hidden;
 }
 
-function secondsLeft(ms: number): number {
-  return Math.ceil(Math.round(ms) / 1000);
-}
-
+/** Only errors deliberately written for an administrator may cross this API boundary. */
 function adminErrorText(e: unknown, scope: object): string {
   if (e instanceof StoreError || e instanceof ApiError || e instanceof RangeError || e instanceof SyntaxError || e instanceof URIError ||
       e instanceof CertificateError || e instanceof BackupFolderError || e instanceof BackupStopped || e instanceof PassphraseNeeded ||

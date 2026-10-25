@@ -258,8 +258,10 @@ interface ProcessLock { release: () => void; heartbeat: () => void }
 const heldLocks = new Set<string>();
 const lockBusy = (target: string, message: string) => `${message} (${target}.lock); remove it if no export is running`;
 
-/** The sidecar remains in place when the stage is renamed to the finished folder. */
-/** Exported for the tests, which reach one lock file through spellings the in-process guard cannot fold. */
+/**
+ * The sidecar remains in place when the stage is renamed to the finished folder. Exported for the tests, which reach one lock file
+ * through spellings the in-process guard cannot fold.
+ */
 export function takeProcessLock(target: string, busyMessage: string): ProcessLock {
   const path = `${target}.lock`;
   const busy = lockBusy(target, busyMessage);
@@ -285,14 +287,15 @@ export function takeProcessLock(target: string, busyMessage: string): ProcessLoc
         const pid = held.pid;
         const startedAt = held.startedAt;
         let alive = false;
-        // Our own pid alone proves nothing (an earlier process may have had it), but one of our own lock ids is a live holder
-        // that the in-process guard did not recognise, because the folder was spelled in a way it does not fold.
+        // One of our own lock ids is a live holder that the in-process guard did not recognise, because the folder was spelled in a
+        // way it does not fold. Our own pid with any other id proves nothing: a container usually runs node as pid 1, so another
+        // container on a shared volume has the same pid. It is treated as a dead process's lock, so it is replaced a minute after
+        // its last heartbeat, which also lets a restart of this server reclaim the lock it left.
         if (pid === process.pid && typeof held.id === 'string' && heldLocks.has(held.id)) throw new ExitBundleError(busy, 409);
         if (pid !== process.pid) {
           try { process.kill(pid, 0); alive = true; } catch (e) { alive = (e as NodeJS.ErrnoException).code !== 'ESRCH'; }
         }
-        if (pid !== process.pid && ((alive && Date.now() - startedAt <= LOCK_MAX_AGE) ||
-            (!alive && Date.now() - startedAt <= LOCK_UNCERTAIN_AGE))) throw new ExitBundleError(busy, 409);
+        if ((alive && Date.now() - startedAt <= LOCK_MAX_AGE) || (!alive && Date.now() - startedAt <= LOCK_UNCERTAIN_AGE)) throw new ExitBundleError(busy, 409);
       }
       moveAside(path, stat, () => new ExitBundleError(busy, 409));
       console.warn(`Replaced a stale exit-bundle lock at ${path}.`);

@@ -287,13 +287,14 @@ test('a stale process lock is replaced and a live process lock refuses the same 
   assert.equal(existsSync(deadLock), false);
 });
 
-test('a lock left by an earlier process with this PID allows resume and discard', async () => {
+test('a lock left by an earlier process with this PID allows resume and discard once it is a minute old', async () => {
   const resume = join(dir, 'reused-pid');
-  writeFileSync(`${resume}.lock`, JSON.stringify({ pid: process.pid, startedAt: Date.now() }), { mode: 0o600 });
+  const old = Date.now() - 61_000;
+  writeFileSync(`${resume}.lock`, JSON.stringify({ pid: process.pid, startedAt: old }), { mode: 0o600 });
   await exitBundle(store, resume, asAdmin());
   const discard = join(dir, 'reused-pid-discard');
   mkdirSync(`${discard}.partial`, { mode: 0o700 });
-  writeFileSync(`${discard}.lock`, JSON.stringify({ pid: process.pid, startedAt: Date.now() }), { mode: 0o600 });
+  writeFileSync(`${discard}.lock`, JSON.stringify({ pid: process.pid, startedAt: old }), { mode: 0o600 });
   await discardExitBundle(store, discard, asAdmin());
   assert.equal(existsSync(`${discard}.partial`), false);
 });
