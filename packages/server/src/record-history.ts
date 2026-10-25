@@ -96,7 +96,9 @@ export function recordHistory(store: Store, table: string, recordId: number, opt
   const t = store.schema.tables.find((x) => x.name.toLowerCase() === table.toLowerCase());
   if (!t) throw new Error(`No table named "${table}"`);
   const limit = Math.max(1, Math.min(opts.limit ?? 200, 2000));
-  const all = store.auditLog({ table: t.name, recordId, limit: 10_000 }).filter((e) => !e.security && e.kind !== 'read');
+  // A deleted last record's id is given to the next new record: what was logged before this one's creation is another record's.
+  const lifeStart = store.recordLifeStart(t.name, recordId);
+  const all = store.auditLog({ table: t.name, recordId, limit: 10_000 }).filter((e) => !e.security && e.kind !== 'read' && e.seq >= lifeStart);
   const entries = all.slice(-limit);
   const hidden = (name: string) => opts.hideField?.(name) ?? false;
   const value = (field: string, v: unknown) => (secretName(field) && v !== '' && v !== null && v !== undefined ? HIDDEN : clip(v));
