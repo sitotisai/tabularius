@@ -84,32 +84,46 @@ function strings(value: unknown): string[] {
 type LetNode = Extract<Node, { k: 'let' }>;
 type Expression = { refs: string[]; literals: string[]; direct: boolean; dynamic: boolean; node?: Node; literal: boolean; credentialLiteral: boolean; malformed: boolean };
 const MAX_CACHED_EXPRESSIONS = 5000;
-/** Schema-scoped parsing shared by separate runs; runtime values remain in each redactor. */
+// Entries are also bounded by the characters of their formulas (a parsed tree is a small multiple of its text),
+// so a few very large formulas cannot hold much memory. A formula too large for the budget is parsed on each use.
+const MAX_CACHED_CHARACTERS = 1_000_000;
+/**
+ * Schema-scoped analysis shared by separate runs; runtime values remain in each redactor.
+ * One instance belongs to one schema object: a design edit makes a new schema object and a new cache.
+ */
 export class CredentialRedactorCache {
   readonly names: NameTable;
   readonly expressions = new Map<string, Expression>();
+  /** Characters of the formulas held in `expressions`. */
+  expressionCharacters = 0;
   readonly customFunctions: string[];
-  private readonly templates = new WeakMap<Script, CredentialRedactor>();
+  private template?: CredentialRedactor;
   formulaParses = 0;
   inspections = 0;
-  constructor(names: CalcNames, customFunctions: Iterable<string> = []) {
+  /** Bounds on the formulas kept: entries and total characters. */
+  readonly limits: { expressions: number; characters: number };
+  constructor(names: CalcNames, customFunctions: Iterable<string> = [], limits = { expressions: MAX_CACHED_EXPRESSIONS, characters: MAX_CACHED_CHARACTERS }) {
+    this.limits = limits;
     this.names = new NameTable(names);
     this.customFunctions = [...customFunctions];
   }
-  forRun(root: Script, scripts: () => Script[], cacheable: boolean): CredentialRedactor {
-    if (!cacheable) {
-      const redactor = new CredentialRedactor(this.names, this);
-      redactor.inspect(scripts());
-      return redactor;
-    }
-    let template = this.templates.get(root);
-    if (!template) {
-      template = new CredentialRedactor(this.names, this);
+  /**
+   * A run's redactor. The template has inspected every script of the schema, exactly as a run that
+   * inspects the whole list at its start: a credential used by any script, however it is reached
+   * (a computed name, a trigger, a button, a timer, an earlier run's $$variable, another script's call),
+   * hides its inputs before the first trace, snapshot or error. That analysis runs once per schema object.
+   * `root` is inspected on the fork, so a program that is not in the list is covered too.
+   */
+  forRun(root: Script, scripts: () => readonly Script[]): CredentialRedactor {
+    if (!this.template) {
+      const template = new CredentialRedactor(this.names, this);
       template.inspect(scripts());
-      this.templates.set(root, template);
+      this.template = template;
       this.inspections++;
     }
-    return template.fork();
+    const redactor = this.template.fork();
+    redactor.inspect([root]);
+    return redactor;
   }
   get fieldSets(): number { return this.names.fieldSetBuilds; }
 }
@@ -258,12 +272,20 @@ export class CredentialRedactor {
       refs.push(...(formula.match(/\$\$?[^\s[\];()&"+*/=]+/g) ?? []).map((s) => s.toLowerCase()));
     }
     parsed = { refs, literals, direct, dynamic, node, literal, credentialLiteral, malformed };
-    if (this.expressions === this.cache?.expressions && this.expressions.size >= MAX_CACHED_EXPRESSIONS) {
-      const oldest = this.expressions.keys().next().value;
-      if (oldest !== undefined) this.expressions.delete(oldest);
+    const shared = this.cache && this.expressions === this.cache.expressions ? this.cache : undefined;
+    if (!shared) this.expressions.set(formula, parsed);
+    else {
+      shared.formulaParses++;
+      if (formula.length <= shared.limits.characters / 4) {
+        while (shared.expressions.size && (shared.expressions.size >= shared.limits.expressions || shared.expressionCharacters + formula.length > shared.limits.characters)) {
+          const oldest = shared.expressions.keys().next().value!;
+          shared.expressionCharacters -= oldest.length;
+          shared.expressions.delete(oldest);
+        }
+        shared.expressions.set(formula, parsed);
+        shared.expressionCharacters += formula.length;
+      }
     }
-    this.expressions.set(formula, parsed);
-    if (this.expressions === this.cache?.expressions) this.cache.formulaParses++;
     return parsed;
   }
 
