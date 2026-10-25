@@ -21,7 +21,7 @@ import { defaultBundleName, diagnostics, writeBundle } from './diagnostics.ts';
 import { doctorText, runDoctor } from './doctor.ts';
 import { runExposure } from './exposure.ts';
 import { startDemo } from './demo.ts';
-import { checkPort, defaults, installed, installService, serviceFile, uninstallService, servicePlainRefusal, defaultServiceHost, upgrade, validateServicePublicUrl, type Platform, type ServiceOptions } from './service.ts';
+import { validateServeOptions, verifyServiceStarted, checkPort, defaults, installed, installService, serviceFile, uninstallService, servicePlainRefusal, defaultServiceHost, upgrade, validateServicePublicUrl, type Platform, type ServiceOptions } from './service.ts';
 import { claimFolder } from '../../server/src/backup.ts';
 import { FmpDatabase, fileSource, encryptionInfo, readLayoutDesigns, segmentOf, inspectText, type Schema } from '../../fmp12/src/index.ts';
 import { BUILT_IN_EXTENDED_PRIVILEGES, addCensus, styleCensus, styleCensusText, calcFidelity, censusText, exportSql, exportSqlSummary, planImportTables, importTables, importTablesSummary, notionMarkdownSheet, MAX_IMPORT_ROWS, type SheetInput, type ColumnOverrides, type ColumnKind, findStaleCalcs, layoutCensus, type LayoutCensus, createStore, designReport, importFmp12, PASSWORD_POLICY, DEFAULT_MIN_PASSWORD_LENGTH, reconvert, reconvertCheck, verifySecurityAudit, verifyRecordAudit, anchorHead, checkAnchor, Store, syncPlan, openForPlanning, applySync, readSyncLog, releaseHeldTables, type ConflictPolicy, writeBackKit, designText, writeDesignText, diffDesigns, planDesignApply, readDesignFolder, type DesignOp, type ReconvertPreview, csvField, exitBundle, discardExitBundle } from '../../store/src/index.ts';
@@ -664,8 +664,8 @@ function outboundFlags(args: string[], command: string): { redirectTo?: string; 
     return undefined;
   }
   // The account can also live in a file only its owner reads, so the password needn't be typed into a command line.
-  const smtpFile = process.env.TABULARIUS_TEST_SMTP_FILE ?? join(homedir(), '.openhbam', 'test-smtp');
-  const smtpUrl = process.env.TABULARIUS_TEST_SMTP || (existsSync(smtpFile) ? readFileSync(smtpFile, 'utf8').trim() || undefined : undefined);
+  const smtpFile = process.env.TABULARIUS_TEST_SMTP_FILE ?? join(process.env.TABULARIUS_HOME ?? join(homedir(), '.openhbam'), 'test-smtp');
+  const smtpUrl = process.env.TABULARIUS_TEST_SMTP || (existsSync(smtpFile) ? readSecretFile(smtpFile, 'TABULARIUS_TEST_SMTP_FILE') : undefined);
   if (copyHeld && !redirectTo) throw new Error(`${command}: --capture-only-copies-to-redirect needs --mail-redirect`);
   if (smtpUrl && !redirectTo && process.env.TABULARIUS_TEST_SMTP) throw new Error(`${command}: TABULARIUS_TEST_SMTP is set but no --mail-redirect address was given`);
   const maxCopies = copies === undefined ? undefined : Number(copies);
@@ -695,8 +695,8 @@ function mailFlags(args: string[], command: string): { smtp: SmtpConfig; from: s
   }
   if (args.includes('--test-outbound')) throw new Error(`${command}: --send-mail and --test-outbound can't be used together (test mode never sends)`);
   if (!from) throw new Error(`${command}: --send-mail needs --mail-from, the address mail is sent from`);
-  const file = process.env.TABULARIUS_SMTP_FILE ?? join(homedir(), '.openhbam', 'smtp');
-  const url = process.env.TABULARIUS_SMTP || (existsSync(file) ? readFileSync(file, 'utf8').trim() || undefined : undefined);
+  const file = process.env.TABULARIUS_SMTP_FILE ?? join(process.env.TABULARIUS_HOME ?? join(homedir(), '.openhbam'), 'smtp');
+  const url = process.env.TABULARIUS_SMTP || (existsSync(file) ? readSecretFile(file, 'TABULARIUS_SMTP_FILE') : undefined);
   if (!url) throw new Error(`${command}: --send-mail needs an SMTP account in TABULARIUS_SMTP or ${file} (smtps://user:pass@host:465)`);
   const held = flag(args, '--capture-only');
   if (held) setCaptureOnlyDefaults(held.split(',').map((x) => x.trim()).filter(Boolean));
@@ -1025,12 +1025,14 @@ function serviceCommand(cmd: string, args: string[]): number {
       ...(from ? { from } : {}),
       backup: backup ? async (folder, extra) => {
         const i = extra.indexOf('--backup-dir');
-        return (await backupFolder(folder, i >= 0 ? extra[i + 1] : defaultBackupDir(folder), 0)).dir;
+        return (await backupFolder(folder, i >= 0 ? resolve(folder, extra[i + 1]) : process.env.TABULARIUS_BACKUP_DIR ?? readSettings(folder).backupDir ?? defaultBackupDir(folder), 0)).dir;
       } : undefined,
     }).catch(fail);
     return 0;
   }
   const action = args.shift();
+  const dash = args.indexOf('--');
+  const extra = dash >= 0 ? args.splice(dash).slice(1) : [];
   const platform = (flag(args, '--platform') ?? process.platform) as Platform;
   if (!['darwin', 'linux', 'win32'].includes(platform)) throw new Error(`service: ${platform} has no service manager Tabularius knows`);
   const base = defaults(platform);
@@ -1042,8 +1044,6 @@ function serviceCommand(cmd: string, args: string[]): number {
     process.stderr.write(`service: ${action ? `"${action}" is not something service does` : 'say what to do'} (install, uninstall or print).\n\n${USAGE}`);
     return 1;
   }
-  const dash = args.indexOf('--');
-  const extra = dash >= 0 ? args.splice(dash).slice(1) : [];
   const o: ServiceOptions = {
     ...base,
     port: Number(flag(args, '--port') ?? 8080),
@@ -1059,14 +1059,19 @@ function serviceCommand(cmd: string, args: string[]): number {
   // An option that is none of the service's is for `serve`; dropping it silently would start a service that isn't what was asked for.
   const stray = args.find((a) => a.startsWith('--'));
   if (stray) throw new Error(`service ${action}: ${stray} is not an option of service ${action}. Options for serve go after "--", for example: tabularius service ${action} ${o.folder} -- ${stray} ...`);
+  validateServeOptions(o.extra, true);
   validateServicePublicUrl(o.extra);
   const plainProblem = servicePlainRefusal(o);
   if (plainProblem) throw new Error(`service ${action}: ${plainProblem}`);
   const folderProblem = action === 'install' ? hostFolderProblem(o.folder) : undefined;
   if (folderProblem) throw new Error(`service install: ${folderProblem}`);
   if (action === 'print') process.stdout.write(serviceFile(o, platform !== process.platform).text);
-  else if (platform !== process.platform) installService(o);
-  else later(checkPort(o).then(() => installService(o)));
+  else later((async () => {
+    if (platform === process.platform) await checkPort(o);
+    const since = Date.now();
+    installService(o);
+    await verifyServiceStarted(o, undefined, since);
+  })());
   return 0;
 }
 
@@ -1170,7 +1175,17 @@ function demoCommand(args: string[]): number {
   if ((starter !== undefined && starter.startsWith('-')) || (keep !== undefined && keep.startsWith('-')) || (host !== undefined && host.startsWith('-'))) throw new Error('demo: an option is missing its value');
   const port = portText === undefined ? undefined : Number(portText);
   if (portText !== undefined && !(Number.isInteger(port) && port! >= 0 && port! < 65536)) throw new Error(`demo: --port takes a port number, not "${portText}"`);
+  let stopping = false;
+  let running: Awaited<ReturnType<typeof startDemo>> | undefined;
+  const stop = () => {
+    stopping = true;
+    if (running) void running.stop().finally(() => process.exit(0));
+  };
+  // Register before startup can create any temporary files, including while serve is awaiting readiness.
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(signal, stop);
   later(startDemo({ starter, keep, host, port, log: (line) => console.log(line) }).then((demo) => {
+    running = demo;
+    if (stopping) { stop(); return; }
     console.log(`tabularius demo: the ${demo.database} starter with sample records, on this computer only.`);
     console.log('');
     console.log(`  Open      ${demo.app}`);
@@ -1179,9 +1194,6 @@ function demoCommand(args: string[]): number {
     console.log('');
     console.log(demo.kept ? `The files are in ${demo.folder} and stay there. Press Ctrl-C to stop.` : 'Nothing is kept: the files are deleted when you press Ctrl-C. The password is shown only here.');
     if (open) openBrowser(demo.app);
-    const stop = () => void demo.stop().finally(() => process.exit(0));
-    process.once('SIGINT', stop);
-    process.once('SIGTERM', stop);
   }));
   return 0;
 }
@@ -1293,6 +1305,7 @@ function main(argv: string[]): number {
   }
   switch (cmd) {
     case 'serve': {
+      validateServeOptions(args);
       // Settings that are set to something unusable stop the server here, before anything starts (an empty key is not "no key").
       checkServeSettings();
       const encryptionKey = secret('TABULARIUS_ENCRYPTION_KEY');
@@ -1838,7 +1851,7 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'backup': {
-      const dest = flag(args, '--to') ?? defaultBackupDir(path);
+      const dest = flag(args, '--to') ?? process.env.TABULARIUS_BACKUP_DIR ?? readSettings(path).backupDir ?? defaultBackupDir(path);
       const keep = Number(flag(args, '--keep') ?? 0);
       backupFolder(path, dest, keep).then((r) => {
         console.log(`backed up ${r.files.length} files to ${r.dir}${process.env.TABULARIUS_BACKUP_KEY ? ', encrypted' : ''}`);

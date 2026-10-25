@@ -4,7 +4,7 @@
 
 | Setting | Value |
 | --- | --- |
-| Default | unset; loopback administration only |
+| Default | Unset: the server makes an administrator token on first start (.openhbam-mcp-token); every /mcp request needs credentials |
 | Accepted values | Token string |
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | No direct environment equivalent |
