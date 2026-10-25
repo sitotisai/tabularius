@@ -1157,7 +1157,8 @@ export class Admin {
         else if (!m[1] && req.method === 'GET') send(200, { uploads: u.list() });
         else if (!m[1] && req.method === 'POST') send(201, u.start(await readJson(req)));
         else if (m[1] && m[2] && req.method === 'POST') send(200, u.finish(m[1]));
-        else if (m[1] && !m[2] && req.method === 'PUT') send(200, await u.write(m[1], queryInteger(url.searchParams, 'offset', 1_000_000_000, 0) ?? 0, req));
+        // Only the shape is checked here: Uploads.write wants the offset to be what has arrived so far, and the file's declared size (at most TABULARIUS_MAX_UPLOAD) is the limit.
+        else if (m[1] && !m[2] && req.method === 'PUT') send(200, await u.write(m[1], queryInteger(url.searchParams, 'offset', Number.MAX_SAFE_INTEGER, 0) ?? 0, req));
         else if (m[1] && !m[2] && req.method === 'GET') send(200, u.get(m[1]));
         else if (m[1] && !m[2] && req.method === 'DELETE') {
           await u.remove(m[1]);
