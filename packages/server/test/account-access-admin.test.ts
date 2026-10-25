@@ -186,3 +186,21 @@ test('setting the same password again removes no passkey, so it does not warn th
   assert.deepEqual(same, { ok: true });
   assert.equal(store.hasPasskey('gina'), true);
 });
+
+test('deactivating a two-factor-required account that had only a passkey says it cannot sign in after reactivation', async () => {
+  const rp = 'host.example', origin = 'https://host.example';
+  store.savePrivilegeSet({ name: 'Clerk5', records: { view: true, edit: false, create: false, delete: false }, layouts: 'none', valueLists: 'none', scripts: 'none', extendedPrivileges: ['fmrest'] });
+  for (const name of ['hugo', 'iris']) {
+    store.setPassword(name, `${name}-password-1`, 'Clerk5');
+    const challenge = store.issueWebauthnChallenge('register', name);
+    store.registerPasskey(name, forgeRegistration(makeAuthenticator(rp, origin), challenge), { rpId: rp, origin, challenge });
+  }
+  store.setAccountRequire2fa('hugo', true);
+  const warned = await (await post('/tabularius/admin/v1/health/fix-account', { database: 'Charts', account: 'hugo', action: 'deactivate' })).json();
+  assert.equal(warned.deactivated, true);
+  assert.match(warned.warning, /requires a second factor and had only a passkey, which deactivating removed/);
+  assert.equal(store.hasPasskey('hugo'), false);
+  const plain = await (await post('/tabularius/admin/v1/health/fix-account', { database: 'Charts', account: 'iris', action: 'deactivate' })).json();
+  assert.equal(plain.deactivated, true);
+  assert.equal(plain.warning, undefined);
+});

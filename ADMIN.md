@@ -1051,8 +1051,12 @@ What the provider can do, and what it can't:
   `userName`), the same accounts single sign-on matches them to. They have no
   password. Deactivating someone in the provider deactivates the account and
   signs it out; Tabularius also revokes that person's API tokens, including
-  tokens delegated through a shared mapping. Reactivating the account does
-  not restore those tokens. Their email domain or a group can't let them back
+  tokens delegated through a shared mapping, and removes their recovery codes
+  and passkeys. Reactivating the account does not restore any of these: the
+  person signs in again and sets up a passkey and recovery codes anew. SCIM
+  does not warn when that leaves an account that requires a second factor with
+  none (it had only a passkey): it cannot sign in after reactivation until an
+  authenticator app is set up for it. Their email domain or a group can't let them back
   in. Removing them leaves the account off and without a set; an
   admin can delete it. A person's email can't change over SCIM, since it names
   the account: the provider gets an error, and the person has to be removed and
@@ -1196,9 +1200,11 @@ malformed quoting fails. Row numbers count CSV records, including the header.
 **No credentials belong in the CSV.** New accounts have a null password hash and
 must-change enabled; they cannot password-sign-in yet. Use the separate admin
 console password-reset flow to set a temporary password with **must change** on,
-and deliver it separately. Existing credentials and must-change flags stay intact.
-Deactivation keeps the password, ends existing sessions and deletes the account's API tokens after commit.
-Reactivation brings neither back: sign in again and create new tokens.
+and deliver it separately. Existing passwords and must-change flags stay intact.
+Deactivation keeps the password, ends existing sessions and deletes the account's API tokens, recovery codes and passkeys.
+Reactivation brings none of them back: sign in again, create new tokens, and set up a passkey and recovery codes again.
+The import does not warn when that leaves an account that requires a second factor with none (it had only a passkey):
+such an account cannot sign in after reactivation until an authenticator app is set up for it.
 
 The REST endpoints are `POST /tabularius/security/v1/databases/{db}/accounts/import/preview`
 with `{"csv":"…"}` and `/apply` with `{"csv":"…","previewToken":"…","idempotencyKey":"…"}`.
