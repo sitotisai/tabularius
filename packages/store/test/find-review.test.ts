@@ -326,3 +326,52 @@ test('a repeating field in a padding criterion earns no more per record than any
   assert.throws(() => store.findIds('Rep', { query }), (e: unknown) => e instanceof StoreError && e.code === 400, 'padded with a repeating field');
   assert.throws(() => store.find('Rep', { query, limit: 1 }), (e: unknown) => e instanceof StoreError && e.code === 400, 'padded with a repeating field, paged');
 });
+
+// A record earns once per find per table, wherever the criteria come from: a related table's records earn once however
+// many requests name it, and the SQL text of a find is the same every time it is built, so the sorted-page cache hits.
+function relatedPadding(t: { after: (fn: () => void) => void }, calc = false) {
+  const { store } = fixture(t);
+  store.applyDesign([
+    { op: 'createTable', name: 'Pad', fields: [{ name: 'Key' }, { name: 'Notes' }] },
+    { op: 'createTable', name: 'Rel', fields: [{ name: 'K' }, { name: 'F' }] },
+    { op: 'createRelationship', left: 'Pad', right: 'Rel', predicates: [{ left: 'Key', right: 'K' }] },
+    ...(calc ? [{ op: 'createField', table: 'Rel', name: 'C', type: 'text', kind: 'calculation', calculation: 'F', options: { unstored: true } }] : []),
+  ] as never);
+  const sql = (store as unknown as SqlHandle).sql;
+  sql.exec(`INSERT INTO Pad (_fm_record_id, Key, Notes) WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 8) SELECT i, 'k', '${'c'.repeat(950)}' FROM n`);
+  sql.exec(`INSERT INTO Rel (_fm_record_id, K, F) WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 520) SELECT i, 'k', '' FROM n`);
+  return store;
+}
+
+for (const calc of [false, true]) {
+  test(`a query padded with criteria on ${calc ? 'an unstored calculation of ' : ''}a related table earns no more per related record than one criterion does`, (t) => {
+    const store = relatedPadding(t, calc);
+    const heavy: FindRequest = { Notes: '*' + 'c'.repeat(4094) + '*' };
+    const field = calc ? 'Rel::C' : 'Rel::F';
+    assert.throws(() => store.findIds('Pad', { query: [heavy] }), (e: unknown) => e instanceof StoreError && e.code === 400, 'the heavy criterion alone is refused');
+    for (const padding of [1, 127]) {
+      const query: FindRequest[] = [...Array.from({ length: padding }, () => ({ [field]: '*z*' })), heavy];
+      assert.throws(() => store.findIds('Pad', { query }), (e: unknown) => e instanceof StoreError && e.code === 400, `${padding} related padding requests`);
+    }
+  });
+}
+
+test('a sorted found set with a wildcard criterion is sorted once across its pages', (t) => {
+  const { store } = fixture(t);
+  store.applyDesign([{ op: 'createTable', name: 'Sorted', fields: [{ name: 'T' }] }]);
+  (store as unknown as SqlHandle).sql.exec(
+    `INSERT INTO Sorted (_fm_record_id, T) WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 5000) SELECT i, 'name ' || (5000 - i) FROM n`);
+  const sql = (store as unknown as { sql: { prepare(sql: string): unknown } }).sql;
+  const prepare = sql.prepare.bind(sql) as (sql: string) => unknown;
+  let sorts = 0;
+  sql.prepare = (text: string) => { if (/SELECT _fm_record_id AS id FROM .* ORDER BY/.test(text)) sorts++; return prepare(text); };
+  for (const T of ['name*', '*name*']) {
+    sorts = 0;
+    for (let page = 1; page <= 5; page++) {
+      const found = store.find('Sorted', { query: [{ T }], sort: [{ fieldName: 'T', sortOrder: 'ascend' }], limit: 10, offset: page * 10 });
+      assert.equal(found.foundCount, 5000);
+      assert.equal(found.records.length, 10);
+    }
+    assert.equal(sorts, 1, `${T}: one sort for five pages`);
+  }
+});
