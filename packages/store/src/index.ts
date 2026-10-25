@@ -13,6 +13,7 @@ export { SECURITY_EVENT_KINDS, SECURITY_EVENT_CATEGORIES, securityEventCategory,
 export { normalizeWebViewerHost, normalizeWebViewerHosts, webViewerEntryCovers, WEB_VIEWER_HOSTS_MAX } from './web-viewer-hosts.ts';
 export { verifySecurityAudit, type SecurityAuditVerification } from './security-chain.ts';
 export { verifyRecordAudit, type RecordAuditVerification } from './record-chain.ts';
+export { inLife, lifeRanges, madeHere, type LifeEntry, type LifeRange } from './record-life.ts';
 export { anchorHead, checkAnchor, MIN_ANCHOR_KEY_BYTES, type AuditAnchor, type AuditChain, type AnchorCheck } from './audit-anchor.ts';
 export { MAX_SQL_TEXT, checkSqlSize } from './sql-tokens.ts';
 export { findWhere, type FieldInfo, type SqlValue } from './find.ts';
