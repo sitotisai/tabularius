@@ -117,3 +117,13 @@ test('a recursive query may call a function its definer made portable, and is st
   assert.throws(() => store.select('with recursive c(x) as (select 1 union all select x + 1 from c where x < 3) select demo_double(x), demo_local() from c'),
     (e: unknown) => e instanceof StoreError && e.code === 8310 && /demo_local/.test(e.message));
 });
+
+const REC10 = 'with recursive c(x) as (select 1 union all select x+1 from c where x<10) select x from c';
+
+test('a request for every row (an unlimited limit) gets every row of a recursive query, not one', (t) => {
+  const store = fixture(t);
+  assert.equal(store.select(REC10, [], Infinity).rows.length, 10);
+  assert.equal(store.select(REC10, [], 100).rows.length, 10);
+  assert.equal(store.select(REC10, [], 3).rows.length, 3);
+  assert.equal(store.queryWithOrigins(REC10).rows.length, 10);
+});
