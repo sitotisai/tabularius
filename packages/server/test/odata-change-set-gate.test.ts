@@ -77,8 +77,8 @@ function multipart(set: string[]): string {
 const post = (name: string) => `POST Congress HTTP/1.1\r\nContent-Type: application/json\r\n\r\n${JSON.stringify({ Name: name })}`;
 const get = (path: string) => `GET ${path} HTTP/1.1\r\n`;
 
-async function batch(set: string[]) {
-  const res = await fetch(`${root}/$batch`, { method: 'POST', headers: { ...basic('Ann'), 'content-type': 'multipart/mixed; boundary=b' }, body: multipart(set) });
+async function batch(set: string[], who: Record<string, string> = basic('Ann')) {
+  const res = await fetch(`${root}/$batch`, { method: 'POST', headers: { ...who, 'content-type': 'multipart/mixed; boundary=b' }, body: multipart(set) });
   const text = await res.text();
   return { status: res.status, text, answers: [...text.matchAll(/HTTP\/1\.1 (\d+)[^\r\n]*\r\n[\s\S]*?\r\n\r\n([\s\S]*?)\r\n--/g)].map((m) => ({ status: Number(m[1]), message: /"message":"([^"]*)"/.exec(m[2])?.[1] })) };
 }
@@ -114,6 +114,34 @@ test('a change set does not call a script (a script gives the event loop away as
   const r = await batch([post('Never Kept'), 'POST Script.Anything HTTP/1.1\r\nContent-Type: application/json\r\n\r\n{}']);
   assert.deepEqual(r.answers.map((a) => a.status), [400]);
   assert.match(r.answers[0].message!, /can't call a script/);
+  assert.equal(count(), before);
+});
+
+test('a change set that is refused for what it holds never waits for running requests, and never makes anyone else wait', { skip }, async () => {
+  BATCH_LIMIT.changeSetWaitMs = 1500;
+  BATCH_LIMIT.changeSetRequests = 3;
+  const before = count();
+  const token = store.createApiToken('Ann', { readOnly: true });
+  // A request that is still running (a script in a Pause, say): a change set that starts would wait for it.
+  const running = await inside().enter(store);
+  try {
+    const refused: [string, Promise<{ answers: { status: number }[] }>][] = [
+      ['a read', batch([post('Never'), get('Congress?$top=1')])],
+      ['a head', batch([post('Never'), 'HEAD Congress(1) HTTP/1.1\r\n'])],
+      ['a script call', batch([post('Never'), 'POST Script.Anything HTTP/1.1\r\nContent-Type: application/json\r\n\r\n{}'])],
+      ['too many requests', batch([1, 2, 3, 4].map((i) => post(`Never ${i}`)))],
+      ['a read-only token', batch([post('Never')], { authorization: `Bearer ${token}` })],
+    ];
+    const started = performance.now();
+    // Another request on the file is served at once, not queued behind a change set that is only waiting for the running one.
+    const other = fetch(`${root}/Congress/$count`, { headers: basic('Ann') });
+    for (const [what, p] of refused) {
+      const r = await p;
+      assert.ok(r.answers.length === 1 && r.answers[0].status >= 400 && r.answers[0].status !== 503, `${what}: answered ${JSON.stringify(r.answers)}`);
+    }
+    assert.equal((await other).status, 200);
+    assert.ok(performance.now() - started < 1000, 'none of them waited for the running request');
+  } finally { running(); }
   assert.equal(count(), before);
 });
 
