@@ -212,7 +212,7 @@ function sortParam(v: unknown, name: string): SortSpec[] | undefined {
       throw new ApiError(960, `Parameter is invalid: ${name}`, 400);
     }
   }
-  if (!Array.isArray(sort) || !sort.every((s) => s && typeof s === 'object' && typeof (s as SortSpec).fieldName === 'string')) {
+  if (!Array.isArray(sort) || sort.length > 32 || !sort.every((s) => s && typeof s === 'object' && typeof (s as SortSpec).fieldName === 'string')) {
     throw new ApiError(960, `Parameter is invalid: ${name}`, 400);
   }
   return sort as SortSpec[];
@@ -234,7 +234,7 @@ function countParam(v: unknown, name: string, fallback: number): number {
   if (v === undefined || v === null || v === '') return fallback;
   const n = Number(v);
   const isLimit = /limit$/.test(name);
-  if (!Number.isInteger(n) || n < (isLimit ? 0 : 1)) throw new ApiError(960, `Parameter is invalid: ${name}`, 400);
+  if (!Number.isSafeInteger(n) || n < (isLimit ? 0 : 1)) throw new ApiError(960, `Parameter is invalid: ${name}`, 400);
   if (isLimit) overCap(n, name);
   return n;
 }
@@ -383,7 +383,7 @@ function portalPaging(get: (key: string) => unknown, keys: Iterable<string>): Po
     const m = /^_?(offset|limit)\.(.+)$/.exec(k);
     if (!m) continue;
     const n = Number(get(k));
-    if (!Number.isFinite(n)) continue;
+    if (!Number.isSafeInteger(n) || n < 0) throw new ApiError(960, `Parameter is invalid: ${k}`, 400);
     if (m[1] === 'limit') overCap(n, k);
     (out[m[2]] ??= {})[m[1] as 'offset' | 'limit'] = n;
   }
@@ -531,12 +531,12 @@ export async function readJson(req: IncomingMessage, limit: boolean | number = f
   try {
     const raw = body.toString('utf8');
     if (native) {
-      assertRequestJsonBounds(raw);
+      assertRequestJsonBounds(raw, undefined, true);
       parsed = parseJsonPreservingNumberSources(raw);
       if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) requestSources.set(parsed, raw);
     } else parsed = parseRequestJson(raw);
   } catch (cause) {
-    const error = new ApiError(960, cause instanceof JsonDepthError || cause instanceof JsonSizeError ? cause.message : 'Invalid JSON', 400);
+    const error = new ApiError(960, cause instanceof JsonDepthError || cause instanceof JsonSizeError || cause instanceof JsonNumberError ? cause.message : 'Invalid JSON', 400);
     error.cause = cause;
     throw error;
   }
@@ -609,6 +609,8 @@ function fieldDataOf(body: Record<string, unknown>, nativeType?: (name: string) 
   if (typeof fd !== 'object' || Array.isArray(fd)) throw new ApiError(960, 'fieldData must be an object of field names and values', 400);
   for (const [name, v] of Object.entries(fd)) {
     if (name === 'deleteRelated') continue; // a list of Table.recordId, on an edit
+    if (typeof v === 'string' && v.includes('\0')) throw new ApiError(960, `The value of "${name}" contains a NUL character`, 400);
+    if (typeof v === 'number' && !Number.isFinite(v)) throw new ApiError(960, `The value of "${name}" must be a finite number`, 400);
     if (v !== null && typeof v === 'object') {
       if (nativeType?.(name) === 'json') { validateNativeJsonBody(body); (fd as Record<string, unknown>)[name] = stringifyJsonPreservingNumbers(v); }
       else throw new ApiError(960, `The value of "${name}" in fieldData must be text or a number, not ${Array.isArray(v) ? 'a list' : 'an object'}`, 400);
@@ -2460,6 +2462,7 @@ export class DataApi {
       for (const r of body.query as Record<string, unknown>[]) {
         for (const [field, crit] of Object.entries(r)) {
           if (crit !== null && typeof crit === 'object') throw new ApiError(960, `The criterion for "${field}" must be text or a number, not ${Array.isArray(crit) ? 'a list' : 'an object'}`, 400);
+          if (typeof crit === 'string' && crit.includes('\0')) throw new ApiError(960, `The criterion for "${field}" contains a NUL character`, 400);
         }
       }
       const opts: FindOptions = {
