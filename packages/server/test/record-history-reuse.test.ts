@@ -53,3 +53,26 @@ test('a record put back by the cleanup undo keeps the history from before it was
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('the history of an original put back after another record had and gave up its id does not include that record', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-history-restore-b-'));
+  createStore(join(dir, 'Notes.sqlite'));
+  const store = new Store(join(dir, 'Notes.sqlite'));
+  try {
+    store.applyDesign([{ op: 'createTable', name: 'Docs', fields: [{ name: 'Title', type: 'text' }] }] as never);
+    const a = store.create('Docs', { Title: 'A' }, { account: 'Ann' }).recordId;
+    const rowA = store.sql.prepare('SELECT * FROM Docs WHERE _fm_record_id = ?').get(a) as Record<string, never>;
+    store.delete('Docs', a, { account: 'Ann' });
+    const deleteA = store.auditLog({ table: 'Docs', recordId: a, kind: 'delete' }).at(-1)!;
+    assert.equal(store.create('Docs', { Title: 'secret-B' }, { account: 'Bo' }).recordId, a);
+    store.update('Docs', a, { Title: 'secret-B2' }, undefined, { account: 'Bo' });
+    store.delete('Docs', a, { account: 'Bo' });
+    store.restoreDeletedRow('Docs', rowA, { account: 'Ann', undoesDelete: deleteA.seq });
+    const history = recordHistory(store, 'Docs', a);
+    assert.ok(!JSON.stringify(history).includes('secret-B'));
+    assert.equal(history.events.flatMap((e) => e.seqs).length, 3, "A's create, its delete and the put-back");
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
