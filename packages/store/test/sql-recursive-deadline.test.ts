@@ -94,3 +94,24 @@ test('queries that do not recurse run in this process, and a recursive one canno
   assert.throws(() => store.select('with recursive c(x) as (select 1 union all select x + 1 from c where x < 3) select pg_demo() from c'),
     (e: unknown) => e instanceof StoreError && e.code === 8310 && /pg_demo/.test(e.message));
 });
+
+test('a recursive query may call a function its definer made portable, and is still stopped at the deadline', (t) => {
+  const store = fixture(t);
+  const before = RECURSIVE_SQL.ms;
+  t.after(() => { RECURSIVE_SQL.ms = before; });
+  const module = new URL('./support/portable-query-function.ts', import.meta.url).href;
+  store.defineQueryFunction('demo_double', (x) => (x === null ? null : Number(x) * 2), { module, export: 'double' });
+  // Called in the recursive part and in the select list, as a driver's own catalog lookups do.
+  const rows = store.select('with recursive s(r) as (select 1 union all select r + 1 from s where r < demo_double(2)) select r, demo_double(r) from s').rows;
+  assert.deepEqual(rows, [[1, 2], [2, 4], [3, 6], [4, 8]]);
+  // A function that is portable does not make a loop that never ends end.
+  RECURSIVE_SQL.ms = 700;
+  const started = performance.now();
+  assert.throws(() => store.select('with recursive c(x) as (select 1 union all select x + 1 from c) select count(*), demo_double(2) from c'),
+    (e: unknown) => e instanceof StoreError && e.code === 812);
+  assert.ok(performance.now() - started < 4000, 'it was stopped, not left to run');
+  // One function that is not portable among portable ones still refuses the query, naming that function.
+  store.defineQueryFunction('demo_local', () => 1);
+  assert.throws(() => store.select('with recursive c(x) as (select 1 union all select x + 1 from c where x < 3) select demo_double(x), demo_local() from c'),
+    (e: unknown) => e instanceof StoreError && e.code === 8310 && /demo_local/.test(e.message));
+});

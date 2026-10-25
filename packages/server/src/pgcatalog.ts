@@ -13,6 +13,7 @@ import { cleanSql, maskSql, sqlName, sqlTokens, type SqlToken } from '../../stor
 import type { SQLInputValue, SQLOutputValue } from 'node:sqlite';
 import type { Store } from '../../store/src/index.ts';
 import type { SqlValue } from '../../store/src/find.ts';
+import { arrayElements, arrayLength, arrayUpper } from './pg-array-functions.ts';
 import { assertPatternNesting, guardedTest, RegexTimeout } from '../../calc/src/regex-guard.ts';
 
 export const NS = { pg_catalog: 11, public: 2200, information_schema: 13_000 } as const;
@@ -827,36 +828,6 @@ function arrayItem(v: SQLOutputValue | string): string {
   return text === '' || /^null$/i.test(text) || /[{},"\\\s]/.test(text) ? `"${text.replace(/["\\]/g, '\\$&')}"` : text;
 }
 
-/** Parse PostgreSQL's one-dimensional array text, respecting quoted and escaped delimiters. */
-function arrayElements(value: string): (string | null)[] {
-  const body = value.replace(/^\{|\}$/g, '');
-  if (!body) return [];
-  const elements: (string | null)[] = [];
-  let element = '';
-  let quoted = false;
-  let wasQuoted = false;
-  let escaped = false;
-  const push = () => { elements.push(!wasQuoted && /^null$/i.test(element) ? null : element); element = ''; wasQuoted = false; };
-  for (const char of body) {
-    if (escaped) {
-      element += char;
-      escaped = false;
-    } else if (char === '\\') {
-      escaped = true;
-    } else if (char === '"') {
-      quoted = !quoted;
-      wasQuoted = true;
-    } else if (char === ',' && !quoted) {
-      push();
-    } else {
-      element += char;
-    }
-  }
-  if (escaped) element += '\\';
-  push();
-  return elements;
-}
-
 /**
  * Whether a pattern can backtrack without end on some input, so one query could stall the server: a repeated group
  * that itself repeats or chooses ((a+)+, (a|aa)*), or a back-reference. Catalog lookups (psql's \\d name, a BI tool's
@@ -956,11 +927,10 @@ export function catalogFunctions(store: Store, data: () => CatalogData): void {
   define('format_type', (oid) => (oid === null ? null : FORMATTED[Number(oid)] ?? TYPES.find((t) => t[0] === Number(oid))?.[1] ?? '???'));
   define('current_setting', (name) => SETTINGS[String(name).toLowerCase()] ?? null);
   define('quote_ident', (s) => (s === null ? null : /^[a-z_][a-z0-9_]*$/.test(String(s)) ? String(s) : `"${String(s).replace(/"/g, '""')}"`));
-  define('array_upper', (a, dimension) => (a === null || Number(dimension) !== 1 ? null : arrayElements(String(a)).length || null));
-  define('array_length', (a, dimension) => {
-    if (a === null || Number(dimension) !== 1) return null;
-    return arrayElements(String(a)).length || null;
-  });
+  // These two keep no state, so a recursive query's child process imports them too (a driver's generate_series bound is one).
+  const portable = (name: string) => ({ module: new URL('./pg-array-functions.ts', import.meta.url).href, export: name });
+  store.defineQueryFunction('array_upper', arrayUpper, portable('arrayUpper'));
+  store.defineQueryFunction('array_length', arrayLength, portable('arrayLength'));
   define('array_remove', (a, element) => {
     if (a === null) return null;
     const kept = arrayElements(String(a)).filter((x) => (x === null ? element !== null : element === null || x !== String(element)));
