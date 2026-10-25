@@ -300,7 +300,8 @@ test('checks start at a bounded rate overall', async () => {
   for (const release of releases) release!();
 });
 
-test('a flood that holds an address group\'s line full crowds out that group only, and the group recovers when it stops', async (t) => {
+// The other group is another address of this computer (127.0.0.2) used as the source of a connection; macOS has only 127.0.0.1 on its loopback.
+test('a flood that holds an address group\'s line full crowds out that group only, and the group recovers when it stops', { skip: process.platform === 'darwin' && 'macOS has only 127.0.0.1 on the loopback' }, async (t) => {
   const s = await start(t);
   const frozen = performance.now();
   t.mock.method(performance, 'now', () => frozen);
