@@ -919,6 +919,18 @@ def('JSONSetElement', 2, undefined, (a, env) => {
 const bytesOf = (v: Value, env: Env): Uint8Array =>
   v.type === 'container' && v.data ? v.data : v.type === 'container' && v.changed ? new Uint8Array(0) : new TextEncoder().encode(T(v, env));
 const binary = (data: Uint8Array): Value => ({ type: 'container', value: '', data });
+/** The longest text JavaScript can hold. */
+const MAX_STRING = 0x1fffffe8;
+/**
+ * Refuses text made from `v` that would be `size` characters long. Text is held to the text limit, so a chain of
+ * encoders cannot multiply it. A container is a stored file (a picture is several megabytes, and its Base64 is read
+ * back whole), so only what JavaScript could not hold is refused; the text it makes is over the limit for any
+ * function that takes text, and cannot grow further.
+ */
+function checkEncodedSize(v: Value, size: number): void {
+  if (v.type !== 'container') return checkCalcTextSize(size);
+  if (!Number.isSafeInteger(size) || size > MAX_STRING) throw new ComplexityError('The result is too large');
+}
 
 /** The length of the Base64 of `bytes` bytes, with a line break of `eol` characters after every `wrap` characters (none for 0). */
 const base64Length = (bytes: number, wrap = 0, eol = 0) => {
@@ -927,7 +939,7 @@ const base64Length = (bytes: number, wrap = 0, eol = 0) => {
 };
 eager('Base64Encode', 1, 1, (v, env) => {
   const data = bytesOf(v[0], env);
-  checkCalcTextSize(base64Length(data.length, 76, 1));
+  checkEncodedSize(v[0], base64Length(data.length, 76, 1));
   return text(Buffer.from(data).toString('base64').replace(/(.{76})(?=.)/g, '$1\r'));
 });
 // OpenPGP's 24-bit CRC (RFC 4880 section 6.1) of the data, as the four Base64 characters that follow "=".
@@ -947,7 +959,7 @@ function crc24(data: Uint8Array): string {
 eager('Base64EncodeRFC', 2, 2, (v, env) => {
   const rfc = Math.trunc(N(v[0]));
   const data = bytesOf(v[1], env);
-  checkCalcTextSize(base64Length(data.length, rfc === 1421 ? 64 : rfc === 2045 || rfc === 4880 ? 76 : 0, 2) + (rfc === 4880 ? 7 : 0));
+  checkEncodedSize(v[1], base64Length(data.length, rfc === 1421 ? 64 : rfc === 2045 || rfc === 4880 ? 76 : 0, 2) + (rfc === 4880 ? 7 : 0));
   const s = Buffer.from(data).toString('base64');
   const wrap = (n: number) => s.replace(new RegExp(`(.{${n}})(?=.)`, 'g'), '$1\r\n');
   if (rfc === 1421) return text(wrap(64));
@@ -962,7 +974,7 @@ eager('Base64Decode', 1, 2, (v, env) => {
 });
 eager('HexEncode', 1, 1, (v, env) => {
   const data = bytesOf(v[0], env);
-  checkCalcTextSize(2 * data.length);
+  checkEncodedSize(v[0], 2 * data.length);
   return text(Buffer.from(data).toString('hex').toUpperCase());
 });
 eager('HexDecode', 1, 2, (v, env) => {

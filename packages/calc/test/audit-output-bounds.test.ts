@@ -55,6 +55,16 @@ test('HexEncode refuses a result past the text limit, however deeply it is neste
   assert.equal(evaluateText('HexEncode ( "abc" )'), '616263');
 });
 
+test('a container is encoded whole, whatever the length of its text (a stored picture is several megabytes)', () => {
+  const picture = new Uint8Array(7_000_000).fill(0xab);
+  const ctx: CalcContext = { field: () => ({ type: 'container', value: 'photo.jpg', data: picture }) };
+  assert.equal(evaluateText('Length ( Base64Encode ( F ) )', ctx), String(Math.ceil(7_000_000 / 3) * 4 + Math.ceil((Math.ceil(7_000_000 / 3) * 4) / 76) - 1));
+  assert.equal(evaluateText('Length ( HexEncode ( F ) )', ctx), '14000000');
+  assert.ok(evaluateText('Length ( Base64EncodeRFC ( 2045 ; F ) )', ctx) !== '?');
+  // The text those make is over the limit, so it cannot be fed to another function that grows it.
+  refused('Length ( HexEncode ( Base64Encode ( F ) ) )', ctx);
+});
+
 test('Base64Encode and GetAsURLEncoded refuse a result past the text limit', () => {
   const big = `Substitute ( ${BIG} ; "a" ; "é" )`;
   refused(`Length ( GetAsURLEncoded ( ${big} ) )`);
