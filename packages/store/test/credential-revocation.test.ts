@@ -158,3 +158,14 @@ test('an administrator setting their own password in Manage Security keeps their
     assert.equal(store.hasPasskey('Victim'), false);
   });
 });
+
+test('the disabled event counts only the recovery codes that could still have been used', () => {
+  withStore((store) => {
+    const [code] = enrol(store, 'Victim');
+    assert.equal(store.useRecoveryCode('Victim', code), true);
+    store.setAccountActive('Victim', false);
+    const event = store.auditLog({ security: true, limit: 200 }).find((e) => e.kind === 'account-disabled' && JSON.stringify(e).includes('Victim'));
+    assert.equal((event?.changes as Record<string, unknown>)?.revokedRecoveryCodes, 1, 'one of the two was already spent');
+    assert.equal(store.recoveryCodesRemaining('Victim'), 0);
+  });
+});
