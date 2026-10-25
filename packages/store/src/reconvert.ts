@@ -294,10 +294,13 @@ function carryRecords(sql: DatabaseSync, counts: { created: number; edited: numb
 
     // Made since, under an id the .fmp12 also uses: new ids continue after the highest one left, so deleting the last
     // original record gives its id to the next new one, which has no edits to tell it from the original. The audit log
-    // says it was made here (a revert that put an original back is not that); the original goes, the person's record
-    // is copied whole below.
-    if (audit && columns(sql, '_fm_audit', 'old').includes('revert_of')) {
-      const made = (sql.prepare("SELECT DISTINCT record_id FROM old._fm_audit WHERE security = 0 AND kind = 'create' AND revert_of IS NULL AND tbl = ? AND record_id IS NOT NULL").all(t.name) as { record_id: number }[]).map((r) => r.record_id);
+    // says it was made here (a revert, or a restore, that put an original back is not that); the original goes, the
+    // person's record is copied whole below. This depends on the log: once audit retention has removed the create
+    // entry, the id reads as the untouched original (ADMIN.md says so). A log from before reverts were marked
+    // (no revert_of column) has none to tell apart, so every create counts as made here.
+    if (audit) {
+      const marked = columns(sql, '_fm_audit', 'old').includes('revert_of');
+      const made = (sql.prepare(`SELECT DISTINCT record_id FROM old._fm_audit WHERE security = 0 AND kind = 'create'${marked ? ' AND revert_of IS NULL' : ''} AND tbl = ? AND record_id IS NOT NULL`).all(t.name) as { record_id: number }[]).map((r) => r.record_id);
       const drop = sql.prepare(`DELETE FROM main.${T} WHERE _fm_record_id = ?`);
       for (const id of made) drop.run(id);
     }

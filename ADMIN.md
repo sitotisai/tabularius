@@ -605,7 +605,9 @@ It converts the `.fmp12` beside the store afresh and carries over what
 happened since the first conversion:
 
 - records created, changed and deleted (changed records keep the fields
-  their audit log names, or all fields when it names none)
+  their audit log names, or all fields when it names none; a record made
+  here that took the id of a deleted original is told apart from the original
+  by the audit log's create entry)
 - images added in Tabularius (design mode's Picture, `POST /images`); one that
   holds an id the `.fmp12`'s own image library also uses (an older conversion
   that had not read the file's highest image) is kept under a new id
@@ -622,6 +624,23 @@ differently, and container files. With several files to do, **Convert all
 again…** shows that for every file at once, then converts the ones listed. If
 an account would ever be missing afterwards, converting refuses and changes
 nothing.
+
+Telling a new record from an original that has its id depends on the audit
+log. New ids continue after the highest one left, so deleting the last
+original record gives its id to the next new record, and only the log's create
+entry says whose it is. Once audit retention (400 days unless you changed it)
+has removed that entry, converting again takes the id for the untouched
+original and brings the original's data back over the new record, with nothing
+in the counts to show it. To keep this safe, set audit retention longer than
+you will go between converting again (0 keeps every entry); entries already
+removed can't be brought back, and the store kept beside the new one is the
+place to look for a record that came back as its original.
+
+A log from before reverts were marked (no `revert_of` column) can't tell a
+record put back from one made new, so there every create counts as made here
+and keeps the old store's values. Records put back by the data cleanup's undo
+or the console's restore before those were marked are read the same way: kept
+with their old values, and counted as created.
 
 A `.fmp12` copied to another machine has a new modification time but the same
 content, and converting again carries edits over as usual: it is compared by

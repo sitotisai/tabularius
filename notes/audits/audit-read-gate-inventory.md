@@ -588,9 +588,9 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/store/src/privileges.ts:549](../../packages/store/src/privileges.ts#L549) `ensurePrivilegeTables` | `SQLite.all` (549); `SQLite.prepare` (549) | AUTH |
 | [packages/store/src/privileges.ts:521](../../packages/store/src/privileges.ts#L521) `privilegeSets` | `SQLite.all` (521); `SQLite.prepare` (521) | AUTH |
 | [packages/store/src/reconvert.ts:188](../../packages/store/src/reconvert.ts#L188) `build` | `SQLite.get` (188); `SQLite.prepare` (188, 191, 196); `SQLite.all` (196) | OPERATOR |
-| [packages/store/src/reconvert.ts:340](../../packages/store/src/reconvert.ts#L340) `carryImages` | `SQLite.all` (340, 342); `SQLite.prepare` (340, 342, 343) | OPERATOR |
-| [packages/store/src/reconvert.ts:293](../../packages/store/src/reconvert.ts#L293) `carryRecords` | `SQLite.prepare` (293, 300, 301, 306, 307, 317, 323, 324); `SQLite.all` (300, 306, 310, 323) | OPERATOR |
-| [packages/store/src/reconvert.ts:349](../../packages/store/src/reconvert.ts#L349) `carrySettings` | `SQLite.all` (349, 353, 361); `SQLite.prepare` (349, 353, 361, 362, 366); `SQLite.get` (366) | OPERATOR |
+| [packages/store/src/reconvert.ts:343](../../packages/store/src/reconvert.ts#L343) `carryImages` | `SQLite.all` (343, 345); `SQLite.prepare` (343, 345, 346) | OPERATOR |
+| [packages/store/src/reconvert.ts:293](../../packages/store/src/reconvert.ts#L293) `carryRecords` | `SQLite.prepare` (293, 303, 304, 309, 310, 320, 326, 327); `SQLite.all` (303, 309, 313, 326) | OPERATOR |
+| [packages/store/src/reconvert.ts:352](../../packages/store/src/reconvert.ts#L352) `carrySettings` | `SQLite.all` (352, 356, 364); `SQLite.prepare` (352, 356, 364, 365, 369); `SQLite.get` (369) | OPERATOR |
 | [packages/store/src/reconvert.ts:99](../../packages/store/src/reconvert.ts#L99) `columns` | `SQLite.all` (99); `SQLite.prepare` (99) | OPERATOR |
 | [packages/store/src/reconvert.ts:256](../../packages/store/src/reconvert.ts#L256) `copyContainer` | `SQLite.get` (256); `SQLite.prepare` (256, 258, 264) | OPERATOR |
 | [packages/store/src/reconvert.ts:90](../../packages/store/src/reconvert.ts#L90) `meta` | `SQLite.get` (90); `SQLite.prepare` (90) | OPERATOR |
