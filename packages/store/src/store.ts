@@ -2537,6 +2537,13 @@ export class Store {
    */
   revertAuditEntry(layout: string, recordId: number, seq: number, opts: WriteOptions & { fields?: string[] } = {}): { action: 'updated' | 'deleted' | 'created'; fields: string[]; skipped: { field: string; reason: string }[] } {
     const info = this.layout(layout);
+    // What the answers below tell (an entry belongs to this record, the record was made again) is the log's, so an
+    // account that cannot see the record gets the one answer for every entry, before any of it is looked at.
+    const pv = this.local(opts.privileges);
+    const there = !!pv && info.owner === this && !!this.sql.prepare(`SELECT 1 FROM ${q(info.table)} WHERE _fm_record_id = ?`).get(recordId);
+    if (pv && !(there ? this.canViewRecord(info.table, recordId, opts.privileges) : pv.table(info.table).view !== false)) {
+      throw new StoreError(101, `Audit entry ${seq} is not a change to this record`);
+    }
     const entry = Number.isInteger(seq) && seq > 0 ? this.auditLog({ afterSeq: seq - 1, limit: 1 })[0] : undefined;
     if (!entry || entry.seq !== seq || entry.security || entry.recordId !== recordId || entry.table.toLowerCase() !== info.table.toLowerCase()
       || entry.seq < this.recordLifeStart(info.table, recordId)) {
