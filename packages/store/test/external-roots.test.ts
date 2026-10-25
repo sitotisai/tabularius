@@ -3,11 +3,11 @@
 // another hosted file's storage must not widen the roots.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createStore, Store } from '../src/index.ts';
-import { externalRoots } from '../src/store.ts';
+import { externalRoots, SERVER_FOLDERS } from '../src/store.ts';
 
 const folder = resolve('/srv/hosted');
 const at = (...parts: string[]) => resolve(folder, ...parts);
@@ -193,4 +193,48 @@ test('fmp12-94: a folder beside the file that is no longer searched is named in 
   // A copy of the file at a new place (a dry run, a debug copy) does not warn again.
   open('b');
   assert.equal(warnings.filter((w) => w.includes('Besides')).length, 1, warnings.join('\n'));
+});
+
+test('fmp12-94: the warning gives move advice only where moving is safe', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-external-roots-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const bases = ['RC_Data_FMS/Payroll/', 'rc_data_fms/Payroll', 'Files/', 'Files/Other', 'RC_Data_FMS', 'Backups/', 'Logs', 'documents/', 'Exports', 'Outbox', '.openhbam-secrets', '.hidden/x', '.', './', 'Fine/Scans'];
+  for (const base of bases) mkdirSync(join(dir, base), { recursive: true });
+  for (const base of SERVER_FOLDERS) mkdirSync(join(dir, base), { recursive: true });
+  for (const base of [...bases, ...SERVER_FOLDERS]) {
+    const refused: string[] = [];
+    externalRoots(dir, 'Acme', [base], refused);
+    const said = refused.join('\n');
+    const ordinary = base === 'Fine/Scans';
+    if (ordinary) {
+      assert.equal(refused.length, 1, said);
+      assert.ok(said.includes(`move it to ${join(dir, 'RC_Data_FMS', 'Acme', 'Fine', 'Scans')}`), said);
+    } else {
+      // Named, with no place to move it to: nothing in it is this file's, and moving it would make it so.
+      assert.ok(refused.length <= 1, said);
+      assert.ok(!said.includes('move it to'), `${JSON.stringify(base)}: ${said}`);
+      if (!['.', './'].includes(base) || refused.length) assert.ok(refused.length === 0 || said.includes('not used'), said);
+    }
+  }
+  // The inputs that exist as folders beside the file are all named (the hosted folder itself included), none with advice.
+  for (const base of ['RC_Data_FMS/Payroll/', 'Backups/', 'Logs', '.', './', 'RC_Data_FMS', 'Files/']) {
+    const refused: string[] = [];
+    externalRoots(dir, 'Acme', [base], refused);
+    assert.equal(refused.length, 1, `${JSON.stringify(base)} is named once`);
+    assert.match(refused[0], /not used/);
+  }
+});
+
+test('fmp12-94: every folder server code joins onto the hosted folder is in SERVER_FOLDERS', () => {
+  // Server code names its folders with a capitalized literal (join(folder, \'Backups\')): a new one must be listed so the
+  // warning never advises moving container files into it.
+  const src = join(import.meta.dirname, '..', '..', 'server', 'src');
+  const known = new Set(SERVER_FOLDERS.map((f) => f.toLowerCase()));
+  const found = new Map<string, string>();
+  for (const file of readdirSync(src).filter((f) => f.endsWith('.ts'))) {
+    const text = readFileSync(join(src, file), 'utf8');
+    for (const match of text.matchAll(/join\((?:this\.)?(?:host\.)?(?:opts\.)?(?:folder|dir), '([A-Z][A-Za-z]+)'\)/g)) found.set(match[1], file);
+  }
+  assert.ok(found.size >= 4, `expected the known folders, found ${[...found.keys()].join(', ')}`);
+  for (const [name, file] of found) assert.ok(known.has(name.toLowerCase()), `${file} makes a folder ${name} in the hosted folder: add it to SERVER_FOLDERS in store.ts`);
 });
