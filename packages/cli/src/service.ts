@@ -50,7 +50,8 @@ import { nodeSupports } from './node-version.cjs';
 import { closedBy, refusalFor } from './newer-files.ts';
 import { readSecretFile } from './secret-file.ts';
 import { requestStop } from './stop-request.ts';
-import { refuseWritableSystemTaskCode, windowsHost, type SystemHost } from './windows-acl.ts';
+import { refuseWritableSystemTaskCode, SYSTEM32, windowsHost, type SystemHost } from './windows-acl.ts';
+import { findExecutable } from '../../server/src/find-executable.ts';
 import { queryRegisteredTask, stageSystemTaskXml, taskDifferences } from './windows-task.ts';
 
 export type Platform = 'darwin' | 'linux' | 'win32';
@@ -273,6 +274,15 @@ WantedBy=${o.system ? 'multi-user.target' : 'default.target'}
   };
 }
 
+/**
+ * The program to start for a tool, as a full path on Windows: Windows looks for a bare name in the current folder first, and an
+ * administrator prompt may be in a folder that others write to. Elsewhere the bare name is as before. `git` comes from PATH.
+ */
+export function program(name: 'schtasks' | 'tar' | 'git', platform: NodeJS.Platform = process.platform): string {
+  if (platform !== 'win32') return name;
+  return name === 'git' ? findExecutable('git', platform) ?? `${SYSTEM32}\\git.exe` : `${SYSTEM32}\\${name}.exe`;
+}
+
 /** Runs a command where the person can see it (and answer sudo); throws when it fails. */
 function run(cmd: string, args: string[], opts: { ok?: boolean; cwd?: string; env?: NodeJS.ProcessEnv } = {}): boolean {
   const r = spawnSync(cmd, args, { stdio: 'inherit', cwd: opts.cwd, env: opts.env });
@@ -365,9 +375,9 @@ export function installService(o: ServiceOptions, windows: Partial<SystemHost> =
       mkdirSync(dirname(f.path), { recursive: true });
       writeFileSync(f.path, bytes);
       stopOwnServer(was?.folder ?? o.folder, o.platform);
-      run('schtasks', ['/End', '/TN', TASK], { ok: true });
-      if (!run('schtasks', ['/Create', '/TN', TASK, '/XML', f.path, '/F'], { ok: true })) throw new Error('could not create the task');
-      run('schtasks', ['/Run', '/TN', TASK]);
+      run(program('schtasks'), ['/End', '/TN', TASK], { ok: true });
+      if (!run(program('schtasks'), ['/Create', '/TN', TASK, '/XML', f.path, '/F'], { ok: true })) throw new Error('could not create the task');
+      run(program('schtasks'), ['/Run', '/TN', TASK]);
     }
     say(o.system ? 'Running at boot as the system account' : 'Running whenever you are signed in to Windows. Add --system (as administrator) to run at boot.');
   }
@@ -501,8 +511,8 @@ export function uninstallService(o: Pick<ServiceOptions, 'platform' | 'home' | '
       run(cmd, [...pre, 'daemon-reload'], { ok: true });
     } else {
       if (which) stopOwnServer(which.folder, o.platform);
-      run('schtasks', ['/End', '/TN', TASK], { ok: true });
-      run('schtasks', ['/Delete', '/TN', TASK, '/F'], { ok: true });
+      run(program('schtasks'), ['/End', '/TN', TASK], { ok: true });
+      run(program('schtasks'), ['/Delete', '/TN', TASK, '/F'], { ok: true });
       rmSync(f.path, { force: true });
       break;
     }
@@ -584,8 +594,8 @@ export function restartService(s: Installed): void {
     else run('systemctl', ['--user', 'restart', 'openhbam.service']);
   } else {
     stopOwnServer(s.folder, s.platform);
-    run('schtasks', ['/End', '/TN', TASK], { ok: true });
-    run('schtasks', ['/Run', '/TN', TASK]);
+    run(program('schtasks'), ['/End', '/TN', TASK], { ok: true });
+    run(program('schtasks'), ['/Run', '/TN', TASK]);
   }
 }
 
@@ -700,7 +710,7 @@ export async function waitForRestart(url: string, since: number, ms = 90_000, wa
 }
 
 const git = (app: string, ...args: string[]) => {
-  const r = spawnSync('git', ['-C', app, ...args], { encoding: 'utf8' });
+  const r = spawnSync(program('git'), ['-C', app, ...args], { encoding: 'utf8' });
   if (r.status !== 0) throw new Error(`git ${args.join(' ')} failed: ${(r.stderr || r.error?.message || '').trim()}`);
   return r.stdout.trim();
 };
@@ -724,7 +734,7 @@ interface Fetched {
 /** Fails when a checkout has changes of its own, which an upgrade would lose. */
 function refuseLocalChanges(app: string): void {
   let changed = git(app, 'status', '--porcelain', '--untracked-files=no');
-  if (changed && spawnSync('git', ['-C', app, 'diff', '--quiet', '--ignore-cr-at-eol'], { stdio: 'ignore' }).status === 0) {
+  if (changed && spawnSync(program('git'), ['-C', app, 'diff', '--quiet', '--ignore-cr-at-eol'], { stdio: 'ignore' }).status === 0) {
     // Only line endings differ (Git for Windows' autocrlf): nothing of the user's to lose.
     git(app, 'checkout', '--', '.');
     changed = git(app, 'status', '--porcelain', '--untracked-files=no');
@@ -838,7 +848,7 @@ function fromFiles(app: string, source: string): Fetched {
     mkdirSync(incoming, { recursive: true });
     if (folder) cpSync(source, incoming, { recursive: true, filter: (p) => !/[\\/](node_modules|\.git)$/.test(p) });
     else {
-      const r = spawnSync('tar', ['-xf', source, '-C', incoming], { encoding: 'utf8' });
+      const r = spawnSync(program('tar'), ['-xf', source, '-C', incoming], { encoding: 'utf8' });
       if (r.status !== 0) throw new Error(`could not unpack ${source}: ${(r.stderr || r.error?.message || '').trim()}`);
     }
     // A release tarball may hold one folder (tabularius-1.2.0/...) with the files in it.
@@ -891,7 +901,7 @@ export async function upgrade(opts: { backup?: (folder: string, extra: string[])
   if (opts.from) {
     const from = resolve(opts.from);
     if (!existsSync(from)) throw new Error(`${from} isn't there`);
-    const bundle = !statSync(from).isDirectory() && spawnSync('git', ['bundle', 'list-heads', from], { stdio: 'ignore' }).status === 0;
+    const bundle = !statSync(from).isDirectory() && spawnSync(program('git'), ['bundle', 'list-heads', from], { stdio: 'ignore' }).status === 0;
     fetched = bundle ? fromBundle(app, from) : fromFiles(app, from);
   } else fetched = fromRemote(app);
   const { old, now } = fetched;

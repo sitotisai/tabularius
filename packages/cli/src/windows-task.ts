@@ -62,14 +62,14 @@ export function queryRegisteredTask(name: string, host: SystemHost): string {
   return out.toString('utf8').replace(/^﻿/, '');
 }
 
-interface XmlNode { name: string; text: string; children: XmlNode[] }
+interface XmlNode { name: string; text: string; children: XmlNode[]; attrs: Record<string, string> }
 
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
 const unescapeXml = (s: string) => s.replace(/&(?:#x([0-9a-f]+)|#(\d+)|(amp|lt|gt|quot|apos));/gi, (_, hex, dec, name) => hex ? String.fromCodePoint(parseInt(hex, 16)) : dec ? String.fromCodePoint(Number(dec)) : ENTITIES[name.toLowerCase()]);
 
 /** A small reader for the XML of a task: elements and their text (attributes are not needed). Throws on anything malformed. */
 function parseXml(text: string): XmlNode {
-  const root: XmlNode = { name: '', text: '', children: [] };
+  const root: XmlNode = { name: '', text: '', children: [], attrs: {} };
   const stack = [root];
   const token = /<!--[^]*?-->|<\?[^]*?\?>|<!\[CDATA\[([^]*?)\]\]>|<\/([^\s>]+)\s*>|<([^\s/>!?]+)((?:\s+[^\s=/>]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>|([^<]+)|(<)/g;
   for (const m of text.matchAll(token)) {
@@ -81,7 +81,9 @@ function parseXml(text: string): XmlNode {
       if (stack.length < 2 || top.name !== m[2].replace(/^.*:/, '')) throw new Error('not well-formed XML');
       stack.pop();
     } else if (m[3] !== undefined) {
-      const node: XmlNode = { name: m[3].replace(/^.*:/, ''), text: '', children: [] };
+      const attrs: Record<string, string> = {};
+      for (const a of (m[4] ?? '').matchAll(/([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) attrs[a[1].replace(/^.*:/, '')] = unescapeXml(a[2] ?? a[3]);
+      const node: XmlNode = { name: m[3].replace(/^.*:/, ''), text: '', children: [], attrs };
       top.children.push(node);
       if (!m[5]) stack.push(node);
     }
@@ -106,6 +108,11 @@ export function taskDifferences(intended: string, registered: string): string[] 
   try { got = parseXml(registered); } catch (e) { return [`the registered task could not be read (${(e as Error).message})`]; }
   const diffs: string[] = [];
   if (got.name !== 'Task') diffs.push('what Task Scheduler returned is not a task');
+  // One principal only, and the actions run as it: a second principal, with Actions Context naming it, would run them as someone else.
+  const principals = kids(child(got, 'Principals'), 'Principal');
+  if (principals.length !== 1) diffs.push(`it has ${principals.length} principals, not one`);
+  const context = child(got, 'Actions')?.attrs.Context;
+  if (context !== undefined && context !== principals[0]?.attrs.id) diffs.push(`its actions run as principal "${context}", not the one it lists`);
   const user = (n: XmlNode) => text(child(child(child(n, 'Principals'), 'Principal'), 'UserId'))?.toUpperCase();
   const same = (a?: string, b?: string) => a !== undefined && a === b;
   const wantUser = user(want);

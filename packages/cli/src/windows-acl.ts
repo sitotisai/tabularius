@@ -66,6 +66,9 @@ function rightsMask(rights: string): number {
   return mask & ODD_BITS ? (mask | GENERIC_ALL) >>> 0 : mask;
 }
 
+/** Which rights make a folder unsafe: see `writableBy`. */
+export type Scope = 'object' | 'above' | 'parent';
+
 export interface Ace { type: string; flags: string; rights: string; sid: string }
 export interface ParsedSddl {
   owner: string;
@@ -151,13 +154,14 @@ export function accountName(sid: string): string {
 /**
  * Who, besides administrators and the system, can change what is at this security descriptor: its owner (who can rewrite the
  * access list) and every account that an "allow" entry gives a writing right. `object` is the code itself; `above` is a
- * folder far above it, where only removing, replacing or re-securing the folder matters. Entries that only pass down to
+ * folder far above it, where only removing, replacing or re-securing the folder matters; `parent` is the folder the program folder is
+ * in, held to the writing mask like the code and also for what it passes down to the folders made in it. Entries that only pass down to
  * children and entries that deny are ignored (an allow that a deny cancels is still named, which errs toward refusing); a
  * conditional entry counts as if its condition were met. A security descriptor with no access list (everyone may do
  * everything), one with an entry type this reader does not know, or one that cannot be read in full is named as writable.
  */
-export function writableBy(sddl: string, scope: 'object' | 'above'): string[] {
-  const mask = scope === 'object' ? CHANGES_CODE : REPLACES_FOLDER;
+export function writableBy(sddl: string, scope: Scope): string[] {
+  const mask = scope === 'above' ? REPLACES_FOLDER : CHANGES_CODE;
   const parsed = parseSddl(sddl);
   if (!parsed) return ['an unreadable security descriptor'];
   const who: string[] = [];
@@ -166,7 +170,10 @@ export function writableBy(sddl: string, scope: 'object' | 'above'): string[] {
   if (!parsed.aces) return [...who, 'everyone (there is no access list, which lets anyone do anything)'];
   for (const ace of parsed.aces) {
     if (TRUSTED.has(ace.sid)) continue;
-    if ((ace.flags.match(/../g) ?? ([] as string[])).includes('IO')) continue;
+    const flags = ace.flags.match(/../g) ?? ([] as string[]);
+    // An inherit-only entry gives nothing on this folder itself, but on `parent` (a folder in which a sibling of the program is made) a new
+    // folder or file there picks up every entry that passes to children, so one that does and writes counts. Creator Owner becomes the creator.
+    if (flags.includes('IO') && !(scope === 'parent' && (flags.includes('OI') || flags.includes('CI')) && ace.sid !== 'CO' && ace.sid !== 'S-1-3-0')) continue;
     if (['D', 'OD', 'XD'].includes(ace.type)) continue;
     if (!['A', 'OA', 'XA', 'ZA'].includes(ace.type)) { who.push(`${accountName(ace.sid)} (an access entry of type "${ace.type}", which this check does not understand)`); continue; }
     // "Owner Rights" gives the owner's rights; an owner that is not trusted is named above, and a trusted one is fine.
@@ -193,7 +200,7 @@ export function above(path: string): string[] {
 export interface AccessItem {
   path: string;
   depth: AclDepth;
-  scope: 'object' | 'above';
+  scope: Scope;
   /** With `children`: an entry of this lower-case name (node.exe.local) is checked in full too. */
   localName?: string;
 }
@@ -259,13 +266,17 @@ export function refuseUnchecked(e: unknown): never {
  */
 export function refuseWritableSystemTaskCode(o: { platform: string; system: boolean; node: string; main: string; singleFile?: boolean }, probe: AclProbe = windowsAclProbe): void {
   if (o.platform !== 'win32' || !o.system) return;
+  // On a network share Administrators and the system are the file server's, not this computer's, so what they own proves nothing here.
+  for (const p of [o.node, ...(o.singleFile ? [] : [o.main])]) {
+    if (/^\\\\(?!\?\\[A-Za-z]:)/.test(p)) throw new Error(`service: --system will not run ${p} as the system account: it is on a network share, where Administrators and the system are the file server's, not this computer's. Put Node and Tabularius on a local disk, or install without --system.`);
+  }
   const app = o.singleFile ? undefined : win32.resolve(win32.dirname(o.main), '..', '..', '..');
   const items: AccessItem[] = [
     { path: o.node, depth: 'self', scope: 'object' },
     { path: win32.dirname(o.node), depth: 'children', scope: 'object', localName: `${win32.basename(o.node).toLowerCase()}.local` },
   ];
   // The program's own folder is held to the same standard as the program: a sibling made there (app.previous, app.incoming) is run or used.
-  if (app) items.push({ path: app, depth: 'tree', scope: 'object' }, { path: win32.dirname(app), depth: 'self', scope: 'object' });
+  if (app) items.push({ path: app, depth: 'tree', scope: 'object' }, { path: win32.dirname(app), depth: 'self', scope: 'parent' });
   for (const r of [...items]) for (const a of above(r.path)) items.push({ path: a, depth: 'self', scope: 'above' });
   let found: string[];
   try { found = unsafeAmong(items, probe); }
