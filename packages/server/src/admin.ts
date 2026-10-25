@@ -207,22 +207,27 @@ const PASSWORD_FILE = '.openhbam-admin';
  * so each place is hidden resolved to an absolute path, with its symlinks resolved, with either slash, and in any letter case.
  */
 function hideServerPaths(message: string, places: [path: string, shown: string][]): string {
-  const shown = new Map<string, string>();
+  const forms = new Map<string, string>();
   const add = (path: string, as: string) => {
     const base = resolve(path);
-    const forms = [base];
-    try { forms.push(realpathSync.native(base)); }
+    const spellings = [base];
+    try { spellings.push(realpathSync.native(base)); }
     catch {
-      try { forms.push(join(realpathSync.native(dirname(base)), basename(base))); } catch { /* the place does not exist yet */ }
+      try { spellings.push(join(realpathSync.native(dirname(base)), basename(base))); } catch { /* the place does not exist yet */ }
     }
-    for (const form of forms) for (const f of [form, form.replaceAll('\\', '/'), form.replaceAll('/', '\\')]) {
-      if (f.length > 1 && !shown.has(f.toLowerCase())) shown.set(f.toLowerCase(), as);
+    for (const spelling of spellings) for (const f of [spelling, spelling.replaceAll('\\', '/'), spelling.replaceAll('/', '\\')]) {
+      if (f.length > 1 && !forms.has(f)) forms.set(f, as);
     }
   };
   for (const [path, as] of places) add(path, as);
-  const spelled = [...shown.keys()].sort((a, b) => b.length - a.length).map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  if (!spelled.length) return message;
-  return message.replace(new RegExp(spelled.join('|'), 'gi'), (found) => shown.get(found.toLowerCase()) ?? '');
+  // Each form is matched as written, case-insensitively by Unicode simple case folding, never through lower-cased text (lower-casing
+  // can change a text's length or move a letter into ASCII, and then misses the original). Longest first, so a folder is hidden
+  // before the Exports folder that contains it.
+  let hidden = message;
+  for (const [form, as] of [...forms].sort((a, b) => b[0].length - a[0].length)) {
+    hidden = hidden.replace(new RegExp(form.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'giu'), () => as);
+  }
+  return hidden;
 }
 
 function secondsLeft(ms: number): number {
@@ -1752,7 +1757,7 @@ export class Admin {
         const folderName = said(body.name);
         if (!store) send(404, { error: `"${wanted}" is not hosted` });
         else if (typeof body.account !== 'string' || !body.account || typeof body.password !== 'string' || !body.password) send(400, { error: 'Give the name and password of a Full Access account' });
-        else if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(folderName) || folderName.endsWith('.partial') || folderName.endsWith('.lock')) send(400, { error: 'The folder name starts with a letter or digit and uses only letters, digits, dots, dashes and underscores (80 at most), and cannot end in .partial or .lock' });
+        else if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(folderName) || folderName.endsWith('.partial') || folderName.endsWith('.lock') || folderName.endsWith('.takeover')) send(400, { error: 'The folder name starts with a letter or digit and uses only letters, digits, dots, dashes and underscores (80 at most), and cannot end in .partial, .lock or .takeover' });
         else {
           const exports = join(this.host.dir, 'Exports');
           let problem: string | undefined;
