@@ -16,7 +16,7 @@ import { PreparedCache } from './preparation.ts';
 import { rethrowExecutionRefusal } from '../../calc/src/execution-refusal.ts';
 import { SQL_DATE_FUNCTIONS, placeholders, oneStatement } from './sql-dates.ts';
 import { boundedStatement, collectRows } from './sql-result.ts';
-import { customFunction, recursiveRows, usesRecursion, type Op } from './sql-recursive.ts';
+import { customFunctions, recursiveRows, usesRecursion, type Op, type PortableFunction } from './sql-recursive.ts';
 import { DatabaseSync, backup, type Session, type StatementSync, type SQLInputValue, type SQLOutputValue } from 'node:sqlite';
 import { createHash, createHmac, pbkdf2Sync, scrypt, scryptSync, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { isIP } from 'node:net';
@@ -975,6 +975,8 @@ export class Store {
   private decimalSqlViewVersion = -1;
   private readonly queryFunctions = new Map<string, QueryFunction>();
   private readonly untrustedQueryFunctions = new Set<string>();
+  /** The query functions a recursive query's child process can import (see defineQueryFunction), by lower-case name. */
+  private readonly portableQueryFunctions = new Map<string, PortableFunction>();
   /** The solution's design; replaced (not mutated) when design mode changes it. */
   private currentSchema: Schema;
   private schemaText?: string;
@@ -11046,10 +11048,14 @@ export class Store {
    */
   private recursiveSelect(opened: Op[], text: string, names: string[], params: SqlValue[], limit: number): SqlValue[][] | undefined {
     if (!usesRecursion(opened)) return undefined;
-    const custom = customFunction(opened);
-    if (custom) throw new StoreError(8310, `A recursive query can't call ${custom}(): it runs apart from the server so that it can be stopped, with SQLite's own functions only`);
+    const functions: { name: string; module: string; export: string }[] = [];
+    for (const name of customFunctions(opened)) {
+      const portable = this.portableQueryFunctions.get(name);
+      if (!portable) throw new StoreError(8310, `A recursive query can't call ${name}(): it runs apart from the server so that it can be stopped, with SQLite's own functions and a few portable ones only`);
+      functions.push({ name, ...portable });
+    }
     const views = this.fileMode === 'native' ? this.schema.tables.flatMap((t) => this.decimalViewSql(this.readOnlySql!, t) ?? []) : [];
-    return recursiveRows(this.path, text, params, names, limit, views) as SqlValue[][];
+    return recursiveRows(this.path, text, params, names, limit, views, functions) as SqlValue[][];
   }
 
   private readonly internalRootCache = new PreparedCache<{ version: number; roots: Map<number, string> } | undefined>(undefined);
@@ -11069,9 +11075,15 @@ export class Store {
   /**
    * A function read-only queries can call, such as PostgreSQL's catalog
    * functions for clients connected over the PostgreSQL protocol.
+   *
+   * A recursive query runs in a child process that has SQLite's own functions only (sql-recursive.ts). A function that
+   * keeps no state of its own and is the export `portable.export` of the module at `portable.module` (an address) is
+   * imported there too; any other function makes a recursive query that calls it refused.
    */
-  defineQueryFunction(name: string, fn: QueryFunction): void {
+  defineQueryFunction(name: string, fn: QueryFunction, portable?: PortableFunction): void {
     this.untrustedQueryFunctions.add(name.toLowerCase());
+    if (portable) this.portableQueryFunctions.set(name.toLowerCase(), portable);
+    else this.portableQueryFunctions.delete(name.toLowerCase());
     this.queryFunctions.set(name, fn);
     this.readOnlySql?.function(name, { varargs: true }, fn);
   }

@@ -31,6 +31,8 @@ test('sql_query stops an endless recursive query, and answers the next one', asy
   const stopped = await query('with recursive c(x) as (select 1 union all select x+1 from c) select count(*) from c');
   assert.equal(stopped.isError, true);
   assert.match(JSON.stringify(stopped), /recursive query ran longer than 0\.7 seconds/);
+  // A query that ends is not held to the short deadline a busy machine could overrun just starting the child.
+  RECURSIVE_SQL.ms = was;
   const fine = await query('with recursive c(x) as (select 1 union all select x+1 from c where x < 3) select count(*) as n from c, Items');
   assert.notEqual(fine.isError, true);
   assert.match(JSON.stringify(fine), /\b9\b/);
