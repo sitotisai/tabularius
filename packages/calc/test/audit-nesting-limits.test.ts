@@ -111,22 +111,39 @@ test('a text that evaluates itself twice per level, with EvaluationError catchin
   assert.equal(evaluateText('Let ( e = Evaluate ( G ) ; Evaluate ( "1 + 1" ) )', ctx), '2');
 });
 
+const STACK_MESSAGE = "? The document or formula is nested too deeply for this server's stack";
+const overflow = () => new RangeError('Maximum call stack size exceeded');
+/** A formula text holding `inner` as a text constant, with its quotation marks and backslashes escaped. */
+const quoted = (inner: string) => `"${inner.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+
 test('a stack that runs out inside a JSON function gives the error text without claiming the document is deep', () => {
-  const ctx = {
-    field: (ref: { field: string }) => (ref.field === 'F' ? text(nested(512)) : undefined),
-    customFunction: (name: string) => (name === 'D' ? { parameters: ['n'], formula: 'If ( n = 0 ; JSONFormatElements ( F ) ; D ( n - 1 ) & "" )' } : undefined),
-  } as CalcContext;
-  assert.match(evaluateText('D ( 0 )', ctx), /^\[\r\t/);
-  // The custom function nests deeper and deeper; where the stack runs out inside the JSON call itself depends on the
-  // stack size, so step through depths until the stack has run out everywhere (the plain "?" ten times in a row).
-  const answers = new Set<string>();
-  for (let n = 500, plain = 0; plain < 10; n += 5) {
-    assert.ok(n < 100_000, 'the stack never ran out');
-    const result = evaluateText(`D ( ${n} )`, ctx);
-    answers.add(result.startsWith('[') ? 'document' : result);
-    plain = result === '?' ? plain + 1 : 0;
+  // JSON.stringify runs inside JSONFormatElements; make it run out of stack for one marker text, as a real overflow would.
+  const marker = 'stack-marker';
+  const real = JSON.stringify;
+  JSON.stringify = ((value: unknown, ...rest: unknown[]) => {
+    if (value === marker) throw overflow();
+    return (real as (...a: unknown[]) => string)(value, ...rest);
+  }) as typeof JSON.stringify;
+  try {
+    const overflowing = `JSONFormatElements ( ${quoted(`["${marker}"]`)} )`;
+    // The call that overflows gives the text and the evaluation goes on: the next call works.
+    assert.equal(evaluateText(`${overflowing} & "|" & JSONFormatElements ( "[1]" )`, {}), `${STACK_MESSAGE}|[\r\t1\r]`);
+    // Inside Evaluate as well: the Evaluate that holds the call returns the text, and a later Evaluate runs.
+    assert.equal(evaluateText(`Evaluate ( ${quoted(overflowing)} ) & "|" & Evaluate ( "1 + 1" )`, {}), `${STACK_MESSAGE}|2`);
+  } finally {
+    JSON.stringify = real;
   }
-  const messages = [...answers].filter((r) => r !== '?' && r !== 'document');
-  assert.ok(messages.length > 0, `no depth ended inside a JSON function: ${[...answers].join(' | ').slice(0, 300)}`);
-  for (const m of messages) assert.match(m, /^\? The document or formula is nested too deeply for this server's stack$/);
+});
+
+test('a stack overflow inside Evaluate is a calculation error and leaves no state behind', () => {
+  // A field callback that runs out of stack, as a deep recursion would.
+  const ctx = { field: (ref: { field: string }) => { if (ref.field === 'S') throw overflow(); return undefined; } } as CalcContext;
+  assert.throws(() => evaluate('Evaluate ( "S" )', ctx), (e) => e instanceof CalcError && /Evaluate is nested too deeply.*stack/.test(e.message));
+  // Caught at the top level: the next Evaluate at the top level runs.
+  assert.equal(evaluateText('EvaluationError ( Evaluate ( "S" ) ) & "|" & Evaluate ( "1 + 1" )', ctx), '1200|2');
+  // Caught inside an outer Evaluate: while that one runs, Evaluate calls inside it are refused; once it has ended, they are not.
+  const outer = 'EvaluationError ( Evaluate ( "S" ) ) & "|" & EvaluationError ( Evaluate ( "1 + 1" ) )';
+  assert.equal(evaluateText(`Evaluate ( ${quoted(outer)} ) & "|" & Evaluate ( ${quoted('Evaluate ( "1 + 1" )')} )`, ctx), '1200|1200|2');
+  // And a later evaluation after all that is clean: two levels of Evaluate still work.
+  assert.equal(evaluateText(`Evaluate ( ${quoted('Evaluate ( "2 + 2" )')} )`, ctx), '4');
 });
