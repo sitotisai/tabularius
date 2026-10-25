@@ -16,4 +16,10 @@ export const charsBefore = (t: string, units: number): number => {
   return n;
 };
 export const charCount = (t: string): number => charsBefore(t, t.length);
-
+const isSeparator = (c: string | undefined) => c === '/' || c === '\\';
+/** The text without the separators (slash or backslash) at its end. */
+export const stripTrailingSeparators = (t: string) => {
+  let end = t.length;
+  while (end > 0 && isSeparator(t[end - 1])) end--;
+  return t.slice(0, end);
+};
