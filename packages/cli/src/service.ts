@@ -760,11 +760,25 @@ function validateRelease(root: string, source: string): void {
 }
 
 /** Recover a process exit between either pair of upgrade/rollback renames. */
-export function recoverUpgrade(app: string): void {
+export function recoverUpgrade(app: string, install?: (app: string) => void): void {
   // A present app is a complete old or new directory. Never replace it with
   // the previous release; it may already have passed its health check.
   if (!existsSync(app) && existsSync(`${app}.previous`)) renameSync(`${app}.previous`, app);
+  // A failed upgrade put the old git checkout back but stopped before its dependencies were installed again.
+  const marker = reinstallMarker(app);
+  if (install && existsSync(app) && existsSync(marker)) {
+    say(`An earlier upgrade stopped before the dependencies of ${app} were installed again: installing them`);
+    try {
+      install(app);
+      rmSync(marker, { force: true });
+    } catch (e) {
+      say(`Could not install them yet (${(e as Error).message}); run 'npm ci --omit=dev --ignore-scripts' in ${app} once that is fixed`);
+    }
+  }
 }
+
+/** Written beside the app when its source is put back but its dependencies may not be, removed once they are installed. */
+const reinstallMarker = (app: string) => `${app}.reinstall`;
 
 /** Preserve the working app when a Windows sharing violation prevents the second rename. */
 export function publishUpgrade(app: string, staged: string, move = renameSync): void {
@@ -840,7 +854,7 @@ export async function upgrade(opts: { backup?: (folder: string, extra: string[])
   }
   const restart = opts.restart ?? restartService;
   const app = opts.app ?? resolve(import.meta.dirname, '..', '..', '..');
-  recoverUpgrade(app);
+  recoverUpgrade(app, installDeps);
   let fetched: Fetched;
   if (opts.from) {
     const from = resolve(opts.from);
@@ -864,9 +878,25 @@ export async function upgrade(opts: { backup?: (folder: string, extra: string[])
   try {
     installDeps(app);
   } catch (e) {
+    // A tarball or folder upgrade installs into a new directory and the rollback moves the untouched old one back, node_modules
+    // and all: nothing to reinstall, and a reinstall would remove the working dependencies (offline, the use of --from).
+    // A git checkout is updated in place and `npm ci` removes its node_modules first, so a failure leaves none: the old
+    // version's go in again, and a marker beside the app says so until they are, in case this stops in between.
+    if (!fetched.files) {
+      try { writeFileSync(reinstallMarker(app), `${new Date().toISOString()}\n`); } catch { /* the marker only helps a crash; the reinstall below still runs */ }
+    }
     fetched.rollback();
+    if (!fetched.files) {
+      try {
+        installDeps(app);
+        rmSync(reinstallMarker(app), { force: true });
+      } catch (again) {
+        throw new Error(`${(e as Error).message}, so ${old}'s files were put back, but reinstalling its dependencies failed too (${(again as Error).message}), so the server may not start until they are installed: run 'npm ci --omit=dev --ignore-scripts' in ${app} once that is fixed (the next 'tabularius upgrade' also tries it first)`, { cause: e });
+      }
+    }
     throw new Error(`${(e as Error).message}, so ${old} was put back`);
   }
+  rmSync(reinstallMarker(app), { force: true });
   if (!s) {
     say('Upgraded. Restart the server to run the new version (no service was installed with `tabularius service install`).');
     return;
