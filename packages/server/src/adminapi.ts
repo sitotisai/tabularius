@@ -43,6 +43,7 @@ import { ScheduleError, type Schedule, type ScheduleInput, type Schedules } from
 import { said } from './said.ts';
 import { logFaultFor } from './fault-log.ts';
 import { sameSecret } from './secrets.ts';
+import { SettingsError } from './server-config.ts';
 
 const BASE = '/fmi/admin/api/v2';
 /** Like FileMaker Server, a token lasts 15 minutes past its last use. */
@@ -462,7 +463,10 @@ export class AdminApi {
     if (on === undefined) throw new AdminApiError(958, 'Parameter missing: blockNewUsers');
     if (typeof on !== 'boolean') throw new AdminApiError(960, 'Parameter is invalid: blockNewUsers is true or false');
     if (on !== this.host.config.blockNewUsers()) {
-      this.host.config.setBlockNewUsers(on);
+      try { this.host.config.setBlockNewUsers(on); } catch (e) {
+        if (e instanceof SettingsError) throw new AdminApiError(960, e.message, 409);
+        throw e;
+      }
       this.host.logs?.write('Event', 'Information', '', on ? 'New users are blocked (Admin API): only sessions already open carry on' : 'New users may sign in again (Admin API)');
     }
     return { blockNewUsers: on };

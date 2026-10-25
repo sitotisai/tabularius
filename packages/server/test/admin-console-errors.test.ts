@@ -1,10 +1,10 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore, Store } from '../../store/src/index.ts';
-import { serve, Schedules } from '../src/index.ts';
+import { serve, Host, Schedules } from '../src/index.ts';
 import { AdminApi } from '../src/adminapi.ts';
 import { Admin } from '../src/admin.ts';
 import { DataApi } from '../src/dataapi.ts';
@@ -107,6 +107,67 @@ test('#32 invalid edits keep the last valid settings on sign-in hot paths', (t) 
   writeFileSync(join(dir, '.openhbam-settings.json'), JSON.stringify({ sessionIdleMinutes: 30 }));
   assert.equal(config.sessionIdleMinutes(), 30);
   assert.equal(config.blockNewUsers(), false);
+});
+
+test('#32 a settings write refuses while another key on disk is invalid, names the key, and leaves disk and memory alone', async (t) => {
+  const { call, dir, host } = await setup(t);
+  const file = join(dir, '.openhbam-settings.json');
+  writeFileSync(file, '{"keep":"abc"}');
+  for (const [path, body] of [['/block-new-users', { on: true }], ['/session-timeout', { minutes: 30 }], ['/session-timeout', { minutes: 30, webMinutes: 45 }]] as const) {
+    const r = await call(path, body);
+    assert.equal(r.status, 409, path + JSON.stringify(r));
+    assert.match(r.body.error, /keep must be a number/);
+    assert.match(r.body.error, /fix or remove/i);
+    assert.ok(!r.body.error.includes(dir), 'the folder path is not in the message');
+    assert.equal(readFileSync(file, 'utf8'), '{"keep":"abc"}', path + ' left the file as it was');
+  }
+  assert.equal(host.config.blockNewUsers(), false);
+  assert.equal(host.config.sessionIdleMinutes(), 15);
+});
+
+test('#32 the Admin API refuses block-new-users with a client error while the settings file is invalid', async (t) => {
+  const { dir, host } = await setup(t);
+  t.mock.method(process, 'emitWarning', () => {});
+  const control = new AdminApi(new Admin(host, new DataApi(host)), host, new DataApi(host));
+  writeFileSync(join(dir, '.openhbam-settings.json'), '{"keep":"abc"}');
+  await assert.rejects(async () => control['blockNewUsers']({ blockNewUsers: true }), (e: Error & { status?: number }) => e.status === 409 && /keep must be a number/.test(e.message) && !e.message.includes(dir));
+  assert.equal(readFileSync(join(dir, '.openhbam-settings.json'), 'utf8'), '{"keep":"abc"}');
+});
+
+test('#32 a session timeout that is partly invalid changes nothing', async (t) => {
+  const { call, host } = await setup(t);
+  assert.equal((await call('/session-timeout', { minutes: 20 })).status, 200);
+  const r = await call('/session-timeout', { minutes: 30, webMinutes: 99999 });
+  assert.equal(r.status, 400, JSON.stringify(r));
+  assert.equal(host.config.sessionIdleMinutes(), 20);
+  assert.equal(host.config.webSessionIdleIsOwn(), false);
+});
+
+test('#32 a Host opened without serving on a bad settings file warns once with the file and key and uses defaults', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-lenient-host-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const path = join(dir, 'Test.openhbam.sqlite');
+  createStore(path);
+  writeFileSync(join(dir, '.openhbam-settings.json'), '{"keep":"abc","blockNewUsers":true}');
+  const warnings = t.mock.method(process, 'emitWarning', () => {});
+  const host = new Host(dir);
+  t.after(() => host.close());
+  assert.deepEqual(host.names(), ['Test']);
+  assert.equal(host.config.blockNewUsers(), false, 'defaults, not a half-read file');
+  assert.equal(host.config.sessionIdleMinutes(), 15);
+  assert.equal(warnings.mock.callCount(), 1, 'one warning, however often the settings are read');
+  const text = String(warnings.mock.calls[0].arguments[0]);
+  assert.match(text, /\.openhbam-settings\.json/);
+  assert.match(text, /keep must be a number/);
+  assert.match(text, /fix or remove/i);
+});
+
+test('#32 serving on a bad settings file fails at once and says to fix or remove it', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-strict-serve-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  createStore(join(dir, 'Test.openhbam.sqlite'));
+  writeFileSync(join(dir, '.openhbam-settings.json'), '{"keep":"abc"}');
+  await assert.rejects(serve({ dir, port: 0, log: () => {} }), (e: Error) => /keep must be a number/.test(e.message) && /fix or remove/i.test(e.message));
 });
 
 test('#30 replace restore refuses closed and paused files before disrupting them', async (t) => {
