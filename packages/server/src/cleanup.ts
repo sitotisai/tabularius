@@ -629,10 +629,16 @@ function relatedCount(store: Store, k: MergeKey, from: number, to: number, visib
 
 // --- apply and undo ---------------------------------------------------------------------
 
+/** The audit entry of the delete just made, kept in the undo so that putting the record back can name it (the id may be given to another record meanwhile). */
+function deletedSeq(store: Store, table: string, id: number): { deletedSeq?: number } {
+  const seq = store.latestDeleteSeq(table, id);
+  return seq === undefined ? {} : { deletedSeq: seq };
+}
+
 /** What takes one change back: a field set back, a deleted record put back, or a created record taken away. */
 export type UndoOp =
   | { op: 'set'; occurrence: string; table: string; recordId: number; field: string; before: SqlValue; after: SqlValue }
-  | { op: 'restore'; table: string; row: Record<string, SqlValue> }
+  | { op: 'restore'; table: string; row: Record<string, SqlValue>; /** The audit entry that deleted it (journals kept before it was recorded have none). */ deletedSeq?: number }
   | { op: 'remove'; occurrence: string; table: string; recordId: number; values: Record<string, SqlValue> };
 
 export interface CleanupBatch {
@@ -778,7 +784,7 @@ export function applyCleanup(store: Store, req: ApplyRequest, opts: { account?: 
       for (const id of remove) {
         const values = owner.sql.prepare(`SELECT * FROM ${q(table)} WHERE _fm_record_id = ?`).get(id) as Record<string, SqlValue>;
         owner.delete(info, id, write);
-        undo.push({ op: 'restore', table, row: values });
+        undo.push({ op: 'restore', table, row: values, ...deletedSeq(owner, table, id) });
       }
       merged++;
     }
@@ -876,7 +882,7 @@ export function snapshotRows(store: Store, layout: string, ids: number[]): RowsS
 export function journalDeletes(store: Store, snap: RowsSnapshot, account: string | undefined, summary: (deleted: number) => string): CleanupBatch | undefined {
   const undo: UndoOp[] = [];
   for (const [id, row] of snap.rows) {
-    if (!store.sql.prepare(`SELECT 1 FROM ${q(snap.table)} WHERE _fm_record_id = ?`).get(id)) undo.push({ op: 'restore', table: snap.table, row });
+    if (!store.sql.prepare(`SELECT 1 FROM ${q(snap.table)} WHERE _fm_record_id = ?`).get(id)) undo.push({ op: 'restore', table: snap.table, row, ...deletedSeq(store, snap.table, id) });
   }
   return undo.length ? new CleanupJournal(store).add({ account, layout: snap.layout, summary: summary(undo.length), undo }) : undefined;
 }
@@ -1000,7 +1006,7 @@ export function undoCleanup(store: Store, id: string, opts: { account?: string; 
         continue;
       }
       if (op.op === 'restore') {
-        store.restoreDeletedRow(op.table, op.row, write);
+        store.restoreDeletedRow(op.table, op.row, op.deletedSeq === undefined ? write : { ...write, undoesDelete: op.deletedSeq });
         undone++;
         continue;
       }
