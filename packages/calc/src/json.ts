@@ -10,6 +10,48 @@ export const JSON_TYPES = { JSONRaw: 0, JSONString: 1, JSONNumber: 2, JSONObject
 
 class JsonError extends Error {}
 
+/**
+ * Documents nested deeper than this are refused (the MBS JSON functions stop at the same depth). Reading, writing
+ * and formatting a document take a JavaScript call for every level, so a text of a few thousand brackets would
+ * run the stack out; JSON.parse itself reads such a text without trouble.
+ */
+export const MAX_JSON_DEPTH = 512;
+
+/** The greatest nesting of brackets in a text JSON.parse has accepted, so strings are skipped and nothing is checked twice. */
+function jsonDepth(s: string): number {
+  let depth = 0;
+  let deepest = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c === 0x22) {
+      // A string: skip to its closing quote, past escaped characters.
+      for (i++; i < s.length; i++) {
+        const d = s.charCodeAt(i);
+        if (d === 0x5c) i++;
+        else if (d === 0x22) break;
+      }
+    } else if (c === 0x5b || c === 0x7b) {
+      if (++depth > deepest) deepest = depth;
+    } else if (c === 0x5d || c === 0x7d) depth--;
+  }
+  return deepest;
+}
+
+function tooDeep(): JsonError {
+  return new JsonError(`The document is nested more than ${MAX_JSON_DEPTH} levels deep`);
+}
+
+/** A text as JSON.parse reads it, refused when it is nested too deeply. */
+function parseChecked(s: string): Json {
+  const v = JSON.parse(s) as Json;
+  // A text no longer than the limit cannot be nested deeper than it.
+  if (s.length > MAX_JSON_DEPTH && jsonDepth(s) > MAX_JSON_DEPTH) throw tooDeep();
+  return v;
+}
+
+const isStackOverflow = (e: unknown) =>
+  e instanceof RangeError && (e.message.includes('call stack size exceeded') || e.message.includes('too much recursion'));
+
 // A script building JSON a key at a time ($json = JSONSetElement ( $json ; ... ) in a loop) hands back the text
 // it was just given, so recent texts keep their parsed trees, and every object or array keeps the text it was
 // written as. Nothing changes a tree in place (setting or deleting copies the path it changes), so sharing them
@@ -44,8 +86,9 @@ function parseJson(s: string): Json {
   if (s.trim() === '') return {};
   let v: Json;
   try {
-    v = JSON.parse(s) as Json;
+    v = parseChecked(s);
   } catch (e) {
+    if (e instanceof JsonError) throw e;
     throw new JsonError((e as Error).message);
   }
   if (s.length >= 64) remember(s, v);
@@ -147,6 +190,7 @@ function parsePath(path: string): PathPart[] {
     }
   }
   flush();
+  if (parts.length > MAX_JSON_DEPTH) throw new JsonError(`The path has more than ${MAX_JSON_DEPTH} parts`);
   return parts;
 }
 
@@ -182,6 +226,8 @@ function guarded(fn: () => Value): Value {
     return fn();
   } catch (e) {
     if (e instanceof JsonError) return text(`? ${e.message}`);
+    // The depth limit keeps a stored document well inside the stack; a formula that is already deep may still run it out.
+    if (isStackOverflow(e)) return text(`? ${tooDeep().message}`);
     throw e;
   }
 }
@@ -209,8 +255,9 @@ function typed(value: Value, type: number): Json {
     default: {
       const t = asText(value);
       try {
-        return JSON.parse(t) as Json;
-      } catch {
+        return parseChecked(t);
+      } catch (e) {
+        if (e instanceof JsonError) throw e;
         return t;
       }
     }

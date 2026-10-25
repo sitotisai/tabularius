@@ -190,7 +190,7 @@ def('EvaluationError', 1, 1, (a, env) => {
 def('Evaluate', 1, 2, (a, env) => {
   const src = env.text(a[0]);
   if (src.trim() === '') return EMPTY;
-  return env.v(env.parse(src));
+  return env.evaluateNested(src);
 });
 def('IsValidExpression', 1, 1, (a, env) => {
   try {

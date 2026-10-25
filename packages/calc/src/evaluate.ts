@@ -287,6 +287,8 @@ export interface PluginFiles {
 }
 
 const MAX_DEPTH = 10000;
+/** How many Evaluate calls may be inside one another: text that evaluates itself (a calculation field reading its own text) stops here. */
+const MAX_EVALUATE_DEPTH = 100;
 export const EVALUATION_LIMIT = { steps: 5_000_000, ms: 2500, cachedFormulas: 256 } as const;
 const WORK_BUDGET_MS = 850;
 
@@ -698,6 +700,23 @@ export class Env {
   }
 
   private compiled = new Map<string, Node>();
+  private evaluateDepth = 0;
+
+  /** Evaluate ( text ): the text read as a formula and evaluated here, an error once Evaluate calls nest past the limit. */
+  evaluateNested(formula: string): Value {
+    if (this.evaluateDepth >= MAX_EVALUATE_DEPTH) throw new CalcError(ERR.recursion, `Evaluate is nested more than ${MAX_EVALUATE_DEPTH} levels deep`);
+    this.evaluateDepth++;
+    try {
+      return this.v(this.parse(formula));
+    } catch (e) {
+      rethrowExecutionRefusal(e);
+      // Frames that are already deep (a long custom function recursion) can run the stack out before the limit.
+      if (e instanceof RangeError && (e.message.includes('call stack size exceeded') || e.message.includes('too much recursion'))) throw new CalcError(ERR.recursion, `Evaluate is nested too deeply (this server's stack ran out at level ${this.evaluateDepth})`);
+      throw e;
+    } finally {
+      this.evaluateDepth--;
+    }
+  }
 
   /** Parse (once) a formula evaluated within this one: custom functions, Evaluate. */
   parse(formula: string, locals?: string[]): Node {
