@@ -1199,6 +1199,9 @@ const blockCache = new WeakMap<Script, Blocks>();
 const calcType = (t: Field['type']): ValueType | 'unknown' =>
   t === 'boolean' || t === 'integer' ? 'number' : t === 'decimal' || t === 'json' || t === 'uuid' ? 'text' : t;
 
+/** System error codes a plug-in file write reports as a failed write rather than throwing. */
+const PLUGIN_WRITE_FAILURES: ReadonlySet<string> = new Set(['ENAMETOOLONG', 'ENOSPC', 'EDQUOT', 'EACCES', 'EPERM', 'EROFS', 'EIO', 'EFBIG']);
+
 /** Whether a find criterion has a quote that is never closed (a backslash escapes the next character). */
 function unbalancedQuote(text: string): boolean {
   let open = false;
@@ -7167,8 +7170,18 @@ export class ScriptEngine {
     write: (raw, content, append) => {
       const path = this.sandboxPath(raw);
       if (!path || !existsSync(dirname(path)) || (existsSync(path) && !statSync(path).isFile())) return false;
-      if (append) appendFileSync(path, content);
-      else writeFileSync(path, content);
+      try {
+        if (append) appendFileSync(path, content);
+        else writeFileSync(path, content);
+      } catch (e) {
+        // An I/O failure (a name too long, a full disk, no permission) is a failed write for the script, which gets an error code.
+        // Only these are genuine I/O failures. A host's execution refusal, a programming error and the signs of a race
+        // (ESTALE from the boundary, ELOOP, EEXIST, ENOTDIR, ENOENT: a link or an entry that changed) stay loud, as a read's do.
+        rethrowExecutionRefusal(e);
+        const code = (e as { code?: unknown } | null)?.code;
+        if (typeof code === 'string' && PLUGIN_WRITE_FAILURES.has(code)) return false;
+        throw e;
+      }
       return true;
     },
     size: (raw) => {

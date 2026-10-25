@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Script } from '@tabularius/fmp12';
+import { zip } from '../../calc/src/zip.ts';
 import { createStore, parseScriptText, Store } from '@tabularius/store';
 import { runScript, ScriptSession } from '../src/index.ts';
 
@@ -60,6 +61,13 @@ test('plug-in file calls never leave the allowed folders', async () => {
   // With no documents folder, nothing is read or written.
   writeFileSync(join(docs, 'here.txt'), 'here');
   assert.equal(await result('BE_FileReadText ( "here.txt" ) & "/" & BE_GetLastError', false), '/2');
+});
+
+test('plug-in file writes turn filesystem boundary errors into script error codes', async () => {
+  const longName = 'x'.repeat(300) + '.txt';
+  assert.equal(await result(`BE_FileWriteText ( Get ( DocumentsPath ) & "${longName}" ; "no" ) & "/" & BE_GetLastError`), '/2');
+  writeFileSync(join(docs, 'long-entry.zip'), zip([{ name: longName, data: Buffer.from('no') }]));
+  assert.equal(await result('BE_Unzip ( Get ( DocumentsPath ) & "long-entry.zip" ; Get ( DocumentsPath ) ) & "/" & BE_GetLastError'), '?/2');
 });
 
 test('network, mail, shell and clipboard plug-in calls are refused', async () => {
