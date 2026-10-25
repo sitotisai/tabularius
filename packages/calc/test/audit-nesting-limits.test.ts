@@ -51,6 +51,34 @@ test('JSON values nested in a typed argument are checked too', () => {
   assert.match(evaluateText(`JSONSetElement ( "{}" ; "a" ; "${deep}" ; 0 )`, {}), /^\?/);
 });
 
+test('JSONSetElement and JSONDeleteElement refuse a result nested past the limit, even from two documents within it', () => {
+  const d = nested(512);
+  // The document and the path are each within the limit; together they make 1023 levels.
+  const result = evaluateText(`JSONSetElement ( D ; "${'[0]'.repeat(511)}" ; D ; 4 )`, { field: (ref) => (ref.field === 'D' ? text(d) : undefined) });
+  assert.match(result, /^\? .*nested more than 512/);
+  // Nothing deeper than the limit is kept to be read back by the next function.
+  const ctx = { field: (ref: { field: string }) => (ref.field === 'D' ? text(d) : undefined) } as CalcContext;
+  assert.match(evaluateText(`Let ( r = JSONSetElement ( D ; "${'[0]'.repeat(511)}" ; D ; 4 ) ; JSONParse ( r ) )`, ctx), /^\?/);
+  // The same inside the limit works and reads back.
+  const ok = evaluateText(`JSONSetElement ( "[[]]" ; "[0][0]" ; Left ( D ; 510 ) & Right ( D ; 510 ) ; 4 )`, ctx);
+  assert.equal(ok, `[[${nested(510)}]]`);
+  assert.match(evaluateText(`JSONSetElement ( "[[]]" ; "[0][0]" ; D ; 4 )`, ctx), /^\?/);
+});
+
+test('JSONMakeArray refuses a list of documents that makes the array too deep', () => {
+  const ctx = { field: (ref: { field: string }) => (ref.field === 'D' ? text(nested(512)) : undefined) } as CalcContext;
+  assert.match(evaluateText('JSONMakeArray ( D ; "|" ; 0 )', ctx), /^\? .*nested more than 512/);
+  assert.match(evaluateText('JSONParse ( JSONMakeArray ( D ; "|" ; 0 ) )', ctx), /^\?/);
+  assert.equal(evaluateText('JSONMakeArray ( "[1]|[2]" ; "|" ; 4 )', {}), '[[1],[2]]');
+});
+
+test('reading with a long path keeps the answer it had; only changing a document is limited to 512 parts', () => {
+  assert.equal(evaluateText(`JSONGetElement ( "[1]" ; "${'[0]'.repeat(600)}" )`, {}), '');
+  assert.equal(evaluateText(`JSONGetElementType ( "[1]" ; "${'[0]'.repeat(600)}" )`, {}), '');
+  assert.match(evaluateText(`JSONSetElement ( "[]" ; "${'[0]'.repeat(600)}" ; 1 ; 2 )`, {}), /^\? .*512 parts/);
+  assert.match(evaluateText(`JSONDeleteElement ( "[]" ; "${'[0]'.repeat(600)}" )`, {}), /^\? .*512 parts/);
+});
+
 test('Evaluate nested through itself ends in the error value', () => {
   // A field holding text that evaluates itself, as a self-referencing calculation field does.
   const ctx = withField('Evaluate ( F )');
