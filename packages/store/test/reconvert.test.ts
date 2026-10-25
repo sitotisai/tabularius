@@ -115,6 +115,74 @@ test('reconverting keeps a new record that took the id of a deleted original', {
   }
 });
 
+test('an original put back by the cleanup undo takes the fresh conversion and is not counted as created', { skip }, async () => {
+  const { dir, path, ids: [, , three] } = oldStore();
+  try {
+    const store = new Store(path, 'Flicks');
+    try {
+      const before = store.sql.prepare('SELECT * FROM MOVIE WHERE _fm_record_id = ?').get(three) as Record<string, never>;
+      store.delete(LAYOUT, three, { account: 'Ann' });
+      store.restoreDeletedRow('MOVIE', before, { account: 'Ann' });
+    } finally {
+      store.close();
+    }
+    assert.equal(row(path, three)!.director, 'wrong');
+    const result = await reconvert(path, fixture);
+    assert.deepEqual([result.created, result.edited, result.deleted], [0, 0, 0]);
+    assert.notEqual(row(path, three)!.director, 'wrong', 'the original is not a record made here: the fixed converter value is kept');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('a store whose audit log has no revert_of column still keeps a new record under a reused id', { skip }, async () => {
+  const { dir, path } = oldStore();
+  try {
+    const sql = new DatabaseSync(path, { readOnly: true });
+    const top = Number((sql.prepare('SELECT max(_fm_record_id) AS id FROM MOVIE').get() as { id: number }).id);
+    sql.close();
+    const store = new Store(path, 'Flicks');
+    try {
+      store.delete(LAYOUT, top, { account: 'Ann' });
+      assert.equal(store.create(LAYOUT, { title_sort: 'NEW record made by a person' }, { account: 'Ann' }).recordId, top);
+    } finally {
+      store.close();
+    }
+    // As a store from before the column: nothing in its log could be a revert, so every create was made here.
+    const old = new DatabaseSync(path);
+    old.exec('ALTER TABLE _fm_audit DROP COLUMN revert_of');
+    old.close();
+    const result = await reconvert(path, fixture);
+    assert.equal(result.created, 1);
+    assert.equal(row(path, top)!.title_sort, 'NEW record made by a person');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+// A limit, not a fix: which record a reused id belongs to is only known from the audit log, so once audit retention
+// has removed the create entry the id reads as the untouched original (ADMIN.md, "Converting a file again").
+test('a new record under a reused id after audit retention removed its create entry', { skip, todo: 'reused-id detection depends on audit retention (default 400 days); see ADMIN.md' }, async () => {
+  const { dir, path } = oldStore();
+  try {
+    const sql = new DatabaseSync(path, { readOnly: true });
+    const top = Number((sql.prepare('SELECT max(_fm_record_id) AS id FROM MOVIE').get() as { id: number }).id);
+    sql.close();
+    const store = new Store(path, 'Flicks');
+    try {
+      store.delete(LAYOUT, top, { account: 'Ann' });
+      assert.equal(store.create(LAYOUT, { title_sort: 'NEW record made by a person' }, { account: 'Ann' }).recordId, top);
+      store.pruneAudit(1, Date.now() + 3 * 86_400_000);
+    } finally {
+      store.close();
+    }
+    await reconvert(path, fixture);
+    assert.equal(row(path, top)!.title_sort, 'NEW record made by a person');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
 test("reconverting refuses to carry edits it can't place, unless forced", { skip }, async () => {
   const { dir, path, ids: [one, two, three] } = oldStore();
   try {
