@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { installService, serviceFile, type ServiceOptions } from '../src/service.ts';
+import { installService, program, serviceFile, type ServiceOptions } from '../src/service.ts';
 import {
   parseProbeOutput, parseSddl, refuseWritableSystemTaskCode, trustedEnv, windowsAclProbe, windowsHost, writableBy,
   type AclDepth, type AclProbe, type SystemHost,
@@ -166,6 +166,44 @@ test('--system is refused for a program directly under C:\\ (anyone can make app
   refuseWritableSystemTaskCode(options(), probeOf(stockDisk({ 'c:': 'O:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x4;;;AU)' })));
 });
 
+test('--system is refused when the program\'s folder passes a writing right down to the folders made in it (app.incoming)', () => {
+  // The reviewer's shape: the parent itself is administrator-only, the program folder is protected, but a new sibling inherits Users-modify.
+  const PARENT = (entry: string) => `O:BAD:PAI(A;;FA;;;SY)(A;;FA;;;BA)${entry}`;
+  const PROTECTED_APP = 'O:BAD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)';
+  const disk = (parent: string) => stockDisk({ 'c:\\program files\\tabularius': parent, 'c:\\program files\\tabularius\\app': PROTECTED_APP });
+  for (const entry of [
+    '(A;OICIIO;0x1301bf;;;BU)', '(A;CIIO;0x1301bf;;;BU)', '(A;OIIO;0x1301bf;;;BU)', '(A;OICI;0x1301bf;;;BU)', '(A;CI;0x1301bf;;;BU)',
+    '(A;OICINPIO;0x1301bf;;;BU)', '(A;OICIIO;GA;;;AU)', '(A;OICIIO;GW;;;WD)', '(A;OICIIO;FA;;;S-1-5-21-1-2-3-1001)', '(A;OICIIO;DC;;;BU)', '(A;OICIIO;LC;;;BU)',
+  ]) {
+    assert.throws(() => refuseWritableSystemTaskCode(options(), probeOf(disk(PARENT(entry)))), /Tabularius: /, entry);
+  }
+  // What a new folder may inherit without being writable by others: read and execute, entries for the trusted accounts, Creator Owner
+  // (which becomes whoever makes the folder), an inherit-only entry that passes to nothing, and deny entries.
+  for (const entry of ['(A;OICIIO;0x1200a9;;;BU)', '(A;OICIIO;GXGR;;;BU)', '(A;OICIIO;GA;;;BA)', '(A;OICIIO;GA;;;CO)', '(A;IO;FA;;;BU)', '(D;OICIIO;FA;;;BU)', '(A;OICIIO;CCSWWPLORC;;;AU)']) {
+    refuseWritableSystemTaskCode(options(), probeOf(disk(PARENT(entry))));
+  }
+  // The same inherit-only entry far above the program is not the program's concern.
+  refuseWritableSystemTaskCode(options(), probeOf(stockDisk({ 'c:\\program files': PARENT('(A;OICIIO;0x1301bf;;;BU)') })));
+  assert.deepEqual(writableBy(PARENT('(A;OICIIO;0x1301bf;;;BU)'), 'parent'), ['Users (BU) (write)']);
+  assert.deepEqual(writableBy(PARENT('(A;OICIIO;0x1301bf;;;BU)'), 'object'), [], 'on the folder itself an inherit-only entry gives nothing');
+});
+
+test('--system is refused for a program or Node on a network share', () => {
+  const never: AclProbe = () => { throw new Error('should not be asked'); };
+  for (const bad of [{ node: '\\\\server\\share\\node.exe' }, { main: '\\\\server\\share\\app\\packages\\cli\\src\\main.ts' }, { node: '\\\\?\\UNC\\server\\share\\node.exe' }]) {
+    assert.throws(() => refuseWritableSystemTaskCode(options(bad), never), /network share/);
+  }
+  // A local path in the extended form is not taken for a share (the probe is then asked about it).
+  assert.throws(() => refuseWritableSystemTaskCode(options({ node: '\\\\?\\C:\\Program Files\\Tabularius\\node\\node.exe' }), never), /should not be asked|could not check/);
+});
+
+test('on Windows the tools an administrator command starts are full paths', () => {
+  assert.equal(program('schtasks', 'win32'), 'C:\\Windows\\System32\\schtasks.exe');
+  assert.equal(program('tar', 'win32'), 'C:\\Windows\\System32\\tar.exe');
+  assert.match(program('git', 'win32'), /^C:\\Windows\\System32\\git\.exe$|^[A-Za-z]:[\\/]/);
+  for (const platform of ['linux', 'darwin'] as const) for (const name of ['schtasks', 'tar', 'git'] as const) assert.equal(program(name, platform), name);
+});
+
 test('--system is refused for the default per-user layout, and says what to do', () => {
   const home = 'C:\\Users\\jo\\.openhbam';
   const disk = stockDisk({
@@ -304,6 +342,8 @@ test('taskDifferences names what changed in who it runs as, when it starts and w
     ['another account', swap('S-1-5-18', 'S-1-5-21-1-2-3-1001'), /runs as S-1-5-21-1-2-3-1001, not S-1-5-18/],
     ['a lower run level', swap('HighestAvailable', 'LeastPrivilege'), /run level is LeastPrivilege/],
     ['a group to run as', swap('<UserId>S-1-5-18</UserId>', '<UserId>S-1-5-18</UserId><GroupId>S-1-5-32-545</GroupId>'), /names a group/],
+    ['a second principal', swap('</Principals>', '<Principal id="Other"><UserId>S-1-5-21-1-2-3-1001</UserId><LogonType>InteractiveToken</LogonType></Principal></Principals>'), /2 principals, not one/],
+    ['actions that run as another principal', swap('<Actions Context="Author">', '<Actions Context="Other">'), /run as principal "Other"/],
     ['an extra entry in the program', swap('</Exec>', '<Extra>x</Extra></Exec>'), /also has Extra/],
   ];
   for (const [name, xml, expected] of cases) {
