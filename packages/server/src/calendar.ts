@@ -286,7 +286,7 @@ export class CalendarFeeds {
         : new ApiError(-1, 'Unknown error');
       code = err.code;
       if (!(e instanceof ApiError) && !(e instanceof StoreError)) this.host.logs?.write('fmdapi', 'Error', clientAddress(req), `calendar: ${(e as Error).message}`);
-      reply(err.status, { 'content-type': 'application/json; charset=utf-8' }, JSON.stringify({ messages: [{ code: String(err.code), message: err.message }] }));
+      reply(err.status, { 'content-type': 'application/json; charset=utf-8', ...(e instanceof StoreError && e.code === 301 ? { 'retry-after': '1' } : {}) }, JSON.stringify({ messages: [{ code: String(err.code), message: err.message }] }));
     }
     // The token is cut out whatever way its name was written (tok%65n= is the same parameter).
     const logged = new URLSearchParams(url.search);

@@ -290,6 +290,9 @@ export class OAuthServer {
         const headers = e.status === 401 ? { 'www-authenticate': 'Basic realm="tabularius"' } : undefined;
         return this.json(res, e.status, { error: e.code }, headers);
       }
+      // Another session's transaction holds the file and has changed what a token is checked or revoked against: nothing was
+      // ended, so the app is told to try again (RFC 7009 and RFC 6749 name 503 for this).
+      if (e instanceof StoreError && e.code === 301) return this.json(res, 503, { error: 'temporarily_unavailable' }, { 'retry-after': '1' });
       throw e;
     }
   }
@@ -893,9 +896,11 @@ p strong { color: var(--text); }
       const row = (this.db.prepare('SELECT database, access_id, grant_id FROM refresh WHERE hash = ? AND client_id = ?').get(h, client.id)
         ?? this.db.prepare('SELECT database, access_id, grant_id FROM retired WHERE hash = ? AND client_id = ?').get(h, client.id)) as Found | undefined;
       if (!row) return;
+      // The file's token first: refused while another session's transaction holds the file, which must leave the sign-in as it
+      // was, so that the app's second try finds it.
+      this.host.get(row.database)?.revokeApiToken(row.access_id);
       if (row.grant_id) this.endGrant(row.grant_id);
       else this.db.prepare('DELETE FROM refresh WHERE hash = ? AND client_id = ?').run(h, client.id);
-      this.host.get(row.database)?.revokeApiToken(row.access_id);
       return;
     }
     const id = /^ohbt_([0-9a-f]+)\./.exec(value)?.[1];
@@ -905,8 +910,9 @@ p strong { color: var(--text); }
       ?? this.db.prepare('SELECT database, grant_id FROM retired WHERE access_id = ? AND client_id = ?').get(id, client.id)) as Omit<Found, 'access_id'> | undefined;
     const store = row && this.host.get(row.database);
     if (!row || !store?.apiToken(value)) return;
+    // The file's token first, as above.
+    store.revokeApiToken(id);
     if (row.grant_id) this.endGrant(row.grant_id);
     else this.db.prepare('DELETE FROM refresh WHERE access_id = ? AND client_id = ?').run(id, client.id);
-    store.revokeApiToken(id);
   }
 }
