@@ -1071,19 +1071,24 @@ which remove the snapshot.
 `<folder>.lock` sits next to the folder, so a second run for the same folder,
 from another command or another process, is refused instead of mixing two
 copies. It is removed when the run ends. If a run was killed, a lock whose process
-is gone is replaced a minute after its last heartbeat, and one whose process is still
-alive six hours after its last heartbeat; a lock that cannot be read is replaced
-after a minute. The console refuses folder names ending in `.lock` or `.takeover`
+is gone, or that carries this server's own process number from a run it is not
+making now (after a restart), is replaced a minute after its last heartbeat, and
+one whose process is still alive six hours after its last heartbeat; a lock that
+cannot be read is replaced after a minute. The console refuses folder names ending in `.lock` or `.takeover`
 (the second is the name of the short gate beside the lock).
 
 What the lock does not cover, plainly:
 
-- It only works between processes on one computer that share a process list. Two
-  servers (or containers) on separate hosts that share a folder over a network
-  drive cannot see each other's processes, so one asks whether the other's
-  process number is alive here, gets the wrong answer, and takes the lock over a
-  minute after the last heartbeat. Do not run copies to one shared folder from
-  two hosts.
+- It only works between processes that share a process list. The lock records a
+  process number and each run asks whether that number is alive *here*. Two servers
+  (or containers) on separate hosts that share a folder over a network drive cannot
+  see each other's processes: a number that is not running here makes the lock look
+  abandoned, so it is replaced a minute after its last heartbeat, and a number that
+  happens to be running here makes it look alive for six hours. Containers that
+  share a volume usually run the server as the same process number (often 1), which
+  this server cannot tell from its own earlier run, so it treats that lock as an
+  abandoned one too: a minute after the last heartbeat. Do not run copies to one
+  shared folder from two hosts or containers.
 - The lock is refreshed after each batch of rows and each megabyte of a container
   file, not while the snapshot is taken or while the finished copy is checked and
   published. On one computer this does not matter, because a lock whose process
