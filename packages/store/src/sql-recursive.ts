@@ -9,6 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import { StoreError } from './errors.ts';
 import { decodeValue, encodeValue, type SqlValue } from './sql-recursive-codec.ts';
 import { SQL_RESULT_LIMIT } from './sql-result.ts';
@@ -72,9 +73,9 @@ export function childCommand(): { file: string; args: string[]; env: NodeJS.Proc
   // Started the way the server starts its other helper processes (odata.ts, cluster.ts): the single-file program's launcher
   // (scripts/release/launcher.cjs) skips `--no-warnings`, then runs the script that comes first as the helper; it does not read
   // Node's flags from its command line, so the heap cap goes in NODE_OPTIONS, which it reads. The child gets only the
-  // environment it needs, not the server's secrets.
+  // environment it needs, not the server's secrets. TZ is among it: the time functions (CURTIME, NOW, SQLite's 'localtime') read the zone.
   const env: NodeJS.ProcessEnv = { NODE_OPTIONS: `--max-old-space-size=${RECURSIVE_SQL.heapMb}` };
-  for (const k of ['PATH', 'HOME', 'USERPROFILE', 'TMPDIR', 'TEMP', 'TMP', 'SystemRoot', 'TABULARIUS_HOME', 'OPENHBAM_HOME']) {
+  for (const k of ['PATH', 'HOME', 'USERPROFILE', 'TMPDIR', 'TEMP', 'TMP', 'SystemRoot', 'TABULARIUS_HOME', 'OPENHBAM_HOME', 'TZ']) {
     if (process.env[k] !== undefined) env[k] = process.env[k];
   }
   return { file: RECURSIVE_SQL.execPath, args: ['--no-warnings', fileURLToPath(new URL('./sql-child.ts', import.meta.url))], env };
@@ -90,7 +91,8 @@ export function recursiveRows(file: string, text: string, params: SqlValue[], na
   const command = childCommand();
   // The limit and the values go as JSON, which has no form for Infinity (a request for every row), a blob or a bigint.
   const child = spawnSync(command.file, command.args, {
-    input: JSON.stringify({ path: file, text, params: params.map(encodeValue), names, limit: encodeValue(limit), views, functions }),
+    // The child runs in the temp folder, so a path given relative to the server's folder is made absolute here.
+    input: JSON.stringify({ path: resolve(file), text, params: params.map(encodeValue), names, limit: encodeValue(limit), views, functions }),
     encoding: 'utf8', timeout: RECURSIVE_SQL.ms, killSignal: 'SIGKILL', maxBuffer: MAX_OUTPUT, cwd: tmpdir(), windowsHide: true, env: command.env,
   });
   const stderr = (child.stderr ?? '').slice(-2000).trim();

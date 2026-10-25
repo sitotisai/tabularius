@@ -127,3 +127,16 @@ test('a request for every row (an unlimited limit) gets every row of a recursive
   assert.equal(store.select(REC10, [], 3).rows.length, 3);
   assert.equal(store.queryWithOrigins(REC10).rows.length, 10);
 });
+
+test('a recursive query reads a file that was given by a relative path, whatever the server\'s folder is', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-sql-relative-'));
+  const here = process.cwd();
+  t.after(() => { process.chdir(here); rmSync(dir, { recursive: true, force: true }); });
+  process.chdir(dir);
+  createStore('R.sqlite');
+  const store = new Store('R.sqlite');
+  t.after(() => store.close());
+  store.applyDesign([{ op: 'createTable', name: 'Items', fields: [{ name: 'Name' }] }] as never);
+  store.create('Items', { Name: 'a' });
+  assert.deepEqual(store.select('with recursive c(x) as (select 1 union all select x + 1 from c where x < 3) select x, (select count(*) from Items) from c').rows, [[1, 1], [2, 1], [3, 1]]);
+});
