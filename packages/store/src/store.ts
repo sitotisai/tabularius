@@ -7852,6 +7852,7 @@ export class Store {
     const out = new Map<string, SqlValue>();
     const repValues = new Map<string, SqlValue[]>();
     for (const [key, value] of Object.entries(data)) {
+      if (typeof value === 'string' && value.includes('\0')) throw new StoreError(500, `Field "${key}" contains a NUL character`);
       const m = /^(.*)\((\d+)\)$/.exec(key);
       const name = m && byName.has(m[1]) ? m[1] : key;
       const rep = m && byName.has(m[1]) ? Number(m[2]) : 1;

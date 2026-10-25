@@ -37,6 +37,13 @@ test('reading edited repetitions recomputes dependent fields without writing dat
   assert.equal(store.get(info, id).fieldData.Live, 4);
 });
 
+test('record writes refuse embedded NUL before a duplicate can lose text', (t) => {
+  const { store, id } = setup(t);
+  assert.throws(() => store.create('Items', { Owner: 'a\0b' }), (e: unknown) => e instanceof StoreError && /NUL/.test(e.message));
+  assert.throws(() => store.update('Items', id, { Owner: 'a\0b' }), (e: unknown) => e instanceof StoreError && /NUL/.test(e.message));
+  assert.equal(store.get('Items', id).fieldData.Owner, 'reader');
+});
+
 test('pending edits cannot make a forbidden record viewable or expose masked inputs', (t) => {
   const { store, id } = setup(t);
   store.savePrivilegeSet({
