@@ -89,8 +89,8 @@ const MAX_MATCH_WORK = 4_000_000;
  * record, so a flat budget ran out on a table of a few tens of thousands of records whatever the criterion. A step
  * measures about 30 to 65 nanoseconds, so 1,024 steps are about 30 to 65 microseconds: a few times what a plain wildcard
  * find costs a record. The allowance is earned as the records are read, never paid up front, so a table of empty values
- * does not fund a single long one. Each matcher call names its record and its scan (see `scope`), and a record earns
- * the first time it is named: the SQL decides how often the matcher runs on it (an AND skips the second term, a
+ * does not fund a single long one. Each matcher call names its record and its table (see `scope`), and a record earns
+ * the first time it is named in a find: the SQL decides how often the matcher runs on it (an AND skips the second term, a
  * repeating field calls it once per repetition), so counting calls or criteria would give too much or too little.
  */
 const MATCH_WORK_PER_VALUE = 1024;
@@ -101,11 +101,21 @@ const MAX_QUERY_PARTS = 256;
 type MatchBudget = { remaining: number; unearned: number; seen: Map<number, Set<unknown>> };
 const matchBudget = new AsyncLocalStorage<MatchBudget | undefined>();
 /**
- * The scan whose WHERE is being built: every findWhere is one scan of one table (the found set, a related table, a copy
- * of the rows), and its matcher calls name this number, so a record read by two scans earns in each.
+ * The table whose WHERE is being built: every matcher call names it, so a record earns once per find however many
+ * requests, related lookups or scans read it. The number is stable for a (store, table) (see `findScope`), so the SQL
+ * text of a find is the same each time it is built, which the sorted-page cache relies on.
  */
 let scope = 0;
+const scopeIds = new WeakMap<object, Map<string, number>>();
 let scopes = 0;
+/** A number for this table of this store, the same every time it is asked for in this process. */
+export function findScope(owner: object, table: string): number {
+  let tables = scopeIds.get(owner);
+  if (!tables) scopeIds.set(owner, tables = new Map());
+  let id = tables.get(table);
+  if (id === undefined) tables.set(table, id = ++scopes);
+  return id;
+}
 
 /**
  * One budget for a complete find, including related fields, repetitions and repeated SQL evaluations. It starts with a
@@ -462,12 +472,12 @@ function duplicateCriterion(f: FieldInfo, col: string, params: SqlValue[], sourc
 /** SQL condition for criteria on one related occurrence's fields, or undefined when it has no such fields. */
 export type RelatedCriteria = (occurrence: string, criteria: Record<string, string>) => { where: string; params: SqlValue[] } | undefined;
 
-/** WHERE clause for a list of find requests: one scan of one table, with a scope number of its own for the matcher's calls. */
+/** WHERE clause for a list of find requests on one table, whose `findScope` the matcher's calls name (0 when it has none). */
 export function findWhere(
-  requests: FindRequest[], fields: Map<string, FieldInfo>, norm: Normalizer, related?: RelatedCriteria, words?: WordIndex, source?: FindSource,
+  requests: FindRequest[], fields: Map<string, FieldInfo>, norm: Normalizer, related?: RelatedCriteria, words?: WordIndex, source?: FindSource, table = 0,
 ): { where: string; params: SqlValue[] } {
   const outer = scope;
-  scope = ++scopes;
+  scope = table;
   try { return buildWhere(requests, fields, norm, related, words, source); } finally { scope = outer; }
 }
 

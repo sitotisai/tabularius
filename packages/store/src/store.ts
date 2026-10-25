@@ -23,7 +23,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } 
 import { closeSync, constants as fsConstants, copyFileSync, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, readdirSync, readSync, renameSync, rmSync, statSync } from 'node:fs';
 import { checkedFile, cleanupPath, openSync, readFileSync, writeFileSync, writeSync } from './fs-boundary.ts';
 import { externalFieldNames, parseDate, parseTime, parseTimestamp, type DateStyle, type Field, type FieldType, type LayoutDesign, type LayoutDesigns, type LayoutObject, type Schema, type Table } from '../../fmp12/src/index.ts';
-import { findWhere, registerFindFunctions, beginFindBudget, FindError, type RelatedCriteria, type FieldInfo, type FindRequest, type SqlValue, type WordIndex } from './find.ts';
+import { findWhere, findScope, registerFindFunctions, beginFindBudget, FindError, type RelatedCriteria, type FieldInfo, type FindRequest, type SqlValue, type WordIndex } from './find.ts';
 import { defineFold, WordIndexes, wordIndexName } from './words.ts';
 import { q, dataSourceFile, SQL_TYPES, DESIGN_LOG, writeDesign, addExternalSizeColumn } from './import.ts';
 import { decimalKey, decimalNumberText, nativeValue } from './native-types.ts';
@@ -8835,7 +8835,7 @@ export class Store {
     let params: SqlValue[] = [];
     if (opts.query?.length) {
       try {
-        ({ where, params } = findWhere(opts.query, fields, (v, t) => this.normalize(v, t, opts.dateOrder), this.relatedCriteria(info, opts.privileges, opts.dateOrder), this.wordIndex(info), () => this.duplicateSource(source(), this.table(info), pv)));
+        ({ where, params } = findWhere(opts.query, fields, (v, t) => this.normalize(v, t, opts.dateOrder), this.relatedCriteria(info, opts.privileges, opts.dateOrder), this.wordIndex(info), () => this.duplicateSource(source(), this.table(info), pv), findScope(this, info.table)));
       } catch (e) {
         rethrowExecutionRefusal(e);
         if (e instanceof FindError) throw new StoreError(e.code, e.message);
@@ -8968,7 +8968,7 @@ export class Store {
         Object.assign(later, query);
         for (const k of Object.keys(query)) delete query[k];
       }
-      const child = findWhere([query], fields, (v, t) => occ.store.normalize(v, t, order), undefined, undefined, () => occ.store.duplicateSource(q(occ.table.name), occ.table, pv));
+      const child = findWhere([query], fields, (v, t) => occ.store.normalize(v, t, order), undefined, undefined, () => occ.store.duplicateSource(q(occ.table.name), occ.table, pv), findScope(occ.store, occ.table.name));
       const rule = pv?.table(occ.table.name).view ?? true;
       const ids = new Set<number>();
       const matched = (row: Record<string, SqlValue>) => {
@@ -9018,7 +9018,7 @@ export class Store {
         pass.values.clear();
         pass.related.clear();
       }
-      const then = findWhere([later], fields, (v, t) => this.normalize(v, t, order), undefined, undefined, () => ({ from: tmp, params: [] }));
+      const then = findWhere([later], fields, (v, t) => this.normalize(v, t, order), undefined, undefined, () => ({ from: tmp, params: [] }), findScope(this, table.name));
       const rows = this.sql.prepare(`SELECT * FROM ${tmp} WHERE ${then.where}`).all(...then.params) as Record<string, SqlValue>[];
       this.sql.exec(`DROP TABLE ${tmp}`);
       this.sql.exec(`RELEASE ${name}`);
@@ -9204,7 +9204,7 @@ export class Store {
       requests.push(own as FindRequest);
     }
     try {
-      return findWhere(requests, fields, (v, t) => this.normalize(v, t, opts.dateOrder), undefined, this.wordIndex(info));
+      return findWhere(requests, fields, (v, t) => this.normalize(v, t, opts.dateOrder), undefined, this.wordIndex(info), undefined, findScope(this, info.table));
     } catch (e) {
       rethrowExecutionRefusal(e);
       return all; // the find itself reports what is wrong with its criteria
@@ -10603,7 +10603,7 @@ export class Store {
     let params: SqlValue[] = [];
     if (opts.query?.length) {
       try {
-        ({ where, params } = findWhere(opts.query, new Map(info.fields.map((f) => [f.name, f])), (v, t) => this.normalize(v, t, opts.dateOrder), this.relatedCriteria(info, opts.privileges, opts.dateOrder), this.wordIndex(info), () => this.duplicateSource(source(), this.table(info), pv)));
+        ({ where, params } = findWhere(opts.query, new Map(info.fields.map((f) => [f.name, f])), (v, t) => this.normalize(v, t, opts.dateOrder), this.relatedCriteria(info, opts.privileges, opts.dateOrder), this.wordIndex(info), () => this.duplicateSource(source(), this.table(info), pv), findScope(this, info.table)));
       } catch (e) {
         rethrowExecutionRefusal(e);
         if (e instanceof FindError) throw new StoreError(e.code, e.message);
