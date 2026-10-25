@@ -70,6 +70,9 @@ To take over, stop the standby and run `tabularius serve <standby folder>`.
   not reached the standby: with a healthy link that is at most the changes of about one second (the primary takes its
   changes every second); with the link down or the standby stopped it is everything since. There is no way to ask the primary,
   once it is gone, which they were. For a planned switch, wait until the standby has caught up, then stop the primary.
+  Record ids follow the copy too: each table's record-id mark is the one of the state the standby holds, so the ids of
+  records the primary made in those last changes can be given again on the promoted server (ADMIN.md, "Converting a file
+  again").
 - Accounts, passwords, privilege sets, API tokens and anything else inside the file are there. **Sessions are not**: a Data API
   or web client session lives in the memory of one server process, so a session signed in on the primary is refused (401) on
   the promoted server, as after any restart ([runbook](runbook.md#locked-out-of-the-admin-console)). People sign in again.

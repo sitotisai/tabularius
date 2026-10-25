@@ -72,6 +72,13 @@ world-readable.
 
 ## Changes that can affect existing use
 
+- **A deleted record's id is no longer given to the next record made.** New record ids continue after the highest id
+  each table has ever committed (file format 2), where they used to continue after the highest record left. The first
+  open of a format-1 file seeds that mark from each table's records and its audit log, reading the whole audit log once,
+  so a file with a long log takes longer to open that one time. A table renamed in Tabularius starts after the highest
+  record id the audit log holds for any table, so its next ids can jump. What the seed cannot see, and may give once
+  more: ids whose audit entries retention had already removed, the ids a Truncate Table removed (logged as a count), and
+  a rename the design log no longer has (ADMIN.md, "Converting a file again").
 - **Container files outside the file are read only from the file's own storage.** A container field's base directory comes from the `.fmp12`, so the server now looks for externally stored container files only in `RC_Data_FMS/<file>/` and `Files/<file>/` (with the base directory below either), and never in another hosted file's storage, a sibling folder, one of the server's own folders beside the hosted files (`Backups`, `Logs`, `Exports`, `Documents`...), or the folders that hold every file's storage. **The folder named after the file beside the hosted file is no longer searched**, and neither is any other folder beside it. A base directory that climbs out with `..` (also `.. ` and `...`, which Windows reads the same) or starts with a drive letter is skipped; a folder name that merely ends in a dot or a space (`Acme Inc.`) is kept. Letter case must match the file's name: a base directory such as `mine/Docs` for a file called `Mine` is not read as `Mine/Docs` even on a disk that ignores case. A file whose name is empty, `.` or `..` (a drop-in file called `.openhbam.sqlite`, say), or has a `~1` form (`ACMEIN~1`, which Windows can use as a short name for another file's folder), reads no external containers. **If a file's base directory pointed somewhere else, such as a folder beside the hosted file, the containers already stored there are not found after the upgrade and show as missing, and new files go under `RC_Data_FMS/<file>/`.** The server writes one line to its log when it opens such a file (once per file name per run), naming each folder beside the hosted file that it no longer searches (when it exists) and the folder under `RC_Data_FMS/<file>/` to move it to (no advice for the hosted folder itself, `RC_Data_FMS`, `Files`, the server's own folders such as `Backups` and `Logs`, or dot folders: those are named as not used), and any other base directory it left out. Move the files into `RC_Data_FMS/<file>/<base directory>/` (or `Files/<file>/...`) before opening the file; nothing is moved or deleted for you.
 - **`/mcp` limits Basic credentials no hosted file has proved right, per client address.** 64 at once, then 5 a second (`429` with `Retry-After: 1` past that); an account admitted with a right password is not counted, and its password is not hashed again, from that address group until its password, status or AI access changes, or five minutes after it was last hashed. This bounds the server's work: an address group (one address, an IPv6 /64, a NAT) that keeps its line full can crowd out other accounts in the same group until it stops, so those retry or connect from another address; other groups are not affected while they stay within their own budget (groups that are all over theirs share the 3 checks at once and 10 a second). Behind a reverse proxy, set `--trusted-proxies` or every visitor shares one limit. Details and what remains: [remote connector exposure](remote-connector-exposure.md#risks-given-what-the-server-hosts).
 - **Refreshing a file's layouts and themes from its `.fmp12` now fails as a whole when a design change you made since cannot be applied again.** The refresh replays the design changes made in Tabularius on top of the file's layouts. A change it could not replay used to be skipped while the rest was applied; it now stops, keeps the store as it was before the refresh, and the log names the change ("design change N could not be applied again"). If a refresh that worked before now stops, remove or fix that change in the design, then refresh again.
@@ -173,9 +180,11 @@ this project's own history (the oldest, three spread through it, and main when t
 Run it before a release that raises the format number, and after any change to how a file is read or upgraded
 (`packages/store/src/store.ts` opening path, `packages/server/src/backup.ts`).
 
-Result on 2026-10-17, when the current format was 1: all five old builds' folders opened with identical data, restored
-identically, and ran their schedule; the old builds opened that format-1 build's files without damage (they had no
-refusal to give); the future build's files were refused without being touched. `--report <file.md>` writes the full table. The script exits with an error when this
+Result on 2026-10-25, with format 2 (builds bff8ce17, 1fe6dbf2, 0c8c9df7, c44c72ae and fa26bcc3, all format 1): all five
+old builds' folders opened with identical data, restored identically over the folder and into an empty one, ran their
+schedule and read cleanly in `tabularius doctor`; each old build refused this build's format-2 files by name, and the
+files were intact afterwards; the future build (format 3) brought a format-2 folder up and this build then refused both
+files without changing them. `--report <file.md>` writes the full table. The script exits with an error when this
 build reads an old build's folder differently or cannot read part of it, when an old build's write is not read back, when
 a restore or the integrity check differs, or when the future build's files are not refused untouched.
 
@@ -197,6 +206,10 @@ These are true today and are not papered over:
   the old version, which then refuses every file. The upgrade's error names the files and gives the exact
   `tabularius restore` command for the backup it took just before (the restore itself is yours to run, since it
   replaces whatever was written since).
+- **Record ids are numbered from the file's own mark.** Restoring a backup, or taking over with a standby that was behind,
+  brings back that copy's record-id mark, so ids given after it can be given again; so can a format-1 id the seed could
+  not see (above). An older build that predates the format number writes new records after the highest one left, as
+  before, if it is pointed at a format-2 file.
 - **`tabularius restore` across file formats.** The current credentials are copied into the restored file by column name.
   When the two files are in different formats, a column only the current file has is added to the restored table so its
   values are carried; a column only the backup has makes the restore stop (what it means is not known), and so does a backup
