@@ -132,6 +132,9 @@ export class NameTable {
     this.fields = new NameSet(names.fields ?? []);
     let fieldSetBuilds = 1;
     const tos: string[] = [];
+    // Field-name sets are shared by object identity: an occurrence whose field list is the very same array
+    // (or other iterable) object as another's, or as `names.fields`, reuses that one set. Equal contents in
+    // distinct objects are not merged, and an iterable must not be changed after it is passed in.
     const shared = new Map<Iterable<string>, NameSet>();
     if (names.fields) shared.set(names.fields, this.fields);
     for (const [to, fields] of names.occurrences ?? []) {
