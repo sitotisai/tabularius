@@ -185,7 +185,6 @@ import { WebhookError, type Webhooks } from './changes.ts';
 import { ConnectionError, type Connections } from './connections.ts';
 import type { Profiler } from './profiler.ts';
 import type { McpTokens } from './mcp-tokens.ts';
-import { externalManifest } from './backup-external.ts';
 import { whoCan } from './who-can.ts';
 import { dropScratch, scratchCopy, SCRATCH_MAX_BYTES } from './debug.ts';
 import { AdminPasskeyError, adminPasskeyIds, adminPasskeys, hasAdminPasskey, registerAdminPasskey, removeAdminPasskey, verifyAdminPasskeyAssertion } from './admin-passkey.ts';
@@ -2241,14 +2240,16 @@ export class Admin {
         return new RestoreError(status, where.reduce((text, d) => text.split(d).join(''), (e as Error).message));
       };
       let point: ReturnType<typeof restorePoint>;
+      let checked: Awaited<ReturnType<typeof checkRestorePoint>> | undefined;
       try {
         point = restorePoint(dest, file.name + STORE_EXT, at);
-        if (point) await checkRestorePoint(point);
+        if (point) checked = await checkRestorePoint(point);
       } catch (e) { throw refused(e, 409); }
-      if (!point) throw new RestoreError(400, `There is no backup of ${file.name} from before ${new Date(at).toLocaleString()}`);
-      const hasExternal = Object.keys(externalManifest(dirname(point.copy), false)).some((rel) => rel.split('/')[1] === file.name);
+      if (!point || !checked) throw new RestoreError(400, `There is no backup of ${file.name} from before ${new Date(at).toLocaleString()}`);
+      // Decided on the manifest and logs the check just verified, so a set without a manifest restores as it does elsewhere.
+      const hasExternal = Object.keys(checked.external).some((rel) => rel.split('/')[1] === file.name);
       if (hasExternal && mode === 'copy') throw new RestoreError(409, 'Copy restore is unavailable for external container files; use replace mode with the base snapshot');
-      if (hasExternal && point.logs.length) throw new RestoreError(409, 'Cannot restore external container files with progressive logs; choose the base snapshot');
+      if (hasExternal && checked.logs.length) throw new RestoreError(409, 'Cannot restore external container files with progressive logs; choose the base snapshot');
       if (mode === 'copy') {
         const d = new Date(point.time);
         const p2 = (n: number) => String(n).padStart(2, '0');
@@ -2270,7 +2271,7 @@ export class Admin {
         return { database: copy, time: new Date(point.time).toISOString(), mode };
       }
       const live = this.host.get(file.name);
-      if (!live) throw new RestoreError(409, 'Open the file before using replace restore; for a damaged file, restore it offline with tabularius restore');
+      if (!live) throw new RestoreError(409, `${file.status === 'paused' ? 'Resume' : 'Open'} the file before using replace restore; for a damaged file, restore it offline with tabularius restore`);
       const securitySnapshot = file.path + '.security-snapshot';
       // Read before the file is closed: with Encryption at Rest closing removes the plaintext store, and with it the marker that
       // shows a missing record was lost. The record read here is what the restore merges into, so a file approved while the
@@ -2289,7 +2290,7 @@ export class Admin {
         if (this.host.encrypted) rmSync(file.path + ENCRYPTED_EXT, { force: true });
       } finally {
         rmSync(securitySnapshot, { force: true });
-        if (file.status !== 'closed') await this.host.openFileEverywhere(file.name);
+        await this.host.openFileEverywhere(file.name);
       }
       // Point-in-time logs from here on must follow the restored file, not the copy they followed before.
       if (this.progressive) {
