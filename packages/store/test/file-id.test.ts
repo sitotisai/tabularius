@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, renameSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -30,4 +30,25 @@ test('created stores have stable identities; an older store gains one on opening
   const reopened = new Store(path);
   assert.equal(reopened.fileId, next);
   reopened.close();
+});
+
+test('read-only SQL refuses a file that replaced the opened one at its path', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'file-id-swap-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const path = join(dir, 'A.openhbam.sqlite');
+  const other = join(dir, 'other.openhbam.sqlite');
+  createStore(path);
+  createStore(other);
+  const store = new Store(path);
+  t.after(() => store.close());
+  // The first query opens its connection by path, after the identity was read and vetted.
+  store.checkpoint();
+  renameSync(other, path);
+  assert.throws(() => [...store.iterateCommitted('SELECT 1 AS one')], /not the file that was opened/);
+  // A file that is still the opened one keeps working.
+  const kept = join(dir, 'B.openhbam.sqlite');
+  createStore(kept);
+  const same = new Store(kept);
+  t.after(() => same.close());
+  assert.deepEqual([...same.iterateCommitted('SELECT 1 AS one')].map((r) => ({ ...r })), [{ one: 1 }]);
 });
