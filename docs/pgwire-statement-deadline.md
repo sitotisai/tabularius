@@ -68,18 +68,26 @@ number functions of FileMaker SQL, the same code the server runs, so a recursive
 query answers as a plain one does), and a few the server marks as portable (the
 PostgreSQL `array_upper` and `array_length`, which a driver's `generate_series`
 bound calls). A recursive query that calls any other function the server defines
-(such as the other PostgreSQL catalog functions) is refused with 8310, and so is
-one inside a transaction (`BEGIN` on the SQL port, a script's Open Transaction),
-because it would not see the transaction's changes.
+(such as the other PostgreSQL catalog functions) is refused with 8310. The child
+also gets the server's time zone (`TZ`), so the time functions agree.
+
+The child reads the committed file. A recursive query on a file that a transaction
+holds open, which is a `BEGIN` on the SQL port with writes enabled after a write to
+that file, is refused with 8310, because the child would not see the transaction's
+changes. A `BEGIN` that has not written to the file, and a query outside one, run
+the child on the committed file. A script's Open Transaction never reaches this
+path: ExecuteSQL reads the committed file.
 
 Each recursive query starts a Node process, about 0.4 ms for a plain query against
 roughly 600 ms for this one on a busy machine, and the server still waits for the
 child while it runs, so one such query holds the server for up to the deadline, not
-for ever. The child is started the way the server's other helper processes are
+for ever. Only one child runs at a time in a server process, but each may use 1024 MB
+of heap and the server parses up to a 300 MB answer from it; in cluster mode that
+multiplies by the number of workers. The child is started the way the server's other helper processes are
 (the single-file program runs a helper script only when it comes first on the
 command line, so the memory cap goes in the environment), with only the environment
 variables it needs.
 
 Any other query with no end in practice (a join of large tables with no condition,
 say) is not bounded. Whether FileMaker's own SQL stops a recursive query that does not end, and when, is unverified here.
-<!-- known-difference: SQL and calculations ;; A recursive SQL query is stopped after 5 seconds, can use SQLite's own functions, the store's shared ones and two PostgreSQL array functions only, and is refused inside a transaction; the server is held for that time, and other long SQL statements are not bounded ;; A long recursive query answers error 812; one that calls another PostgreSQL catalog function or runs inside BEGIN answers 8310 ;; A run of a recursive query that does not end through FileMaker's ODBC or JDBC driver, to see whether and when it is stopped (a deadline for every statement would need the child process design above for all queries) -->
+<!-- known-difference: SQL and calculations ;; A recursive SQL query is stopped after 5 seconds, can use SQLite's own functions, the store's shared ones and two PostgreSQL array functions only, and is refused on a file an open SQL-port transaction has written to; the server is held for that time, and other long SQL statements are not bounded ;; A long recursive query answers error 812; one that calls another PostgreSQL catalog function or runs on a file a transaction has written to answers 8310 ;; A run of a recursive query that does not end through FileMaker's ODBC or JDBC driver, to see whether and when it is stopped (a deadline for every statement would need the child process design above for all queries) -->

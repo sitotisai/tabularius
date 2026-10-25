@@ -72,7 +72,7 @@ test('the child gets a reduced environment, not the server\'s', (t) => {
   t.after(() => { if (was === undefined) delete process.env[name]; else process.env[name] = was; });
   const env = childCommand().env;
   assert.equal(env[name], undefined);
-  assert.ok(Object.keys(env).every((k) => ['NODE_OPTIONS', 'PATH', 'HOME', 'USERPROFILE', 'TMPDIR', 'TEMP', 'TMP', 'SystemRoot', 'TABULARIUS_HOME', 'OPENHBAM_HOME'].includes(k)), Object.keys(env).join(', '));
+  assert.ok(Object.keys(env).every((k) => ['NODE_OPTIONS', 'PATH', 'HOME', 'USERPROFILE', 'TMPDIR', 'TEMP', 'TMP', 'SystemRoot', 'TABULARIUS_HOME', 'OPENHBAM_HOME', 'TZ'].includes(k)), Object.keys(env).join(', '));
 });
 
 test('a recursive query runs through a launcher that reads its command line as the release program does', { skip: !posix }, (t) => {
