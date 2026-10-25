@@ -2,7 +2,7 @@
 // sorted order and without spaces, and reports bad input as text starting
 // with "?".
 
-import { asNumber, asText, CalcError, ERR, num, text, type Value } from './values.ts';
+import { asNumber, asText, CalcError, ERR, num, text, type DateStyle, type Value } from './values.ts';
 
 type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
 
@@ -201,8 +201,8 @@ function parsePath(path: string, limit: boolean): PathPart[] {
 }
 
 /** The parts of a path. A path that changes a document may have at most MAX_JSON_DEPTH parts (it could not give a document within the limit); reading has no such limit, a longer path just finds nothing. */
-function keyParts(v: Value, forChange = false): PathPart[] {
-  return v.type === 'number' ? [{ index: v.value }] : parsePath(asText(v), forChange);
+function keyParts(v: Value, forChange = false, order: DateStyle = 'MDY'): PathPart[] {
+  return v.type === 'number' ? [{ index: v.value }] : parsePath(asText(v, order), forChange);
 }
 
 function step(node: Json, p: PathPart): Json | undefined {
@@ -239,28 +239,28 @@ function guarded(fn: () => Value): Value {
   }
 }
 
-export function jsonGetElement(json: string, key: Value): Value {
+export function jsonGetElement(json: string, key: Value, order: DateStyle = 'MDY'): Value {
   return guarded(() => {
     let node: Json | undefined = parseJson(json);
-    for (const p of keyParts(key)) node = node === undefined ? undefined : step(node, p);
+    for (const p of keyParts(key, false, order)) node = node === undefined ? undefined : step(node, p);
     // Claris returns a JSON boolean as 1 or 0 (its page: JSONGetElement ( "[ true, false, true ]" ; 1 ) is 0).
     return typeof node === 'boolean' ? num(node ? 1 : 0) : elementText(node);
   });
 }
 
-function typed(value: Value, type: number): Json {
+function typed(value: Value, type: number, order: DateStyle = 'MDY'): Json {
   switch (type) {
-    case 1: return asText(value);
+    case 1: return asText(value, order);
     case 2: return asNumber(value);
     case 3: case 4: {
-      const t = asText(value);
+      const t = asText(value, order);
       const parsed = t.trim() === '' ? (type === 3 ? {} : []) : parseJson(t);
       return parsed;
     }
-    case 5: return asNumber(value) !== 0 || /^true$/i.test(asText(value));
+    case 5: return asNumber(value) !== 0 || /^true$/i.test(asText(value, order));
     case 6: return null;
     default: {
-      const t = asText(value);
+      const t = asText(value, order);
       try {
         return parseChecked(t);
       } catch (e) {
@@ -309,10 +309,10 @@ function setAt(root: Json, parts: PathPart[], value: Json): Json {
   return obj;
 }
 
-export function jsonSetElement(json: string, triples: [Value, Value, number][]): Value {
+export function jsonSetElement(json: string, triples: [Value, Value, number][], order: DateStyle = 'MDY'): Value {
   return guarded(() => {
     let root = parseJson(json);
-    for (const [key, value, type] of triples) root = setAt(root, keyParts(key, true), typed(value, type));
+    for (const [key, value, type] of triples) root = setAt(root, keyParts(key, true, order), typed(value, type, order));
     return parsedValue(writtenText(root), root);
   });
 }
@@ -373,28 +373,28 @@ function deleteAt(root: Json, parts: PathPart[]): Json {
   return obj;
 }
 
-export function jsonDeleteElement(json: string, key: Value): Value {
-  return guarded(() => writtenText(deleteAt(parseJson(json), keyParts(key, true))));
+export function jsonDeleteElement(json: string, key: Value, order: DateStyle = 'MDY'): Value {
+  return guarded(() => writtenText(deleteAt(parseJson(json), keyParts(key, true, order))));
 }
 
-function at(json: string, key: Value): Json | undefined {
+function at(json: string, key: Value, order: DateStyle): Json | undefined {
   let node: Json | undefined = parseJson(json);
-  for (const p of keyParts(key)) node = node === undefined ? undefined : step(node, p);
+  for (const p of keyParts(key, false, order)) node = node === undefined ? undefined : step(node, p);
   return node;
 }
 
-export function jsonListKeys(json: string, key: Value): Value {
+export function jsonListKeys(json: string, key: Value, order: DateStyle = 'MDY'): Value {
   return guarded(() => {
-    const node = at(json, key);
+    const node = at(json, key, order);
     if (Array.isArray(node)) return text(node.map((_, i) => String(i)).join('\r'));
     if (node && typeof node === 'object') return text(Object.keys(node).sort().join('\r'));
     throw new JsonError('Not an object or array');
   });
 }
 
-export function jsonListValues(json: string, key: Value): Value {
+export function jsonListValues(json: string, key: Value, order: DateStyle = 'MDY'): Value {
   return guarded(() => {
-    const node = at(json, key);
+    const node = at(json, key, order);
     const list = Array.isArray(node) ? node : node && typeof node === 'object' ? Object.keys(node).sort().map((k) => node[k]) : undefined;
     if (!list) throw new JsonError('Not an object or array');
     // A JSON true or false is listed as 1 or 0, as JSONGetElement returns it.
@@ -402,9 +402,9 @@ export function jsonListValues(json: string, key: Value): Value {
   });
 }
 
-export function jsonGetElementType(json: string, key: Value): Value {
+export function jsonGetElementType(json: string, key: Value, order: DateStyle = 'MDY'): Value {
   return guarded(() => {
-    const node = at(json, key);
+    const node = at(json, key, order);
     if (node === undefined) return text('');
     const t = node === null ? 6 : Array.isArray(node) ? 4 : typeof node === 'object' ? 3 : typeof node === 'string' ? 1 : typeof node === 'number' ? 2 : 5;
     return num(t);

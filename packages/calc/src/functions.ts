@@ -46,7 +46,7 @@ import {
 import type { Node } from './parser.ts';
 import { ALL_STYLES, STYLE_BITS, restyle, rgbHex, sliceRuns, toCss, type TextFormat } from './styled.ts';
 import {
-  CalcError, HostWait, ERR, EMPTY, asBoolean, asDate, asNumber, asNumberOrEmpty, asText, asTime, asTimestamp, bool, dayNumber,
+  CalcError, HostWait, ERR, EMPTY, asBoolean, asDate, calendarDay, checkedDate, checkedTimestamp, dateFromNumber, isStoredDay, timestampFromNumber, asNumber, asNumberOrEmpty, asText, asTime, asTimestamp, bool, dayNumber,
   decimalSum, exactAbs, exactDivFloor, exactMod, exactOf, exactSign, formatNumber, fromDayNumber, fromExact, isBeyondDouble, isEmpty, isOverlongWholeText, MAX_DIGITS, num, numberFromText, parseDateText, parseTimeText, parseTimestampText, text, tidy, tidySum, type Value,
 } from './values.ts';
 
@@ -669,6 +669,7 @@ eager('GetAsNumber', 1, 1, (v) => {
 });
 eager('GetAsBoolean', 1, 1, (v) => bool(asBoolean(v[0])));
 eager('GetAsDate', 1, 1, (v, env) => {
+  if (v[0].type === 'number') return dateFromNumber(v[0].value);
   const d = asDate(v[0], env.order);
   return d === undefined ? EMPTY : { type: 'date', value: d };
 });
@@ -677,6 +678,7 @@ eager('GetAsTime', 1, 1, (v) => {
   return t === undefined ? EMPTY : { type: 'time', value: t };
 });
 eager('GetAsTimestamp', 1, 1, (v, env) => {
+  if (v[0].type === 'number') return timestampFromNumber(v[0].value);
   const t = asTimestamp(v[0], env.order);
   return t === undefined ? EMPTY : { type: 'timestamp', value: t };
 });
@@ -852,7 +854,9 @@ for (const [name, sign] of [['Max', 1], ['Min', -1]] as const) {
 
 eager('Date', 3, 3, (v) => {
   if (v.every(isEmpty)) return EMPTY;
-  return { type: 'date', value: dayNumber(Math.trunc(N(v[2])), Math.trunc(N(v[0])), Math.trunc(N(v[1]))) };
+  // A date past 12/31/4000 or before 1/1/0001 is "?" (an invalid number), not a date with no value.
+  const day = dayNumber(Math.trunc(N(v[2])), Math.trunc(N(v[0])), Math.trunc(N(v[1])));
+  return checkedDate(day);
 });
 eager('Time', 3, 3, (v) => {
   if (v.every(isEmpty)) return EMPTY;
@@ -862,13 +866,15 @@ eager('Timestamp', 2, 2, (v, env) => {
   const d = asDate(v[0], env.order);
   const t = asTime(v[1]);
   // A time without a date is an error ("?"), as FileMaker stored for Timestamp ( "" ; 0 ).
+  // An invalid number as the date (an out-of-range Date) keeps being invalid; a text or empty date with a time is the error "?".
+  if (v[0].type === 'number' && !Number.isFinite(v[0].value)) return num(NaN);
   if (d === undefined) return t === undefined ? EMPTY : text('?');
-  return { type: 'timestamp', value: (d - 1) * 86400 + (t ?? 0) };
+  return checkedTimestamp((d - 1) * 86400 + (t ?? 0), d);
 });
 function dateFn(name: string, f: (d: ReturnType<typeof fromDayNumber>, day: number) => Value): void {
   eager(name, 1, 1, (v, env) => {
     const d = asDate(v[0], env.order);
-    return d === undefined ? EMPTY : f(fromDayNumber(d), d);
+    return d === undefined || !isStoredDay(d) ? EMPTY : f(fromDayNumber(d), d);
   });
 }
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -882,21 +888,21 @@ dateFn('MonthName', (d) => text(MONTHS[d.month - 1]));
 dateFn('DayNameJ', (d) => text(DAYS_J[d.weekday - 1]));
 // Inferred: Claris shows MonthNameJ's result only as a picture; Japanese writes the month number and 月.
 dateFn('MonthNameJ', (d) => text(`${d.month}月`));
-dateFn('DayOfYear', (d, day) => num(day - dayNumber(d.year, 1, 1) + 1));
+dateFn('DayOfYear', (d, day) => num(day - calendarDay(d.year, 1, 1) + 1));
 // Week 1 holds January 1 and weeks start on Sunday, as FileMaker's WeekOfYear counts.
 dateFn('WeekOfYear', (d, day) => {
-  const jan1 = dayNumber(d.year, 1, 1);
+  const jan1 = calendarDay(d.year, 1, 1);
   const offset = fromDayNumber(jan1).weekday - 1;
   return num(Math.floor((day - jan1 + offset) / 7) + 1);
 });
 eager('WeekOfYearFiscal', 2, 2, (v, env) => {
   const day = asDate(v[0], env.order);
-  if (day === undefined) return EMPTY;
+  if (day === undefined || !isStoredDay(day)) return EMPTY;
   const start = Math.trunc(N(v[1])) || 1;
   // ISO-like: the first week has at least four days of the new year, weeks start on `start`.
   const { year } = fromDayNumber(day);
   const firstWeekStart = (y: number) => {
-    const jan1 = dayNumber(y, 1, 1);
+    const jan1 = calendarDay(y, 1, 1);
     const wd = fromDayNumber(jan1).weekday;
     const back = (wd - start + 7) % 7;
     const s = jan1 - back;
@@ -913,18 +919,18 @@ function timeFn(name: string, f: (seconds: number) => number): void {
     return t === undefined ? EMPTY : num(f(t));
   });
 }
-timeFn('Hour', (s) => Math.floor(s / 3600));
-timeFn('Minute', (s) => Math.floor((s % 3600) / 60));
-timeFn('Seconds', (s) => s % 60);
+timeFn('Hour', (s) => Math.sign(s) * Math.floor(Math.abs(s) / 3600));
+timeFn('Minute', (s) => Math.sign(s) * Math.floor((Math.abs(s) % 3600) / 60));
+timeFn('Seconds', (s) => Math.sign(s) * (Math.abs(s) % 60));
 
 // --- JSON ----------------------------------------------------------------------
 
 for (const [name, n] of Object.entries(JSON_TYPES)) def(name, 0, 0, () => num(n));
-eager('JSONGetElement', 2, 2, (v, env) => jsonGetElement(T(v[0], env), v[1]));
-eager('JSONDeleteElement', 2, 2, (v, env) => jsonDeleteElement(T(v[0], env), v[1]));
-eager('JSONListKeys', 2, 2, (v, env) => jsonListKeys(T(v[0], env), v[1]));
-eager('JSONListValues', 2, 2, (v, env) => jsonListValues(T(v[0], env), v[1]));
-eager('JSONGetElementType', 2, 2, (v, env) => jsonGetElementType(T(v[0], env), v[1]));
+eager('JSONGetElement', 2, 2, (v, env) => jsonGetElement(T(v[0], env), v[1], env.order));
+eager('JSONDeleteElement', 2, 2, (v, env) => jsonDeleteElement(T(v[0], env), v[1], env.order));
+eager('JSONListKeys', 2, 2, (v, env) => jsonListKeys(T(v[0], env), v[1], env.order));
+eager('JSONListValues', 2, 2, (v, env) => jsonListValues(T(v[0], env), v[1], env.order));
+eager('JSONGetElementType', 2, 2, (v, env) => jsonGetElementType(T(v[0], env), v[1], env.order));
 eager('JSONFormatElements', 1, 1, (v, env) => jsonFormatElements(T(v[0], env)));
 eager('JSONParse', 1, 1, (v, env) => jsonParse(T(v[0], env)));
 eager('JSONParsedState', 1, 1, (v) => num(jsonParsedState(v[0])));
@@ -942,7 +948,7 @@ def('JSONSetElement', 2, undefined, (a, env) => {
     if (a.length !== 4) throw new CalcError(a.length < 4 ? ERR.tooFewParameters : ERR.tooManyParameters, 'JSONSetElement needs json ; key ; value ; type');
     triples.push([env.v(a[1]), env.v(a[2]), env.number(a[3])]);
   }
-  return jsonSetElement(json, triples);
+  return jsonSetElement(json, triples, env.order);
 });
 
 // --- encoding and hashing --------------------------------------------------------
@@ -1378,11 +1384,13 @@ function sqlText(v: Value): string {
   switch (v.type) {
     case 'number': return formatNumber(v.value);
     case 'date': {
+      if (!isStoredDay(v.value)) return '?';
       const d = fromDayNumber(v.value);
       return `${d.year}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`;
     }
     case 'timestamp': {
       const day = Math.floor(v.value / 86400) + 1;
+      if (!isStoredDay(day)) return '?';
       const t = asText({ type: 'time', value: v.value - (day - 1) * 86400 });
       return `${sqlText({ type: 'date', value: day })} ${t.padStart(8, '0')}`;
     }
