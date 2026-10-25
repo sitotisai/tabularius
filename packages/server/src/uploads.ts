@@ -18,7 +18,7 @@ import { positiveWholeNumber } from './setting-values.ts';
 import { eachChunk } from './dataapi.ts';
 import type { IncomingMessage } from 'node:http';
 import { randomBytes } from 'node:crypto';
-import { closeSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, lstatSync } from 'node:fs';
 import { cleanupPath, openSync, writeSync } from '../../store/src/fs-boundary.ts';
 import { join } from 'node:path';
 import type { ImportProgress } from '../../store/src/index.ts';
@@ -35,6 +35,8 @@ const KEEP = 20;
 /** An upload that has received nothing for this long is abandoned and removed (TABULARIUS_UPLOAD_IDLE_HOURS, default 24; 0 keeps them). */
 export const UPLOAD_IDLE_MS = Math.max(0, Number(process.env.TABULARIUS_UPLOAD_IDLE_HOURS ?? 24) || 0) * 60 * 60 * 1000;
 const UPLOAD_DIR = '.openhbam-uploads';
+const liveOwners = new Set<string>();
+const CRASH_GRACE_MS = 24 * 60 * 60 * 1000;
 /**
  * The largest upload accepted, so a declared size can't fill the disk before a
  * byte of it is checked. Default 10 GB; set TABULARIUS_MAX_UPLOAD to the number of
@@ -145,20 +147,36 @@ export class Uploads {
     this.now = opts.now ?? (() => monotonicClock.now());
     this.idleMs = opts.idleMs ?? UPLOAD_IDLE_MS;
     this.dir = join(host.dir, UPLOAD_DIR);
-    // Keep live and unidentifiable owners, including legacy files and reused PIDs.
+    this.sweepCrashLeftovers();
+    this.sweeper = setInterval(() => this.sweep(), this.idleMs > 0 ? Math.min(this.idleMs, 15 * 60 * 1000) : 15 * 60 * 1000).unref();
+  }
+
+  private sweepCrashLeftovers(): void {
+    // The random owner token distinguishes runs even when a container restarts as the same PID.
+    // Recent files always get a grace period; foreign live PIDs get a week, not permanent immunity.
+    let removed = 0;
     if (existsSync(this.dir)) for (const file of readdirSync(this.dir)) {
-      const owner = /^([1-9][0-9]*)-[a-f0-9]{18}-[A-Za-z0-9_-]{12}\.part$/.exec(file);
-      if (!owner || !Number.isSafeInteger(Number(owner[1]))) continue;
-      try { process.kill(Number(owner[1]), 0); }
-      catch (e) {
-        if ((e as NodeJS.ErrnoException).code === 'ESRCH') rmSync(join(this.dir, file), { force: true });
+      const owner = /^(([1-9][0-9]*)-[a-f0-9]{18})-[A-Za-z0-9_-]{12}\.part$/.exec(file);
+      if (!owner || liveOwners.has(owner[1]) || !Number.isSafeInteger(Number(owner[2]))) continue;
+      const path = join(this.dir, file);
+      let stat: ReturnType<typeof lstatSync>;
+      try { stat = lstatSync(path); } catch { continue; }
+      if (!stat.isFile()) continue;
+      const age = Date.now() - stat.mtimeMs;
+      if (age <= CRASH_GRACE_MS) continue;
+      let alive = true;
+      try { process.kill(Number(owner[2]), 0); }
+      catch (error) { alive = (error as NodeJS.ErrnoException).code !== 'ESRCH'; }
+      if (Number(owner[2]) === process.pid || !alive || age > 7 * CRASH_GRACE_MS) {
+        try { rmSync(path, { force: true }); } catch { continue; }
+        if (++removed >= 100) break;
       }
     }
-    if (this.idleMs > 0) this.sweeper = setInterval(() => this.sweep(), Math.min(this.idleMs, 15 * 60 * 1000)).unref();
   }
 
   stop(): void {
     clearInterval(this.sweeper);
+    liveOwners.delete(this.owner);
   }
 
   list(): Upload[] {
@@ -213,6 +231,7 @@ export class Uploads {
     if (this.taken(name)) throw new UploadError(409, `A file named ${name} is already hosted or being uploaded. Remove it from Hosted files first to host this copy instead, or rename this file.`);
     if (size > maxUploadInProgress()) throw new UploadError(413, quota());
     mkdirSync(this.dir, { recursive: true, mode: 0o700 });
+    liveOwners.add(this.owner);
     const id = `${this.owner}-${randomBytes(9).toString('base64url')}`;
     closeSync(openSync(this.part(id), 'wx', 0o600));
     this.cleanups.set(id, cleanupPath(this.part(id)));
@@ -350,6 +369,7 @@ export class Uploads {
 
   /** Removes uploads still receiving pieces that have been idle past the limit: their pieces would otherwise fill the disk until a restart. */
   sweep(): void {
+    this.sweepCrashLeftovers();
     if (this.idleMs <= 0) return;
     const cutoff = this.now() - this.idleMs;
     for (const [id, u] of this.uploads) {

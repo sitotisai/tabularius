@@ -33,6 +33,8 @@ const IDLE_MS = Math.max(0, Number(process.env.TABULARIUS_UPLOAD_IDLE_HOURS ?? 2
 const UPLOAD_PREFIX = 'tabularius-container-uploads-';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
+const RUN_ID = randomBytes(18).toString('hex');
+let requestSpoolBytes = 0;
 
 export interface UploadSweepOptions {
   tmp: string;
@@ -64,10 +66,18 @@ export function sweepOrphanUploadFolders(opts: UploadSweepOptions): { removed: s
     return { ...result, failed: 1 };
   }
   for (const name of names) {
-    if (!new RegExp(`^${UPLOAD_PREFIX}[A-Za-z0-9]{6}$`).test(name)) continue;
+    const legacyRequest = /^tabularius-upload-[a-f0-9]{24}$/.test(name);
+    if (!legacyRequest && !new RegExp(`^${UPLOAD_PREFIX}[A-Za-z0-9]{6}$`).test(name)) continue;
     const path = join(opts.tmp, name);
     try {
       const before = lstatSync(path);
+      if (legacyRequest) {
+        if (!before.isFile() || (typeof process.getuid === 'function' && before.uid !== process.getuid()) || now - before.mtimeMs <= Math.max(olderThanMs, WEEK_MS)) { result.kept++; continue; }
+        rmSync(path, { force: true });
+        result.removed.push(name);
+        if (result.removed.length >= 100) break;
+        continue;
+      }
       if (!before.isDirectory() || (typeof process.getuid === 'function' && before.uid !== process.getuid())) { result.kept++; continue; }
       if (folders.has(path)) { result.kept++; continue; }
       let newest = before.mtimeMs;
@@ -94,9 +104,9 @@ export function sweepOrphanUploadFolders(opts: UploadSweepOptions): { removed: s
         }
       } catch { /* Missing, unreadable, oversized or malformed marker means age decides. */ }
       const ownPid = marker?.pid === process.pid;
-      if (ownPid || age <= olderThanMs) { result.kept++; continue; }
+      if (age <= olderThanMs) { result.kept++; continue; }
       const dirAge = now - before.mtimeMs;
-      if (typeof marker?.pid === 'number' && Number.isSafeInteger(marker.pid) && marker.pid > 0 && dirAge < WEEK_MS && alive(marker.pid)) { result.kept++; continue; }
+      if (!ownPid && typeof marker?.pid === 'number' && Number.isSafeInteger(marker.pid) && marker.pid > 0 && dirAge < WEEK_MS && alive(marker.pid)) { result.kept++; continue; }
       const again = lstatSync(path);
       if (!again.isDirectory() || again.dev !== before.dev || again.ino !== before.ino) { result.kept++; continue; }
       rmSync(path, { recursive: true, force: true });
@@ -161,6 +171,35 @@ interface Held extends ContainerUpload {
 const folders = new Map<string, () => void>();
 process.once('exit', () => { for (const cleanup of folders.values()) cleanup(); });
 
+/** Reserve the request's enforced maximum before opening a spool, including chunked bodies.
+ * This process-wide 8 GiB budget is separate from resumable uploads' declared-byte budget.
+ * A Tabularius resource policy; compatible-product behaviour is unverified.
+ */
+export function requestUploadSpool(max: number, tmp = process.env.TABULARIUS_UPLOAD_TMP || tmpdir()): { path: string; release(): void } {
+  if (!Number.isSafeInteger(max) || max <= 0 || requestSpoolBytes + max > MAX_CONTAINER_UPLOAD_BYTES) {
+    throw new ContainerUploadError(413, 'Too many bytes are being uploaded at once; try again when one has finished');
+  }
+  requestSpoolBytes += max;
+  let dir: string | undefined;
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    requestSpoolBytes -= max;
+    if (dir) {
+      folders.delete(dir);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  try {
+    mkdirSync(tmp, { recursive: true });
+    dir = mkdtempSync(join(tmp, UPLOAD_PREFIX));
+    folders.set(dir, release);
+    writeFileSync(join(dir, 'owner.json'), JSON.stringify({ pid: process.pid, run: RUN_ID, started: Date.now(), version: 1 }), { flag: 'wx', mode: 0o600 });
+    return { path: join(dir, 'request.part'), release };
+  } catch (error) { release(); throw error; }
+}
+
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 export class ContainerUploads {
@@ -183,7 +222,7 @@ export class ContainerUploads {
       mkdirSync(this.tmp, { recursive: true });
       this.dir = mkdtempSync(join(this.tmp, 'tabularius-container-uploads-'));
       folders.set(this.dir, cleanupPath(this.dir, { recursive: true, force: true }));
-      try { writeFileSync(join(this.dir, 'owner.json'), JSON.stringify({ pid: process.pid, started: Date.now(), version: 1 }), { flag: 'wx', mode: 0o600 }); }
+      try { writeFileSync(join(this.dir, 'owner.json'), JSON.stringify({ pid: process.pid, run: RUN_ID, started: Date.now(), version: 1 }), { flag: 'wx', mode: 0o600 }); }
       catch { /* Age-based sweep remains available if the marker cannot be written. */ }
     }
     return join(this.dir, `${id}.part`);
