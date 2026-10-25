@@ -117,9 +117,23 @@ test('#30 replace restore refuses closed and paused files before disrupting them
     else await host.closeFileEverywhere('Test');
     const r = await call('/restore', { database: 'Test', at: Date.now(), mode: 'replace' });
     assert.equal(r.status, 409, JSON.stringify(r));
-    assert.match(r.body.error, /open.*file|file.*open/i);
+    assert.match(r.body.error, state === 'paused' ? /resume.*file/i : /open.*file/i);
     assert.equal(host.files().find((f) => f.name === 'Test')!.status, state);
   }
+});
+
+test('#35 a backup set with no backup.json still restores, as an unsigned set does without a backup key', async (t) => {
+  const { call, dir, host } = await setup(t);
+  assert.equal((await call('/backup', {})).status, 200);
+  const dest = defaultBackupDir(dir);
+  const set = readdirSync(dest).find((n) => /^\d/.test(n))!;
+  rmSync(join(dest, set, 'backup.json'));
+  const copy = await call('/restore', { database: 'Test', at: Date.now(), name: 'Copy' });
+  assert.equal(copy.status, 200, JSON.stringify(copy));
+  assert.ok(host.get('Copy'));
+  const replace = await call('/restore', { database: 'Test', at: Date.now(), mode: 'replace' });
+  assert.equal(replace.status, 200, JSON.stringify(replace));
+  assert.ok(host.get('Test'));
 });
 
 test('#35 external container copy restore is refused without disrupting the live file', async (t) => {
@@ -258,11 +272,13 @@ test('#33 unexpected reconvert faults stay generic and log their cause; source a
   assert.equal(fault.status, 500);
   assert.equal(fault.body.error, 'Internal server error');
   assert.match(logs.mock.calls.map((c) => String(c.arguments[0])).join('\n'), /synthetic server fault/);
+  const logged = logs.mock.callCount();
+  assert.ok(logged >= 1, 'the fault was logged');
   preview.mock.mockImplementation(async () => { throw Object.assign(new Error('synthetic access denial'), { code: 'EACCES', path: join(dir, 'Test.fmp12') }); });
   const denied = await call('/files/Test/reconvert-preview', {});
   assert.equal(denied.status, 409);
   assert.match(denied.body.error, /Allow the server to read.*Test.fmp12/);
-  assert.equal(logs.mock.callCount(), 1, 'a user mistake is not a server fault');
+  assert.equal(logs.mock.callCount(), logged, 'a user mistake is not a server fault');
 });
 
 test('#31 console schedules honor folder edits, explicit destinations and preserve unrelated sets', async (t) => {
