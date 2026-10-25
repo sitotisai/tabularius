@@ -159,18 +159,25 @@ export class Uploads {
       const owner = /^(([1-9][0-9]*)-[a-f0-9]{18})-[A-Za-z0-9_-]{12}\.part$/.exec(file);
       if (!owner || liveOwners.has(owner[1]) || !Number.isSafeInteger(Number(owner[2]))) continue;
       const path = join(this.dir, file);
+      const pid = Number(owner[2]);
       let stat: ReturnType<typeof lstatSync>;
       try { stat = lstatSync(path); } catch { continue; }
       if (!stat.isFile()) continue;
-      const age = Date.now() - stat.mtimeMs;
-      if (age <= CRASH_GRACE_MS) continue;
-      let alive = true;
-      try { process.kill(Number(owner[2]), 0); }
-      catch (error) { alive = (error as NodeJS.ErrnoException).code !== 'ESRCH'; }
-      if (Number(owner[2]) === process.pid || !alive || age > 7 * CRASH_GRACE_MS) {
-        try { rmSync(path, { force: true }); } catch { continue; }
-        if (++removed >= 100) break;
+      // A part whose owner is another process that is confirmed gone (ESRCH) cannot be resumed by anyone and is removed
+      // at once, so a server that keeps crashing does not pile up partial files. Everything else waits: this PID under
+      // another token (a restart as the same PID, or another container), a PID that is alive, and one that cannot be checked.
+      let gone = false;
+      if (pid !== process.pid) {
+        try { process.kill(pid, 0); }
+        catch (error) { gone = (error as NodeJS.ErrnoException).code === 'ESRCH'; }
       }
+      if (!gone) {
+        const age = Date.now() - stat.mtimeMs;
+        if (age <= CRASH_GRACE_MS) continue;
+        if (pid !== process.pid && age <= 7 * CRASH_GRACE_MS) continue;
+      }
+      try { rmSync(path, { force: true }); } catch { continue; }
+      if (++removed >= 100) break;
     }
   }
 

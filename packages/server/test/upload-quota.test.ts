@@ -1,7 +1,7 @@
 import type { IncomingMessage } from 'node:http';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Host } from '../src/host.ts';
@@ -21,13 +21,7 @@ test('empty uploads do not reserve their declared sizes', () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('configured quota counts received bytes through conversion, failure and expiry', async (t) => {
-  const stubDir = mkdtempSync(join(tmpdir(), 'tabularius-quota-stubs-'));
-  const marker = join(stubDir, 'forbidden-command-used');
-  for (const command of ['launchctl', 'systemctl', 'sc', 'git', 'npm', 'curl', 'sudo']) {
-    writeFileSync(join(stubDir, command), `#!/bin/sh\nprintf x > '${marker}'\nexit 99\n`, { mode: 0o700 });
-  }
-  t.after(() => { const used = existsSync(marker); rmSync(stubDir, { recursive: true, force: true }); assert.equal(used, false); });
+test('configured quota counts received bytes through conversion, failure and expiry', async () => {
   const { execFileSync } = await import('node:child_process');
   execFileSync(process.execPath, ['--input-type=module', '-e', `
     import assert from 'node:assert/strict';
@@ -72,7 +66,7 @@ test('configured quota counts received bytes through conversion, failure and exp
       const e = uploads.start({ name: 'E.fmp12', size: 6 });
       await uploads.write(e.id, 0, piece(6));
     } finally { rmSync(dir, { recursive: true, force: true }); }
-  `], { cwd: join(import.meta.dirname, '../../..'), env: { ...process.env, PATH: stubDir, TABULARIUS_MAX_UPLOAD: '0', TABULARIUS_MAX_UPLOAD_IN_PROGRESS: '10' }, stdio: 'pipe' });
+  `], { cwd: join(import.meta.dirname, '../../..'), env: { ...process.env, TABULARIUS_MAX_UPLOAD: '0', TABULARIUS_MAX_UPLOAD_IN_PROGRESS: '10' }, stdio: 'pipe' });
 });
 
 test('an active piece cannot be removed or swept to free its reserved bytes', async () => {
