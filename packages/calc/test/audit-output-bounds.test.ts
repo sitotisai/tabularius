@@ -79,11 +79,10 @@ const EUROS = '\u20ac'.repeat(2_600_000);
 const euroField = withField(EUROS);
 const b64Len = (bytes: number) => Math.ceil(bytes / 3) * 4;
 
-test('TextEncode is held to the text limit, so a chain of encoders cannot grow the text without end', () => {
-  assert.equal(evaluateText('Length ( HexEncode ( TextEncode ( F ) ) )', euroField), String(2 * 7_800_000));
-  // A text of 2.7 million euro signs is 8.1 million bytes; the container it would make is refused, not built.
-  refused('Length ( HexEncode ( TextEncode ( F ) ) )', withField('\u20ac'.repeat(2_700_000)));
-  // The first round made 15.6 million characters of hex, which TextEncode does not take again.
+test('a container a calculation made is held to the text limit when it is encoded, so a chain of encoders cannot grow it', () => {
+  // 2.6 million euro signs are 7.8 million bytes; their hex is 15.6 million characters.
+  refused('Length ( HexEncode ( TextEncode ( F ) ) )', euroField);
+  assert.equal(evaluateText('Length ( HexEncode ( TextEncode ( F ) ) )', withField('\u20ac'.repeat(1_300_000))), String(2 * 3_900_000));
   quick(() => refused('Length ( HexEncode ( TextEncode ( HexEncode ( TextEncode ( F ) ) ) ) )', euroField));
   quick(() => refused(`Length ( ${nest('HexEncode ( TextEncode', 4, 'F')}${' )'.repeat(4)} )`, euroField));
   assert.equal(evaluateText('HexEncode ( TextEncode ( "a" ) )'), '61');
@@ -131,6 +130,51 @@ test('text a container made is over the limit, so no function that grows text ta
   refused('Length ( HexEncode ( MBS ( "Container.GetDataURL" ; TextEncode ( F ) ) ) )', euroField);
   refused('Length ( BE_EncryptAES ( "k" ; MBS ( "Container.GetBase64" ; TextEncode ( F ) ) ) )', euroField);
   refused('Length ( BE_CipherEncrypt ( "aes-256-cbc" ; HexEncode ( TextEncode ( F ) ) ; "' + '00'.repeat(32) + '" ; "' + '00'.repeat(16) + '" ) )', euroField);
+});
+
+test('Base64Decode and HexDecode cannot extend a chain of HexEncode: the exact chain of the review', () => {
+  const ctx = withField('a'.repeat(4_000_000));
+  // `rounds` of HexEncode, then Base64Decode to a container (hex digits are valid Base64, so 0.75 of the text), from 4 MB.
+  const chain = (rounds: number, decode = 'Base64Decode') => {
+    let f = 'TextEncode ( F )';
+    for (let i = 0; i < rounds; i++) f = `${decode} ( HexEncode ( ${f} ) ; "f.bin" )`;
+    return `Length ( HexEncode ( ${f} ) )`;
+  };
+  assert.equal(evaluateText(chain(0), ctx), '8000000');
+  // The first round made a container of 6,000,000 bytes, whose hex is 12,000,000 characters.
+  quick(() => refused(chain(1), ctx));
+  quick(() => refused(chain(7), ctx));
+  // HexDecode undoes HexEncode, so that chain stays where it began however long it is.
+  assert.equal(evaluateText(chain(3, 'HexDecode'), ctx), '8000000');
+  // A stored container is not made by a calculation: its whole text is made, and decoding that gives the file back.
+  assert.equal(evaluateText('Length ( HexEncode ( F ) )', pictureCtx), '14000000');
+  assert.equal(evaluateText('MBS ( "Container.GetTotalSize" ; Base64Decode ( Base64Encode ( F ) ; "p.jpg" ) )', pictureCtx), '7000000');
+  assert.equal(evaluateText('MBS ( "Container.GetTotalSize" ; HexDecode ( HexEncode ( F ) ; "p.jpg" ) )', pictureCtx), '7000000');
+  // The container that makes is a calculation's, so it cannot be encoded past the text limit, nor grown by the pair.
+  refused('Length ( HexEncode ( Base64Decode ( HexEncode ( F ) ; "p.jpg" ) ) )', pictureCtx);
+  refused('Length ( Base64Encode ( Base64Decode ( Base64Encode ( F ) ; "p.jpg" ) ) )', pictureCtx);
+  // Passing the container on unchanged keeps what it is.
+  assert.equal(evaluateText('Length ( HexEncode ( If ( 1 ; F ) ) )', pictureCtx), '14000000');
+  assert.equal(evaluateText('Base64Decode ( "YWJj" )'), 'abc');
+  assert.equal(evaluateText('HexDecode ( "616263" )'), 'abc');
+});
+
+test('Code counts the digits it writes: six above U+186A0 and seven from U+F4240', () => {
+  assert.equal(evaluateText('Code ( "\u{1F600}" )'), '128512');
+  assert.equal(evaluateText('Code ( "a\u{10FFFF}" )'), '111411100097');
+  assert.equal(evaluateText('Code ( "ab" )'), '9800097');
+  // 1.4 million of U+1F600 write 8,400,000 digits; at five each the check let them through (and 1.2 million of U+10FFFF).
+  refused('Length ( Code ( F ) )', withField('\u{1F600}'.repeat(1_400_000)));
+  refused('Length ( Code ( F ) )', withField('\u{10FFFF}'.repeat(1_200_000)));
+  assert.equal(evaluateText('Length ( Code ( F ) )', withField('\u{1F600}'.repeat(1_300_000))), '7800000');
+});
+
+test('GetAsURLEncoded gives the replacement character for a lone surrogate, not a raw URIError', () => {
+  assert.equal(evaluateText('GetAsURLEncoded ( Char ( 55296 ) )'), '%EF%BF%BD');
+  assert.equal(evaluateText('GetAsURLEncoded ( "a" & Char ( 56320 ) & "b" )'), 'a%EF%BF%BDb');
+  assert.equal(evaluateText('GetAsURLEncoded ( "\u{1F600}" )'), '%F0%9F%98%80');
+  assert.equal(evaluateText('Length ( GetAsURLEncoded ( F ) )', withField('\ud800'.repeat(800_000))), String(9 * 800_000));
+  refused('Length ( GetAsURLEncoded ( F ) )', withField('\ud800'.repeat(900_000)));
 });
 
 test('Base64Encode and GetAsURLEncoded refuse a result past the text limit', () => {
