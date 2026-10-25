@@ -317,6 +317,23 @@ function buffered(from: IncomingMessage, body: Buffer, extra: { method: string; 
   return Object.assign(Readable.from(body.length ? [body] : []), { ...extra, socket: from.socket }) as unknown as IncomingMessage;
 }
 
+/**
+ * What a change set's request is refused for whatever the file holds: a read, a script call (a script yields the event loop as
+ * it runs, which a change set must not do) and, for a read-only API token, any change.
+ */
+function refusedInChangeSet(r: BatchRequest, at: Service): ODataError | undefined {
+  if (r.method === 'GET' || r.method === 'HEAD') return bad('A change set holds only changes (POST, PATCH, PUT or DELETE): send reads outside it, in the $batch itself', '3');
+  // "$1/..." is an address made by an earlier request; it names none of these.
+  if (!r.url.startsWith('$')) {
+    let path: string | undefined;
+    try { path = new URL(r.url, `${at.base}/`).pathname; } catch { /* "is not a valid address", said when it runs */ }
+    let name = path?.slice(ROOT.length).split('/').filter(Boolean)[1];
+    try { if (name !== undefined) name = decodeURIComponent(name); } catch { /* a malformed escape is refused when it runs */ }
+    if (name !== undefined && /^Script\./i.test(name)) return bad('A change set can\'t call a script: send the Script call on its own, in the $batch itself', '3');
+  }
+  if (at.readOnlyToken) return new ODataError(403, '9', 'This API token is read-only');
+}
+
 /** The client of this request has gone: nothing it asked for is worth doing. */
 const gone = (req: IncomingMessage, res?: ServerResponse) => !!(req.socket?.destroyed || res?.destroyed);
 
@@ -1245,6 +1262,16 @@ export class ODataEndpoint {
       return { unit, answers: [a], failed: a, notRun: true };
     };
     if (requests.length > BATCH_LIMIT.changeSetRequests) return refused(failure(400, '3', `A change set holds at most ${BATCH_LIMIT.changeSetRequests} requests: send the rest in another change set`));
+    // What a request is refused for without touching the file is settled before the set takes the file: it never waits for the
+    // requests running, and nobody waits behind it. The set answers as it would have once it got there (the refused request's
+    // answer, none of the rest kept).
+    for (const [i, r] of requests.entries()) {
+      const early = refusedInChangeSet(r, at);
+      if (!early) continue;
+      const a = failure(early.status, early.code, early.message);
+      for (const q of requests) if (q.id !== undefined) located.delete(q.id);
+      return { unit, answers: [...requests.slice(0, i).map(() => failure(424, '3', 'Another request in its change set failed, so nothing in it was kept')), a], failed: a };
+    }
     let release: () => void;
     try { release = await this.hold(at.store); }
     catch (e) { return refused(failure(503, '956', e instanceof Error ? e.message : SET_OPEN)); }
@@ -1292,7 +1319,7 @@ export class ODataEndpoint {
     const res = new Captured();
     let leave: (() => void) | undefined;
     try {
-      if (inChangeSet && (r.method === 'GET' || r.method === 'HEAD')) throw bad('A change set holds only changes (POST, PATCH, PUT or DELETE): send reads outside it, in the $batch itself', '3');
+      if (inChangeSet) { const refused = refusedInChangeSet(r, at); if (refused) throw refused; }
       if (!inChangeSet) {
         leave = await this.enter(at.store);
         if (gone(outer)) throw new ODataError(503, '956', 'The client has gone, so this request was not run');
@@ -1309,8 +1336,6 @@ export class ODataEndpoint {
       if (!url.pathname.startsWith(`${ROOT}/`)) throw bad(`"${r.url}" is not a request to this service`, '3');
       const parts = url.pathname.slice(ROOT.length).split('/').filter(Boolean).map(decodeURIComponent);
       if (this.host.get(parts[0]) !== at.store || parts.length < 2) throw bad(`"${r.url}" is not a request to this file's service`, '3');
-      // A script yields the event loop as it runs (and may run for a long time), which a change set must not do.
-      if (inChangeSet && /^Script\./i.test(parts[1]!)) throw bad('A change set can\'t call a script: send the Script call on its own, in the $batch itself', '3');
       // Each $crossjoin runs a worker for up to CROSSJOIN_LIMIT.ms, so a batch of them would hold the join slots for as long as it likes.
       if (/^\$crossjoin\(/i.test(parts[1]!) && ++used.joins > BATCH_LIMIT.crossjoins) {
         throw new ODataError(400, '3', `A $batch runs at most ${BATCH_LIMIT.crossjoins} $crossjoin requests: send the rest in another $batch`);
