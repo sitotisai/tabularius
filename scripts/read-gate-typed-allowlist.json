@@ -1353,6 +1353,14 @@
  },
  {
   "file": "packages/store/src/reconvert.ts",
+  "within": "carryImages",
+  "api": "sql.exec",
+  "count": 1,
+  "gate": "trusted-process",
+  "why": "Offline conversion or import of a whole file, run by the operator from the command line or the admin console; no account is involved. Copies the design image library (not record data) between the old store and the fresh conversion inside one attached database; nothing is returned to a caller."
+ },
+ {
+  "file": "packages/store/src/reconvert.ts",
   "within": "carryRecords",
   "api": "sql.prepare",
   "count": 4,
