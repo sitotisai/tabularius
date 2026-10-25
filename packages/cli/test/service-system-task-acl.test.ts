@@ -108,7 +108,7 @@ test('directory-service rights letters mean their bits on a file or folder', () 
   assert.deepEqual(writableBy('O:BAD:(A;;DC;;;BU)(A;;LC;;;AU)', 'above'), []);
   assert.equal(writableBy('O:BAD:(A;;DT;;;BU)', 'above').length, 1);
   // A letter this reader does not know stays fail-closed, and so do bits no access list should carry.
-  for (const rights of ['QQ', 'KA', 'NW', 'FAQ', '', '0x2000000', '0x1000000', '0x1ffffffffff', '0777']) assert.equal(writableBy(`O:BAD:(A;;${rights};;;BU)`, 'object').length, 1, `[${rights}]`);
+  for (const rights of ['QQ', 'KA', 'NW', 'FAQ', '', '0x2000000', '0x1000000', '0x200', '0x8000', '0xfe00', '0x200000', '0xe00000', '0x1ffffffffff', '0777']) assert.equal(writableBy(`O:BAD:(A;;${rights};;;BU)`, 'object').length, 1, `[${rights}]`);
   assert.equal(writableBy('O:BAD:(A;;0x40000000;;;BU)', 'object').length, 1, 'generic write');
   assert.equal(writableBy('O:BAD:AI(A;OICIID;0x1301bf;;;AU)', 'object').length, 1, 'modify');
   assert.deepEqual(writableBy('O:BAD:(A;;1179817;;;BU)', 'object'), [], 'decimal 0x1200a9');
@@ -131,6 +131,10 @@ test('the SDDL reader fails closed on forms it cannot read in full', () => {
   assert.equal(writableBy('O:BAD:(A;;FA;;;BA)(A;;FA;;;BU', 'object').length, 1, 'unbalanced');
   assert.equal(writableBy('O:BAD:(A;;FA;;;BA)junk', 'object').length, 1, 'trailing text');
   assert.equal(writableBy('O:BAD:(A;;FA)', 'object').length, 1, 'too few fields');
+  assert.equal(writableBy('O:BAD:(A;;FA;;;BA;extra)', 'object').length, 1, 'a seventh field on a plain entry');
+  assert.equal(writableBy('O:BAD:(A;;FA;;;BA;;;)', 'object').length, 1, 'more than six fields');
+  assert.equal(writableBy('O:BAD:(XA;;FA;;;BA;(@User.x == 1);more)', 'object').length, 1, 'more than seven on a conditional entry');
+  assert.equal(parseSddl('O:BAD:(XA;;FA;;;BA;(Member_of {SID(BU)}))')?.aces?.length, 1, 'a conditional entry has seven');
   assert.equal(writableBy('O:BAD:(A;;FA;;;BA)S:(AU;SA;FA;;;WD)', 'object').length, 1, 'an audit list is not asked for, so it is not read');
   assert.equal(writableBy('', 'object').length, 1);
   // A deny never hides an allow.
@@ -190,7 +194,7 @@ test('--system is refused when the program\'s folder passes a writing right down
 
 test('--system is refused for a program or Node on a network share', () => {
   const never: AclProbe = () => { throw new Error('should not be asked'); };
-  for (const bad of [{ node: '\\\\server\\share\\node.exe' }, { main: '\\\\server\\share\\app\\packages\\cli\\src\\main.ts' }, { node: '\\\\?\\UNC\\server\\share\\node.exe' }]) {
+  for (const bad of [{ node: '//server/share/node.exe' }, { main: '//server/share/app/packages/cli/src/main.ts' }, { node: '\\/server\\share\\node.exe' }, { node: '\\\\server\\share\\node.exe' }, { main: '\\\\server\\share\\app\\packages\\cli\\src\\main.ts' }, { node: '\\\\?\\UNC\\server\\share\\node.exe' }]) {
     assert.throws(() => refuseWritableSystemTaskCode(options(bad), never), /network share/);
   }
   // A local path in the extended form is not taken for a share (the probe is then asked about it).
@@ -277,7 +281,7 @@ test('the PowerShell probe is started from fixed places with a fixed environment
   const host = windowsHost();
   assert.equal(host.tool('powershell'), 'C:\\Windows\\System32\\powershell.exe');
   assert.equal(host.cwd, 'C:\\Windows\\System32');
-  const hostile: Record<string, string> = { SystemRoot: 'C:\\Users\\jo\\fake', windir: 'C:\\Users\\jo\\fake', COR_ENABLE_PROFILING: '1', COR_PROFILER_PATH: 'C:\\Users\\jo\\p.dll', PSModulePath: 'C:\\Users\\jo\\modules' };
+  const hostile: Record<string, string> = { ProgramData: 'C:\\Users\\jo\\pd', SystemRoot: 'C:\\Users\\jo\\fake', windir: 'C:\\Users\\jo\\fake', COR_ENABLE_PROFILING: '1', COR_PROFILER_PATH: 'C:\\Users\\jo\\p.dll', PSModulePath: 'C:\\Users\\jo\\modules' };
   const previous = Object.fromEntries(Object.keys(hostile).map((k) => [k, process.env[k]]));
   try {
     Object.assign(process.env, hostile);
@@ -288,6 +292,8 @@ test('the PowerShell probe is started from fixed places with a fixed environment
     assert.equal(env.COR_PROFILER_PATH, undefined);
     assert.equal(env.PSModulePath, 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules');
     assert.equal(env.PATH, 'C:\\Windows\\System32');
+    process.env.ProgramData = 'C:\\Users\\jo\\pd';
+    assert.equal(windowsHost().baseDir, 'C:\\ProgramData', 'not from the environment');
     assert.deepEqual(trustedEnv({ X: '1' }).X, '1');
     assert.equal(windowsHost().tool('icacls'), 'C:\\Windows\\System32\\icacls.exe', 'the user environment does not move it');
   } finally {
@@ -344,6 +350,12 @@ test('taskDifferences names what changed in who it runs as, when it starts and w
     ['a group to run as', swap('<UserId>S-1-5-18</UserId>', '<UserId>S-1-5-18</UserId><GroupId>S-1-5-32-545</GroupId>'), /names a group/],
     ['a second principal', swap('</Principals>', '<Principal id="Other"><UserId>S-1-5-21-1-2-3-1001</UserId><LogonType>InteractiveToken</LogonType></Principal></Principals>'), /2 principals, not one/],
     ['actions that run as another principal', swap('<Actions Context="Author">', '<Actions Context="Other">'), /run as principal "Other"/],
+    ['a second Actions element', swap('</Task>', '<Actions Context="Author"><Exec><Command>C:\\evil.exe</Command></Exec></Actions></Task>'), /2 Actions elements/],
+    ['a second Triggers element', swap('</Task>', '<Triggers><TimeTrigger/></Triggers></Task>'), /2 Triggers elements/],
+    ['a second Principals element', swap('</Task>', '<Principals><Principal id="Author"><UserId>S-1-5-21-1-2-3-1001</UserId></Principal></Principals></Task>'), /2 Principals elements/],
+    ['no Principals element', swap(/<Principals>[^]*<\/Principals>/, ''), /0 Principals elements/],
+    ['another logon type', swap('<LogonType>ServiceAccount</LogonType>', '<LogonType>InteractiveToken</LogonType>'), /logon type is InteractiveToken/],
+    ['a hidden task', swap('<Hidden>false</Hidden>', '<Hidden>true</Hidden>'), /Hidden setting is true/],
     ['an extra entry in the program', swap('</Exec>', '<Extra>x</Extra></Exec>'), /also has Extra/],
   ];
   for (const [name, xml, expected] of cases) {
@@ -355,7 +367,7 @@ test('taskDifferences names what changed in who it runs as, when it starts and w
 });
 
 /** A host over a real folder for the private task-file folder, a made-up disk for access lists, and fake tools. */
-function fakeHost(dir: string, over: { disk?: Record<string, string>; icacls?: string; query?: string; queryStatus?: number; asked?: string[] } = {}): SystemHost & { log: string } {
+function fakeHost(dir: string, over: { disk?: Record<string, string>; icacls?: string; query?: string; queryStatus?: number; deleteStatus?: number; asked?: string[] } = {}): SystemHost & { log: string } {
   const bin = join(dir, 'bin');
   mkdirSync(bin, { recursive: true });
   const log = join(dir, 'calls');
@@ -368,6 +380,7 @@ function fakeHost(dir: string, over: { disk?: Record<string, string>; icacls?: s
     // On /Create keep a copy of the file it was given, and where it was.
     `if [ "$1" = "/Create" ]; then cp "$5" ${join(dir, 'created.xml')}; echo "$5" > ${join(dir, 'created.path')}; fi`,
     `if [ "$1" = "/Query" ]; then ${over.query !== undefined ? `cat ${join(dir, 'query.xml')}; exit ${over.queryStatus ?? 0}` : 'exit 1'}; fi`,
+    `if [ "$1" = "/Delete" ]; then exit ${over.deleteStatus ?? 0}; fi`,
     'exit 0', '',
   ].join('\n'));
   if (over.query !== undefined) writeFileSync(join(dir, 'query.xml'), over.query);
@@ -487,6 +500,25 @@ test('installService deletes the task and does not start it when what Windows re
       assert.deepEqual(readdirSync(join(dir, 'ProgramData')), [], `${name}: the staged folder is removed`);
     } finally { rmSync(dir, { recursive: true, force: true }); }
   }
+});
+
+test('installService says plainly when the task that differs could not be deleted either', { skip: process.platform === 'win32' }, () => {
+  const dir = tmp();
+  try {
+    const home = join(dir, 'home');
+    mkdirSync(home);
+    const o = options({ folder: join(dir, 'data'), home });
+    const host = fakeHost(dir, { disk: stockDisk(), query: registeredFrom(systemXml()).replace(/<Command>[^<]*<\/Command>/, '<Command>C:\\evil.exe</Command>'), deleteStatus: 1 });
+    assert.throws(() => installService(o, host), (e: Error) => {
+      assert.match(e.message, /could not be deleted/);
+      assert.match(e.message, /still registered/);
+      assert.doesNotMatch(e.message, /was deleted and not started/);
+      assert.match(e.message, /schtasks \/Delete \/TN openhbam \/F/);
+      assert.match(e.message, /not started/);
+      return true;
+    });
+    assert.doesNotMatch(readFileSync(host.log, 'utf8'), /\/Run/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('installService writes and registers nothing when the system task would run writable code', { skip: process.platform === 'win32' }, () => {
