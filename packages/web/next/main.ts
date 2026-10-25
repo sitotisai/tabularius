@@ -4,6 +4,7 @@
 // same Data API and privileges as the classic client at /app/, and shares its sign-in.
 
 import { Api, ApiError, listDatabases } from '../src/api.ts';
+import { fileField, mustChangeText, signInProblem, wantedFile } from './signin.ts';
 import type { DataRecord, LayoutMeta, ScriptsMenuEntry, SortSpec, Value } from '../src/types.ts';
 import { h, icon, mod, MOD_LABEL, typing } from './dom.ts';
 import { collections, listColumns, menuLayouts, pages, type Collection, type Column, type Page, type Related } from './model.ts';
@@ -47,11 +48,18 @@ async function boot(): Promise<void> {
 }
 
 async function signIn(message?: string): Promise<void> {
-  const files = await listDatabases().catch(() => [] as string[]);
-  const last = stored('openhbam.db', 'local');
-  const db = h('select', { name: 'db', 'aria-label': 'File' }, ...files.map((f) => h('option', { value: f, selected: f === last }, f)));
+  let listError: unknown;
+  const files = await listDatabases().catch((e) => { listError = e; return [] as string[]; });
+  const field = fileField(files, listError);
+  const last = wantedFile(location.search, files, stored('openhbam.db', 'local'));
+  // Nothing listed (the server's default, for a caller who has not signed in): the file's name is typed.
+  const db = (field.kind === 'typed'
+    ? h('input', { name: 'db', required: true, autocomplete: 'off', spellcheck: 'false', 'aria-label': 'File name', 'aria-describedby': 'signin-file-hint', value: last ?? '' })
+    : h('select', { name: 'db', 'aria-label': 'File' }, ...files.map((f) => h('option', { value: f, selected: f === last }, f)))) as HTMLInputElement | HTMLSelectElement;
   const account = h('input', { name: 'account', autocomplete: 'username', required: true, value: stored('openhbam.account', 'local') ?? 'Admin', 'aria-label': 'Account name' });
   const password = h('input', { name: 'password', type: 'password', autocomplete: 'current-password', 'aria-label': 'Password', placeholder: 'Password' });
+  const otp = h('input', { name: 'otp', inputmode: 'numeric', autocomplete: 'one-time-code', pattern: '[0-9]*', 'aria-label': 'Authenticator code', placeholder: '123456' });
+  const otpLabel = h('label', { hidden: true }, h('span', {}, 'Authenticator code'), otp);
   const error = h('p', { class: 'signin-error', role: 'alert' }, message ?? '');
   const go = h('button', { class: 'primary', type: 'submit' }, 'Open');
   const form = h('form', { class: 'signin', onsubmit: async (e: Event) => {
@@ -59,28 +67,40 @@ async function signIn(message?: string): Promise<void> {
     go.disabled = true;
     error.textContent = '';
     try {
-      const api = await Api.login(db.value, account.value, password.value);
-      store('openhbam.db', db.value, 'local');
+      const name = db.value.trim();
+      const api = await Api.login(name, account.value, password.value, otpLabel.hidden ? undefined : otp.value.trim());
+      if (api.passwordChangeRequired) {
+        await api.logout();
+        throw new Error(mustChangeText());
+      }
+      store('openhbam.db', name, 'local');
       store('openhbam.account', account.value, 'local');
       store(SESSION, JSON.stringify({ db: api.db, token: api.token }));
       open(api);
     } catch (err) {
-      error.textContent = err instanceof ApiError && err.code === 212 ? 'That account name and password didn’t match.' : (err as Error).message;
+      const problem = signInProblem(err, otp.value);
+      error.textContent = problem.text;
       go.disabled = false;
-      password.select();
+      if (problem.ask === 'code') {
+        otpLabel.hidden = false;
+        otp.focus();
+      } else password.select();
     }
   } },
     h('h1', { class: 'wordmark' }, 'Tabularius'),
-    h('p', { class: 'signin-lede' }, files.length ? 'Choose a file and sign in.' : 'No files are hosted here yet.'),
-    files.length > 1 ? h('label', {}, h('span', {}, 'File'), db) : (db.hidden = true, db),
-    files.length === 1 ? h('p', { class: 'signin-file' }, files[0]) : null,
-    h('label', {}, h('span', {}, 'Account'), account),
-    h('label', {}, h('span', {}, 'Password'), password),
+    h('p', { class: 'signin-lede' }, field.kind === 'none' ? 'No files are hosted here yet.' : field.kind === 'typed' ? 'Type the file’s name and sign in.' : 'Choose a file and sign in.'),
+    field.kind === 'typed' ? h('label', {}, h('span', {}, 'File name'), db) : null,
+    field.kind === 'typed' ? h('p', { id: 'signin-file-hint', class: 'signin-file' }, 'This server does not list its files before you sign in.') : null,
+    field.kind === 'choose' && files.length > 1 ? h('label', {}, h('span', {}, 'File'), db) : null,
+    field.kind === 'choose' && files.length === 1 ? h('p', { class: 'signin-file' }, files[0]) : null,
+    field.kind === 'none' ? null : h('label', {}, h('span', {}, 'Account'), account),
+    field.kind === 'none' ? null : h('label', {}, h('span', {}, 'Password'), password),
+    otpLabel,
     error,
-    go,
+    field.kind === 'none' ? null : go,
   );
   app.replaceChildren(h('main', { class: 'signin-page' }, form));
-  (account.value ? password : account).focus();
+  (field.kind === 'typed' && !db.value ? db : account.value ? password : account).focus();
 }
 
 // ---------------------------------------------------------------------------------------------- the model

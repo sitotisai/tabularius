@@ -94,3 +94,46 @@ test('a layout that is one web viewer is a page; one with fields or a portal bes
     { layout: 'Map', table: 'Sales', viewer: 1, bridge: false },
   ]);
 });
+
+// ---------------------------------------------------------------------------------------------- sign in
+
+test('with the file list off, the sign-in names the file by typing it, as the classic client does', async () => {
+  const { fileField } = await import('../next/signin.ts');
+  const { ApiError } = await import('../src/api.ts');
+  // The default server answers a caller who has not signed in with 404 and FileMaker error 3.
+  const off = new ApiError(3, 'The list of files is turned off on this server: name the file in the address', undefined, 404);
+  assert.deepEqual(fileField([], off), { kind: 'typed' });
+  assert.deepEqual(fileField(['Town', 'Shop'], undefined), { kind: 'choose', files: ['Town', 'Shop'] });
+  assert.deepEqual(fileField(['Town'], undefined), { kind: 'choose', files: ['Town'] });
+  // A server that cannot be reached still lets the name be typed, and the sign-in then says why it failed.
+  assert.deepEqual(fileField([], new TypeError('fetch failed')), { kind: 'typed' });
+  // Only a server that lists its files publicly and has none is "no files hosted".
+  assert.deepEqual(fileField([], undefined), { kind: 'none' });
+});
+
+test('?db= names the file to sign in to, and a name this browser remembers is used only when it can be picked', async () => {
+  const { wantedFile } = await import('../next/signin.ts');
+  assert.equal(wantedFile('?db=Town%20Hall', ['A'], 'A'), 'Town Hall', 'the address wins, listed or not (typed)');
+  assert.equal(wantedFile('', ['A', 'B'], 'B'), 'B');
+  assert.equal(wantedFile('', ['A', 'B'], 'Gone'), undefined, 'a remembered file that is no longer listed is not picked');
+  assert.equal(wantedFile('', [], 'Town'), 'Town', 'with nothing listed the remembered name is offered in the typed field');
+  assert.equal(wantedFile('?db=', ['A'], undefined), undefined);
+});
+
+test('the sign-in says what a refusal needs next: a code, or another client for what this one cannot do', async () => {
+  const { signInProblem } = await import('../next/signin.ts');
+  const { ApiError } = await import('../src/api.ts');
+  assert.deepEqual(signInProblem(new ApiError(1211, 'A code is needed'), ''), { ask: 'code', text: 'Enter the code from your authenticator app.' });
+  assert.deepEqual(signInProblem(new ApiError(1211, 'A code is needed'), '123456'), { ask: 'code', text: 'That code is not valid; check your authenticator app.' });
+  assert.match(signInProblem(new ApiError(9000, 'passkey'), '').text, /passkey.*classic client/i);
+  assert.match(signInProblem(new ApiError(212, 'no'), '').text, /account name or password is wrong/);
+  assert.match(signInProblem(new ApiError(212, 'Too many failed sign-ins; try again after 2030-01-01T10:00:00Z'), '').text, /Too many tries/);
+  assert.equal(signInProblem(new Error('Failed to fetch'), '').text, 'Failed to fetch');
+  assert.equal(signInProblem(new ApiError(212, 'no'), '').ask, undefined);
+});
+
+test('an account that must change its password is sent to the classic client, not let into a half-open file', async () => {
+  const { mustChangeText } = await import('../next/signin.ts');
+  assert.match(mustChangeText(), /must change its password/);
+  assert.match(mustChangeText(), /\/app\//);
+});
