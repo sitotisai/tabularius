@@ -536,8 +536,8 @@ export class AdminApi {
       if (!this.stoppedFiles) {
         const open = this.host.files().filter((f) => f.status !== 'closed').map((f) => f.name);
         const text = this.messageText(body.messageText, false);
-        for (const name of open) await this.setStatus(name, 'CLOSED', { messageText: text });
         this.stoppedFiles = open;
+        for (const name of open) await this.setStatus(name, 'CLOSED', { messageText: text });
       }
       return { status: 'STOPPED' };
     }
@@ -587,7 +587,9 @@ export class AdminApi {
     } else {
       if (this.fileStatus(name) === 'CLOSED') await this.host.openFileEverywhere(name);
     }
-    if (this.stoppedFiles && status !== 'CLOSED') this.stoppedFiles = undefined;
+    if (this.stoppedFiles && (status === 'OPENED' || status === 'RESUMED')) {
+      this.stoppedFiles = this.stoppedFiles.filter((n) => n.toLowerCase() !== name.toLowerCase());
+    }
     // fileMode only for native files: a compat file's response keeps FileMaker Server's shape.
     const native = this.host.files().find((f) => f.name.toLowerCase() === name.toLowerCase())?.fileMode === 'native';
     return { id: this.dbIds.id(name.toLowerCase()), filename: name + '.fmp12', status: this.fileStatus(name), ...(native ? { fileMode: 'native' } : {}) };
