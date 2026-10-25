@@ -504,7 +504,8 @@ export function externalRoots(folder: string, name: string, baseDirs: string[], 
     // Windows drops a trailing dot or space from a name, so ".. " is ".." there; a drive letter leaves the folder. A name
     // that has anything else in it ("Acme Inc.") stays itself, there and everywhere else.
     let used = false;
-    if (!b.split('/').some((part) => part !== '.' && /^[. ]+$/.test(part)) && !/^[A-Za-z]:/.test(b)) {
+    const searchable = !b.split('/').some((part) => part !== '.' && /^[. ]+$/.test(part)) && !/^[A-Za-z]:/.test(b);
+    if (searchable) {
       for (const top of ['RC_Data_FMS', 'Files']) {
         used = add(top, name, b) || used;
         used = add(top, b) || used;
@@ -512,14 +513,22 @@ export function externalRoots(folder: string, name: string, baseDirs: string[], 
       used = add(b) || used;
     }
     if (!used) refused.push(base);
+    else if (b && !add(b) && isDirectory(resolve(folder, b))) {
+      // Older versions also looked in this folder beside the hosted file; containers kept there are no longer found.
+      refused.push(`${resolve(folder, b)} (move it to ${resolve(folder, 'RC_Data_FMS', name, b)})`);
+    }
   }
   add('RC_Data_FMS', name);
   add('Files', name);
   return roots;
 }
 
-/** Files whose refused container folders have been reported in this process. */
+/** Files (by name and base directories) whose refused container folders have been reported in this process. */
 const warnedRoots = new Set<string>();
+
+function isDirectory(path: string): boolean {
+  try { return statSync(path).isDirectory(); } catch { return false; }
+}
 
 /** Container files bigger than this are kept in pieces of this size. */
 export const CONTAINER_CHUNK = 1024 * 1024;
@@ -1246,8 +1255,10 @@ export class Store {
     const refusedRoots: string[] = [];
     this.externalRoots = externalRoots(dirname(path), name, this.schema?.containerDirectories?.map((d) => d.path) ?? [], refusedRoots);
     // Once per file per process: a container that goes missing after an upgrade is explained here.
-    if (refusedRoots.length && !warnedRoots.has(path)) {
-      warnedRoots.add(path);
+    // Keyed by the file's name and base directories, not its place, so a dry run or debug copy at a new path does not repeat it.
+    const warnKey = `${name}\0${this.schema?.containerDirectories?.map((d) => d.path).join('\0') ?? ''}`;
+    if (refusedRoots.length && !warnedRoots.has(warnKey)) {
+      warnedRoots.add(warnKey);
       console.warn(`Container folders of ${name}: left out because they are outside its own storage (RC_Data_FMS/${name}/ and Files/${name}/): ${refusedRoots.join('; ')}. Files stored there are not found; move them under one of those two folders.`);
     }
     this.externalDirectoryLinks = existingDirectoryLinks(this.externalRoots);
