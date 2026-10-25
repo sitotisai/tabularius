@@ -16,7 +16,8 @@ import { PreparedCache } from './preparation.ts';
 import { rethrowExecutionRefusal } from '../../calc/src/execution-refusal.ts';
 import { SQL_DATE_FUNCTIONS, placeholders, oneStatement } from './sql-dates.ts';
 import { boundedStatement, collectRows } from './sql-result.ts';
-import { customFunctions, recursiveRows, usesRecursion, type Op, type PortableFunction } from './sql-recursive.ts';
+import { calledFunctions, isBuiltinFunction, recursiveRows, usesRecursion, type Op, type PortableFunction } from './sql-recursive.ts';
+import { SHARED_SQL_FUNCTIONS } from './sql-shared-functions.ts';
 import { DatabaseSync, backup, type Session, type StatementSync, type SQLInputValue, type SQLOutputValue } from 'node:sqlite';
 import { createHash, createHmac, pbkdf2Sync, scrypt, scryptSync, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { isIP } from 'node:net';
@@ -11043,16 +11044,21 @@ export class Store {
 
   /**
    * The rows of a checked query whose program loops over a recursive queue, read in a child process that is stopped at a
-   * deadline (see sql-recursive.ts): the rows, or undefined when the query is not recursive. A recursive query that calls a
-   * function this store defined (the child has only SQLite's own) is refused.
+   * deadline (see sql-recursive.ts): the rows, or undefined when the query is not recursive. The child has SQLite's own
+   * functions, the ones sql-shared-functions.ts shares (the very code this store registers for them) and the portable ones
+   * defineQueryFunction was told of. A recursive query that calls any other function this store defines, or one that
+   * replaces a SQLite function of the same name with a version the child does not have, is refused, not answered differently.
    */
   private recursiveSelect(opened: Op[], text: string, names: string[], params: SqlValue[], limit: number): SqlValue[][] | undefined {
     if (!usesRecursion(opened)) return undefined;
     const functions: { name: string; module: string; export: string }[] = [];
-    for (const name of customFunctions(opened)) {
+    for (const name of calledFunctions(opened)) {
       const portable = this.portableQueryFunctions.get(name);
-      if (!portable) throw new StoreError(8310, `A recursive query can't call ${name}(): it runs apart from the server so that it can be stopped, with SQLite's own functions and a few portable ones only`);
-      functions.push({ name, ...portable });
+      if (portable) { functions.push({ name, ...portable }); continue; }
+      const defined = [...this.queryFunctions].find(([k]) => k.toLowerCase() === name)?.[1];
+      // The child has what it shares, and SQLite's built-ins when the store has not replaced them.
+      if (defined ? defined === SHARED_SQL_FUNCTIONS.get(name) : isBuiltinFunction(name)) continue;
+      throw new StoreError(8310, `A recursive query can't call ${name}(): it runs apart from the server so that it can be stopped, with SQLite's own functions and a few portable ones only`);
     }
     const views = this.fileMode === 'native' ? this.schema.tables.flatMap((t) => this.decimalViewSql(this.readOnlySql!, t) ?? []) : [];
     return recursiveRows(this.path, text, params, names, limit, views, functions) as SqlValue[][];
