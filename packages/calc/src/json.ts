@@ -41,6 +41,12 @@ function tooDeep(): JsonError {
   return new JsonError(`The document is nested more than ${MAX_JSON_DEPTH} levels deep`);
 }
 
+/** Text a function has written, refused when it is nested past the limit (two documents within it can make one that is not). */
+function checkedDepth(s: string): string {
+  if (s.length > MAX_JSON_DEPTH && jsonDepth(s) > MAX_JSON_DEPTH) throw tooDeep();
+  return s;
+}
+
 /** A text as JSON.parse reads it, refused when it is nested too deeply. */
 function parseChecked(s: string): Json {
   const v = JSON.parse(s) as Json;
@@ -130,7 +136,7 @@ const rounded = new WeakSet<object>();
 
 /** A tree's text, kept with the tree for the next function given that text, unless reading the text back would give other numbers. */
 function writtenText(v: Json): Value {
-  const s = stringify(v);
+  const s = checkedDepth(stringify(v));
   if (s.length >= 64 && !(v !== null && typeof v === 'object' && rounded.has(v))) remember(s, v);
   return text(s);
 }
@@ -155,7 +161,7 @@ function pretty(v: Json, indent = ''): string {
 type PathPart = { key: string } | { index: number } | { append: true } | { last: true };
 
 /** "a.b[2].c", "[+]" appends, "[:]" is the last element; keys can be quoted with [""]. */
-function parsePath(path: string): PathPart[] {
+function parsePath(path: string, limit: boolean): PathPart[] {
   const parts: PathPart[] = [];
   let i = 0;
   let key = '';
@@ -190,12 +196,13 @@ function parsePath(path: string): PathPart[] {
     }
   }
   flush();
-  if (parts.length > MAX_JSON_DEPTH) throw new JsonError(`The path has more than ${MAX_JSON_DEPTH} parts`);
+  if (limit && parts.length > MAX_JSON_DEPTH) throw new JsonError(`The path has more than ${MAX_JSON_DEPTH} parts`);
   return parts;
 }
 
-function keyParts(v: Value): PathPart[] {
-  return v.type === 'number' ? [{ index: v.value }] : parsePath(asText(v));
+/** The parts of a path. A path that changes a document may have at most MAX_JSON_DEPTH parts (it could not give a document within the limit); reading has no such limit, a longer path just finds nothing. */
+function keyParts(v: Value, forChange = false): PathPart[] {
+  return v.type === 'number' ? [{ index: v.value }] : parsePath(asText(v), forChange);
 }
 
 function step(node: Json, p: PathPart): Json | undefined {
@@ -227,7 +234,7 @@ function guarded(fn: () => Value): Value {
   } catch (e) {
     if (e instanceof JsonError) return text(`? ${e.message}`);
     // The depth limit keeps a stored document well inside the stack; a formula that is already deep may still run it out.
-    if (isStackOverflow(e)) return text(`? ${tooDeep().message}`);
+    if (isStackOverflow(e)) return text("? The document or formula is nested too deeply for this server's stack");
     throw e;
   }
 }
@@ -305,7 +312,7 @@ function setAt(root: Json, parts: PathPart[], value: Json): Json {
 export function jsonSetElement(json: string, triples: [Value, Value, number][]): Value {
   return guarded(() => {
     let root = parseJson(json);
-    for (const [key, value, type] of triples) root = setAt(root, keyParts(key), typed(value, type));
+    for (const [key, value, type] of triples) root = setAt(root, keyParts(key, true), typed(value, type));
     return parsedValue(writtenText(root), root);
   });
 }
@@ -367,7 +374,7 @@ function deleteAt(root: Json, parts: PathPart[]): Json {
 }
 
 export function jsonDeleteElement(json: string, key: Value): Value {
-  return guarded(() => writtenText(deleteAt(parseJson(json), keyParts(key))));
+  return guarded(() => writtenText(deleteAt(parseJson(json), keyParts(key, true))));
 }
 
 function at(json: string, key: Value): Json | undefined {
@@ -411,5 +418,5 @@ export function jsonFormatElements(json: string): Value {
 export function jsonMakeArray(list: string, separator: string, type: number): Value {
   if (separator === '') throw new CalcError(ERR.calculation, 'JSONMakeArray needs a separator');
   const items = list === '' ? [] : list.split(separator);
-  return guarded(() => text(stringify(items.map((s) => typed(text(s), type)))));
+  return guarded(() => text(checkedDepth(stringify(items.map((s) => typed(text(s), type))))));
 }
