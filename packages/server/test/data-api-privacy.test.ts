@@ -179,14 +179,20 @@ test('AR-server-data-apis-03 deletes use the last row under scoped and unscoped 
     const token = f.fresh(scoped ? { layouts: ['Items'] } : undefined);
     const stream = await request(f.live, '/tabularius/live/v1/databases/Main/events', token);
     t.after(() => stream.destroy());
+    // This build never gives a committed id again, but a store whose record-id mark went back (restored from a backup, a
+    // standby that was behind when it took over) numbers the next record after the highest one left, as stores did before
+    // the mark: the deleted highest id comes back. Events for one id must still follow each row's own visibility.
+    const markPutBack = () => f.store.sql.prepare("UPDATE _fm_record_id_high_water SET id = (SELECT max(_fm_record_id) FROM Items) WHERE tbl = 'Items'").run();
     // A hidden row's id is immediately reused by a visible row; the old delete must remain hidden.
     f.store.delete('Items', f.b);
+    markPutBack();
     assert.equal(f.store.create('Items', { Tenant: 'A' }).recordId, f.b);
     await Promise.resolve();
     assert.deepEqual(stream.events.map((e) => [e.kind, e.recordId]), [['create', f.b]]);
     stream.text = '';
     // The inverse: a visible delete must survive reuse of its id by a hidden row before flush.
     f.store.delete('Items', f.b, { privileges: f.store.privileges('Reader'), account: 'Reader' });
+    markPutBack();
     assert.equal(f.store.create('Items', { Tenant: 'B' }).recordId, f.b);
     await Promise.resolve();
     assert.deepEqual(stream.events.map((e) => [e.kind, e.recordId]), [['delete', f.b]]);

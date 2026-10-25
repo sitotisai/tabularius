@@ -80,9 +80,12 @@ test('KNOWN: Revert Transaction brings back records the transaction deleted but 
   assert.equal(await run('Exit Script [ Text Result: Get ( FoundCount ) ]'), '2', 'the records are back');
 }));
 
-test('KNOWN: a record deleted last gives its record id to the next one made (row ids; Claris "Get ( RecordID )": unverified, FileMaker is believed not to reuse them)', () => withItems(async (run) => {
+test('KNOWN: a committed record id is never given again, even after the record deleted last, but one made in a reverted transaction is (row ids and a per-table mark; Claris "Get ( RecordID )": unverified, FileMaker is believed not to reuse them; whether a reverted transaction spends its ids is unverified)', () => withItems(async (run) => {
   await run(make('a'));
-  assert.equal(await run('Delete Record/Request [ With dialog: Off ]\nNew Record/Request\nExit Script [ Text Result: Get ( RecordID ) ]'), '1');
+  assert.equal(await run('Delete Record/Request [ With dialog: Off ]\nNew Record/Request\nExit Script [ Text Result: Get ( RecordID ) ]'), '2');
+  // Record and mark roll back together: the id the reverted record had was never committed, and the next record gets it.
+  assert.equal(await run('Open Transaction\nNew Record/Request\nSet Variable [ $id ; Get ( RecordID ) ]\nRevert Transaction\nCommit Transaction\nExit Script [ Text Result: $id ]'), '3');
+  assert.equal(await run('New Record/Request\nExit Script [ Text Result: Get ( RecordID ) ]'), '3');
 }));
 
 test('KNOWN: a script that ends with its transaction open keeps none of it, and Exit Script inside reverts too (Claris "Open Transaction": unverified for both)', () => withItems(async (run, store) => {
