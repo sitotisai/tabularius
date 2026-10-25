@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**171 entries in 22 areas.** Waiting on: 22 on a sample file, 85 on a FileMaker run or Design Report, 14 on a Claris answer, 17 on a decision by the owner (an entry can wait on more than one).
+**172 entries in 22 areas.** Waiting on: 22 on a sample file, 86 on a FileMaker run or Design Report, 14 on a Claris answer, 17 on a decision by the owner (an entry can wait on more than one).
 
 ## Data API
 
@@ -18,6 +18,7 @@ part of it.
 | The shape of the oauthproviderinfo answer ({data: [{Name, Slug}]}) is not checked against FileMaker Server | A client written against FileMaker Server's answer may read it differently | A captured /fmws/oauthproviderinfo answer from FileMaker Server | [docs/data-api-compatibility.md › Endpoints](data-api-compatibility.md) — “…is not checked against FileMaker Server's (unconfirmed).” |
 | Which code and status FileMaker Server answers when it is blocking new users (code 812) is unconfirmed; Tabularius answers 503 | A client sees 503 and code 812 | A FileMaker Server run with new users blocked | [docs/data-api-compatibility.md › Error codes and HTTP statuses](data-api-compatibility.md) — “…new users (Admin API blocknewusers) \| 503 \| ◐ (unconfirmed which code and status FileMaker Server answers)” |
 | Whether FileMaker Server answers 400 for a missing globalFields parameter (958) is unconfirmed | A client sees 400 | A FileMaker Server run of a request without globalFields | [docs/data-api-compatibility.md › Error codes and HTTP statuses](data-api-compatibility.md) — “958 \| Parameter missing (globalFields) \| 400 \| ◐ (unconfirmed, as for 10)” |
+| Putting a file in a container field (every upload route) does not run the field's data entry validation | An upload to a container field with a validation option set is accepted; whether FileMaker refuses it is unconfirmed | A FileMaker Server run of an upload to a container field with a validation option set | [docs/data-api-compatibility.md › Endpoints](data-api-compatibility.md) — “POST .../records/{id}/containers/{field}[/{repetition}] \| ✓ \| Multipart; only the part named upload is read.…” |
 | Whether a migration or sync run over the Data API sees one consistent snapshot while the source takes writes is unverified; the range requests are not wrapped in a transaction | A record written on the source during a run can be missing from, or half-present in, the copy | A FileMaker Server run that migrates while a script writes to the source | [docs/fms-migration-runbook.md › Stop conditions](fms-migration-runbook.md) — “writes are unverified. Keep the source quiet for the final pass.” |
 | A response schema read off the documented example, not checked key by key, carries x-tabularius-inferred; it lists the keys the example shows, none required | A client generated from the description treats those properties as optional | A captured FileMaker response, or a Claris guide page that shows the shape | [docs/openapi.md › What it describes](openapi.md) — “carries x-tabularius-inferred. It lists the keys the example shows, none” |
 
