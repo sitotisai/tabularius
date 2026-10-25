@@ -531,7 +531,7 @@ export async function readJson(req: IncomingMessage, limit: boolean | number = f
   try {
     const raw = body.toString('utf8');
     if (native) {
-      assertRequestJsonBounds(raw, undefined, true);
+      assertRequestJsonBounds(raw);
       parsed = parseJsonPreservingNumberSources(raw);
       if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) requestSources.set(parsed, raw);
     } else parsed = parseRequestJson(raw);
