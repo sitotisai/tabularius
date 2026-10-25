@@ -109,3 +109,104 @@ test('the other window adds rows to the chain itself while the transaction is ou
   assert.equal(verified.ok, true, verified.reason ?? '');
   assert.equal(s.verify('Cy', 'pw'), true);
 });
+
+// Waiting sign-in rows that the holder's own security change put into its transaction are taken out with it. They wait
+// again for the other window's turn (so that a sign-in row is never lost and the chain order agrees with the event order)
+// and are written back in front of the holder's own rows when it rejoins, if the other window did not already write them.
+
+function positions(s: Store, needles: string[]): number[] {
+  const rows = s.auditLog({ security: true, limit: 50_000 }).map((e) => JSON.stringify(e));
+  return needles.map((n) => rows.findIndex((r) => r.includes(n)));
+}
+function times(s: Store, needle: string): number {
+  return s.auditLog({ security: true, limit: 50_000 }).filter((e) => JSON.stringify(e).includes(needle)).length;
+}
+
+test('waiting sign-in rows keep their order when the other window writes security rows of its own during the suspension', (t) => {
+  const { s, inTx } = setup(t);
+  const tx: Transaction = { files: new Map() };
+  inTx(tx, () => s.create('T', { A: 'held' }));
+  s.auditSignIn('Ann', '10.81.1.1', false); // A waits
+  inTx(tx, () => s.setPassword('Cy', 'pw', '[Full Access]')); // A goes into the hold, then the holder's row
+  s.auditSignIn('Ann', '10.81.1.2', false); // B waits behind
+  s.independentWindowWrite(tx, () => { writer.run({}, () => s.auditSignIn('Ann', '10.81.1.3', false)); }); // X, written at once
+  endTransaction(tx, true);
+  const [a, cy, b, x] = positions(s, ['10.81.1.1', '"Cy"', '10.81.1.2', '10.81.1.3']);
+  assert.ok(a >= 0 && cy >= 0 && b >= 0 && x >= 0, 'every row is in the audit');
+  assert.ok(a < b && b < x, `sign-in rows A, B, X are on the chain in the order they happened (${[a, b, x]})`);
+  assert.ok(a < cy, 'the waiting row that was ahead of the holder\'s change stays ahead of it');
+  for (const n of ['10.81.1.1', '10.81.1.2', '10.81.1.3']) assert.equal(times(s, n), 1, n);
+  assert.equal(s.deferredSecurityStats().pending, 0);
+  assert.equal(s.verifySecurityAudit().ok, true);
+});
+
+test('without a security row from the other window, a waiting row stays ahead of the holder\'s change and the later one behind it', (t) => {
+  const { s, inTx, other } = setup(t);
+  const tx: Transaction = { files: new Map() };
+  inTx(tx, () => s.create('T', { A: 'held' }));
+  s.auditSignIn('Ann', '10.81.2.1', false); // A
+  inTx(tx, () => s.setPassword('Cy', 'pw', '[Full Access]'));
+  s.auditSignIn('Ann', '10.81.2.2', false); // B, after the holder's change
+  other(tx, 'o');
+  endTransaction(tx, true);
+  const [a, cy, b] = positions(s, ['10.81.2.1', '"Cy"', '10.81.2.2']);
+  assert.ok(a >= 0 && cy >= 0 && b >= 0, 'every row is in the audit');
+  assert.ok(a < cy && cy < b, `event order A, Cy, B (${[a, cy, b]})`);
+  assert.equal(s.deferredSecurityStats().pending, 0);
+  assert.equal(s.verifySecurityAudit().ok, true);
+});
+
+test('the transaction cannot rejoin the file (another process holds the write lock): the waiting row it had taken is not lost', (t) => {
+  const { s, inTx } = setup(t);
+  const path = (s as unknown as { path: string }).path;
+  const tx: Transaction = { files: new Map() };
+  inTx(tx, () => s.create('T', { A: 'held' }));
+  s.auditSignIn('Ann', '10.81.3.1', false);
+  inTx(tx, () => s.setPassword('Cy', 'pw', '[Full Access]'));
+  const peer = new DatabaseSync(path);
+  let error: unknown;
+  try {
+    s.independentWindowWrite(tx, () => { writer.run({}, () => s.create('T', { A: 'other' })); peer.exec('BEGIN IMMEDIATE'); });
+  } catch (e) { error = e; } finally { peer.exec('ROLLBACK'); peer.close(); }
+  assert.ok(error, 'the rejoin failed');
+  endTransaction(tx, false);
+  const later: Transaction = { files: new Map() };
+  inTx(later, () => s.create('T', { A: 'x' }));
+  endTransaction(later, true);
+  s.auditSignIn('Ann', '10.81.3.9', false);
+  assert.equal(times(s, '10.81.3.1'), 1, 'the waiting sign-in row is in the audit once');
+  assert.equal(times(s, '10.81.3.9'), 1);
+  assert.equal(s.deferredSecurityStats().pending, 0);
+  assert.equal(s.verifySecurityAudit().ok, true);
+});
+
+test('the other window\'s write throws: the rows the transaction had taken are still written once, in order', (t) => {
+  const { s, inTx } = setup(t);
+  const tx: Transaction = { files: new Map() };
+  inTx(tx, () => s.create('T', { A: 'held' }));
+  s.auditSignIn('Ann', '10.81.4.1', false);
+  inTx(tx, () => s.setPassword('Cy', 'pw', '[Full Access]'));
+  assert.throws(() => s.independentWindowWrite(tx, () => { throw new Error('the other window failed'); }), /the other window failed/);
+  endTransaction(tx, true);
+  const [a, cy] = positions(s, ['10.81.4.1', '"Cy"']);
+  assert.ok(a >= 0 && cy >= 0 && a < cy);
+  assert.equal(times(s, '10.81.4.1'), 1);
+  assert.equal(s.verifySecurityAudit().ok, true);
+});
+
+test('two independent writes in a row, then a rollback: a waiting row taken by the transaction is written once', (t) => {
+  const { s, inTx, other } = setup(t);
+  const tx: Transaction = { files: new Map() };
+  inTx(tx, () => s.create('T', { A: 'held' }));
+  s.auditSignIn('Ann', '10.81.5.1', false);
+  inTx(tx, () => s.setPassword('Cy', 'pw', '[Full Access]'));
+  other(tx, 'one');
+  inTx(tx, () => s.setPassword('Di', 'pw', '[Full Access]'));
+  s.independentWindowWrite(tx, () => { writer.run({}, () => s.auditSignIn('Ann', '10.81.5.2', false)); });
+  endTransaction(tx, false);
+  assert.equal(times(s, '10.81.5.1'), 1);
+  assert.equal(times(s, '10.81.5.2'), 1);
+  assert.equal(times(s, '"Cy"') + times(s, '"Di"'), 0);
+  assert.equal(s.deferredSecurityStats().pending, 0);
+  assert.equal(s.verifySecurityAudit().ok, true);
+});
