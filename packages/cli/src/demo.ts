@@ -76,6 +76,9 @@ export async function startDemo(opts: DemoOptions = {}): Promise<Demo> {
   if (kept) emptyOrNew(resolve(opts.keep!));
   const folder = kept ? resolve(opts.keep!) : mkdtempSync(join(tmpdir(), 'tabularius-demo-'));
   const existed = existsSync(folder);
+  // Also covers an uncaught exception or explicit process.exit during startup. SIGKILL and power loss cannot run cleanup.
+  const cleanup = () => { if (!kept) rmSync(folder, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }); };
+  if (!kept) process.once('exit', cleanup);
   try {
     if (kept) mkdirSync(folder, { recursive: true });
     const database = databaseName(starter);
@@ -99,12 +102,13 @@ export async function startDemo(opts: DemoOptions = {}): Promise<Demo> {
           await new Promise<void>((done) => { running.server.close(() => done()); running.server.closeAllConnections?.(); });
           await running.host.close();
         } finally {
-          if (!kept) rmSync(folder, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+          try { cleanup(); } finally { process.removeListener('exit', cleanup); }
         }
       })()),
     };
     return demo;
   } catch (e) {
+    process.removeListener('exit', cleanup);
     // What this run made: all of a temporary folder; of a --keep folder (empty or new when it began), what was put in it.
     if (!kept || !existed) rmSync(folder, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     else for (const name of readdirSync(folder)) rmSync(join(folder, name), { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
