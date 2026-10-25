@@ -298,7 +298,7 @@ export async function runSequence(t: TestContext, sequence: Op[], options: { che
         case 'unlock':
           store.unlock(a.name); a.failures = [0, 0]; a.blocked = [0, 0]; break;
         case 'disable':
-          store.setAccountActive(a.name, false); a.active = false; invalidate(account, true); break;
+          store.setAccountActive(a.name, false); a.active = false; a.passkey = false; invalidate(account, true); break; // Deactivation ends the passkeys, so switching the account on again does not bring them back.
         case 'enable':
           store.setAccountActive(a.name, true); a.active = true; break;
         case 'privilege':

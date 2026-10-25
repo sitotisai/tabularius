@@ -238,6 +238,12 @@ function passkeyChallengeBuckets(from: string): { address: string; prefix48?: st
 }
 
 /** Known console paths have a stable method answer even when an optional service is disabled. */
+/** Whether the account must use a second factor and has only a passkey for it (removing its passkeys would leave it unable to sign in). */
+function onlySecondFactorIsPasskey(store: Store, account: string): boolean {
+  return store.hasPasskey(account) && !store.hasTotp(account)
+    && ((store.requireTotpForFullAccess() && store.privileges(account).full) || store.accountRequires2fa(account));
+}
+
 function consoleMethods(path: string): string | undefined {
   const prefix = '/tabularius/admin/v1/';
   if (!path.startsWith(prefix)) return undefined;
@@ -1647,7 +1653,12 @@ export class Admin {
           if (!made) send(400, { error: `"${account}" can't be given a temporary password (it may be external or already have one)` });
           else send(200, { account: made.account, password: made.password, health: store.securityHealth() });
         } else if (body.action === 'deactivate') {
-          send(200, { deactivated: store.setAccountActive(account, false), health: store.securityHealth() });
+          // Deactivating removes the account's passkeys too (as a reset does), so say when that leaves a required second factor unset.
+          const passkeyOnly = onlySecondFactorIsPasskey(store, account);
+          const deactivated = store.setAccountActive(account, false);
+          const warning = passkeyOnly && !store.hasPasskey(account)
+            ? { warning: `${account} requires a second factor and had only a passkey, which deactivating removed: after it is reactivated it cannot sign in until you set up an authenticator app for it.` } : {};
+          send(200, { deactivated, ...warning, health: store.securityHealth() });
         } else {
           send(400, { error: 'action must be "set-temp-password" or "deactivate"' });
         }
@@ -1672,8 +1683,7 @@ export class Admin {
           try {
             // A reset removes the account's passkeys, so one that is required to use a second factor and has only a
             // passkey is left with none and cannot sign in until one is set up again.
-            const passkeyOnly = store.hasPasskey(accountName) && !store.hasTotp(accountName)
-              && ((store.requireTotpForFullAccess() && store.privileges(accountName).full) || store.accountRequires2fa(accountName));
+            const passkeyOnly = onlySecondFactorIsPasskey(store, accountName);
             store.setPassword(accountName, password, undefined, { mustChange: !!body.mustChange });
             // A new password from the console invalidates whatever sessions were signed in on the old one.
             this.api.endByAccount(store.name, accountName);

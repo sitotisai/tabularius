@@ -5058,7 +5058,9 @@ export class Store {
 
   /** Removes the ways in that do not need the password (recovery codes, passkeys) and any passkey registration still waiting; says how many. */
   private revokeSignInCredentials(account: string): { recoveryCodes: number; passkeys: number } {
-    const recoveryCodes = Number(this.sql.prepare('DELETE FROM _fm_recovery_codes WHERE account = ? COLLATE NOCASE').run(account).changes);
+    // Spent codes go too, but only the ones that could still have signed in are counted.
+    const recoveryCodes = this.recoveryCodesRemaining(account);
+    this.sql.prepare('DELETE FROM _fm_recovery_codes WHERE account = ? COLLATE NOCASE').run(account);
     const passkeys = Number(this.sql.prepare('DELETE FROM _fm_passkeys WHERE account = ? COLLATE NOCASE').run(account).changes);
     this.sql.prepare("DELETE FROM _fm_webauthn_challenges WHERE account = ? COLLATE NOCASE AND kind = 'register'").run(account);
     return { recoveryCodes, passkeys };
