@@ -34,6 +34,14 @@ test('Substitute refuses exponential expansion before allocating the result', ()
   assert.equal(evaluateText('Substitute("ab"; ["a"; "b"]; ["b"; "c"])'), 'cc');
 }));
 
+test('Substitute charges work for every pair against the full source text', () => budget(() => {
+  // Each absent search scans a megabyte, about half a millisecond; uncharged, the 4,000 of them take over two seconds and
+  // finish, charged they reach the 850 ms calculation work budget. A larger source or more pairs only costs the test more.
+  const pairs = Array.from({ length: 4000 }, (_, i) => `["absent${i}";"x"]`).join(';');
+  const source = 'a'.repeat(1_000_000);
+  assert.throws(() => evaluateText(`Substitute("${source}";${pairs})`), /calculation work budget/i);
+}));
+
 test('regex replacement bounds plain, capture, prefix and suffix expansion', () => budget(() => {
   const input = 'a'.repeat(100_000);
   for (const replacement of ['x'.repeat(10_000), '$`', "$'", '$&'.repeat(1000)]) {

@@ -351,6 +351,11 @@ eager('TrimAll', 1, 3, (v, env) => {
   return text(t.replace(new RegExp(`${sp}{2,}`, 'g'), ' ').replace(new RegExp(`^${sp}+|${sp}+$`, 'g'), ''));
 });
 eager('Exact', 2, 2, (v, env) => bool(T(v[0], env) === T(v[1], env)));
+// Case-insensitive text search compares lower-cased text of the same UTF-16 length, so offsets found in it are offsets
+// in the original. The one character that lower-cases to a longer text is the dotted capital I (U+0130): it stays
+// as it is and matches only itself. The final sigma folds with sigma, however the letter was typed (Σ, σ or ς).
+const foldPart = (part: string): string => part.toLowerCase().replace(/ς/g, 'σ');
+const foldCase = (value: string): string => (value.includes('İ') ? value.split('İ').map(foldPart).join('İ') : foldPart(value));
 eager('Filter', 2, 2, (v, env) => {
   const keep = new Set(T(v[1], env));
   return text([...T(v[0], env)].filter((c) => keep.has(c)).join(''));
@@ -367,7 +372,10 @@ def('Substitute', 2, undefined, (a, env) => {
     }
   }
   try {
-    for (const [s, r] of pairs) t = substituteText(t, s, r);
+    for (const [s, r] of pairs) {
+      env.checkWorkBudget(Math.ceil(t.length / 65536));
+      t = substituteText(t, s, r);
+    }
   } catch (e) {
     rethrowExecutionRefusal(e);
     if (!(e instanceof RangeError)) throw e;
@@ -377,15 +385,17 @@ def('Substitute', 2, undefined, (a, env) => {
 });
 eager('Replace', 4, 4, (v, env) => {
   const t = T(v[0], env);
-  const start = Math.max(1, Math.trunc(N(v[1]))) - 1;
-  const from = unitAt(t, start), to = unitAt(t, start + Math.max(0, Math.trunc(N(v[2]))));
+  const rawStart = N(v[1]), rawCount = N(v[2]);
+  if (!Number.isFinite(rawStart) || !Number.isFinite(rawCount)) return text('?');
+  const start = Math.max(1, Math.trunc(rawStart)) - 1;
+  const from = unitAt(t, start), to = unitAt(t, start + Math.max(0, Math.trunc(rawCount)));
   const replacement = T(v[3], env);
   checkCalcTextSize(from + replacement.length + t.length - to);
   return text(t.slice(0, from) + replacement + t.slice(to));
 });
 eager('Position', 4, 4, (v, env) => {
-  const t = T(v[0], env).toLowerCase();
-  const s = T(v[1], env).toLowerCase();
+  const t = foldCase(T(v[0], env));
+  const s = foldCase(T(v[1], env));
   let start = Math.trunc(N(v[2]));
   const occ = Math.trunc(N(v[3]));
   if (s === '' || occ === 0) return num(0);
@@ -415,8 +425,8 @@ eager('Position', 4, 4, (v, env) => {
   return num(0);
 });
 eager('PatternCount', 2, 2, (v, env) => {
-  const t = T(v[0], env).toLowerCase();
-  const s = T(v[1], env).toLowerCase();
+  const t = foldCase(T(v[0], env));
+  const s = foldCase(T(v[1], env));
   if (!s) return num(0);
   let n = 0;
   // Claris: each non-overlapping occurrence counts, so "aaaa" holds "aa" twice.
@@ -1979,7 +1989,19 @@ function beRegex(input: string, expression: string, opts: string, replaceWith?: 
   const options = opts.toLowerCase();
   let source = expression;
   // x: whitespace and # comments in the expression are ignored (JavaScript has no such flag).
-  if (options.includes('x')) source = source.replace(/\\.|\[(?:\\.|[^\]\\])*\]|#[^\n]*|\s+/g, (m) => (m.startsWith('\\') || m.startsWith('[') ? m : ''));
+  if (options.includes('x')) {
+    let out = '', inClass = false;
+    for (let i = 0; i < source.length; i++) {
+      const c = source[i];
+      if (c === '\\' && i + 1 < source.length) { out += c + source[++i]; continue; }
+      if (c === '[') inClass = true;
+      else if (c === ']') inClass = false;
+      if (!inClass && c === '#') { while (i + 1 < source.length && source[i + 1] !== '\n') i++; continue; }
+      if (!inClass && /\s/.test(c)) continue;
+      out += c;
+    }
+    source = out;
+  }
   const flags = 'u' + (options.includes('i') ? 'i' : '') + (options.includes('m') ? 'm' : '') + (options.includes('s') ? 's' : '');
   let re: RegExp;
   try {

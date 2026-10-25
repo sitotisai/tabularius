@@ -52,19 +52,70 @@ const isWordChar = (c: string | undefined) => c !== undefined && !DELIMS.has(c);
 const CALL_WORD_END = /[\s()\[\];,"+\-*/^&=≠<>≤≥¶:]/;
 const KEYWORD = /^(and|or|xor|not)$/i;
 
-/** Names sorted longest first, with a lower-cased copy for case-insensitive matching. */
+/** Lower case with the final sigma folded to sigma, so a name matches however the letter is written. */
+const foldName = (text: string): string => text.toLowerCase().replace(/ς/g, 'σ');
+
+type NameEntry = {
+  name: string;
+  /** The folded name, compared with the folded source. */
+  lower: string;
+  /** Plain lower case, which keeps a final sigma. */
+  plain: string;
+  /** Other names of the same width that fold to the same text (they differ only by case or sigma), in list order. */
+  same?: NameEntry[];
+};
+
+/**
+ * Names sorted longest first, with a folded copy for case-insensitive matching. The only character that changes width
+ * when lower-cased is the dotted capital I (U+0130), so a source without one folds as a whole, once per lex, and every
+ * name is a native prefix test at an offset that is an offset into the source.
+ */
 class NameSet {
-  readonly list: { name: string; lower: string }[];
+  readonly list: NameEntry[];
   constructor(names: Iterable<string>) {
-    this.list = [...new Set(names)].filter((n) => n.length).map((name) => ({ name, lower: name.toLowerCase() }))
+    this.list = [...new Set(names)].filter((n) => n.length)
+      .map((name) => ({ name, lower: foldName(name), plain: name.toLowerCase() }) as NameEntry)
       .sort((a, b) => b.name.length - a.name.length);
+    // Names that fold alike but are written differently ("ΟΔΟΣ" and "οδοσ"): a source that spells one of them as the
+    // name does must read that one, as lower-casing the whole text and comparing did, not the first that folds alike.
+    const groups = new Map<string, NameEntry[]>();
+    for (const entry of this.list) {
+      const key = `${entry.name.length}:${entry.lower}`;
+      const group = groups.get(key);
+      if (group) group.push(entry);
+      else groups.set(key, [entry]);
+    }
+    for (const group of groups.values()) {
+      if (new Set(group.map((entry) => entry.plain)).size > 1) for (const entry of group) entry.same = group;
+    }
   }
-  /** Longest name at src[at] that ends on a word boundary (or before `follow`, when given). */
-  match(src: string, lowerSrc: string, at: number, follow?: string): string | undefined {
-    for (const { name, lower } of this.list) {
-      if (!lowerSrc.startsWith(lower, at)) continue;
-      const end = at + lower.length;
-      if (follow ? src.startsWith(follow, end) : !isWordChar(src[end]) || !isWordChar(src[end - 1])) return name;
+  /**
+   * Longest name at src[at] that ends on a word boundary (or before `follow`, when given). `folded` is the source folded
+   * as a whole when that keeps every offset (no dotted capital I), else undefined and the source is folded one code
+   * point at a time, so the returned end offset is always an offset into `src`. Final sigma folds with sigma.
+   */
+  match(src: string, folded: string | undefined, at: number, follow?: string): string | undefined {
+    for (const entry of this.list) {
+      const { lower } = entry;
+      let end = at + lower.length;
+      if (folded !== undefined) {
+        if (!folded.startsWith(lower, at)) continue;
+      } else {
+        end = at;
+        let used = 0;
+        while (used < lower.length && end < src.length) {
+          const cp = String.fromCodePoint(src.codePointAt(end)!);
+          const part = foldName(cp);
+          if (!lower.startsWith(part, used)) break;
+          used += part.length;
+          end += cp.length;
+        }
+        if (used < lower.length) continue;
+      }
+      if (!(follow ? src.startsWith(follow, end) : !isWordChar(src[end]) || !isWordChar(src[end - 1]))) continue;
+      if (entry.same === undefined) return entry.name;
+      const written = src.slice(at, end).toLowerCase();
+      return (entry.same.find((other) => other.plain === written) ?? entry).name;
     }
     return undefined;
   }
@@ -123,9 +174,40 @@ function spacedLetNames(src: string): string[] {
   return out;
 }
 
+// For every offset p, where the comment closer that closes more than p opened is, when the delimiters from p are walked
+// left to right without overlap (slash-star opens, star-slash closes; -1 for none). A slash-star at p is closed where the
+// walk from p + 2 first meets a closer nothing opened; the walk then goes on after it. Each offset is computed from
+// offsets to its right, so the whole text costs one pass however its delimiters overlap (star-slash-star is a closer
+// then a star, or a star then an opener, depending on where the walk started).
+function commentExits(src: string): Int32Array {
+  const n = src.length;
+  const exit = new Int32Array(n + 1).fill(-1);
+  for (let p = n - 1; p >= 0; p--) {
+    const pair = p + 1 < n ? src.charCodeAt(p) * 65536 + src.charCodeAt(p + 1) : 0;
+    if (pair === 42 * 65536 + 47) exit[p] = p;
+    else if (pair === 47 * 65536 + 42) {
+      const closer = exit[p + 2];
+      exit[p] = closer < 0 ? -1 : exit[closer + 2];
+    } else exit[p] = exit[p + 1];
+  }
+  return exit;
+}
+
 function lex(src: string, names: NameTable, localNames: Iterable<string> = []): Token[] {
   const out: Token[] = [];
-  const lower = src.toLowerCase();
+  // Block comments nest (FileMaker accepts "/* /* a */ b */" as one comment, the usual way to comment out a formula
+  // that has comments). From its opener a comment walks the delimiters left to right without overlap, "/*" opening
+  // and "*/" closing, and ends where the nesting returns to zero; when it never does, the first "*/" at least two
+  // characters on ends it, and with none the comment is unterminated. Walking from each opener is quadratic for
+  // many unclosed ones, so the walk is answered for every position at once, from the right (see commentExits).
+  let exits: Int32Array | undefined;
+  const commentEnd = (at: number): number => {
+    exits ??= commentExits(src);
+    const closer = exits[at + 2];
+    return closer >= 0 ? closer : src.indexOf('*/', at + 2);
+  };
+  // The folded source for name matching: undefined when it holds a dotted capital I, which lower-cases to two units.
+  const lower = src.includes('İ') ? undefined : foldName(src);
   // Names with spaces bound inside the formula, or a custom function's parameters.
   const locals = new NameSet([...spacedLetNames(src), ...localNames].filter((n) => /\s/.test(n)));
   let i = 0;
@@ -165,6 +247,21 @@ function lex(src: string, names: NameTable, localNames: Iterable<string> = []): 
     }
     return runIsCall ? { end: runEnd, keyword: runKeyword } : undefined;
   };
+  // A known field or table name that starts with digits ("2024Sales", "3D::Size") is read as the name, not as a number
+  // and a word. Only where the number is followed directly by more name characters and not by one of and/or/xor/not:
+  // `1 and Secrets::Amount` and `1and Secrets::Amount` keep their number, operator and field even when a table is
+  // named "1 and Secrets", so the formula still reads Secrets::Amount (the privilege review relies on that).
+  const digitLedName = (at: number): boolean => {
+    const m = /^(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/.exec(src.slice(at, at + 400));
+    if (!m) return false;
+    const after = at + m[0].length;
+    if (!isWordChar(src[after])) return false;
+    // Look at the next three characters only: a word of name characters can run on for the whole formula, and every
+    // number in "1.1.1.1..." would scan it again.
+    const keyword = /^(?:and|xor|not|or)/i.exec(src.slice(after, after + 3));
+    if (keyword && !isWordChar(src[after + keyword[0].length])) return false;
+    return names.fields.match(src, lower, at) !== undefined || names.occurrences.match(src, lower, at, '::') !== undefined;
+  };
   while (i < src.length) {
     const c = src[i];
     if (c === ' ' || c === '\t' || c === '\r' || c === '\n' || c === ' ') {
@@ -172,21 +269,9 @@ function lex(src: string, names: NameTable, localNames: Iterable<string> = []): 
     } else if (src.startsWith('//', i)) {
       while (i < src.length && src[i] !== '\r' && src[i] !== '\n') i++;
     } else if (src.startsWith('/*', i)) {
-      const end = src.indexOf('*/', i + 2);
+      const end = commentEnd(i);
       if (end < 0) throw new CalcError(ERR.unterminatedComment, 'The comment is not terminated with "*/"');
-      // Block comments nest (FileMaker accepts "/* /* a */ b */" as one comment,
-      // the usual way to comment out a formula that has comments); when the
-      // nesting never closes, the first "*/" ends it. Known cost: a formula of many such unclosed openers
-      // ("/*/*a*/" repeated) walks to the end of the text from each, so it is quadratic (about 7 s for 140 KB).
-      let depth = 0;
-      let j = i;
-      while (j < src.length) {
-        if (src.startsWith('/*', j)) { depth++; j += 2; } else if (src.startsWith('*/', j)) {
-          j += 2;
-          if (--depth === 0) break;
-        } else j++;
-      }
-      i = depth === 0 ? j : end + 2;
+      i = end + 2;
     } else if (c === '"') {
       let s = '';
       let j = i + 1;
@@ -204,7 +289,7 @@ function lex(src: string, names: NameTable, localNames: Iterable<string> = []): 
       }
       out.push({ t: 'str', v: s, at: i });
       i = j + 1;
-    } else if (/[0-9]/.test(c) || (c === '.' && /[0-9]/.test(src[i + 1] ?? ''))) {
+    } else if ((/^[0-9]$/.test(c) || (c === '.' && /[0-9]/.test(src[i + 1] ?? ''))) && !digitLedName(i)) {
       const m = /^(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/.exec(src.slice(i))!;
       // A whole number of more than 15 digits keeps every digit (values.ts: exactIntegerText).
       const exact = exactIntegerText(m[0]);
