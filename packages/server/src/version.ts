@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findExecutable } from './find-executable.ts';
 
 // The one place a version is read. Everything that says which Tabularius this is (the command line, the web client's About,
 // the admin console, the Data API's productInfo, the MCP handshake, the metrics and the XML grammars) reads it from here.
@@ -33,7 +34,10 @@ export function serverCommit(): string | undefined {
     commit = readJson(new URL(`../${BUILD_INFO}`, import.meta.url))?.commit ?? null;
     if (commit === null && existsSync(join(REPOSITORY_ROOT, '.git'))) {
       try {
-        commit = execFileSync('git', ['-C', REPOSITORY_ROOT, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).trim() || null;
+        // By full path from PATH, never by the bare name: Windows looks for that in the current folder first, and a service's
+        // current folder is the hosted folder, which other accounts may be able to write to.
+        const git = findExecutable('git');
+        commit = git ? execFileSync(git, ['-C', REPOSITORY_ROOT, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).trim() || null : null;
       } catch {
         commit = null;
       }

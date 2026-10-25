@@ -1,4 +1,3 @@
-import path from 'node:path';
 // Container files over HTTP: streamed in pieces, with range requests (so
 // video and audio play and seek, and big downloads resume), ETags, and
 // thumbnails of images and PDFs.
@@ -15,9 +14,10 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
 import { Worker } from 'node:worker_threads';
 import { execFile } from 'node:child_process';
-import { accessSync, statSync, constants, mkdtempSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { cleanupPath, readFileSync, writeFileSync } from '../../store/src/fs-boundary.ts';
 import { tmpdir } from 'node:os';
+import { findExecutable } from './find-executable.ts';
 import { join } from 'node:path';
 import { CONTAINER_CHUNK } from '../../store/src/index.ts';
 import type { Store } from '../../store/src/index.ts';
@@ -580,22 +580,7 @@ export function limitedCommand(
   return { cmd, args: [...args], limits: 'none' };
 }
 
-/** Native tools only: batch files would require a shell, which thumbnail inputs never enter. */
-export function findExecutable(cmd: string, platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env, usable: (file: string) => boolean = (file) => {
-  try { accessSync(file, constants.X_OK); return statSync(file).isFile(); } catch { return false; }
-}): string | undefined {
-  const paths = platform === 'win32' ? path.win32 : path.posix;
-  const names = platform === 'win32' ? [`${cmd}.exe`, `${cmd}.com`] : [cmd];
-  for (const entry of (env.PATH ?? env.Path ?? '').split(paths.delimiter)) {
-    const dir = entry.replace(/^"|"$/g, '');
-    if (!dir) continue;
-    for (const name of names) {
-      const file = paths.join(dir, name);
-      if (usable(file)) return file;
-    }
-  }
-  return undefined;
-}
+export { findExecutable };
 
 /** Types a browser shows without running anything from the file: pictures (not SVG), PDF, sound, video and plain text. */
 export function inlineSafe(mime: string): boolean {
