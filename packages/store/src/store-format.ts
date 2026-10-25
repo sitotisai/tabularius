@@ -3,12 +3,12 @@
 // and an older build changing it could damage what the newer one added. docs/upgrading.md is the promise made to people.
 //
 // Raise STORE_FORMAT only for a change an older build cannot read or would damage: a column that changes meaning,
-// a table an older build would write into wrongly, a removed or renamed table. Adding a table, a column or a setting
-// is not one; builds that do not know it leave it alone. packages/store/test/store-format.test.ts holds the rules.
+// a table an older build would write into wrongly, a removed or renamed table. Format 2 adds a record-id mark that an
+// older writer would ignore and could violate. packages/store/test/store-format.test.ts holds the rules.
 
 import type { DatabaseSync } from 'node:sqlite';
 
-export const STORE_FORMAT = 1;
+export const STORE_FORMAT = 2;
 
 /** Thrown when a store was written by a newer Tabularius than this one. */
 export class StoreFormatError extends Error {

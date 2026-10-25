@@ -326,12 +326,8 @@ function carryRecords(sql: DatabaseSync, counts: { created: number; edited: numb
     // Deleted since: in the .fmp12, gone from the store.
     counts.deleted += Number(sql.prepare(`DELETE FROM main.${T} WHERE _fm_record_id NOT IN (SELECT _fm_record_id FROM old.${T})`).run().changes);
 
-    // Made since, under an id the .fmp12 also uses: new ids continue after the highest one left, so deleting the last
-    // original record gives its id to the next new one, which has no edits to tell it from the original. The audit log
-    // says it was made here: the record's present life (see record-life.ts) starts at a create the log holds, not at a
-    // put-back of a deleted record. The original goes, the person's record is copied whole below. This depends on the
-    // log: once audit retention has removed the create entry, the id reads as the untouched original (ADMIN.md says
-    // so). A log from before reverts were marked (no revert_of column) has none to tell apart, so every create counts.
+    // Older stores could reuse an id before the durable high-water mark existed. Keep the audit-based distinction for
+    // those records; new records have distinct ids even after audit retention removes their create entries.
     if (audit) {
       const marked = columns(sql, '_fm_audit', 'old').includes('revert_of');
       const creates = sql.prepare(`SELECT record_id, seq, ${marked ? 'revert_of' : 'NULL AS revert_of'} FROM old._fm_audit WHERE security = 0 AND kind = 'create' AND tbl = ? AND record_id IS NOT NULL`).all(t.name) as { record_id: number; seq: number; revert_of: number | null }[];
@@ -341,13 +337,13 @@ function carryRecords(sql: DatabaseSync, counts: { created: number; edited: numb
       for (const [id, entries] of byRecord) if (madeHere(lifeRanges(entries))) drop.run(id);
     }
 
-    // Edited since: the fields the audit log says changed, or all of them.
+    // Edited since: use logged fields only while the update log is complete. Retention can remove an older field edit.
     const edited = sql.prepare(`SELECT o._fm_record_id, ${shared.map((c) => `o.${q(c)}`).join(', ')} FROM old.${T} AS o JOIN main.${T} AS n ON n._fm_record_id = o._fm_record_id WHERE o._fm_mod_id > 0`).all() as Record<string, unknown>[];
     const changedFields = audit ? sql.prepare("SELECT changes FROM old._fm_audit WHERE security = 0 AND kind = 'update' AND tbl = ? AND record_id = ?") : undefined;
     for (const r of edited) {
       let cols = shared;
       const logged = changedFields?.all(t.name, r._fm_record_id as number) as { changes: string | null }[] | undefined;
-      if (logged?.length) {
+      if (logged?.length && logged.length >= Number(r._fm_mod_id)) {
         const names = new Set<string>(['_fm_mod_id']);
         for (const l of logged) for (const k of Object.keys(l.changes ? JSON.parse(l.changes) as object : {})) names.add(k.replace(/\(\d+\)$/, ''));
         cols = shared.filter((c) => names.has(c));

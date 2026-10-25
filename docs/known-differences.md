@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**175 entries in 22 areas.** Waiting on: 22 on a sample file, 88 on a FileMaker run or Design Report, 14 on a Claris answer, 18 on a decision by the owner (an entry can wait on more than one).
+**176 entries in 23 areas.** Waiting on: 22 on a sample file, 89 on a FileMaker run or Design Report, 14 on a Claris answer, 18 on a decision by the owner (an entry can wait on more than one).
 
 ## Data API
 
@@ -108,6 +108,12 @@ part of it.
 | Rich-text formatting runs, externally stored containers, how global fields are stored and the user's custom layout display order are not decoded yet | A converted file does not carry them | Sample files that use them (for the display order, one where layouts were reordered) | [docs/research/fmp12-format.md](research/fmp12-format.md) — “(the whole page)” |
 | Containers in FileMaker's secure (encrypted) external storage are not supported | Such containers do not come across from a converted file | An owner decision on supporting them, and a sample file that has them | [README.md › Tabularius](../README.md) — “Not yet: containers in FileMaker's secure (encrypted) external storage. See” |
 | Some account option flags (print, export, menu level) are not decoded from a converted file | Those flags are not carried into the converted account | Sample files that set them, and a Design Report of the same file | [SECURITY.md › Known limitations](../SECURITY.md) — “…option flags (print, export, menu level) are not yet” |
+
+## Records
+
+| What differs or is unknown | How it shows | What would settle it | Where it is written |
+| --- | --- | --- | --- |
+| Exact record-id allocation parity with FileMaker is unverified offline | A boundary case could receive a different new id than FileMaker assigns | A direct FileMaker run that creates and deletes the highest record id | [ADMIN.md › Converting a file again](../ADMIN.md) — “…record-id allocation parity with FileMaker is unverified offline.” |
 
 ## Schedules
 

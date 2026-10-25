@@ -128,7 +128,7 @@ test('formatting stays on its own record and field, and stored calculations see 
     store.update('People', a, { Name: 'Hi' }, undefined, { styles: { Name: [{ start: 0, end: 2, style: 256 }] } });
     store.delete('People', a);
     const b = store.create('People', { Name: 'Hi' }).recordId;
-    assert.equal(b, a, 'the id is given again');
+    assert.ok(b > a, 'the new record has its own id');
     assert.equal(store.get('People', b).styles, undefined);
   } finally {
     store.close();

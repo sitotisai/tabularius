@@ -36,7 +36,8 @@ export function dumpStore(path: string): string {
       if (!cols.length) continue;
       const q = cols.map((c) => `quote("${c}")`).join(" || ',' || ");
       for (const r of sql.prepare(`SELECT ${q} AS v FROM "${o.name}" ORDER BY 1`).all() as { v: string }[]) {
-        out.push(`INSERT INTO "${o.name}" (${cols.map((c) => `"${c}"`).join(', ')}) VALUES (${r.v});`);
+        const upsert = o.name === '_fm_record_id_high_water' ? ' ON CONFLICT(tbl) DO UPDATE SET id = max(id, excluded.id)' : '';
+        out.push(`INSERT INTO "${o.name}" (${cols.map((c) => `"${c}"`).join(', ')}) VALUES (${r.v})${upsert};`);
       }
     }
     return out.join('\n') + '\n';

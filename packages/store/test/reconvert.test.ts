@@ -35,6 +35,13 @@ const row = (path: string, id: number) => {
   }
 };
 
+/** Reproduce a collision already written by an older store, before ids became monotonic. */
+function legacyCreate(store: Store, id: number, title: string, account: string): void {
+  store.sql.prepare('INSERT INTO MOVIE (_fm_record_id, title_sort) VALUES (?, ?)').run(id, title);
+  (store as unknown as { audit: (kind: 'create', table: string, id: number, changes: object, opts: object) => void })
+    .audit('create', 'MOVIE', id, { title_sort: title }, { account });
+}
+
 test('reconverting keeps records created, edited and deleted since, and settings', { skip }, async () => {
   const { dir, path, ids: [one, two, three] } = oldStore();
   try {
@@ -94,9 +101,8 @@ test('reconverting keeps a new record that took the id of a deleted original', {
     let edited: number;
     try {
       store.delete(LAYOUT, top, { account: 'Ann' });
-      // Ids continue after the highest one left, so the new record is given the deleted one's id.
-      const made = store.create(LAYOUT, { title_sort: 'NEW record made by a person' }, { account: 'Ann' });
-      assert.equal(made.recordId, top);
+      // Reproduce the collision an older store could have written.
+      legacyCreate(store, top, 'NEW record made by a person', 'Ann');
       // A second one is edited after it is made: the edit must not be laid over the original's other fields.
       edited = store.create(LAYOUT, { title_sort: 'Second new record' }, { account: 'Ann' }).recordId;
       store.update(LAYOUT, edited, { director: 'Mine' }, undefined, { account: 'Ann' });
@@ -147,8 +153,8 @@ test('an original put back after another record had and gave up its id is still 
       const before = store.sql.prepare('SELECT * FROM MOVIE WHERE _fm_record_id = ?').get(top) as Record<string, never>;
       store.delete(LAYOUT, top, { account: 'Ann' });
       const deleted = store.auditLog({ table: 'MOVIE', recordId: top, kind: 'delete' }).at(-1)!;
-      // The id is given to a new record, which is deleted in turn; then the first delete is undone.
-      assert.equal(store.create(LAYOUT, { title_sort: 'B, made by a person' }, { account: 'Bo' }).recordId, top);
+      // An older store reused the id; then the first delete was undone.
+      legacyCreate(store, top, 'B, made by a person', 'Bo');
       store.delete(LAYOUT, top, { account: 'Bo' });
       store.restoreDeletedRow('MOVIE', before, { account: 'Ann', undoesDelete: deleted.seq });
     } finally {
@@ -171,7 +177,7 @@ test('a store whose audit log has no revert_of column still keeps a new record u
     const store = new Store(path, 'Flicks');
     try {
       store.delete(LAYOUT, top, { account: 'Ann' });
-      assert.equal(store.create(LAYOUT, { title_sort: 'NEW record made by a person' }, { account: 'Ann' }).recordId, top);
+      legacyCreate(store, top, 'NEW record made by a person', 'Ann');
     } finally {
       store.close();
     }
@@ -187,24 +193,25 @@ test('a store whose audit log has no revert_of column still keeps a new record u
   }
 });
 
-// A limit, not a fix: which record a reused id belongs to is only known from the audit log, so once audit retention
-// has removed the create entry the id reads as the untouched original (ADMIN.md, "Converting a file again").
-test('a new record under a reused id after audit retention removed its create entry', { skip, todo: 'reused-id detection depends on audit retention (default 400 days); see ADMIN.md' }, async () => {
+test('a new record keeps its distinct id after audit retention removed its create entry', { skip }, async () => {
   const { dir, path } = oldStore();
   try {
     const sql = new DatabaseSync(path, { readOnly: true });
     const top = Number((sql.prepare('SELECT max(_fm_record_id) AS id FROM MOVIE').get() as { id: number }).id);
     sql.close();
     const store = new Store(path, 'Flicks');
+    let made: number;
     try {
       store.delete(LAYOUT, top, { account: 'Ann' });
-      assert.equal(store.create(LAYOUT, { title_sort: 'NEW record made by a person' }, { account: 'Ann' }).recordId, top);
+      made = store.create(LAYOUT, { title_sort: 'NEW record made by a person' }, { account: 'Ann' }).recordId;
+      assert.ok(made > top);
       store.pruneAudit(1, Date.now() + 3 * 86_400_000);
     } finally {
       store.close();
     }
     await reconvert(path, fixture);
-    assert.equal(row(path, top)!.title_sort, 'NEW record made by a person');
+    assert.equal(row(path, top), undefined);
+    assert.equal(row(path, made!)!.title_sort, 'NEW record made by a person');
   } finally {
     rmSync(dir, { recursive: true });
   }
