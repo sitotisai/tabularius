@@ -217,3 +217,31 @@ test('a clock- or random-based rule is never cached, so it cannot go stale', { s
     rmSync(dir, { recursive: true });
   }
 });
+
+test('the viewable set is built once while the list is cached, and is rebuilt after a write that changes it', { skip }, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-privcache-'));
+  const { store } = withLimited(dir);
+  try {
+    const pv = store.privileges('clerk');
+    for (let i = 0; i < 3; i++) store.create(LAYOUT, { Name: 'ok' });
+    store.create(LAYOUT, { Name: 'no' });
+    const first = store.viewableSet(TABLE, pv)!;
+    assert.deepEqual([...first].sort((a, b) => a - b), store.viewableIds(TABLE, pv)!.sort((a, b) => a - b));
+    // A portal or a related list asks once for each record it shows: the same Set, not a copy for each.
+    assert.equal(store.viewableSet(TABLE, pv), first);
+    assert.equal(store.viewableSet(TABLE, pv), first);
+    // Not a view of the cached list itself: what a caller does to the ids it is given does not reach the next caller.
+    store.viewableIds(TABLE, pv)!.length = 0;
+    assert.equal(store.viewableSet(TABLE, pv)!.size, 3);
+    const hidden = store.create(LAYOUT, { Name: 'ok' }).recordId;
+    const second = store.viewableSet(TABLE, pv)!;
+    assert.notEqual(second, first, 'a write drops the cached list, so the set is built again');
+    assert.ok(second.has(hidden));
+    assert.equal(first.has(hidden), false, 'the earlier set is not changed under its holder');
+    // No restriction: undefined, as viewableIds is; a rule that sees nothing: an empty set.
+    assert.equal(store.viewableSet(TABLE, undefined), undefined);
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true });
+  }
+});

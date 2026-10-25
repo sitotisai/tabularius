@@ -6344,6 +6344,27 @@ export class Store {
     return rule !== true;
   }
 
+  /** The sets viewableSet hands out, one for each cached list of ids (see allowedIds). */
+  private readonly viewableSets = new WeakMap<number[], Set<number>>();
+
+  /**
+   * viewableIds as a Set to read from, never to change: undefined when the privileges can view every record. While the
+   * list of viewable ids is cached it is the same Set each time, so a caller that asks once per record (a portal's rows, a
+   * related record list) does not copy and hash the whole list for each one.
+   */
+  viewableSet(table: string, privileges?: Privileges): ReadonlySet<number> | undefined {
+    return this.withDesignRead(() => {
+      const pv = this.local(privileges);
+      const rule = pv?.table(table).view ?? true;
+      if (rule === true) return undefined;
+      if (rule === false) return new Set<number>();
+      const ids = this.allowedIds(this.schema.tables.find((t) => t.name === table)!, rule, pv!.account);
+      let set = this.viewableSets.get(ids);
+      if (!set) this.viewableSets.set(ids, set = new Set(ids));
+      return set;
+    });
+  }
+
   /** Ids of a table's records the privileges can view; undefined when they can view them all. */
   viewableIds(...args: Parameters<Store['viewableIdsCurrent']>): number[] | undefined {
     return this.withDesignRead(() => this.viewableIdsCurrent(...args));
@@ -7653,7 +7674,7 @@ export class Store {
     const all = relatedIdList(this, plan.occurrenceId, row, p.occurrenceId);
     if (!all) return undefined;
     const occ = all.occurrence;
-    const viewable = limited ? new Set(occ.store.viewableIds(occ.table.name, privileges)) : undefined;
+    const viewable = limited ? occ.store.viewableSet(occ.table.name, privileges) : undefined;
     const calc = occ.store.calc;
     // Formulas name occurrences of this file's graph, even when the rows live in another file.
     // Each row is worked out in passes emptied after it, and only its id and sort values are kept.

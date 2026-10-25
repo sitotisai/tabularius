@@ -333,3 +333,31 @@ test('$ref gives links to the related records, not the records', { skip }, async
   }
   assert.equal((await get(`/Customers(${ids.acme})/Orders/$ref?$count=true`)).body['@odata.count'], 2, 'nothing was changed');
 });
+
+test('$expand for an account with a record-level view rule reads the target\'s viewable records once, not once per parent', { skip }, async (t) => {
+  store.applyDesign([
+    { op: 'createTable', name: 'Parents', fields: [{ name: 'Key', type: 'text' }] },
+    { op: 'createTable', name: 'Kids', fields: [{ name: 'Key', type: 'text' }, { name: 'Shown', type: 'number' }] },
+    { op: 'createRelationship', left: 'Parents', right: 'Kids', predicates: [{ left: 'Key', right: 'Key' }] },
+  ] as never);
+  const parents = 60;
+  for (let i = 0; i < parents; i++) {
+    store.create('Parents', { Key: `P${i}` });
+    store.create('Kids', { Key: `P${i}`, Shown: 1 });
+    store.create('Kids', { Key: `P${i}`, Shown: 0 });
+  }
+  store.savePrivilegeSet({
+    name: 'Shown kids', extendedPrivileges: ['fmodata'], layouts: 'viewOnly', scripts: 'none', valueLists: 'viewOnly',
+    records: { view: true, edit: false, create: false, delete: false },
+    tables: { Kids: { view: 'Shown = 1', edit: false, create: false, delete: false } },
+  } as never);
+  store.setPassword('Dee', 'pw', 'Shown kids');
+  const viewableIds = t.mock.method(store, 'viewableIds');
+  const viewableSet = t.mock.method(store, 'viewableSet');
+  const { res, body } = await get('/Parents?$expand=Kids', 'Dee');
+  assert.equal(res.status, 200);
+  assert.equal(body.value.length, parents);
+  assert.ok(body.value.every((p: any) => p.Kids.length === 1), 'each parent shows only the kid its rule allows');
+  const asked = viewableIds.mock.callCount() + viewableSet.mock.callCount();
+  assert.ok(asked <= 2, `the viewable records were read ${asked} times for ${parents} parents`);
+});
