@@ -2,9 +2,9 @@
 // Full Access account that signs in again, and the scan for hosted files never reads Exports.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import type { Server } from 'node:http';
 import { serve, setAdminPassword } from '../src/index.ts';
 import { Host } from '../src/host.ts';
@@ -126,4 +126,39 @@ test('an Exports that is a symlink is refused', async () => {
   assert.ok(!String(r.body.error).includes(dir));
   assert.deepEqual(readdirSync(real), []);
   rmSync(join(dir, 'Exports'));
+});
+
+test('a hosted folder given as a relative path leaks no part of the absolute path in any refusal', async () => {
+  const parent = mkdtempSync(join(tmpdir(), 'tabularius-secret-parent-'));
+  const hosted = join(parent, 'files');
+  mkdirSync(hosted);
+  createStore(join(hosted, 'Shop.openhbam.sqlite'));
+  const shop = new Store(join(hosted, 'Shop.openhbam.sqlite'), 'Shop');
+  shop.applyDesign([{ op: 'createTable', name: 'Orders', fields: [{ name: 'Customer', type: 'text' }] }]);
+  shop.setPassword('Admin', PASSWORD);
+  shop.close();
+  setAdminPassword(hosted, CONSOLE);
+  const here = process.cwd();
+  process.chdir(parent);
+  let relative: Awaited<ReturnType<typeof serve>> | undefined;
+  try {
+    relative = await serve({ dir: 'files', port: 0, log: () => {} });
+    const send = (route: string, name: string) => fetch(`${relative!.url}/tabularius/admin/v1/${route}`, { method: 'POST', headers, body: JSON.stringify({ database: 'Shop', name, account: 'Admin', password: PASSWORD }) })
+      .then(async (r) => ({ status: r.status, text: JSON.stringify(await r.json()) }));
+    const answers = [await send('exit-bundle/discard', 'none')];
+    writeFileSync(join(hosted, 'Exports', 'busy.lock'), JSON.stringify({ pid: process.ppid, startedAt: Date.now() }));
+    answers.push(await send('exit-bundle', 'busy'));
+    mkdirSync(join(hosted, 'Exports', 'there'));
+    answers.push(await send('exit-bundle', 'there'));
+    assert.deepEqual(answers.map((a) => a.status), [404, 409, 409]);
+    assert.match(answers[0].text, /none\.partial/);
+    assert.match(answers[1].text, /busy\.lock/);
+    for (const a of answers) {
+      for (const secret of [basename(parent), parent, realpathSync(parent), tmpdir()]) assert.ok(!a.text.includes(secret), `${secret} in ${a.text}`);
+    }
+  } finally {
+    if (relative) await new Promise<void>((r) => relative!.server.close(() => r()));
+    process.chdir(here);
+    rmSync(parent, { recursive: true, force: true });
+  }
 });

@@ -135,7 +135,7 @@ import { isIP } from 'node:net';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { BoundedMap } from './bounded-map.ts';
 import { createHash, randomBytes } from 'node:crypto';
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, resolve, sep } from 'node:path';
 import { discardExitBundle, exitBundle, ExitBundleError, webViewerEntryCovers, hashPassword, defaultMinPasswordLength, checkPassword, addressBucket, StoreError, findStaleCalcs, refreshStaleCalcs, undoStaleRefresh, staleRefreshHistory, StaleCalcError, SECURITY_EVENT_CATEGORIES, isFullAccess, ownPrivilegeEntry, setOwn, type AuditEntry, type FieldLevel, type SecurityEvent, type Store } from '../../store/src/index.ts';
 import { loadAsset, sendAsset } from './static-cache.ts';
@@ -201,6 +201,30 @@ const PASSWORD_FILE = '.openhbam-admin';
 
 /** Only errors deliberately written for an administrator may cross this API boundary. */
 /** Whole seconds left of a wait given in milliseconds; the clock has fractions, so a sum like (now + 900000) - now can come out a hair over 900000. */
+/**
+ * The text of a portable-copy error with every spelling of the server's paths replaced by the names the console uses. The store
+ * words its messages with the absolute path it resolved, which is not how a relative hosted folder (`serve ./files`) was given,
+ * so each place is hidden resolved to an absolute path, with its symlinks resolved, with either slash, and in any letter case.
+ */
+function hideServerPaths(message: string, places: [path: string, shown: string][]): string {
+  const shown = new Map<string, string>();
+  const add = (path: string, as: string) => {
+    const base = resolve(path);
+    const forms = [base];
+    try { forms.push(realpathSync.native(base)); }
+    catch {
+      try { forms.push(join(realpathSync.native(dirname(base)), basename(base))); } catch { /* the place does not exist yet */ }
+    }
+    for (const form of forms) for (const f of [form, form.replaceAll('\\', '/'), form.replaceAll('/', '\\')]) {
+      if (f.length > 1 && !shown.has(f.toLowerCase())) shown.set(f.toLowerCase(), as);
+    }
+  };
+  for (const [path, as] of places) add(path, as);
+  const spelled = [...shown.keys()].sort((a, b) => b.length - a.length).map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (!spelled.length) return message;
+  return message.replace(new RegExp(spelled.join('|'), 'gi'), (found) => shown.get(found.toLowerCase()) ?? '');
+}
+
 function secondsLeft(ms: number): number {
   return Math.ceil(Math.round(ms) / 1000);
 }
@@ -1755,7 +1779,7 @@ export class Admin {
               }
             } catch (e) {
               if (!(e instanceof ExitBundleError)) throw e;
-              send(e.status, { error: e.message.replaceAll(folder, folderName).replaceAll(exports, 'Exports') });
+              send(e.status, { error: hideServerPaths(e.message, [[folder, folderName], [exports, 'Exports'], [this.host.dir, 'the hosted folder']]) });
             }
           }
         }
