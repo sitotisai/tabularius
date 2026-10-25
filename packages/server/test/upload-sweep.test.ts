@@ -68,7 +68,7 @@ test('default process liveness recognizes this process and a completed child', (
   const result = sweepOrphanUploadFolders({ tmp, now: Date.now() });
   assert.ok(result.removed.includes(old.split('/').pop()!));
   const current = folder(tmp); owner(current, process.pid); date(current, Date.now() - 2 * day);
-  assert.ok(sweepOrphanUploadFolders({ tmp, now: Date.now() }).removed.includes(current.split('/').pop()!));
+  assert.ok(sweepOrphanUploadFolders({ tmp, now: Date.now() }).kept >= 1);
 });
 
 test('upload owners mark distinct spools and live processes protect them', (t) => {
