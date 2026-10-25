@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createStore, Store, StoreError } from '../src/index.ts';
+import { createStore, inLife, Store, StoreError } from '../src/index.ts';
 
 function withStore(fn: (store: Store) => void) {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-reused-id-'));
@@ -70,7 +70,7 @@ test('a record put back by the cleanup undo keeps its own earlier edits revertab
     store.delete('Docs', id, { account: 'Ann' });
     store.restoreDeletedRow('Docs', before, { account: 'Ann' });
     // The same record came back, not a new one: its life did not start again.
-    assert.equal(store.recordLifeStart('Docs', id), store.auditLog({ table: 'Docs', recordId: id, kind: 'create' })[0].seq);
+    assert.ok(inLife(store.recordLife('Docs', id), edit.seq));
     assert.equal(store.revertAuditEntry('Docs', id, edit.seq, { account: 'Ann' }).action, 'updated');
     assert.equal(store.get('Docs', id, 'iso').fieldData.Title, 'a');
   });
@@ -85,7 +85,7 @@ test('an original put back by the admin console restore keeps its earlier histor
     const edit = store.auditLog({ table: 'Docs', recordId: id, kind: 'update' })[0];
     store.delete('Docs', id, { account: 'Ann' });
     assert.equal(store.restoreRecord('Docs', id, edit.seq, { account: 'admin console' }).action, 'created');
-    assert.equal(store.recordLifeStart('Docs', id), 0, 'the restore is not a new record');
+    assert.ok(inLife(store.recordLife('Docs', id), edit.seq), 'the restore is not a new record');
     assert.equal(store.revertAuditEntry('Docs', id, edit.seq, { account: 'Ann' }).action, 'updated');
   });
 });
@@ -121,5 +121,52 @@ test('an account that cannot see a record learns nothing about it being made aga
       assert.equal(answers.size, 1, `${why}: ${[...answers].join(' | ')}`);
     }
     assert.equal(store.get('Docs', second, 'iso').fieldData.Title, 'secret-B', 'and nothing was changed');
+  });
+});
+
+test('an original put back after another record had and gave up its id: the other record\'s entries are not its own', () => {
+  withStore((store) => {
+    const a = store.create('Docs', { Title: 'A' }, { account: 'Ann' }).recordId;
+    store.update('Docs', a, { Title: 'A, edited' }, undefined, { account: 'Ann' });
+    const aEdit = store.auditLog({ table: 'Docs', recordId: a, kind: 'update' })[0];
+    const rowA = store.sql.prepare('SELECT * FROM Docs WHERE _fm_record_id = ?').get(a) as Record<string, never>;
+    store.delete('Docs', a, { account: 'Ann' }); // a merge of duplicates
+    const deleteA = store.auditLog({ table: 'Docs', recordId: a, kind: 'delete' }).at(-1)!;
+    const b = store.create('Docs', { Title: 'secret-B' }, { account: 'Bo' }).recordId;
+    assert.equal(b, a);
+    store.update('Docs', b, { Title: 'secret-B2' }, undefined, { account: 'Bo' });
+    const bEdit = store.auditLog({ table: 'Docs', recordId: b, kind: 'update' }).at(-1)!;
+    store.delete('Docs', b, { account: 'Bo' });
+    store.restoreDeletedRow('Docs', rowA, { account: 'Ann', undoesDelete: deleteA.seq }); // the undo of the merge
+
+    // Its own history before the delete is still its own; what happened in between is not.
+    assert.throws(() => store.revertAuditEntry('Docs', a, bEdit.seq, { account: 'Ann' }), /not a change to this record/);
+    assert.equal(store.get('Docs', a, 'iso').fieldData.Title, 'A, edited');
+    assert.equal(store.revertAuditEntry('Docs', a, aEdit.seq, { account: 'Ann' }).action, 'updated');
+    assert.equal(store.get('Docs', a, 'iso').fieldData.Title, 'A');
+  });
+});
+
+test('an account whose view rule may show a record gets one answer for a deleted record, whatever the entry', () => {
+  withStore((store) => {
+    const id = store.create('Docs', { Title: 'secret' }, { account: 'Admin' }).recordId;
+    const made = store.auditLog({ table: 'Docs', recordId: id, kind: 'create' })[0];
+    store.delete('Docs', id, { account: 'Admin' });
+    const gone = store.auditLog({ table: 'Docs', recordId: id, kind: 'delete' })[0];
+    const open = { view: true, edit: true, create: true, delete: true };
+    store.savePrivilegeSet({ name: 'Rule', records: { ...open }, layouts: 'modifiable', valueLists: 'none', scripts: 'none', extendedPrivileges: [], tables: { Docs: { ...open, view: 'Title = "nothing"' } } } as never);
+    store.setPassword('Rule', 'pw', 'Rule');
+    const privileges = store.privileges('Rule');
+    const says = (seq: number) => {
+      try {
+        store.revertAuditEntry('Docs', id, seq, { account: 'Rule', privileges });
+        return 'reverted';
+      } catch (e) {
+        return `${(e as StoreError).code}: ${(e as Error).message}`.replace(/\d+(?= is not)/, 'N');
+      }
+    };
+    const answers = new Set([says(made.seq), says(gone.seq), says(gone.seq + 1000)]);
+    assert.equal(answers.size, 1, [...answers].join(' | '));
+    assert.equal(store.sql.prepare('SELECT 1 FROM Docs WHERE _fm_record_id = ?').get(id), undefined, 'the record was not put back');
   });
 });

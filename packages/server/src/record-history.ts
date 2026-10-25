@@ -7,7 +7,7 @@
 // keeps none of this. Read-only; secret-looking values are hidden.
 
 import type { Field, Table } from '../../fmp12/src/index.ts';
-import { NOT_LOGGED, type AuditEntry, type Store } from '../../store/src/index.ts';
+import { inLife, NOT_LOGGED, type AuditEntry, type Store } from '../../store/src/index.ts';
 import { automationRuns, listAutomations } from './automations.ts';
 import { cleanupBatchById, cleanupHistory } from './cleanup.ts';
 import { secretName } from './ai-output.ts';
@@ -96,9 +96,9 @@ export function recordHistory(store: Store, table: string, recordId: number, opt
   const t = store.schema.tables.find((x) => x.name.toLowerCase() === table.toLowerCase());
   if (!t) throw new Error(`No table named "${table}"`);
   const limit = Math.max(1, Math.min(opts.limit ?? 200, 2000));
-  // A deleted last record's id is given to the next new record: what was logged before this one's creation is another record's.
-  const lifeStart = store.recordLifeStart(t.name, recordId);
-  const all = store.auditLog({ table: t.name, recordId, limit: 10_000 }).filter((e) => !e.security && e.kind !== 'read' && e.seq >= lifeStart);
+  // A deleted last record's id is given to the next new record: what was logged outside this one's life is another record's.
+  const life = store.recordLife(t.name, recordId);
+  const all = store.auditLog({ table: t.name, recordId, limit: 10_000 }).filter((e) => !e.security && e.kind !== 'read' && inLife(life, e.seq));
   const entries = all.slice(-limit);
   const hidden = (name: string) => opts.hideField?.(name) ?? false;
   const value = (field: string, v: unknown) => (secretName(field) && v !== '' && v !== null && v !== undefined ? HIDDEN : clip(v));

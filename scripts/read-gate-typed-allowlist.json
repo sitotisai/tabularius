@@ -2249,11 +2249,11 @@
  },
  {
   "file": "packages/store/src/store.ts",
-  "within": "Store.recordLifeStart",
+  "within": "Store.recordLife",
   "api": "sql.prepare",
   "count": 1,
   "gate": "store-internal",
-  "why": "Returns one audit sequence number (the latest non-revert creation of the record, 0 if none), no record values. Its two callers use it only as a lower bound on audit entries they already filter: recordHistory (whose callers check the account can see the record, or the whole table for a deleted one, and apply hideField/hideTable; mcp-design's is full access) and revertAuditEntry (which answers an account that cannot see the record the same way for every entry before it reads the log, then applies the account's privileges to the revert itself)."
+  "why": "Returns ranges of audit sequence numbers (which entries belong to the record's present life), no record values. Its callers use it only to drop audit entries they already filter: recordHistory (whose callers check the account can see the record, or the whole table for a deleted one, and apply hideField/hideTable; mcp-design's is full access) and revertAuditEntry (which answers an account that cannot see the record, or the whole table when it is gone, the same way for every entry before it reads the log, then applies the account's privileges to the revert itself)."
  },
  {
   "file": "packages/store/src/store.ts",
@@ -2333,7 +2333,7 @@
   "api": "sql.prepare",
   "count": 1,
   "gate": "store-internal",
-  "why": "An existence check (SELECT 1, no values) made before the log is read: it only picks which visibility test the account gets (the record's view rule when the record is there, the table's when it is gone), and an account that fails it is refused with the same answer whatever the entry. Nothing about the row is returned."
+  "why": "An existence check (SELECT 1, no values) made before the log is read: it only picks which visibility test the account gets (the record's view rule when the record is there; when it is gone, only a table the account may view whole), and an account that fails it is refused with the same answer whatever the entry. Nothing about the row is returned."
  },
  {
   "file": "packages/store/src/store.ts",
