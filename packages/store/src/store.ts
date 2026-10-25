@@ -16,6 +16,7 @@ import { PreparedCache } from './preparation.ts';
 import { rethrowExecutionRefusal } from '../../calc/src/execution-refusal.ts';
 import { SQL_DATE_FUNCTIONS, placeholders, oneStatement } from './sql-dates.ts';
 import { boundedStatement, collectRows } from './sql-result.ts';
+import { customFunction, recursiveRows, usesRecursion, type Op } from './sql-recursive.ts';
 import { DatabaseSync, backup, type Session, type StatementSync, type SQLInputValue, type SQLOutputValue } from 'node:sqlite';
 import { createHash, createHmac, pbkdf2Sync, scrypt, scryptSync, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { isIP } from 'node:net';
@@ -10942,7 +10943,7 @@ export class Store {
     return this.readOnlyChecked(sqlText).statement;
   }
 
-  private readOnlyChecked(sqlText: string): { statement: StatementSync; opened: { opcode: string; p2: number; p3: number }[]; text: string } {
+  private readOnlyChecked(sqlText: string): { statement: StatementSync; opened: Op[]; text: string } {
     sqlText = cleanSql(sqlText);
     if (!oneStatement(sqlText)) throw new StoreError(8310, 'SQL runs one statement at a time');
     const tokens = sqlTokens(sqlText).filter((t) => t.kind !== 'space');
@@ -10980,7 +10981,7 @@ export class Store {
     // The name screen above reads the text; SQLite also takes a quoted string as a table name
     // (SELECT secret FROM '_fm_totp'), so the compiled query is checked too: it may open no
     // internal table, whatever it was called.
-    const opened = this.readOnlySql.prepare(`EXPLAIN ${sqlText}`).all() as { opcode: string; p2: number; p3: number; p4: string | null }[];
+    const opened = this.readOnlySql.prepare(`EXPLAIN ${sqlText}`).all() as unknown as Op[];
     // Reject writes before inspecting trigger programs, which may access internal counters.
     if (opened.some((o) => o.opcode === 'Transaction' && o.p2 > 0)) throw new StoreError(8310, 'Queries must be readonly');
     const virtualTables = new Set(opened.filter((o) => o.opcode === 'VOpen').map((o) => o.p4));
@@ -11019,16 +11020,36 @@ export class Store {
     const version = Number((db.prepare('PRAGMA schema_version').get() as { schema_version: number }).schema_version);
     if (version === this.decimalSqlViewVersion) return;
     for (const t of this.schema.tables) {
-      const decimals = new Set(t.fields.filter((f) => f.type === 'decimal').map((f) => f.name.toLowerCase()));
-      if (!decimals.size) continue;
-      const columns = db.prepare(`PRAGMA main.table_info(${q(t.name)})`).all() as { name: string }[];
-      if (!columns.length) continue;
-      const select = columns.map((c) => decimals.has(c.name.toLowerCase())
-        ? `CAST(NULLIF(${q(c.name)}, '') AS REAL) AS ${q(c.name)}` : q(c.name));
+      const view = this.decimalViewSql(db, t);
+      if (!view) continue;
       db.exec(`DROP VIEW IF EXISTS temp.${q(t.name)}`);
-      db.exec(`CREATE TEMP VIEW ${q(t.name)} AS SELECT ${select.join(', ')} FROM main.${q(t.name)}`);
+      db.exec(view);
     }
     this.decimalSqlViewVersion = version;
+  }
+
+  /** The statement that makes `t`'s temp view for SQL (REAL for each decimal field), read from `db`'s columns; undefined without decimals. */
+  private decimalViewSql(db: DatabaseSync, t: Table): string | undefined {
+    const decimals = new Set(t.fields.filter((f) => f.type === 'decimal').map((f) => f.name.toLowerCase()));
+    if (!decimals.size) return undefined;
+    const columns = db.prepare(`PRAGMA main.table_info(${q(t.name)})`).all() as { name: string }[];
+    if (!columns.length) return undefined;
+    const select = columns.map((c) => decimals.has(c.name.toLowerCase())
+      ? `CAST(NULLIF(${q(c.name)}, '') AS REAL) AS ${q(c.name)}` : q(c.name));
+    return `CREATE TEMP VIEW ${q(t.name)} AS SELECT ${select.join(', ')} FROM main.${q(t.name)}`;
+  }
+
+  /**
+   * The rows of a checked query whose program loops over a recursive queue, read in a child process that is stopped at a
+   * deadline (see sql-recursive.ts): the rows, or undefined when the query is not recursive. A recursive query that calls a
+   * function this store defined (the child has only SQLite's own) is refused.
+   */
+  private recursiveSelect(opened: Op[], text: string, names: string[], params: SqlValue[], limit: number): SqlValue[][] | undefined {
+    if (!usesRecursion(opened)) return undefined;
+    const custom = customFunction(opened);
+    if (custom) throw new StoreError(8310, `A recursive query can't call ${custom}(): it runs apart from the server so that it can be stopped, with SQLite's own functions only`);
+    const views = this.fileMode === 'native' ? this.schema.tables.flatMap((t) => this.decimalViewSql(this.readOnlySql!, t) ?? []) : [];
+    return recursiveRows(this.path, text, params, names, limit, views) as SqlValue[][];
   }
 
   private readonly internalRootCache = new PreparedCache<{ version: number; roots: Map<number, string> } | undefined>(undefined);
@@ -11067,9 +11088,12 @@ export class Store {
   private selectCurrent(sqlText: string, params: SqlValue[] = [], limit = 500, unbounded = false): { names: string[]; types: (string | null)[]; rows: SqlValue[][] } {
     const wanted = placeholders(sqlText);
     if (wanted > params.length) throw new StoreError(8310, `The query has ${wanted} ? placeholder${wanted === 1 ? '' : 's'} but ${params.length} value${params.length === 1 ? ' was' : 's were'} given`);
-    const { statement, text } = this.readOnlyChecked(sqlText);
+    const { statement, text, opened } = this.readOnlyChecked(sqlText);
     const columns = statement.columns();
-    return { names: columns.map((c) => c.name), types: columns.map((c) => c.type), rows: this.rowsOf(this.readOnlySql!, statement, text, columns, params, limit, unbounded) };
+    const names = columns.map((c) => c.name);
+    // The server's own queries (unbounded) are not stopped; SQL a person or a model wrote that recurses is.
+    const recursive = unbounded ? undefined : this.recursiveSelect(opened, text, names, params, limit);
+    return { names, types: columns.map((c) => c.type), rows: recursive ?? this.rowsOf(this.readOnlySql!, statement, text, columns, params, limit, unbounded) };
   }
 
   /**
@@ -11106,7 +11130,9 @@ export class Store {
   private selectHeldCurrent(sqlText: string, params: SqlValue[] = [], limit = 500, unbounded = false): { names: string[]; types: (string | null)[]; rows: SqlValue[][] } {
     const wanted = placeholders(sqlText);
     if (wanted > params.length) throw new StoreError(8310, `The query has ${wanted} ? placeholder${wanted === 1 ? '' : 's'} but ${params.length} value${params.length === 1 ? ' was' : 's were'} given`);
-    const { text } = this.readOnlyChecked(sqlText);
+    const { text, opened } = this.readOnlyChecked(sqlText);
+    // This connection holds the transaction, so the query cannot run apart from it where it could be stopped.
+    if (!unbounded && usesRecursion(opened)) throw new StoreError(8310, "A recursive query can't run inside a transaction: it runs apart from the server so that it can be stopped, and there it would not see the transaction's changes. End the transaction first");
     for (const [name, fn] of this.queryFunctions) this.sql.function(name, { varargs: true }, fn);
     const st = this.sql.prepare(text);
     const columns = st.columns();
@@ -11178,9 +11204,10 @@ export class Store {
     const names = st.columns().map((c) => c.name);
     const rows: Record<string, SqlValue>[] = [];
     if (limit > 0) {
-      const bounded = boundedStatement(this.readOnlySql!, text, names);
-      bounded.setReturnArrays(true);
-      for (const r of collectRows(bounded.iterate() as Iterable<unknown[]>, limit)) {
+      const recursive = this.recursiveSelect(opened, text, names, [], limit);
+      const bounded = recursive ? undefined : boundedStatement(this.readOnlySql!, text, names);
+      bounded?.setReturnArrays(true);
+      for (const r of recursive ?? collectRows(bounded!.iterate() as Iterable<unknown[]>, limit)) {
         const row: Record<string, SqlValue> = Object.create(null);
         names.forEach((name, i) => { row[name] = r[i] as SqlValue; });
         rows.push(row);
