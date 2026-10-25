@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { createHmac, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, openSync, closeSync, readFileSync, readSync, readdirSync, rmSync, statSync, statfsSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { findExecutable } from '../../server/src/find-executable.ts';
 import { arch, cpus, hostname, homedir, platform, release, tmpdir, totalmem } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -381,7 +382,8 @@ function commitOfThisInstall(): string {
   try {
     const root = diagnosticRoot();
     if (!existsSync(join(root, '.git'))) return 'not a git checkout';
-    return execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8', timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    const git = findExecutable('git');
+    return git ? execFileSync(git, ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8', timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'] }).trim() : 'unknown';
   } catch {
     return 'unknown';
   }
