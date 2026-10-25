@@ -120,6 +120,55 @@ export function refuseReservedTableNames(schema: Schema): void {
   if (reserved) throw new Error(`The file has a table named "${reserved.name}", which the store keeps for its own use (names starting with "_fm_" or "sqlite_"). Rename the table in the source file and convert again.`);
 }
 
+/** The next free image id in a library, above any in `alsoAbove` too. */
+export function nextImageId(sql: DatabaseSync, schema = 'main', alsoAbove: Iterable<number> = []): number {
+  const top = (sql.prepare(`SELECT max(id) AS id FROM ${schema}._fm_images`).get() as { id: number | null }).id ?? 0;
+  return Math.max(top, ...alsoAbove) + 1;
+}
+
+const sameImage = (a: { mime: string; data: Uint8Array }, b: { mime: string; data: Uint8Array }) => a.mime === b.mime && Buffer.compare(a.data, b.data) === 0;
+
+/**
+ * A store made by a converter that had not read the file's highest image can hold an image added in Tabularius under
+ * an id the file's library also uses; writing the library over it would replace the added image, and layouts would
+ * show the file's picture. The file's own copy was never stored, so an image that differs from the file's under one of
+ * its ids is taken to be the added one (a .fmp12 whose image changed under the same id reads the same way, and its old
+ * picture is kept under a new id): it moves to a new id, and design changes naming the old id follow it.
+ */
+function moveAddedImages(sql: DatabaseSync, library: Map<number, { mime: string; data: Uint8Array }>): void {
+  const stored = sql.prepare('SELECT id, mime, data FROM _fm_images WHERE id = ?');
+  const clashes: number[] = [];
+  for (const [id, img] of library) {
+    const mine = stored.get(id) as { id: number; mime: string; data: Uint8Array } | undefined;
+    if (mine && !sameImage(mine, img)) clashes.push(id);
+  }
+  if (!clashes.length) return;
+  const moved = new Map<number, number>();
+  for (const id of clashes) {
+    const to = nextImageId(sql, 'main', library.keys());
+    sql.prepare('UPDATE _fm_images SET id = ? WHERE id = ?').run(to, id);
+    moved.set(id, to);
+  }
+  const rewrite = (v: unknown): boolean => {
+    let changed = false;
+    if (Array.isArray(v)) {
+      for (const x of v) changed = rewrite(x) || changed;
+    } else if (v && typeof v === 'object') {
+      const o = v as Record<string, unknown>;
+      for (const k of Object.keys(o)) {
+        const x = o[k];
+        if (k === 'imageId' && typeof x === 'number' && moved.has(x)) { o[k] = moved.get(x); changed = true; } else changed = rewrite(x) || changed;
+      }
+    }
+    return changed;
+  };
+  const update = sql.prepare(`UPDATE ${DESIGN_LOG} SET op = ? WHERE seq = ?`);
+  for (const row of sql.prepare(`SELECT seq, op FROM ${DESIGN_LOG}`).all() as { seq: number; op: string }[]) {
+    const op = JSON.parse(row.op) as unknown;
+    if (rewrite(op)) update.run(JSON.stringify(op), row.seq);
+  }
+}
+
 /**
  * Layout designs, themes and the image library: what a client needs to draw
  * the solution's layouts. Re-run on an existing store to refresh them (the
@@ -132,6 +181,10 @@ export function importDesigns(sql: DatabaseSync, db: FmpDatabase, log: (msg: str
   try {
     sql.exec(`CREATE TABLE IF NOT EXISTS _fm_images (id INTEGER PRIMARY KEY, filename TEXT, mime TEXT NOT NULL, data BLOB NOT NULL)`);
     ensureDesignLog(sql);
+    // Images added in Tabularius (design mode, MCP design tools) are not in the file; one that holds an id the file
+    // uses moves to a new id, in the store and in the design changes that name it, before those are applied again.
+    const library = readImageLibrary(db.file);
+    moveAddedImages(sql, library);
     let state = { schema: db.schema, designs: readLayoutDesigns(db.file, db.schema) };
     const ops = (sql.prepare(`SELECT seq, op FROM ${DESIGN_LOG} ORDER BY seq`).all() as { seq: number; op: string }[]);
     for (const row of ops) {
@@ -154,10 +207,9 @@ export function importDesigns(sql: DatabaseSync, db: FmpDatabase, log: (msg: str
       log('the FileMaker file had [Guest] switched on; it comes across switched off, and Manage Security can switch it on');
     }
     sql.prepare('INSERT INTO _fm_meta VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json').run('designVersion', JSON.stringify(DESIGN_VERSION));
-    // The file's library is written over what it names. Images added in Tabularius (design mode, MCP design tools) are
-    // not in the file and are not in the design log, so they stay; layouts that use them still find them.
+    // The file's library is written over what it names (the images added in Tabularius were moved off its ids above).
     const addImage = sql.prepare('INSERT OR REPLACE INTO _fm_images VALUES (?, ?, ?, ?)');
-    for (const [id, img] of readImageLibrary(db.file)) addImage.run(id, img.filename ?? null, img.mime, img.data);
+    for (const [id, img] of library) addImage.run(id, img.filename ?? null, img.mime, img.data);
     sql.exec('RELEASE import_designs');
   } catch (e) {
     sql.exec('ROLLBACK TO import_designs; RELEASE import_designs');
