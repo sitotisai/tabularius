@@ -32,12 +32,19 @@ arguments, do not add up.
 
 A custom function that calls itself through `Evaluate` (for example `Evaluate ( "Name ( " & n - 1 & " )" )`) is
 counted the same way: it works up to 100 levels and gives `?` from the 101st. A recursion of more than 100 levels that
-went through `Evaluate` and finished before this limit now stops; recursion that does not use `Evaluate` is not
+went through `Evaluate` used to finish; it now stops at the limit. Recursion that does not use `Evaluate` is not
 affected by this limit.
 
-### What is not covered
+Once Evaluate calls have nested to the limit, every `Evaluate` that is inside another is refused until the outermost one
+has ended. `EvaluationError` can catch the refusal, and a text that evaluates itself twice at each level, such as
+`EvaluationError ( Evaluate ( G ) ) + EvaluationError ( Evaluate ( G ) )`, would otherwise try every path through the 100
+levels. With the refusal the work is proportional to the depth, the record reads back at once, and the calculation is
+whatever the caught errors add up to (here a number, not `?`). Evaluate calls made after the outermost one has ended run as
+usual.
 
-`EvaluationError ( Evaluate ( G ) )` catches the nesting error, so a text that evaluates itself twice at each level,
-such as `EvaluationError ( Evaluate ( G ) ) + EvaluationError ( Evaluate ( G ) )`, still fans out into many calls. It is
-bounded: the calculation's work budget ends it after several seconds with the error value, but until then it holds the
-server's calculation thread. The nesting limit does not shorten that.
+## Differences from FileMaker
+
+FileMaker's own limits for these cases were not measured. <!-- known-difference: SQL and calculations ;; The 512-level limit on JSON documents and the 100-level limit on nested Evaluate calls are Tabularius's own; FileMaker's limits for the same input are not measured ;; A document nested deeper than 512 levels, a JSONSetElement path of more than 512 parts, or Evaluate nested deeper than 100 levels gives ? where FileMaker may give a value ;; A FileMaker run with a JSON text nested past 512 levels and with Evaluate nested past 100 levels -->
+
+Not covered by these limits: `BE_JSONPath ( F ; "$" )` on a text nested about 100,000 levels deep throws a raw stack
+overflow, as it did before; the limits above apply to the JSON functions, not to the `BE_` functions.
