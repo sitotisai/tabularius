@@ -5,8 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore, lifeRanges, Store } from '../src/index.ts';
 
-// The audit log is keyed by table and record id, and an id is given again after the last record is deleted, so one id
-// can name several records over time. A create with revert_of puts a deleted record back: it carries on the life that
+// Legacy stores can have reused ids, so one id can name several records over time. A create with revert_of puts a deleted record back: it carries on the life that
 // the delete entry it names ended, and what was logged between that delete and the put-back is another record's.
 
 test('lifeRanges: a record made here starts at its create; a revert does not start a life', () => {
@@ -43,8 +42,8 @@ test('a put-back names the delete it undoes, not a later delete of another recor
       const rowA = store.sql.prepare('SELECT * FROM Docs WHERE _fm_record_id = ?').get(a) as Record<string, never>;
       store.delete('Docs', a, { account: 'Ann' });
       const deleteA = store.auditLog({ table: 'Docs', recordId: a, kind: 'delete' }).at(-1)!;
-      // The next record is given the id, and is deleted too: the latest delete of the id is B's.
-      assert.equal(store.create('Docs', { Title: 'B' }, { account: 'Bo' }).recordId, a);
+      // Simulate a legacy collision: the latest delete of the id is B's.
+      store.restoreDeletedRow('Docs', { _fm_record_id: a, _fm_mod_id: 0, Title: 'B' }, { account: 'Bo' });
       store.delete('Docs', a, { account: 'Bo' });
       return { a, rowA, deleteA };
     };
@@ -69,7 +68,7 @@ test('the admin restore of a deleted record names the first delete after the ent
     const madeA = store.auditLog({ table: 'Docs', recordId: a, kind: 'create' })[0];
     store.delete('Docs', a, { account: 'Ann' });
     const deleteA = store.auditLog({ table: 'Docs', recordId: a, kind: 'delete' }).at(-1)!;
-    store.create('Docs', { Title: 'B' }, { account: 'Bo' });
+    store.restoreDeletedRow('Docs', { _fm_record_id: a, _fm_mod_id: 0, Title: 'B' }, { account: 'Bo' });
     store.delete('Docs', a, { account: 'Bo' });
     assert.equal(store.restoreRecord('Docs', a, madeA.seq, { account: 'admin console' }).action, 'created');
     assert.equal(store.auditLog({ table: 'Docs', recordId: a, kind: 'create' }).at(-1)!.revertOf, deleteA.seq);

@@ -1,5 +1,4 @@
-// A record's history when its id is a deleted record's: only what happened to this record, never the earlier one's
-// values (the account asking may be allowed to see the new record but not the old one).
+// A legacy store may have two records with the same id at different times. Keep their histories separate.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -21,7 +20,10 @@ test('the history of a record does not include the record that had its id before
     // Deleted: its own history stays.
     assert.equal(recordHistory(store, 'Docs', first).events.flatMap((e) => e.seqs).length, 3);
 
-    const second = store.create('Docs', { Title: 'mine' }, { account: 'Bea' }).recordId;
+    store.sql.prepare('INSERT INTO Docs (_fm_record_id, Title) VALUES (?, ?)').run(first, 'mine');
+    (store as unknown as { audit: (kind: 'create', table: string, id: number, changes: object, opts: object) => void })
+      .audit('create', 'Docs', first, { Title: 'mine' }, { account: 'Bea' });
+    const second = first;
     assert.equal(second, first);
     const history = recordHistory(store, 'Docs', second);
     assert.deepEqual(history.events.map((e) => [e.kind, e.account]), [['created', 'Bea']]);
@@ -64,7 +66,7 @@ test('the history of an original put back after another record had and gave up i
     const rowA = store.sql.prepare('SELECT * FROM Docs WHERE _fm_record_id = ?').get(a) as Record<string, never>;
     store.delete('Docs', a, { account: 'Ann' });
     const deleteA = store.auditLog({ table: 'Docs', recordId: a, kind: 'delete' }).at(-1)!;
-    assert.equal(store.create('Docs', { Title: 'secret-B' }, { account: 'Bo' }).recordId, a);
+    store.restoreDeletedRow('Docs', { _fm_record_id: a, _fm_mod_id: 0, Title: 'secret-B' }, { account: 'Bo' });
     store.update('Docs', a, { Title: 'secret-B2' }, undefined, { account: 'Bo' });
     store.delete('Docs', a, { account: 'Bo' });
     store.restoreDeletedRow('Docs', rowA, { account: 'Ann', undoesDelete: deleteA.seq });

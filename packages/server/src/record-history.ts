@@ -96,7 +96,7 @@ export function recordHistory(store: Store, table: string, recordId: number, opt
   const t = store.schema.tables.find((x) => x.name.toLowerCase() === table.toLowerCase());
   if (!t) throw new Error(`No table named "${table}"`);
   const limit = Math.max(1, Math.min(opts.limit ?? 200, 2000));
-  // A deleted last record's id is given to the next new record: what was logged outside this one's life is another record's.
+  // Older stores could reuse a deleted id: entries outside this life's range belong to another record.
   const life = store.recordLife(t.name, recordId);
   const all = store.auditLog({ table: t.name, recordId, limit: 10_000 }).filter((e) => !e.security && e.kind !== 'read' && inLife(life, e.seq));
   const entries = all.slice(-limit);
