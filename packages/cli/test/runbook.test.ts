@@ -880,7 +880,10 @@ test('the server is lost', async () => {
   assert.match(listed.stdout, /Accounts\n {2}Admin +\[Full Access\] +no password yet\n {2}rep +\[Full Access\] +no password yet\n/);
   sees(where, 'no password yet', listed.stdout);
   // What was not in the backup is not in the new folder.
-  assert.deepEqual(readdirSync(fresh).filter((n) => n.startsWith('.openhbam-') && !n.endsWith('.lock.db')).filter((n) => !/^\.openhbam-(claim|oauth|pid)/.test(n)), [], 'no settings or console password came with it');
+  // The folder's own record of approved files is made by the restore (the backup never holds it); it is not a setting or a password.
+  assert.deepEqual(readdirSync(fresh).filter((n) => n.startsWith('.openhbam-') && !n.endsWith('.lock.db')).filter((n) => !/^\.openhbam-(claim|oauth|pid|hosted\.json$)/.test(n)), [], 'no settings or console password came with it');
+  const approved = JSON.parse(readFileSync(join(fresh, '.openhbam-hosted.json'), 'utf8')) as { files: Record<string, { how: string }> };
+  assert.deepEqual(Object.entries(approved.files).map(([name, f]) => [name, f.how]).sort(), [['contacts', 'restore'], ['sales', 'restore']], 'the restore approved exactly the files it restored');
   assert.equal(existsSync(join(fresh, 'Documents')), false);
 
   assert.equal(runStep(where, 'tabularius admin-password <folder>', { folder: fresh }, { input: 'a-new-console-pass\n' }).status, 0);
