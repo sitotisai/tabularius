@@ -293,9 +293,9 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/server/src/dashboards.ts:369](../../packages/server/src/dashboards.ts#L369) `Dashboards/list` | `SQLite.all` (369); `SQLite.prepare` (369); `Store.sql` (369) | DASHBOARD |
 | [packages/server/src/dashboards.ts:359](../../packages/server/src/dashboards.ts#L359) `Dashboards/table` | `Store.sql` (359) | DASHBOARD |
 | [packages/server/src/dashboards.ts:402](../../packages/server/src/dashboards.ts#L402) `Dashboards/update` | `SQLite.prepare` (402); `Store.sql` (402) | DASHBOARD |
-| [packages/server/src/dataapi.ts:2058](../../packages/server/src/dataapi.ts#L2058) `DataApi/route` | `Store.get` (2058, 2279, 2280, 2303, 2311, 2358, 2382, 2402, 2439); `Store.valueListItems` (2073); `Store.find` (2234, 2282, 2472); `Store.findIds` (2238, 2477); `Store.query` (2477) | REST |
-| [packages/server/src/dataapi.ts:2186](../../packages/server/src/dataapi.ts#L2186) `DataApi/route/recordOut` | `Store.portalCounts` (2186) | REST |
-| [packages/server/src/dataapi.ts:2222](../../packages/server/src/dataapi.ts#L2222) `DataApi/route/shownAs` | `Store.get` (2222) | REST |
+| [packages/server/src/dataapi.ts:2064](../../packages/server/src/dataapi.ts#L2064) `DataApi/route` | `Store.get` (2064, 2285, 2286, 2309, 2317, 2364, 2388, 2408, 2445); `Store.valueListItems` (2079); `Store.find` (2240, 2288, 2478); `Store.findIds` (2244, 2483); `Store.query` (2483) | REST |
+| [packages/server/src/dataapi.ts:2192](../../packages/server/src/dataapi.ts#L2192) `DataApi/route/recordOut` | `Store.portalCounts` (2192) | REST |
+| [packages/server/src/dataapi.ts:2228](../../packages/server/src/dataapi.ts#L2228) `DataApi/route/shownAs` | `Store.get` (2228) | REST |
 | [packages/server/src/debug.ts:345](../../packages/server/src/debug.ts#L345) `DebugApi/handle` | `Store.row` (345, 474); `Store.get` (354, 479); `Store.evaluate` (378) | DESIGN |
 | [packages/server/src/debug.ts:194](../../packages/server/src/debug.ts#L194) `learnStoredCredentials` | `Calculations.globalValue` (194); `Store.sql` (200, 210, 210); `SQLite.iterate` (210, 210); `SQLite.prepare` (210, 210); `Store.iterateCommitted` (210) | DESIGN |
 | [packages/server/src/design.ts:730](../../packages/server/src/design.ts#L730) `DesignApi/handle` | `Store.auditLog` (730); `Store.evaluate` (797) | DESIGN |
