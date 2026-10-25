@@ -1545,6 +1545,17 @@ export class Store {
   private heldSignInSessions: Session[] = [];
   private heldSignInTouched = false;
   private heldAudit: { seq: number; onAudit?: (file: object, seq: number) => void }[] = [];
+  /**
+   * The audit row the security chain ended at when the held transaction took this file. Nobody else can write the file while it
+   * is held, so every security row after it was written by the holder (and is gone if the holder is undone).
+   */
+  private heldChainBase?: number;
+
+  /** The audit row the security chain currently ends at, or undefined when the file has no chain yet. */
+  private securityChainHeadAudit(): number | undefined {
+    const row = this.sql.prepare('SELECT head_audit_seq FROM _fm_security_chain_state WHERE id = 1').get() as { head_audit_seq: number | bigint } | undefined;
+    return row === undefined ? undefined : Number(row.head_audit_seq);
+  }
 
   /** Audit rows still in this transaction, before commit publishes their callbacks. */
   pendingAuditSeqs(tx: Transaction, onAudit: (file: object, seq: number) => void): number[] {
@@ -1649,6 +1660,7 @@ export class Store {
     this.heldBy = tx;
     tx.files.set(this, name);
     this.heldSession = this.sql.createSession();
+    this.heldChainBase = this.securityChainHeadAudit();
     this.heldSignInTouched = false;
     try { this.heldSignInSessions = SIGN_IN_STATE_TABLES.map((table) => this.sql.createSession({ table })); }
     catch { this.heldSignInTouched = true; }
@@ -1698,6 +1710,11 @@ export class Store {
       row: this.sql.prepare('SELECT * FROM _fm_audit WHERE seq = ?').get(seq) as Record<string, SQLInputValue>, onAudit,
     }));
     this.heldAudit = [];
+    // The security rows the holder wrote (account, password and privilege changes, and the sign-in rows put into it): they are
+    // not in heldAudit, and are replayed below on top of the chain as it then stands, not with the chain state they came with.
+    const security = this.heldChainBase === undefined ? [] : (this.sql.prepare(
+      `SELECT seq, at, account, kind, changes, agent FROM _fm_audit WHERE seq > ? AND security = 1 ORDER BY chain_seq`)
+      .all(this.heldChainBase) as { seq: number; at: string; account: string | null; kind: string; changes: string | null; agent: number }[]);
     // While the held rows are out of the file, another process opening it must not take their container files for
     // abandoned ones: the journal notes are set aside (a name recovery does not read) until the transaction is back.
     const aside = this.heldExternalMarkers.flatMap((marker) => {
@@ -1705,9 +1722,6 @@ export class Store {
     });
     const bringBack = () => { for (const marker of aside) { try { renameSync(`${marker}.held`, marker); } catch { /* recovery looks at the file */ } } };
     try { this.sql.exec(`ROLLBACK TO ${name}; RELEASE ${name}; COMMIT`); } catch (e) { bringBack(); throw e; }
-    // The audit rows are not replayed with the held changes, so sign-in rows that were written into the transaction wait again
-    // (they are written when it ends, as the others are).
-    this.requeueDeferred(this.deferredIntoHold.splice(0));
     this.heldBy = undefined;
     this.heldBegan = false;
     tx.files.delete(this);
@@ -1722,15 +1736,30 @@ export class Store {
       // Audit rows have generated sequence numbers and a hash chain. Reinsert and relink them
       // after the independent write, instead of replaying their old sequence numbers.
       // Node's changeset filter includes a table when it returns true. Rebuild the
-      // audit chain separately and let write triggers update the version counters (a container's too: replaying its
-      // row writes the version again, and a second row for the same id is a conflict).
+      // audit chains separately and let write triggers update the version counters (a container's too: replaying its
+      // row writes the version again, and a second row for the same id is a conflict). The security chain's head is
+      // one of the rebuilt things: the independent write may have added rows to the chain, and the head the held
+      // changes carry would point at a row that is no longer there.
       const applied = this.sql.applyChangeset(changes, { filter: (table) =>
-        !['_fm_audit', '_fm_record_chain_state', '_fm_metadata_versions', '_fm_cache_version', '_fm_container_versions'].includes(table) });
+        !['_fm_audit', '_fm_record_chain_state', '_fm_security_chain_state', '_fm_metadata_versions', '_fm_cache_version', '_fm_container_versions'].includes(table) });
       if (!applied) throw new StoreError(301, 'The pending transaction could not be restored');
-      for (const { row, onAudit } of audit) {
-        const cols = Object.keys(row).filter((column) => !['seq', 'rchain_seq', 'rprev_hash', 'rhash'].includes(column));
+      // What the chain ends at now is the committed part, which the transaction's next independent write starts from.
+      this.heldChainBase = this.securityChainHeadAudit();
+      // Back in the order they were written, security rows appended to the chain as it now ends.
+      const replay = [
+        ...audit.map(({ row, onAudit }) => ({ seq: Number(row.seq), row, onAudit, security: undefined })),
+        ...security.map((row) => ({ seq: row.seq, row: undefined, onAudit: undefined, security: row })),
+      ].sort((x, y) => x.seq - y.seq);
+      for (const entry of replay) {
+        if (entry.security) {
+          const { at, account, kind, changes: detail, agent } = entry.security;
+          appendSecurityEvent(this.sql, at, account, kind, detail, agent);
+          continue;
+        }
+        const { row, onAudit } = entry;
+        const cols = Object.keys(row!).filter((column) => !['seq', 'rchain_seq', 'rprev_hash', 'rhash'].includes(column));
         const inserted = this.sql.prepare(`INSERT INTO _fm_audit (${cols.map(q).join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`)
-          .run(...cols.map((column) => row[column]));
+          .run(...cols.map((column) => row![column]));
         const seq = Number(inserted.lastInsertRowid);
         linkRecordEntry(this.sql, seq);
         this.heldAudit.push({ seq, onAudit });
@@ -1817,6 +1846,7 @@ export class Store {
     if (!name || this.heldBy !== tx) return;
     this.heldSession?.close();
     this.heldSession = undefined;
+    this.heldChainBase = undefined;
     this.closeSignInSessions();
     this.heldSignInTouched = false;
     const audit = this.heldAudit;

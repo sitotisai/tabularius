@@ -129,8 +129,7 @@ test('waiting rows already written into the holder survive another window of the
   s.independentWindowWrite(tx, () => writer.run({}, () => s.create('T', { A: 'other window' })));
   endTransaction(tx, true);
   assert.equal(rowsFor(s, '10.66.0.1').length, 1, 'the sign-in row is in the audit after the commit');
-  // (The holder's own security row is not replayed by an independent write, with or without waiting rows: that is not
-  // what this checks, and the chain's check is left out for it.)
+  assert.equal(s.verifySecurityAudit().ok, true, 'the holder\'s own security row and the waiting row are on one valid chain');
 });
 
 test('a trial that is undone takes back waiting rows written into the file inside it, and they wait again', (t) => {
