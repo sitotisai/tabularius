@@ -287,3 +287,42 @@ test('several plain criteria, include and omit, on a table of many short values 
     assert.equal(store.find('Items', { query, limit: 1 }).foundCount, hits, JSON.stringify(query));
   }
 });
+
+// A record earns once per scan however the SQL evaluates it: not once per criterion in the query text. SQLite skips the
+// second term of an AND (and of an omit) on records the first one did not match, and calls the matcher once per
+// repetition of a repeating field.
+test('include plus omit and several fields at once on many rows of about 105 characters are not refused', (t) => {
+  const { store } = fixture(t);
+  store.applyDesign([{ op: 'createTable', name: 'Wide', fields: [{ name: 'Text' }, { name: 'B' }] }]);
+  const rows = 40000;
+  (store as unknown as SqlHandle).sql.exec(
+    `INSERT INTO Wide (_fm_record_id, Text, B) WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ${rows})
+     SELECT i, 'plain text of a normal length for a name ' || i || ' and then some more words to make the value about a hundred characters' || CASE WHEN i % 1000 = 0 THEN ' abc' ELSE '' END, 'other value ' || i FROM n`);
+  const hits = rows / 1000;
+  const queries: FindRequest[][] = [
+    [{ Text: '*abc*' }, { Text: '*zzz*', omit: 'true' }],
+    [{ Text: '*abc*' }, { Text: '*9*', omit: 'true' }],
+    [{ Text: '*abc*', B: '*value*' }],
+  ];
+  for (const query of queries) {
+    const ids = store.findIds('Wide', { query });
+    assert.ok(ids.length > 0 && ids.length <= hits, JSON.stringify(query));
+  }
+  assert.equal(store.findIds('Wide', { query: queries[0] }).length, hits);
+  assert.equal(store.findIds('Wide', { query: queries[2] }).length, hits);
+});
+
+test('a repeating field in a padding criterion earns no more per record than any other', (t) => {
+  const { store } = fixture(t);
+  const reps = 1000;
+  store.applyDesign([{ op: 'createTable', name: 'Rep', fields: [{ name: 'Reps', options: { repetitions: reps } }, { name: 'Notes' }] }]);
+  const sql = (store as unknown as SqlHandle).sql;
+  const array = JSON.stringify(Array.from({ length: reps }, () => 'x'));
+  sql.exec(`INSERT INTO Rep (_fm_record_id, Reps, Notes) WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 500) SELECT i, '${array}', '' FROM n`);
+  sql.exec(`INSERT INTO Rep (_fm_record_id, Reps, Notes) WITH RECURSIVE n(i) AS (SELECT 501 UNION ALL SELECT i + 1 FROM n WHERE i < 508) SELECT i, '${array}', '${'c'.repeat(950)}' FROM n`);
+  const heavy: FindRequest = { Notes: '*' + 'c'.repeat(4094) + '*' };
+  assert.throws(() => store.findIds('Rep', { query: [heavy] }), (e: unknown) => e instanceof StoreError && e.code === 400, 'the heavy criterion alone is refused');
+  const query: FindRequest[] = [{ Reps: '*z*' }, heavy];
+  assert.throws(() => store.findIds('Rep', { query }), (e: unknown) => e instanceof StoreError && e.code === 400, 'padded with a repeating field');
+  assert.throws(() => store.find('Rep', { query, limit: 1 }), (e: unknown) => e instanceof StoreError && e.code === 400, 'padded with a repeating field, paged');
+});
