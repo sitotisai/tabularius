@@ -120,12 +120,12 @@ export function decimalSum(ns: number[]): number {
   let sum = 0;
   for (const raw of ns) {
     // Whole numbers (most of a large table's values) need no look at their decimals.
-    if (Number.isInteger(raw) && Math.abs(raw) < 1e15) {
+    if (Number.isSafeInteger(raw)) {
       sum += raw;
       continue;
     }
     // Binary noise from earlier arithmetic (13.950000000000001) is not a real decimal place.
-    const n = Number(raw.toPrecision(15));
+    const n = Number.isInteger(raw) ? raw : Number(raw.toPrecision(15));
     sum += n;
     if (plain) continue;
     const str = String(n);
