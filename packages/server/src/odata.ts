@@ -292,6 +292,24 @@ type Lambda = (navigation: string, all: boolean, predicate: string | undefined) 
 
 /** How deep any()/all() may nest in one $filter, and how many there may be (each reads the related table). */
 const LAMBDA_LIMIT = { depth: 3, count: 20 };
+/** How long a request waits for a $batch change set that holds its file (or a change set for the requests already running) before a busy answer. */
+const CHANGE_SET_WAIT_MS = 30_000;
+
+/** Who is using one file through OData: the change set that holds it, and how many requests are running against it. */
+interface Gate {
+  held?: Promise<void>;
+  readers: number;
+  idle?: () => void;
+}
+
+/** Waits for `p` until `deadline`; past it, the busy answer. */
+async function waitFor(p: Promise<void>, deadline: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<'late'>((resolve) => { timer = setTimeout(() => resolve('late'), Math.max(0, deadline - Date.now())); });
+  try {
+    if (await Promise.race([p.then(() => 'done' as const), late]) === 'late') throw new ODataError(503, '956', 'A $batch change set is open on this file: try again in a moment');
+  } finally { clearTimeout(timer); }
+}
 
 /** OData $filter as a SQL condition on the table's columns, with parameters. */
 export function filterSql(text: string, props: Prop[], lambda?: Lambda, computed?: Computed[], asValue = false): { where: string; params: SqlValue[]; fields: string[]; kind: Kind } {
@@ -818,6 +836,52 @@ export class ODataEndpoint {
   /** Script sessions per file, account and sign-in route, so global variables last between calls like a Data API session. */
   private readonly sessions = new Map<string, ScriptSession>();
   private readonly inFlight = new IdentityInFlight();
+  private readonly gates = new WeakMap<Store, Gate>();
+
+  private gate(store: Store): Gate {
+    let g = this.gates.get(store);
+    if (!g) this.gates.set(store, g = { readers: 0 });
+    return g;
+  }
+
+  /**
+   * A request that reads or writes `store` on its own (not one inside a change set) goes in only while no $batch change set
+   * holds the file open: the change set's rows sit uncommitted on the file's one connection until it ends, and a request
+   * served meanwhile would read rows that may never exist. Gives up after CHANGE_SET_WAIT_MS with a busy answer (503, retry).
+   * The answer is the function that says the request has finished.
+   */
+  private async enter(store: Store): Promise<() => void> {
+    const g = this.gate(store);
+    const deadline = Date.now() + CHANGE_SET_WAIT_MS;
+    while (g.held) await waitFor(g.held, deadline);
+    g.readers++;
+    let left = false;
+    return () => {
+      if (left) return;
+      left = true;
+      if (--g.readers === 0) g.idle?.();
+    };
+  }
+
+  /**
+   * Takes `store` for a change set: waits for any other change set to end and for the requests already running against the
+   * file to finish; new ones wait behind it (enter). The answer is the function that gives the file back.
+   */
+  private async hold(store: Store): Promise<() => void> {
+    const g = this.gate(store);
+    const deadline = Date.now() + CHANGE_SET_WAIT_MS;
+    // Nothing awaits between finding the file free and taking it, so two change sets can't both take it.
+    while (g.held) await waitFor(g.held, deadline);
+    let free!: () => void;
+    g.held = new Promise<void>((resolve) => { free = resolve; });
+    const release = () => { g.held = undefined; free(); };
+    if (g.readers > 0) {
+      try { await waitFor(new Promise<void>((resolve) => { g.idle = resolve; }), deadline); }
+      catch (e) { release(); throw e; }
+      finally { g.idle = undefined; }
+    }
+    return release;
+  }
 
   constructor(host: Host, api: DataApi) {
     this.host = host;
@@ -871,7 +935,11 @@ export class ODataEndpoint {
       const sets = model(store, p);
       const at: Service = { store, p, readOnlyToken, via, base, sets };
       if (parts[1] === '$batch' && parts.length === 2) return await this.batch(req, res, at);
-      return await this.resource(req, res, url, parts, at);
+      let leave: () => void;
+      try { leave = await this.enter(store); }
+      catch (e) { busyHeaders(res); throw e; }
+      try { return await this.resource(req, res, url, parts, at); }
+      finally { leave(); }
     } finally { done(); }
   }
 
@@ -1130,16 +1198,27 @@ export class ODataEndpoint {
     }).end(out.data);
   }
 
-  /** A change set: its requests in one transaction, kept only if every one of them succeeds. */
+  /**
+   * A change set: its requests in one transaction, kept only if every one of them succeeds. The transaction sits on the
+   * file's one connection, so until it ends nobody else may read the file through OData (see settled) and the set does not
+   * give other clients a turn between its requests: what another surface read meanwhile would be rows that may be undone.
+   */
   private async changeSet(outer: IncomingMessage, unit: BatchUnit, at: Service, located: Map<string, string>, used: { bytes: number; joins: number }): Promise<BatchResult> {
     const { requests } = unit;
     const tx: Transaction = { files: new Map() };
     const answers: BatchAnswer[] = [];
     let failed: BatchAnswer | undefined;
+    let release: () => void;
+    try { release = await this.hold(at.store); }
+    catch (e) {
+      const busy = failure(503, '956', e instanceof Error ? e.message : 'A $batch change set is open on this file');
+      for (const r of requests) if (r.id !== undefined) located.delete(r.id);
+      return { unit, answers: [busy], failed: busy };
+    }
     try {
       await writer.run({ ...(writer.getStore() ?? {}), transaction: { open: tx } }, async () => {
         for (const r of requests) {
-          const a = await this.one(outer, r, at, located, used);
+          const a = await this.one(outer, r, at, located, used, true);
           answers.push(a);
           if (a.status >= 400) {
             failed = a;
@@ -1154,10 +1233,12 @@ export class ODataEndpoint {
         }
       });
     } catch (e) {
-      endTransaction(tx, false);
+      try { endTransaction(tx, false); }
+      finally { release(); }
       throw e;
     }
-    endTransaction(tx, !failed);
+    try { endTransaction(tx, !failed); }
+    finally { release(); }
     if (!failed) return { unit, answers };
     // What the change set created is gone, so later requests can't address it.
     for (const r of requests) if (r.id !== undefined) located.delete(r.id);
@@ -1165,11 +1246,13 @@ export class ODataEndpoint {
   }
 
   /** One request of a $batch, answered as it would be on its own. */
-  private async one(outer: IncomingMessage, r: BatchRequest, at: Service, located: Map<string, string>, used: { bytes: number; joins: number }): Promise<BatchAnswer> {
-    // Other clients get a turn between the requests of a batch.
-    await new Promise<void>((resolve) => setImmediate(resolve));
+  private async one(outer: IncomingMessage, r: BatchRequest, at: Service, located: Map<string, string>, used: { bytes: number; joins: number }, inChangeSet = false): Promise<BatchAnswer> {
+    // Other clients get a turn between the requests of a batch, but not in the middle of a change set (see changeSet).
+    if (!inChangeSet) await new Promise<void>((resolve) => setImmediate(resolve));
     const res = new Captured();
+    let leave: (() => void) | undefined;
     try {
+      if (!inChangeSet) leave = await this.enter(at.store);
       // "$1/..." is what request 1 created (its Location).
       const ref = /^\$([^/?]+)(.*)$/s.exec(r.url);
       const target = ref && located.has(ref[1]) ? located.get(ref[1])! + ref[2] : r.url;
@@ -1193,7 +1276,7 @@ export class ODataEndpoint {
       await this.resource(req, res as unknown as ServerResponse, url, parts, { ...at, inBatch: true });
     } catch (e) {
       fail(res as unknown as ServerResponse, e);
-    }
+    } finally { leave?.(); }
     const answer = res.answer();
     // A HEAD answer has GET's headers (content-length too) and no body.
     if (r.method === 'HEAD') answer.body = Buffer.alloc(0);
