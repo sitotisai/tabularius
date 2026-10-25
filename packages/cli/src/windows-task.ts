@@ -3,7 +3,9 @@
 // for its own after the checks in windows-acl.ts passed, and have a task of its own registered as the system account. So,
 // for --system:
 //   1. the file is written in a new folder that only administrators and the system can use (`stageSystemTaskXml`): made with
-//      an unguessable name, its access list set and then read back and checked, found empty, and only then is the file put in;
+//      an unguessable name, its access list set and then read back and checked, found empty, and only then is the file put in.
+//      The folder is made first and secured a moment later (Node cannot make a folder with an access list already set), so for
+//      that moment it has what C:\ProgramData passes down; anything created in it then makes it non-empty and it is refused;
 //   2. what Windows registered is read back with `schtasks /Query /XML` and compared with what was meant (`taskDifferences`:
 //      who it runs as, when it starts, and what it runs) before the task is started; a difference deletes the task.
 // Step 1 is what stops a swap (a swapped file could register a task that starts at once, before any read-back); step 2 is a
@@ -108,6 +110,8 @@ export function taskDifferences(intended: string, registered: string): string[] 
   try { got = parseXml(registered); } catch (e) { return [`the registered task could not be read (${(e as Error).message})`]; }
   const diffs: string[] = [];
   if (got.name !== 'Task') diffs.push('what Task Scheduler returned is not a task');
+  // Exactly one of each: a second Actions element or a task with none could hide a program behind the one that was compared.
+  for (const name of ['Principals', 'Actions', 'Triggers']) if (kids(got, name).length !== 1) diffs.push(`it has ${kids(got, name).length} ${name} elements, not one`);
   // One principal only, and the actions run as it: a second principal, with Actions Context naming it, would run them as someone else.
   const principals = kids(child(got, 'Principals'), 'Principal');
   if (principals.length !== 1) diffs.push(`it has ${principals.length} principals, not one`);
@@ -118,6 +122,12 @@ export function taskDifferences(intended: string, registered: string): string[] 
   const wantUser = user(want);
   const system = ['S-1-5-18', 'SYSTEM', 'NT AUTHORITY\\SYSTEM'];
   if (!(same(wantUser, user(got)) || (wantUser !== undefined && system.includes(wantUser) && system.includes(user(got) ?? '')))) diffs.push(`it runs as ${user(got) ?? 'nobody named'}, not ${wantUser}`);
+  // A service account logs on as one; a task that asks for another way to log on is not the one that was meant.
+  const logon = text(child(child(child(got, 'Principals'), 'Principal'), 'LogonType'));
+  const wantLogon = text(child(child(child(want, 'Principals'), 'Principal'), 'LogonType'));
+  if (logon !== undefined && logon !== wantLogon && logon !== 'ServiceAccount') diffs.push(`its logon type is ${logon}, not ${wantLogon ?? 'ServiceAccount'}`);
+  const hidden = (n: XmlNode) => text(child(child(n, 'Settings'), 'Hidden')) ?? 'false';
+  if (hidden(got) !== hidden(want)) diffs.push(`its Hidden setting is ${hidden(got)}, not ${hidden(want)}`);
   const level = (n: XmlNode) => text(child(child(child(n, 'Principals'), 'Principal'), 'RunLevel'));
   if (level(got) !== level(want)) diffs.push(`its run level is ${level(got) ?? 'not set'}, not ${level(want) ?? 'not set'}`);
   if (child(child(child(got, 'Principals'), 'Principal'), 'GroupId')) diffs.push('it names a group to run as');

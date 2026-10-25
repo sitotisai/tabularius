@@ -406,8 +406,10 @@ function installSystemTask(o: ServiceOptions, was: Installed | undefined, text: 
   try { differences = taskDifferences(text, queryRegisteredTask(TASK, host)); }
   catch (e) { differences = [`it could not be read back (${(e as Error).message})`]; }
   if (differences.length) {
-    run(schtasks, ['/Delete', '/TN', TASK, '/F'], { ok: true, ...opts });
-    throw new Error(`service: the task Windows registered is not the one this command wrote (${differences.join('; ')}), so it was deleted and not started. Run this again from an administrator prompt; if it keeps happening, report it: that check has not been run on Windows before.`);
+    const deleted = run(schtasks, ['/Delete', '/TN', TASK, '/F'], { ok: true, ...opts });
+    const what = `the task Windows registered is not the one this command wrote (${differences.join('; ')})`;
+    if (!deleted) throw new Error(`service: ${what}, and it could not be deleted: it is still registered and will run at boot (it was not started now). Remove it from an administrator prompt with: schtasks /Delete /TN ${TASK} /F`);
+    throw new Error(`service: ${what}, so it was deleted and not started. Run this again from an administrator prompt; if it keeps happening, report it: that check has not been run on Windows before.`);
   }
   run(schtasks, ['/Run', '/TN', TASK], opts);
 }

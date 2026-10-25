@@ -28,8 +28,11 @@ const GENERIC_ALL = 0x10000000, GENERIC_WRITE = 0x40000000;
 const CHANGES_CODE = FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_DELETE_CHILD | DELETE | WRITE_DAC | WRITE_OWNER | GENERIC_ALL | GENERIC_WRITE;
 /** What replaces a folder far above the code (renaming it away, or taking it over); adding a new child there is harmless. */
 const REPLACES_FOLDER = FILE_DELETE_CHILD | DELETE | WRITE_DAC | WRITE_OWNER | GENERIC_ALL | GENERIC_WRITE;
-/** Bits no ordinary access list carries (ACCESS_SYSTEM_SECURITY, MAXIMUM_ALLOWED, reserved): not understood, so not trusted. */
-const ODD_BITS = 0x0f000000;
+/**
+ * Bits no ordinary access list carries: the file rights stop at 0x1ff (0xfe00 is undefined), the standard rights at 0x100000
+ * (0xe00000 is undefined), then ACCESS_SYSTEM_SECURITY, MAXIMUM_ALLOWED and two reserved bits (0x0f000000). Not understood, so not trusted.
+ */
+const ODD_BITS = 0x0fe0fe00;
 
 /**
  * The rights letters of SDDL. The letters CC to CR are the directory-service names that Windows also prints for the low bits
@@ -90,6 +93,22 @@ function parenthesised(s: string, start: number): { body: string; end: number } 
   return undefined;
 }
 
+/** An entry's text split at the semicolons that are not inside parentheses or quotes (a condition holds both). */
+function topLevelFields(body: string): string[] {
+  const fields: string[] = [];
+  let depth = 0, quoted = false, from = 0;
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i];
+    if (c === '"') quoted = !quoted;
+    else if (quoted) continue;
+    else if (c === '(') depth++;
+    else if (c === ')') depth--;
+    else if (c === ';' && depth === 0) { fields.push(body.slice(from, i)); from = i + 1; }
+  }
+  fields.push(body.slice(from));
+  return fields;
+}
+
 /**
  * Reads the SDDL text of an owner and access list (`O:...D:...`, as Get-Acl prints it). It must understand every character:
  * anything left over, an unbalanced parenthesis or an entry of fewer than six fields gives undefined, which is refused.
@@ -112,13 +131,10 @@ export function parseSddl(text: string): ParsedSddl | undefined {
     const group = parenthesised(s, i);
     if (!group) return undefined;
     i = group.end;
-    // type;flags;rights;object;inherited object;account, and for a conditional entry one more field, which may hold ";" itself.
-    const body = group.body;
-    const cuts: number[] = [];
-    for (let at = body.indexOf(';'); at >= 0 && cuts.length < 6; at = body.indexOf(';', at + 1)) cuts.push(at);
-    if (cuts.length < 5) return undefined;
-    const field = (n: number) => body.slice(n === 0 ? 0 : cuts[n - 1] + 1, cuts[n] ?? body.length);
-    aces.push({ type: field(0), flags: field(1), rights: field(2), sid: field(5).trim().toUpperCase() });
+    // type;flags;rights;object;inherited object;account: six fields, and a conditional entry (XA, XD, ZA) has a seventh, the condition.
+    const fields = topLevelFields(group.body);
+    if (fields.length < 6 || fields.length > (['XA', 'XD', 'ZA'].includes(fields[0]) ? 7 : 6)) return undefined;
+    aces.push({ type: fields[0], flags: fields[1], rights: fields[2], sid: fields[5].trim().toUpperCase() });
   }
   return i === s.length ? { owner: owner[0], aces } : undefined;
 }
@@ -268,7 +284,8 @@ export function refuseWritableSystemTaskCode(o: { platform: string; system: bool
   if (o.platform !== 'win32' || !o.system) return;
   // On a network share Administrators and the system are the file server's, not this computer's, so what they own proves nothing here.
   for (const p of [o.node, ...(o.singleFile ? [] : [o.main])]) {
-    if (/^\\\\(?!\?\\[A-Za-z]:)/.test(p)) throw new Error(`service: --system will not run ${p} as the system account: it is on a network share, where Administrators and the system are the file server's, not this computer's. Put Node and Tabularius on a local disk, or install without --system.`);
+    // Normalised first: Windows takes //server/share as \\server\share too.
+    if (/^\\\\(?!\?\\[A-Za-z]:)/.test(win32.normalize(p))) throw new Error(`service: --system will not run ${p} as the system account: it is on a network share, where Administrators and the system are the file server's, not this computer's. Put Node and Tabularius on a local disk, or install without --system.`);
   }
   const app = o.singleFile ? undefined : win32.resolve(win32.dirname(o.main), '..', '..', '..');
   const items: AccessItem[] = [
@@ -306,12 +323,12 @@ export interface SystemHost {
   /** The folder to start tools in: none that others write to. */
   cwd?: string;
   env: NodeJS.ProcessEnv;
-  /** A folder to make a private folder in; its own access list is checked, so a wrong one is refused, not trusted. */
+  /** The folder to make a private folder in: fixed (C:\\ProgramData), not read from the environment; its own access list is checked as well. */
   baseDir: string;
 }
 
 export function windowsHost(): SystemHost {
-  const host: SystemHost = { probe: (path, depth) => windowsAclProbe(path, depth, host), tool: (name) => `${SYSTEM32}\\${name}.exe`, cwd: SYSTEM32, env: trustedEnv(), baseDir: process.env.ProgramData ?? 'C:\\ProgramData' };
+  const host: SystemHost = { probe: (path, depth) => windowsAclProbe(path, depth, host), tool: (name) => `${SYSTEM32}\\${name}.exe`, cwd: SYSTEM32, env: trustedEnv(), baseDir: 'C:\\ProgramData' };
   return host;
 }
 
