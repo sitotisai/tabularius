@@ -48,7 +48,12 @@ async function setup(t: TestContext, limits: Limits = {}) {
     return state ? { state } : { refused: location };
   };
   const states = (address?: string) => (db.prepare(address ? 'SELECT state FROM pending WHERE address = ? ORDER BY created, rowid' : 'SELECT state FROM pending ORDER BY created, rowid').all(...(address ? [address] : [])) as { state: string }[]).map((r) => r.state);
-  return { start, states, db, base };
+  const callback = async (state: string, address: string): Promise<string> => {
+    const r = await fetch(`${base}/tabularius/auth/v1/oidc/callback?state=${state}&code=x`, { redirect: 'manual', headers: { 'x-test-address': address } });
+    await r.arrayBuffer();
+    return decodeURIComponent(r.headers.get('location') ?? '');
+  };
+  return { start, states, db, base, callback, oidc };
 }
 const ok = (r: { state: string } | { refused: string }): string => { assert.ok('state' in r, `refused: ${'refused' in r ? r.refused : ''}`); return r.state; };
 
@@ -117,12 +122,46 @@ test('starts are rate-limited per address, and another address is not affected',
   ok(await start('203.0.113.50'));
 });
 
-test('a row evicted for its own address cannot finish a sign-in', async (t) => {
-  const { start, base } = await setup(t, { perAddress: 2 });
+const CANCELLED = /cancelled because too many sign-ins were started from this address at once; please start again in a moment/;
+
+test('a row evicted for its own address cannot finish a sign-in, and the person is told why', async (t) => {
+  const { start, callback } = await setup(t, { perAddress: 2 });
   const first = ok(await start('203.0.113.60'));
   ok(await start('203.0.113.60'));
   ok(await start('203.0.113.60'));
-  const back = await fetch(`${base}/tabularius/auth/v1/oidc/callback?state=${first}&code=x`, { redirect: 'manual', headers: { 'x-test-address': '203.0.113.60' } });
-  await back.arrayBuffer();
-  assert.match(decodeURIComponent(back.headers.get('location') ?? ''), /error=/);
+  const message = await callback(first, '203.0.113.60');
+  assert.match(message, CANCELLED);
+  assert.doesNotMatch(message, /took too long/);
+  // The note is used up with the answer: a second try with the same state is the ordinary "already used".
+  assert.match(await callback(first, '203.0.113.60'), /took too long or was already used/);
+});
+
+test('a row given up to a full table is explained the same way, and an unknown state keeps the ordinary text', async (t) => {
+  const { start, callback } = await setup(t, { maxPending: 3, perAddress: 4 });
+  const heavy = [ok(await start('203.0.113.1')), ok(await start('203.0.113.1'))];
+  ok(await start('203.0.113.2'));
+  ok(await start('198.51.100.20'));
+  assert.match(await callback(heavy[0], '203.0.113.1'), CANCELLED);
+  assert.match(await callback('never-started', '203.0.113.1'), /took too long or was already used/);
+});
+
+test('the note of evicted sign-ins stays bounded however many are evicted', async (t) => {
+  const { start, oidc } = await setup(t, { maxPending: 5, perAddress: 1 });
+  for (let i = 0; i < 40; i++) ok(await start('203.0.113.70'));
+  const noted = (oidc as unknown as { evicted: Map<string, number> }).evicted;
+  assert.ok(noted.size <= 5, `kept ${noted.size}`);
+  assert.ok(noted.size >= 1);
+});
+
+test('a refused start answers a Data API app with 429 and Retry-After, not a 400', async (t) => {
+  let now = 0;
+  const { base } = await setup(t, { starts: new AddressBudget(1, 1, () => now) });
+  const ask = () => fetch(`${base}/oauth/getoauthurl?trackingID=t&provider=Review`, { headers: { 'x-fms-return-url': `${base}/my-app/`, 'x-test-address': '203.0.113.80' } });
+  const first = await ask();
+  await first.arrayBuffer();
+  assert.equal(first.status, 200);
+  const limited = await ask();
+  assert.equal(limited.status, 429);
+  assert.ok(Number(limited.headers.get('retry-after')) >= 1);
+  assert.match(((await limited.json()) as { error: string }).error, /Too many sign-in attempts from this address/);
 });
