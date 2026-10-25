@@ -1646,6 +1646,9 @@ def('MBS', 1, undefined, (a, env) => {
   }
   return replayMbsCall(scope, name, args, () => {
     try {
+      if (args.length === 0 && ['files.fileextension', 'container.getbase64', 'container.gettotalsize', 'container.gettypes', 'container.getdataurl'].includes(name.toLowerCase())) {
+        throw new MbsError('wrong number of parameters');
+      }
       // The regular expressions in one call share a time limit, so a pattern that backtracks without end can't hold the server.
       return withRegexBudget(() => f(args, env));
     } catch (e) {
@@ -1731,7 +1734,18 @@ eager('BE_JSONPath', 2, 2, (v, env) => {
   }
   beErrors.set(env.ctx, '');
   const x = r.value;
-  return text(typeof x === 'string' ? x : x === null ? '' : typeof x === 'object' ? JSON.stringify(x) : String(x));
+  if (typeof x === 'string') return text(x);
+  if (x === null) return text('');
+  if (typeof x !== 'object') return text(String(x));
+  try { return text(JSON.stringify(x)); }
+  catch (e) {
+    rethrowExecutionRefusal(e);
+    if (e instanceof RangeError) {
+      beErrors.set(env.ctx, 'the JSON result is too large or too deeply nested to return');
+      return text('?');
+    }
+    throw e;
+  }
 });
 eager('BE_JSON_Encode', 2, 3, (v, env) => {
   const value = v[1].type === 'number' ? JSON.stringify(N(v[1])) : JSON.stringify(T(v[1], env));

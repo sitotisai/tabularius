@@ -746,16 +746,27 @@ export class Env {
     if (args.length !== cf.parameters.length) {
       throw new CalcError(args.length < cf.parameters.length ? ERR.tooFewParameters : ERR.tooManyParameters, `Wrong number of parameters in ${name}`);
     }
+    return this.bindValues(name, cf, args.map((a) => this.v(a)), args.map((a) => this.argumentFieldName(a)));
+  }
+
+  /** The name of the field an argument is, for GetFieldName in the function it is passed to. Read in the scope the argument is written in. */
+  private argumentFieldName(a: Node): string | undefined {
+    return a.k === 'field' ? this.fieldName(a.occurrence, a.name) : a.k === 'var' && !a.name.startsWith('$') ? this.fieldNameOf(a.name) ?? undefined : undefined;
+  }
+
+  private bindValues(name: string, cf: CustomFunctionDef, values: Value[], fieldNames: (string | undefined)[]): Map<string, Value> {
+    if (values.length !== cf.parameters.length) {
+      throw new CalcError(values.length < cf.parameters.length ? ERR.tooFewParameters : ERR.tooManyParameters, `Wrong number of parameters in ${name}`);
+    }
     const scope = new Map<string, Value>();
     // A parameter given a field keeps the field's name, for GetFieldName in the body.
     const names = new Map<string, string>();
     cf.parameters.forEach((param, i) => {
       // The reader trims them; names typed with stray spaces still bind.
       const p = param.trim();
-      const a = args[i];
-      const fieldName = a.k === 'field' ? this.fieldName(a.occurrence, a.name) : a.k === 'var' && !a.name.startsWith('$') ? this.fieldNameOf(a.name) : undefined;
+      const fieldName = fieldNames[i];
       if (typeof fieldName === 'string') names.set(p.toLowerCase(), fieldName);
-      scope.set(p.toLowerCase(), this.v(a));
+      scope.set(p.toLowerCase(), values[i]);
     });
     this.parameterFields.set(scope, names);
     return scope;
@@ -766,8 +777,31 @@ export class Env {
    * is looked for until it is one. Such a call doesn't need the caller's stack, so a function that recurses this way
    * (a running total passed along, say) can go as deep as FileMaker allows. Not done while a trace is following every step.
    */
-  private tailCall(node: Node): { node: Node } | { value: Value } | { name: string; cf: CustomFunctionDef; args: Node[] } {
+  private tailCall(node: Node): { node: Node } | { value: Value } | { name: string; cf: CustomFunctionDef; args: Node[]; values?: Value[]; fieldNames?: (string | undefined)[] } {
     for (;;) {
+      if (node.k === 'let' && !this.ctx.trace) {
+        const letNode = node;
+        const resolved = this.withScope(() => {
+          const scope = this.scopes[this.scopes.length - 1];
+          const names = new Map<string, string>();
+          this.parameterFields.set(scope, names);
+          for (const [name, binding, repetition] of letNode.binds) {
+            this.bind(name, this.v(binding), repetition);
+            if (name.startsWith('$')) continue;
+            const fieldName = binding.k === 'field' ? this.fieldName(binding.occurrence, binding.name)
+              : binding.k === 'var' && !binding.name.startsWith('$') ? this.fieldNameOf(binding.name) ?? (this.lookup(binding.name) === undefined ? this.fieldName(undefined, binding.name) : undefined)
+              : undefined;
+            if (typeof fieldName === 'string') names.set(name.toLowerCase(), fieldName);
+            else names.delete(name.toLowerCase());
+          }
+          const result = this.tailCall(letNode.body);
+          // The arguments of a tail call, and the field names they stand for, are read here, where the Let's variables are visible.
+          if ('cf' in result) return { ...result, values: result.args.map((arg) => this.v(arg)), fieldNames: result.args.map((arg) => this.argumentFieldName(arg)) };
+          // Anything else is finished here too: the bindings have run once, and the body is not run again outside this scope.
+          return 'value' in result ? result : { value: this.v(result.node) };
+        });
+        return resolved;
+      }
       if (node.k !== 'call' || this.ctx.trace || unknownFunctionId(node.name)) return { node };
       const key = node.name.toLowerCase();
       if (key === 'if' && node.args.length >= 2 && node.args.length <= 3) {
@@ -808,7 +842,9 @@ export class Env {
         if ('value' in step) return step.value;
         if (!('cf' in step)) return this.isolated(scope, () => this.v(step.node));
         // A tail call: its arguments are read in this call's scope, then it takes this call's place.
-        const next = this.isolated(scope, () => this.bindParameters(step.name, step.cf, step.args));
+        const next = this.isolated(scope, () => step.values
+          ? this.bindValues(step.name, step.cf, step.values, step.fieldNames ?? [])
+          : this.bindParameters(step.name, step.cf, step.args));
         if (++this.depth > limit) throw new CalcError(ERR.recursion, `${step.name} recursed too deeply`);
         scope = next;
         current = step;
