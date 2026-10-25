@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**174 entries in 22 areas.** Waiting on: 22 on a sample file, 88 on a FileMaker run or Design Report, 14 on a Claris answer, 17 on a decision by the owner (an entry can wait on more than one).
+**175 entries in 22 areas.** Waiting on: 22 on a sample file, 88 on a FileMaker run or Design Report, 14 on a Claris answer, 18 on a decision by the owner (an entry can wait on more than one).
 
 ## Data API
 
@@ -166,6 +166,7 @@ part of it.
 | --- | --- | --- | --- |
 | The limit on how deeply a request body may nest does not yet cover the shared readJson reader | A very deeply nested body sent to a route that uses that reader is not refused by this check | An owner decision, or moving that reader onto the check | [ADMIN.md › Request and upload limits](../ADMIN.md) — “…byte-size limit. The shared readJson reader is not yet covered.” |
 | --progressive and --replication-token do not work together with --workers | Run one process, the default, to use them | An owner decision | [ADMIN.md › Using every CPU core](../ADMIN.md) — “Not yet together with --workers: --progressive and” |
+| Container spool budgets and crash cleanup are Tabularius policies, unverified against the compatible product | Excess single-request uploads receive 413 and aged orphan files are reclaimed | A compatible server run and an owner decision | [ADMIN.md › Request and upload limits](../ADMIN.md) — “product is unverified.” |
 | Whether FileMaker's backup, restore and account handling match this review is not settled | Nothing shows; the review asserts no undocumented Claris behaviour | A FileMaker run of the same backup and restore checks | [docs/audits/audit-review-round2-backup.md › Limits](audits/audit-review-round2-backup.md) — “Claris parity is unverified here. No undocumented Claris behavior is asserted; the invariants above describe…” |
 | Whether FileMaker Server's HTTP framing and outbound-request behaviour match this review is not settled | Nothing shows; the report makes no claim about undocumented Claris behaviour | A FileMaker Server run behind a proxy that sends malformed requests | [docs/audits/audit-review-round2-http-outbound.md › Independent review and limitations](audits/audit-review-round2-http-outbound.md) — “…instead. Claris behavioral equivalence is unverified; this report makes no claim about undocumented Claris…” |
 | Equivalence of the TLS flags and defaults with FileMaker Server hosting and certificate setup is inferred | A TLS setting may behave differently from FileMaker Server's | A FileMaker Server run of the same certificate setup | [docs/guides/running/hosting-and-https.md › References and differences](guides/running/hosting-and-https.md) — “…FileMaker Server hosting or certificate setup is inferred; this guide makes no such compatibility claim.” |
