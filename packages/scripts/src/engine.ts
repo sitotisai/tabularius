@@ -8236,7 +8236,7 @@ export class ScriptEngine {
           }
           this.touched(info);
           for (const [name, file] of files) {
-            this.via(info).setContainer(info, id, name, 1, { filename: file.filename, mime: containerMime('', file.filename, file.data), data: file.data }, this.write);
+            this.via(info).setContainer(info, id, name, 1, { filename: file.filename, mime: containerMime('', file.filename, file.data), data: file.data }, write);
           }
           ids.add(id);
         } catch (e) {

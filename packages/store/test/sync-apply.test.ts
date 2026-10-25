@@ -1655,3 +1655,33 @@ test('an owed file already on FileMaker, in a record pushed for its fields, is c
     assert.equal(r.fm.uploads.length, 1);
   } finally { cleanup(r); }
 });
+
+// --- a pull keeps the local modification fields, with or without files ------------------------------------------------
+
+test('a pull that brings a container file leaves the modification auto-enters as they were, as a pull of fields does', async () => {
+  const r = rig();
+  try {
+    r.store.applyDesign([
+      { op: 'createField', table: 'Contacts', name: 'Touched', type: 'timestamp', options: { autoEnter: { value: 'modificationTimestamp' } } },
+      { op: 'createField', table: 'Contacts', name: 'ModBy', options: { autoEnter: { value: 'modificationAccountName' } } },
+    ] as DesignOp[]);
+    r.fm.enableFetch();
+    // A record both sides know, whose file changes there: the stamp made here when it was typed stays.
+    const mine = r.store.create('Contacts', { uuid: 'u2', Name: 'Bea' }, { account: 'alice' });
+    const known = r.fm.seed('u2', { Name: 'Bea' });
+    await r.run(); // adopt it
+    // A record that exists only on FileMaker, with a file: created here with auto-enter off, so nothing is stamped.
+    r.fm.hold('addr-1', Buffer.from('first file'));
+    r.fm.seed('u1', { Name: 'Ann', Photo: 'addr-1' });
+    r.fm.hold('addr-2', Buffer.from('second file'));
+    known.fields.Photo = 'addr-2'; known.modId++;
+
+    const res = await r.run({ write: false, pull: true, containers: { maxBytes: 1024 } });
+    assert.deepEqual([res.tables[0].pulled.created, res.tables[0].pulled.updated, res.tables[0].containers.pulled], [1, 1, 2]);
+    const made = r.store.query('SELECT uuid, Touched, ModBy, Photo FROM "Contacts" ORDER BY uuid', 10) as { uuid: string; Touched: unknown; ModBy: unknown; Photo: unknown }[];
+    assert.ok(made[0].Photo && made[1].Photo, 'both files came');
+    assert.deepEqual([made[0].Touched ?? '', made[0].ModBy ?? ''], ['', ''], 'the created record was not stamped');
+    assert.equal(made[1].ModBy, 'alice', 'the updated record keeps the account that last changed it here');
+    assert.equal(r.store.get('Contacts', mine.recordId).fieldData.ModBy, 'alice');
+  } finally { cleanup(r); }
+});
