@@ -86,7 +86,7 @@ export function sweepOrphanUploadFolders(opts: UploadSweepOptions): { removed: s
         catch (error) { throw error; }
       }
       const age = now - newest;
-      let marker: { pid?: unknown } | undefined;
+      let marker: { pid?: unknown; run?: unknown } | undefined;
       try {
         const markerPath = join(path, 'owner.json');
         const markerStat = lstatSync(markerPath);
@@ -100,13 +100,15 @@ export function sweepOrphanUploadFolders(opts: UploadSweepOptions): { removed: s
             text = bytes.subarray(0, length).toString('utf8');
           } finally { closeSync(fd); }
           const parsed = JSON.parse(text) as unknown;
-          if (parsed && typeof parsed === 'object') marker = parsed as { pid?: unknown };
+          if (parsed && typeof parsed === 'object') marker = parsed as { pid?: unknown; run?: unknown };
         }
       } catch { /* Missing, unreadable, oversized or malformed marker means age decides. */ }
-      const ownPid = marker?.pid === process.pid;
+      // Only a marker carrying this run's token is ours: the same PID under another (or no) run token can be another
+      // container sharing the folder, so it is judged like any other live process.
+      const ownRun = marker?.pid === process.pid && marker.run === RUN_ID;
       if (age <= olderThanMs) { result.kept++; continue; }
       const dirAge = now - before.mtimeMs;
-      if (!ownPid && typeof marker?.pid === 'number' && Number.isSafeInteger(marker.pid) && marker.pid > 0 && dirAge < WEEK_MS && alive(marker.pid)) { result.kept++; continue; }
+      if (!ownRun && typeof marker?.pid === 'number' && Number.isSafeInteger(marker.pid) && marker.pid > 0 && dirAge < WEEK_MS && alive(marker.pid)) { result.kept++; continue; }
       const again = lstatSync(path);
       if (!again.isDirectory() || again.dev !== before.dev || again.ino !== before.ino) { result.kept++; continue; }
       rmSync(path, { recursive: true, force: true });
