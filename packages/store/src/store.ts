@@ -5184,9 +5184,9 @@ export class Store {
   /**
    * The account a bearer token stands for, or undefined when the token is invalid
    * or expired, or its account is inactive or owes a password change.
-   * Compared in constant time; records the time it was last used.
+   * Compared in constant time; records the time it was last used, unless `touch` is false (a look that is not a use).
    */
-  apiToken(token: string): { account: string; readOnly: boolean; surfaces?: string[]; layouts?: string[]; identity?: { issuer: string; sub: string; person?: string; mapping: string }; provenance?: 'service' | 'delegated' } | undefined {
+  apiToken(token: string, touch = true): { account: string; readOnly: boolean; surfaces?: string[]; layouts?: string[]; identity?: { issuer: string; sub: string; person?: string; mapping: string }; provenance?: 'service' | 'delegated' } | undefined {
     const m = /^ohbt_([0-9a-f]+)\./.exec(token);
     if (!m) return undefined;
     const row = this.sql.prepare('SELECT token_hash, account, read_only, expires, surfaces, layouts, identity, provenance FROM _fm_api_tokens WHERE id = ?').get(m[1]) as
@@ -5202,7 +5202,7 @@ export class Store {
     if (this.isExternal(row.account) && row.provenance !== 'service' && (!identity || identity.mapping.toLowerCase() !== row.account.toLowerCase())) return undefined;
     if (identity?.person && this.accountInactive(identity.person)) return undefined;
     if (identity && (!this.isExternal(identity.mapping) || !this.canonicalAccount(identity.mapping) || this.accountInactive(identity.mapping))) return undefined;
-    this.sql.prepare('UPDATE _fm_api_tokens SET last_used = ? WHERE id = ?').run(new Date().toISOString(), m[1]);
+    if (touch) this.sql.prepare('UPDATE _fm_api_tokens SET last_used = ? WHERE id = ?').run(new Date().toISOString(), m[1]);
     return { account: row.account, readOnly: !!row.read_only, ...(row.surfaces ? { surfaces: JSON.parse(row.surfaces) as string[] } : {}), ...(row.layouts ? { layouts: JSON.parse(row.layouts) as string[] } : {}), ...(identity ? { identity } : {}), ...(row.provenance === 'service' || row.provenance === 'delegated' ? { provenance: row.provenance } : {}) };
   }
 
