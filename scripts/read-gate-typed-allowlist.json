@@ -2249,6 +2249,14 @@
  },
  {
   "file": "packages/store/src/store.ts",
+  "within": "Store.recordLifeStart",
+  "api": "sql.prepare",
+  "count": 1,
+  "gate": "store-internal",
+  "why": "Returns one audit sequence number (the latest non-revert creation of the record, 0 if none), no record values. Its two callers use it only as a lower bound on audit entries they already filter: recordHistory (behind the callers' view checks and hideField/hideTable) and revertAuditEntry (which applies the account's privileges to the revert itself)."
+ },
+ {
+  "file": "packages/store/src/store.ts",
   "within": "Store.recordViewable",
   "api": "Store.row",
   "count": 1,
