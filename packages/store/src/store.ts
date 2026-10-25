@@ -192,7 +192,7 @@ const MAX_DEFERRED_SIGN_INS = 1000;
 /** Rows written in one transaction when the queue is written out, so a long queue does not hold up the event loop for long at a time. */
 const DEFERRED_SECURITY_CHUNK = 200;
 /** Account names and addresses are kept to this many characters in a waiting row, as they are for comparisons. */
-const DEFERRED_FIELD_MAX = 4096;
+const DEFERRED_FIELD_MAX = 256;
 type SecurityOpts = { account?: string | null; target?: string; from?: string; detail?: Record<string, unknown> };
 interface DeferredSecurity { at: string; kind: SecurityEventKind; opts: SecurityOpts }
 
@@ -1479,9 +1479,10 @@ export class Store {
     this.denialPending.clear();
     clearTimeout(this.usageTimer);
     try { this.flushUsage(); } catch { /* the file is going away */ }
-    if (this.heldBy !== undefined && this.hasDeferredSecurity()) {
-      console.warn(`${this.deferredSecurityStats().pending} sign-in audit rows were still waiting for a transaction that holds the file, and are lost`);
-    } else this.flushDeferredSecurity(true);
+    // Rows already written into the holder's transaction go with it (the file closes with the transaction open), as waiting ones do.
+    const lost = this.heldBy !== undefined ? this.deferredSecurityStats().pending + this.deferredIntoHold.length : 0;
+    if (lost > 0) console.warn(`${lost} sign-in audit rows were still waiting for a transaction that holds the file, and are lost`);
+    else this.flushDeferredSecurity(true);
     this.results?.close();
     this.readOnlySql?.close();
     this.sql.close();
@@ -1511,12 +1512,15 @@ export class Store {
    */
   trial(): { undo(): void } {
     const name = `trial_${++this.trials}`;
+    const waitingMark = this.deferredIntoHold.length;
     this.sql.exec(`SAVEPOINT ${name}`);
     this.openTrials++;
     return {
       undo: () => {
         this.openTrials--;
         this.sql.exec(`ROLLBACK TO ${name}; RELEASE ${name}`);
+        // Sign-in rows written into the held transaction since the trial began went with it: they wait again.
+        this.requeueDeferred(this.deferredIntoHold.splice(waitingMark));
         this.resetCaches();
         if (this.denialPending.size) this.scheduleDenials(0);
       },
@@ -1698,6 +1702,9 @@ export class Store {
     });
     const bringBack = () => { for (const marker of aside) { try { renameSync(`${marker}.held`, marker); } catch { /* recovery looks at the file */ } } };
     try { this.sql.exec(`ROLLBACK TO ${name}; RELEASE ${name}; COMMIT`); } catch (e) { bringBack(); throw e; }
+    // The audit rows are not replayed with the held changes, so sign-in rows that were written into the transaction wait again
+    // (they are written when it ends, as the others are).
+    this.requeueDeferred(this.deferredIntoHold.splice(0));
     this.heldBy = undefined;
     this.heldBegan = false;
     tx.files.delete(this);
@@ -2958,11 +2965,7 @@ export class Store {
   }
 
   private deferSecurity(event: DeferredSecurity): void {
-    const dropOldest = (queue: Map<number, DeferredSecurity>) => {
-      queue.delete(queue.keys().next().value!);
-      // One warning per run of drops (the count starts again when the queue is written out).
-      if (this.deferredSecurityDropped++ === 0) console.warn('sign-in audit rows are waiting for a transaction that holds the file: too many, so the oldest are dropped');
-    };
+    const dropOldest = (queue: Map<number, DeferredSecurity>) => this.dropOldestDeferred(queue);
     const queue = event.kind === 'sign-in' ? this.deferredSignIns : this.deferredOther;
     if (queue === this.deferredSignIns && queue.size >= MAX_DEFERRED_SIGN_INS) dropOldest(queue);
     // Past the bound, successful sign-ins go before failures and lockouts.
@@ -3041,10 +3044,14 @@ export class Store {
     merge(this.deferredOther, rows.filter((r) => !r[0]).map((r) => [r[1], r[2]]));
     // The bound holds here too: the oldest go, successful sign-ins first.
     while (this.deferredSignIns.size + this.deferredOther.size > MAX_DEFERRED_SECURITY) {
-      const queue = this.deferredSignIns.size ? this.deferredSignIns : this.deferredOther;
-      queue.delete(queue.keys().next().value!);
-      this.deferredSecurityDropped++;
+      this.dropOldestDeferred(this.deferredSignIns.size ? this.deferredSignIns : this.deferredOther);
     }
+  }
+
+  private dropOldestDeferred(queue: Map<number, DeferredSecurity>): void {
+    queue.delete(queue.keys().next().value!);
+    // One warning per run of drops (the count starts again when the queue is written out).
+    if (this.deferredSecurityDropped++ === 0) console.warn('sign-in audit rows are waiting for a transaction that holds the file: too many, so the oldest are dropped');
   }
 
   /**

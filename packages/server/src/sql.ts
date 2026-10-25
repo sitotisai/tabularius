@@ -186,7 +186,12 @@ export async function signIn(req: IncomingMessage, store: Store, api: DataApi, v
   let readOnlyToken = false;
   const bearer = /^Bearer\s+(.+)$/i.exec(auth)?.[1] ?? req.headers['x-fm-data-access-token'] as string | undefined;
   if (bearer?.startsWith('ohbt_')) {
-    const bound = store.apiToken(bearer);
+    let bound: ReturnType<Store['apiToken']>;
+    try { bound = store.apiToken(bearer); } catch (e) {
+      // Another session's transaction holds the file and has changed what a token is checked against: busy, try again.
+      if (e instanceof StoreError && e.code === 301) throw new ApiError(301, e.message, 503, undefined, 1);
+      throw e;
+    }
     if (!bound) throw new ApiError(212, 'Invalid API token', 401);
     if (!store.signInLocationAllowed(bound.account, clientAddress(req))) {
       throw new ApiError(9, 'This account may be used only from the server itself', 403);
