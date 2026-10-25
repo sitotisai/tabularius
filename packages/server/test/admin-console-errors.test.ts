@@ -182,6 +182,57 @@ test('#37 a partially failed stop retains files for a later RUNNING', async (t) 
   assert.ok(host.get('Second'));
 });
 
+test('#37 STOPPED closes every open file again after files were opened on their own', async (t) => {
+  const { host } = await setup(t);
+  const api = new DataApi(host);
+  const control = new AdminApi(new Admin(host, api), host, api);
+  await control['serverStatus']({ status: 'STOPPED' });
+  await control['setStatus']('Test', 'OPENED', {});
+  await control['setStatus']('Second', 'OPENED', {});
+  await control['serverStatus']({ status: 'STOPPED' });
+  assert.equal(host.get('Test'), undefined, 'Test closed by the second STOPPED');
+  assert.equal(host.get('Second'), undefined, 'Second closed by the second STOPPED');
+  // One file opened on its own: the next STOPPED closes it, and RUNNING reopens everything the stops closed.
+  await control['setStatus']('Test', 'OPENED', {});
+  await control['serverStatus']({ status: 'STOPPED' });
+  assert.equal(host.get('Test'), undefined);
+  await control['serverStatus']({ status: 'RUNNING' });
+  assert.ok(host.get('Test'));
+  assert.ok(host.get('Second'));
+});
+
+test('#37 STOPPED retried after a partly failed stop closes the rest', async (t) => {
+  const { host } = await setup(t);
+  const api = new DataApi(host);
+  const control = new AdminApi(new Admin(host, api), host, api);
+  const close = host.closeFileEverywhere.bind(host);
+  let calls = 0;
+  const mocked = t.mock.method(host, 'closeFileEverywhere', async (name: string) => {
+    if (++calls === 2) throw new Error('synthetic close failure');
+    await close(name);
+  });
+  await assert.rejects(control['serverStatus']({ status: 'STOPPED' }), /synthetic close failure/);
+  mocked.mock.restore();
+  assert.deepEqual(await control['serverStatus']({ status: 'STOPPED' }), { status: 'STOPPED' });
+  assert.equal(host.get('Test'), undefined);
+  assert.equal(host.get('Second'), undefined);
+  await control['serverStatus']({ status: 'RUNNING' });
+  assert.ok(host.get('Test'));
+  assert.ok(host.get('Second'));
+});
+
+test('#37 RESUMED on a file that is closed does not drop it from what RUNNING reopens', async (t) => {
+  const { host } = await setup(t);
+  const api = new DataApi(host);
+  const control = new AdminApi(new Admin(host, api), host, api);
+  await control['serverStatus']({ status: 'STOPPED' });
+  await control['setStatus']('Test', 'RESUMED', {});
+  assert.equal(host.get('Test'), undefined, 'RESUMED does not open a file that is closed, not paused');
+  await control['serverStatus']({ status: 'RUNNING' });
+  assert.ok(host.get('Test'), 'RUNNING still reopens it');
+  assert.ok(host.get('Second'));
+});
+
 test('#35 external containers with progressive logs are refused before closing', async (t) => {
   const { call, dir, host } = await setup(t);
   mkdirSync(join(dir, 'Files', 'Test'), { recursive: true });
