@@ -1321,6 +1321,22 @@
  },
  {
   "file": "packages/store/src/import.ts",
+  "within": "moveAddedImages",
+  "api": "sql.prepare",
+  "count": 1,
+  "gate": "trusted-process",
+  "why": "Offline conversion or import of a whole file, run by the operator from the command line or the admin console; no account is involved. Moves an image added in Tabularius off an id the file's image library uses, and rewrites the design changes that name it; reads the design image library and design log (no record data), nothing is returned to a caller."
+ },
+ {
+  "file": "packages/store/src/import.ts",
+  "within": "nextImageId",
+  "api": "sql.prepare",
+  "count": 1,
+  "gate": "trusted-process",
+  "why": "Offline conversion or import of a whole file, run by the operator from the command line or the admin console; no account is involved. Reads the highest image id in the image library to pick a free one; no record data."
+ },
+ {
+  "file": "packages/store/src/import.ts",
   "within": "readState",
   "api": "sql.prepare",
   "count": 1,
@@ -1358,6 +1374,14 @@
   "count": 1,
   "gate": "trusted-process",
   "why": "Offline conversion or import of a whole file, run by the operator from the command line or the admin console; no account is involved. Copies the design image library (not record data) between the old store and the fresh conversion inside one attached database; nothing is returned to a caller."
+ },
+ {
+  "file": "packages/store/src/reconvert.ts",
+  "within": "carryImages",
+  "api": "sql.prepare",
+  "count": 2,
+  "gate": "trusted-process",
+  "why": "Offline conversion or import of a whole file, run by the operator from the command line or the admin console; no account is involved. Reads the design image library (not record data) of the old and fresh store to find an added image that shares an id with the file's and to pick its new id; nothing is returned to a caller."
  },
  {
   "file": "packages/store/src/reconvert.ts",

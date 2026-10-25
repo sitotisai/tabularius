@@ -606,6 +606,9 @@ happened since the first conversion:
 
 - records created, changed and deleted (changed records keep the fields
   their audit log names, or all fields when it names none)
+- images added in Tabularius (design mode's Picture, `POST /images`); one that
+  holds an id the `.fmp12`'s own image library also uses (an older conversion
+  that had not read the file's highest image) is kept under a new id
 - accounts, passwords, privilege sets, API tokens, two-factor secrets, the
   audit log and other settings
 
@@ -630,6 +633,9 @@ Carrying edits over isn't safe in two cases: the file's design was changed
 here, or the `.fmp12` changed after it was converted. In either case the
 console says so, and converting again starts afresh from the `.fmp12`
 (`--force` on the command line). The old store is still kept beside it.
+Starting afresh drops the design changes, so the layouts that used an image
+added here are the `.fmp12`'s again and no longer show it; the image itself
+stays in the image library, unused, for design mode to place again.
 This isn't available yet with encryption at rest.
 
 With Docker: `git pull && docker compose up -d --build`.
