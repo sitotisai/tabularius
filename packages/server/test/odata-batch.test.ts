@@ -125,6 +125,59 @@ test('a change set that fails keeps none of its changes, and the batch stops the
   assert.equal(count(), before);
 });
 
+test('a change set does not hand the event loop to other clients while it holds uncommitted rows', { skip }, async () => {
+  const before = count();
+  const seen = new Set<number>();
+  let done = false;
+  // Anything that runs between two requests of the change set (any surface) reads the store's one connection.
+  const watcher = (async () => {
+    while (!done) { seen.add(count()); await new Promise<void>((r) => setImmediate(r)); }
+  })();
+  const rows = Array.from({ length: 25 }, (_, i) => post('Congress', { Name: `Held ${i}` }));
+  const { answers } = await batch(multipart([[...rows, patch('$1', { Nope: 1 })]]));
+  done = true;
+  await watcher;
+  assert.deepEqual(answers.map((a) => a.status), [400]);
+  assert.deepEqual([...seen], [before], 'no client saw a row the failed change set had not kept');
+  assert.equal(count(), before);
+});
+
+test('other OData requests wait for an open change set, so they never read what it has not kept', { skip }, async () => {
+  host.get('Charts')!.applyDesign([{ op: 'createTable', name: 'Tiny', fields: [{ name: 'K', type: 'text' }] }] as never);
+  const before = count();
+  const seen = new Set<string>();
+  let done = false;
+  const poll = (async () => {
+    while (!done) {
+      const r = await fetch(`${root}/Charts/Congress/$count`, { headers: basic('Ann') });
+      seen.add(await r.text());
+    }
+  })();
+  // A $crossjoin hands the event loop to other clients between its steps, inside the change set.
+  const rows = Array.from({ length: 25 }, (_, i) => post('Congress', { Name: `Waiting ${i}` }));
+  const join = 'GET $crossjoin(Congress,Tiny)?$top=1 HTTP/1.1\r\n';
+  const { answers } = await batch(multipart([[...rows, join, patch('$1', { Nope: 1 })]]));
+  done = true;
+  await poll;
+  assert.deepEqual(answers.map((a) => a.status), [400]);
+  assert.deepEqual([...seen], [String(before)], 'a reader got the committed count every time');
+  assert.equal(count(), before);
+  // And one that succeeds is seen whole afterwards.
+  const kept = await batch(multipart([[post('Congress', { Name: 'Kept A' }), post('Congress', { Name: 'Kept B' })]]));
+  assert.deepEqual(kept.answers.map((a) => a.status), [201, 201]);
+  assert.equal(count(), before + 2);
+});
+
+test('change sets sent at the same time on one file run one after the other, each whole', { skip }, async () => {
+  const before = count();
+  const set = (tag: string) => multipart([Array.from({ length: 8 }, (_, i) => post('Congress', { Name: `${tag} ${i}` }))]);
+  const [a, b, c] = await Promise.all([batch(set('Twin A')), batch(set('Twin B')), batch(multipart([[post('Congress', { Name: 'Twin C' }), patch('$1', { Nope: 1 })]]))]);
+  assert.deepEqual(a.answers.map((x) => x.status), Array(8).fill(201));
+  assert.deepEqual(b.answers.map((x) => x.status), Array(8).fill(201));
+  assert.deepEqual(c.answers.map((x) => x.status), [400]);
+  assert.equal(count(), before + 16);
+});
+
 test('a JSON $batch: atomicity groups are all or nothing, and dependsOn waits on success', { skip }, async () => {
   const before = count();
   const send = async (requests: unknown[], prefer?: string) => {
