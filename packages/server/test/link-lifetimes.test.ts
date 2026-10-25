@@ -211,13 +211,20 @@ test('passkey assertions refuse expiry, disabled accounts, removed credentials a
   const rpId = 'example.test', origin = 'https://example.test';
   const auth = makeAuthenticator(rpId, origin);
   const reg = store.issueWebauthnChallenge('register', 'Alice');
-  const { id } = store.registerPasskey('Alice', forgeRegistration(auth, reg), { rpId, origin, challenge: reg });
-  const assertion = () => { const challenge = store.issueWebauthnChallenge('auth'); return () => store.verifyPasskeyAssertion(forgeAssertion(auth, challenge, 1), { rpId, origin, challenge }); };
+  store.registerPasskey('Alice', forgeRegistration(auth, reg), { rpId, origin, challenge: reg });
+  let signer = auth;
+  const assertion = () => { const challenge = store.issueWebauthnChallenge('auth'); return () => store.verifyPasskeyAssertion(forgeAssertion(signer, challenge, 1), { rpId, origin, challenge }); };
   const expired = assertion(); advance(300_000); assert.throws(expired);
   const disabled = assertion(); store.setAccountActive('Alice', false); assert.throws(disabled);
   store.setAccountActive('Alice', true);
+  // Deactivating removed the passkey (and so it is not back on reactivation); the person registers again.
+  assert.equal(store.hasPasskey('Alice'), false);
+  const again = store.issueWebauthnChallenge('register', 'Alice');
+  const second = makeAuthenticator(rpId, origin);
+  const { id: secondId } = store.registerPasskey('Alice', forgeRegistration(second, again), { rpId, origin, challenge: again });
+  signer = second;
   const once = assertion(); assert.equal(once(), 'Alice'); assert.throws(once);
-  const revoked = assertion(); store.removePasskey(id); assert.throws(revoked);
+  const revoked = assertion(); store.removePasskey(secondId); assert.throws(revoked);
 });
 
 test('calendar and API tokens enforce expiry, revoke, disable and account deletion', (t) => {

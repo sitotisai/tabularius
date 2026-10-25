@@ -5031,17 +5031,41 @@ export class Store {
     return this.securityChange(() => {
       account = this.canonicalAccount(account) ?? account;
       if (!active) this.guardFullAccess(account);
-      if (this.canonicalAccount(account) && this.accountInactive(account) === !active) return true;
+      if (this.canonicalAccount(account) && this.accountInactive(account) === !active) {
+        // Already inactive: an account switched off before deactivation ended these still has them, so asking again ends them.
+        if (!active) {
+          const revoked = this.revokeSignInCredentials(account);
+          if (revoked.recoveryCodes || revoked.passkeys) this.logSecurity('account-disabled', { ...audit, account: audit.account ?? audit.by, target: account, detail: { ...audit.detail, ...this.revokedDetail(revoked) } });
+        }
+        return true;
+      }
       const r = this.sql.prepare('UPDATE _fm_accounts SET inactive = ? WHERE name = ? COLLATE NOCASE').run(active ? 0 : 1, account);
+      let revoked = { recoveryCodes: 0, passkeys: 0 };
       if (r.changes && !active) {
+        // Recovery codes and passkeys sign in without the password, and they would work again the moment the account is
+        // switched back on: ending them is what an administrator who deactivates a possibly compromised account expects.
+        // The person registers a passkey and makes new codes after signing in again, as after a password reset.
+        revoked = this.revokeSignInCredentials(account);
         // Re-enabling an account must not resurrect a captured session or bearer credential.
         this.sql.prepare('UPDATE _fm_accounts SET identity_id = ? WHERE name = ? COLLATE NOCASE').run(randomUUID(), account);
         this.sql.prepare("DELETE FROM _fm_api_tokens WHERE account = ? COLLATE NOCASE OR json_extract(identity, '$.person') = ? COLLATE NOCASE OR json_extract(identity, '$.mapping') = ? COLLATE NOCASE").run(account, account, account);
       }
       this.privilegeCache.invalidate((cache) => cache.clear());
-      if (r.changes > 0) this.logSecurity(active ? 'account-enabled' : 'account-disabled', { ...audit, account: audit.account ?? audit.by, target: account });
+      if (r.changes > 0) this.logSecurity(active ? 'account-enabled' : 'account-disabled', { ...audit, account: audit.account ?? audit.by, target: account, ...(revoked.recoveryCodes || revoked.passkeys ? { detail: { ...audit.detail, ...this.revokedDetail(revoked) } } : {}) });
       return r.changes > 0;
     });
+  }
+
+  /** Removes the ways in that do not need the password (recovery codes, passkeys) and any passkey registration still waiting; says how many. */
+  private revokeSignInCredentials(account: string): { recoveryCodes: number; passkeys: number } {
+    const recoveryCodes = Number(this.sql.prepare('DELETE FROM _fm_recovery_codes WHERE account = ? COLLATE NOCASE').run(account).changes);
+    const passkeys = Number(this.sql.prepare('DELETE FROM _fm_passkeys WHERE account = ? COLLATE NOCASE').run(account).changes);
+    this.sql.prepare("DELETE FROM _fm_webauthn_challenges WHERE account = ? COLLATE NOCASE AND kind = 'register'").run(account);
+    return { recoveryCodes, passkeys };
+  }
+
+  private revokedDetail(revoked: { recoveryCodes: number; passkeys: number }): Record<string, number> {
+    return { ...(revoked.recoveryCodes ? { revokedRecoveryCodes: revoked.recoveryCodes } : {}), ...(revoked.passkeys ? { revokedPasskeys: revoked.passkeys } : {}) };
   }
 
   /** Whether an account is inactive (Enable Account [ Deactivate ]). */

@@ -326,7 +326,7 @@ test('imported FileMaker local credentials and must-change are preserved without
   } finally { f.done(); }
 });
 
-test('CSV deactivation blocks passkey assertions and reactivation preserves the passkey', () => {
+test('CSV deactivation blocks passkey assertions and removes the passkey, so reactivation does not bring it back', () => {
   const f = fresh();
   try {
     const s = f.store;
@@ -338,10 +338,15 @@ test('CSV deactivation blocks passkey assertions and reactivation preserves the 
     apply(s, header + 'PasskeyUser,Staff,false', 'passkey-off');
     const challenge = s.issueWebauthnChallenge('auth');
     assert.throws(() => s.verifyPasskeyAssertion(forgeAssertion(auth, challenge, 1), { rpId, origin, challenge }), /passkey was not accepted/);
-    assert.equal(s.hasPasskey('PasskeyUser'), true);
+    assert.equal(s.hasPasskey('PasskeyUser'), false);
     apply(s, header + 'PasskeyUser,Staff,true', 'passkey-on');
     const enabled = s.issueWebauthnChallenge('auth');
-    assert.equal(s.verifyPasskeyAssertion(forgeAssertion(auth, enabled, 1), { rpId, origin, challenge: enabled }), 'PasskeyUser');
+    assert.throws(() => s.verifyPasskeyAssertion(forgeAssertion(auth, enabled, 1), { rpId, origin, challenge: enabled }), /passkey was not accepted/);
+    // The person registers a passkey again once the account is on.
+    const again = s.issueWebauthnChallenge('register', 'PasskeyUser');
+    s.registerPasskey('PasskeyUser', forgeRegistration(auth, again), { rpId, origin, challenge: again });
+    const afterRegistering = s.issueWebauthnChallenge('auth');
+    assert.equal(s.verifyPasskeyAssertion(forgeAssertion(auth, afterRegistering, 2), { rpId, origin, challenge: afterRegistering }), 'PasskeyUser');
     assert.ok(!JSON.stringify(s.auditLog({ security: true })).includes('passkey-secret'));
   } finally { f.done(); }
 });
