@@ -7846,13 +7846,19 @@ export class Store {
   }
 
   /** Field data from a client -> column values, validating names. */
+  /** A stored text value cannot hold NUL (SQLite would cut it short). Checked where a record is written, not where pending edits are read. */
+  private refuseNul(data: FieldData): void {
+    for (const [key, value] of Object.entries(data)) {
+      if (typeof value === 'string' && value.includes('\0')) throw new StoreError(500, `Field "${key}" contains a NUL character`);
+    }
+  }
+
   private columns(info: LayoutInfo, data: FieldData, current?: Record<string, SqlValue>, order: DateStyle = this.dateOrder, rememberRepetitions = true): Map<string, SqlValue> {
     const byName = new Map(info.fields.map((f) => [f.name, f]));
     const reps = new Set([...(this.repeating[info.table] ?? []), ...this.table(info).fields.filter((f) => (f.options?.repetitions ?? 1) > 1).map((f) => f.name)]);
     const out = new Map<string, SqlValue>();
     const repValues = new Map<string, SqlValue[]>();
     for (const [key, value] of Object.entries(data)) {
-      if (typeof value === 'string' && value.includes('\0')) throw new StoreError(500, `Field "${key}" contains a NUL character`);
       const m = /^(.*)\((\d+)\)$/.exec(key);
       const name = m && byName.has(m[1]) ? m[1] : key;
       const rep = m && byName.has(m[1]) ? Number(m[2]) : 1;
@@ -9401,6 +9407,7 @@ export class Store {
     const table = this.table(info);
     this.checkWrite(info, this.local(opts.privileges), fieldNames(data));
     if (opts.dataEntry) this.checkEntry(table, data);
+    this.refuseNul(data);
     const cols = this.setGlobals(table, this.columns(info, data, undefined, opts.dateOrder));
     // New ids continue after the highest FileMaker record id, like FileMaker does.
     const next = Math.max((this.sql.prepare(`SELECT coalesce(max(_fm_record_id), 0) + 1 AS n FROM ${q(info.table)}`).get() as { n: number }).n,
@@ -9545,6 +9552,7 @@ export class Store {
       const table = this.table(info);
       if (opts.dataEntry) this.checkEntry(table, data);
       const styled = opts.styles ? this.styledFields(table, data, opts.styles) : undefined;
+      this.refuseNul(data);
       const cols = this.setGlobals(table, this.columns(info, data, current, opts.dateOrder));
       const row: Row = { ...(current as Row) };
       for (const [k, v] of cols) row[k] = v;

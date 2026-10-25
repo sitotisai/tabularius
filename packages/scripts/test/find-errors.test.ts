@@ -68,3 +68,18 @@ test('quick find treats an unmatched quote as text or reports no matching record
   const matching = await run('Perform Quick Find [ Get ( ScriptParameter ) ]', 'a"b');
   assert.equal(matching.error, 0);
 });
+
+test('quick find keeps quoted phrases and only treats an unbalanced quote as text', async () => {
+  store.create('Clients', { Name: 'edited' });
+  store.create('Clients', { Name: 'Smith "Bob" Jones' });
+  const all = store.findIds('Clients', {}).length;
+  const found = async (phrase: string) => {
+    const r = await run('Perform Quick Find [ Get ( ScriptParameter ) ]', phrase);
+    return { error: r.error, count: r.foundSet?.length };
+  };
+  assert.deepEqual(await found('"edited"'), { error: 0, count: 1 });
+  assert.deepEqual(await found('""'), { error: 0, count: all });
+  assert.deepEqual(await found('"Bob"'), { error: 0, count: 1 });
+  assert.equal((await found('no"match')).error, 401);
+  assert.equal((await found('a"b')).error, 0);
+});
