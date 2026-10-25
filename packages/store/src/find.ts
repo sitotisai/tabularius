@@ -80,19 +80,38 @@ const regexLiteral = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // Bound both compilation and the iterative matcher. These limits apply on every find surface.
 const MAX_CRITERION = 4096;
+/** The most matching work one field value (or repetition) may cost, and what a find starts with before it has read a record. */
 const MAX_MATCH_WORK = 4_000_000;
+/**
+ * What each field value a find reads earns the find's matching budget. The budget bounds a find that does more work than
+ * the records it reads warrant (a long value against a long criterion), not a find on a big table: a wildcard find over a
+ * 40-character value costs a few hundred steps a record, so a flat budget ran out on a table of a few tens of thousands
+ * of records whatever the criterion. A step measures about 30 to 65 nanoseconds, so 1,024 steps are about 30 to 65
+ * microseconds: a few times what a plain wildcard find costs a record. The allowance is earned as the values are read,
+ * never paid up front, so a table of empty values does not fund a single long one.
+ */
+const MATCH_WORK_PER_VALUE = 1024;
+/** The most a find may spend in all, however large the table: a few seconds of the synchronous matcher at the worst. */
+const MAX_FIND_WORK = 1 << 26;
 // Count requests and fields together, leaving room for each criterion's SQL below SQLite's expression depth limit.
 const MAX_QUERY_PARTS = 256;
-const matchBudget = new AsyncLocalStorage<{ remaining: number } | undefined>();
+type MatchBudget = { remaining: number; unearned: number };
+const matchBudget = new AsyncLocalStorage<MatchBudget | undefined>();
 
-/** One budget for a complete find, including related fields, repetitions and repeated SQL evaluations. */
+/**
+ * One budget for a complete find, including related fields, repetitions and repeated SQL evaluations. It starts with a
+ * fixed amount and earns MATCH_WORK_PER_VALUE for each field value the matcher is asked about, up to MAX_FIND_WORK in
+ * all; a single value can never spend more than MAX_MATCH_WORK of it.
+ */
 export function beginFindBudget(): () => void {
   const previous = matchBudget.getStore();
-  if (!previous) matchBudget.enterWith({ remaining: MAX_MATCH_WORK });
+  if (!previous) matchBudget.enterWith({ remaining: MAX_MATCH_WORK, unearned: MAX_FIND_WORK - MAX_MATCH_WORK });
   return () => matchBudget.enterWith(previous);
 }
 
 const tooComplex = () => new FindError('Find criterion exceeds the supported complexity limit', 400);
+/** The matching budget ran out: the criterion is too heavy for a value or for the records read, which is not the same as one that is too long or has too many parts. */
+const tooMuchWork = () => new FindError('Find criterion exceeds the supported complexity limit for the records it reads: use fewer wildcards or a shorter criterion, or narrow the found set first', 400);
 const boundary = (c: string) => /[\s\p{P}]/u.test(c);
 type Token = { kind: '*' | '@' | '#' } | { kind: 'literal'; value: RegExp };
 type TextPattern = (value: string) => boolean;
@@ -124,15 +143,23 @@ function textPattern(raw: string, relaxed: boolean, japanese = false): TextPatte
   const contains = japanese && !exact;
   return (value) => {
     // Relaxed matching also bounds normalization. Ordinary values are streamed, without a character array.
-    const budget = matchBudget.getStore() ?? { remaining: MAX_MATCH_WORK };
-    if (relaxed && (budget.remaining -= value.length) < 0) throw tooComplex();
+    // Outside a find (no shared budget) a value has MAX_MATCH_WORK to itself. Either way one value's own spend is capped,
+    // so it cannot drain what the other records earned.
+    const budget = matchBudget.getStore() ?? { remaining: MAX_MATCH_WORK, unearned: 0 };
+    let own = MAX_MATCH_WORK;
+    if (relaxed) {
+      own -= value.length;
+      budget.remaining -= value.length;
+      if (own < 0 || budget.remaining < 0) throw tooMuchWork();
+    }
     const chars = foldText(relaxed ? fold(value, true) : value)[Symbol.iterator]();
     let previous: string | undefined;
     let states = new Uint8Array(tokens.length + 1);
     let next = new Uint8Array(tokens.length + 1);
     for (let part = chars.next(); ; part = chars.next()) {
+      own -= tokens.length + 1;
       budget.remaining -= tokens.length + 1;
-      if (budget.remaining < 0) throw tooComplex();
+      if (own < 0 || budget.remaining < 0) throw tooMuchWork();
       const char = part.done ? undefined : part.value;
       if (previous === undefined || (!whole && (contains || boundary(previous)))) states[0] = 1;
       // Epsilon transitions for zero characters consumed by '*'.
@@ -185,6 +212,13 @@ export function registerFindFunctions(db: DatabaseSync): void {
   });
   const patterns = new Map<string, TextPattern>();
   db.function('fm_find_text', { deterministic: true }, (v, raw, relaxed) => {
+    // Every value the find reads earns its share of the budget, an empty one too: that is what the table's records are.
+    const budget = matchBudget.getStore();
+    if (budget) {
+      const earned = Math.min(MATCH_WORK_PER_VALUE, budget.unearned);
+      budget.unearned -= earned;
+      budget.remaining += earned;
+    }
     if (v == null || v === '') return 0;
     const key = `${relaxed}:${raw}`;
     let pattern = patterns.get(key);

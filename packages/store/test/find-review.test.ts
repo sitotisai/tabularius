@@ -196,3 +196,59 @@ for (const scope of ['records', 'criteria', 'repetitions', 'related fields', 'co
     assert.throws(() => store.find(layout, { query }), (e: unknown) => e instanceof StoreError && e.code === 400);
   });
 }
+
+// The work limit is for a find that does more work than its records warrant, not for a find on a big table.
+test('a wildcard find on a table of many short values is not refused as too complex', (t) => {
+  const { store } = fixture(t);
+  const rows = 40000;
+  // 40,000 rows of about 45 characters, made in one statement: `*abc*` costs about 270 steps a row, 10 million in all.
+  (store as unknown as { sql: { exec(sql: string): void } }).sql.exec(
+    `INSERT INTO Items (_fm_record_id, Text) WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ${rows})
+     SELECT i, 'plain text of a normal length for a name ' || i || CASE WHEN i % 1000 = 0 THEN ' abc' ELSE '' END FROM n`);
+  const hits = rows / 1000;
+  for (const query of [[{ Text: '*abc*' }], [{ Text: '==*abc' }], [{ Text: '~*abc*' }]]) {
+    assert.equal(store.find('Items', { query, limit: 1 }).foundCount, hits, JSON.stringify(query));
+    assert.equal(store.findIds('Items', { query }).length, hits, JSON.stringify(query));
+  }
+});
+
+test('a find too heavy for its records is still refused, and says it is the records it is too heavy for', (t) => {
+  const { store } = fixture(t);
+  store.create('Items', { Text: 'あ'.repeat(39000) });
+  store.create('Items', { Text: 'あ'.repeat(39000) });
+  const query: FindRequest[] = [{ Text: '~' + 'あ'.repeat(98) + 'い' }];
+  assert.throws(() => store.findIds('Items', { query }), (e: unknown) => e instanceof StoreError && e.code === 400 && /complexity limit/.test(e.message) && /records/.test(e.message));
+});
+
+// The allowance is earned as values are read and one value has a ceiling of its own: one value an attacker wrote cannot
+// spend what a table of other records earned.
+type SqlHandle = { sql: { exec(sql: string): void } };
+const insertRows = (store: Store, first: number, count: number, value: string) =>
+  (store as unknown as SqlHandle).sql.exec(
+    `INSERT INTO Items (_fm_record_id, Text) WITH RECURSIVE n(i) AS (SELECT ${first} UNION ALL SELECT i + 1 FROM n WHERE i < ${first + count - 1}) SELECT i, '${value}' FROM n`);
+
+test('one long value cannot spend the allowance that a table of empty values earned', (t) => {
+  const { store } = fixture(t);
+  insertRows(store, 1, 100000, '');
+  // 202 tokens against 30,000 characters is about 6 million steps: over what one value may spend, under what 100,000 records earn.
+  store.create('Items', { Text: 'a'.repeat(30000) });
+  const query: FindRequest[] = [{ Text: '*' + 'a'.repeat(200) + 'b*' }];
+  assert.throws(() => store.findIds('Items', { query }), (e: unknown) => e instanceof StoreError && e.code === 400 && /complexity limit/.test(e.message));
+  assert.throws(() => store.find('Items', { query, limit: 1 }), (e: unknown) => e instanceof StoreError && e.code === 400);
+});
+
+test('the allowance is earned by the records read before a value, not paid up front', (t) => {
+  // Two values of about 3 million steps each: each is under the per-value ceiling, the pair is over the starting amount.
+  const heavy = 'a'.repeat(14500), query: FindRequest[] = [{ Text: '*' + 'a'.repeat(200) + 'b*' }];
+  const early = fixture(t).store;
+  early.create('Items', { Text: heavy });
+  early.create('Items', { Text: heavy });
+  insertRows(early, 10, 10000, '');
+  assert.throws(() => early.findIds('Items', { query }), (e: unknown) => e instanceof StoreError && e.code === 400);
+  // The same two values after 10,000 records that earned 10 million steps are within the allowance.
+  const late = fixture(t).store;
+  insertRows(late, 1, 10000, '');
+  late.create('Items', { Text: heavy });
+  late.create('Items', { Text: heavy });
+  assert.equal(late.findIds('Items', { query }).length, 0);
+});

@@ -198,9 +198,14 @@ on Japanese-indexed fields match inside words as well as at their start; `=` and
 `==` retain their word and field constraints.
 
 Each criterion is limited to 4,096 UTF-16 code units. Wildcard matching is iterative,
-without backtracking or recursion. Per field value (or repetition), matching may visit at most 4,000,000 token positions:
-each visited input position (including the end position if reached) costs pattern
-token count + 1. Tokens are Unicode characters or wildcard operators; adjacent `*` operators
+without backtracking or recursion. Matching work is counted in token positions: each visited input position (including
+the end position if reached) costs pattern token count + 1. One field value (or repetition)
+may cost at most 4,000,000 of them. A whole find (all its criteria, related fields and
+repetitions) starts with 4,000,000 and earns 1,024 more for every field value it reads,
+empty ones included, as it reads them, up to 67,108,864 in all; so a plain wildcard find
+on a large table is not refused, but one very long value cannot spend what the other
+records earned. A step takes about 30 to 65 nanoseconds, so the most a single find can
+spend is a few seconds of the (synchronous) matcher. Tokens are Unicode characters or wildcard operators; adjacent `*` operators
 collapse to one token. A trailing `*` can accept the remaining value immediately once
 its prefix matches. Values are streamed without allocating a character array; relaxed
 matching additionally limits input normalization to 4,000,000 UTF-16 code units.
