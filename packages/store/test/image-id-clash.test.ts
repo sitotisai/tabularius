@@ -101,3 +101,72 @@ test('a reconvert that discards design changes still keeps the added image (unus
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// Whether an image was added in Tabularius is never decided by its filename: filenames are not unique, not even inside a
+// file (Charts has one name at two ids), and an added image can bring any name with it (a design import, POST /images,
+// MCP). Only its bytes say it is the file's own copy; any other image under an id the file uses is kept, at worst as a
+// duplicate under a new id.
+type Name = (fileName: string, otherName: string) => string | null;
+const names: Record<string, Name> = {
+  "the file's own filename for that id": (own) => own,
+  "the filename of another image of the file": (_own, other) => other,
+  'an empty filename': () => '',
+  'no filename': () => null,
+};
+
+function clashingNamed(name: Name) {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-image-name-'));
+  const path = join(dir, 'Charts.sqlite');
+  importFmp12(fixture, path);
+  const sql = new DatabaseSync(path);
+  const rows = sql.prepare('SELECT id, filename, data FROM _fm_images ORDER BY id').all() as { id: number; filename: string | null; data: Uint8Array }[];
+  const top = rows[rows.length - 1];
+  const other = rows.find((r) => r.filename && r.filename !== top.filename);
+  assert.ok(top.filename && other?.filename, 'the sample names its images');
+  const fileImage = new Uint8Array(top.data);
+  sql.prepare('DELETE FROM _fm_images WHERE id = ?').run(top.id);
+  sql.close();
+  const store = new Store(path, 'Charts');
+  const wanted = name(top.filename, other.filename);
+  try {
+    assert.equal(store.addImage(wanted ?? 'x.png', 'image/png', PNG), top.id, 'the added image takes the missing id');
+  } finally {
+    store.close();
+  }
+  if (wanted !== 'x.png') {
+    const fix = new DatabaseSync(path);
+    fix.prepare('UPDATE _fm_images SET filename = ? WHERE id = ?').run(wanted, top.id);
+    fix.close();
+  }
+  return { dir, path, id: top.id, fileImage, count: rows.length };
+}
+
+function after(path: string) {
+  const sql = new DatabaseSync(path, { readOnly: true });
+  try {
+    return (sql.prepare('SELECT id, data FROM _fm_images ORDER BY id').all() as { id: number; data: Uint8Array }[]).map((r) => ({ id: r.id, data: new Uint8Array(r.data) }));
+  } finally {
+    sql.close();
+  }
+}
+
+for (const [label, name] of Object.entries(names)) for (const how of ['design refresh', 'reconvert']) {
+  test(`a ${how} keeps an added image that has ${label}`, { skip }, async () => {
+    const { dir, path, id, fileImage, count } = clashingNamed(name);
+    try {
+      if (how === 'reconvert') await reconvert(path, fixture, { sameFile: true });
+      else {
+        const sql = new DatabaseSync(path);
+        sql.prepare("UPDATE _fm_meta SET json = ? WHERE key = 'designVersion'").run(JSON.stringify(DESIGN_VERSION - 1));
+        sql.close();
+        upgradeDesigns(path, fixture);
+      }
+      const images = after(path);
+      assert.ok(images.some((i) => Buffer.from(i.data).equals(Buffer.from(PNG))), "the user's image was not overwritten or dropped");
+      assert.deepEqual([...images.find((i) => i.id === id)!.data], [...fileImage], "the file's own image has its own id back");
+      assert.equal(images.length, count + 1, 'the user\'s image is one more than the file\'s library');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
