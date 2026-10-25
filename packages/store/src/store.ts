@@ -1274,6 +1274,7 @@ export class Store {
         this.sql.exec(`ALTER TABLE _fm_audit ADD COLUMN ${name} ${type}`);
       }
     }
+    this.ensureRecordIdHighWater();
     ensureSecurityChain(this.sql);
     ensureRecordChain(this.sql);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS _fm_api_tokens (id TEXT PRIMARY KEY, label TEXT, account TEXT NOT NULL,
@@ -2141,6 +2142,47 @@ export class Store {
     }
   }
 
+  /** Seed old stores from surviving records and audit entries; pruned entries cannot be recovered. Explicit inserts advance the mark. */
+  private ensureRecordIdHighWater(): void {
+    this.sql.exec('SAVEPOINT record_id_high_water');
+    try {
+      this.sql.exec('CREATE TABLE IF NOT EXISTS _fm_record_id_high_water (tbl TEXT PRIMARY KEY COLLATE NOCASE, id INTEGER NOT NULL)');
+      const marked = new Set((this.sql.prepare('SELECT tbl FROM _fm_record_id_high_water').all() as { tbl: string }[]).map((r) => r.tbl.toLowerCase()));
+      const missing = this.schema.tables.some((t) => !marked.has(t.name.toLowerCase()));
+      const audited = new Map<string, number>();
+      if (missing) {
+        // One scan for all tables of an older store, rather than one full audit scan per table.
+        const rows = this.sql.prepare('SELECT tbl, max(record_id) AS id FROM _fm_audit WHERE security = 0 AND record_id IS NOT NULL GROUP BY tbl COLLATE NOCASE')
+          .all() as { tbl: string; id: number }[];
+        for (const row of rows) audited.set(row.tbl.toLowerCase(), row.id);
+      }
+      for (const table of this.schema.tables) this.ensureRecordIdTable(table.name, audited.get(table.name.toLowerCase()) ?? 0);
+      this.sql.exec('RELEASE record_id_high_water');
+    } catch (error) {
+      this.sql.exec('ROLLBACK TO record_id_high_water; RELEASE record_id_high_water');
+      throw error;
+    }
+  }
+
+  private ensureRecordIdTable(table: string, knownAudit?: number): void {
+    if (!this.sql.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table)) return;
+    const existing = this.sql.prepare('SELECT id FROM _fm_record_id_high_water WHERE tbl = ?').get(table) as { id: number } | undefined;
+    // The audit scan is needed only once per table, when the durable mark is first made.
+    const audited = existing ? 0 : knownAudit ?? (this.sql.prepare('SELECT coalesce(max(record_id), 0) AS id FROM _fm_audit WHERE security = 0 AND tbl = ? COLLATE NOCASE')
+      .get(table) as { id: number }).id;
+    const live = (this.sql.prepare(`SELECT coalesce(max(_fm_record_id), 0) AS id FROM ${q(table)}`).get() as { id: number }).id;
+    this.sql.prepare('INSERT INTO _fm_record_id_high_water (tbl, id) VALUES (?, ?) ON CONFLICT(tbl) DO UPDATE SET id = max(id, excluded.id)')
+      .run(table, Math.max(live, audited));
+    const trigger = `_fm_rid_${table}`;
+    if (!this.sql.prepare("SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = ? AND tbl_name = ?").get(trigger, table)) {
+      this.sql.exec(`DROP TRIGGER IF EXISTS ${q(trigger)}`);
+      this.sql.exec(`CREATE TRIGGER ${q(trigger)} AFTER INSERT ON ${q(table)} BEGIN
+        INSERT INTO _fm_record_id_high_water (tbl, id) VALUES ('${table.replace(/'/g, "''")}', NEW._fm_record_id)
+        ON CONFLICT(tbl) DO UPDATE SET id = max(id, excluded.id);
+      END`);
+    }
+  }
+
   /**
    * The data version results are kept at: with shared results, the counter
    * every process moves; otherwise this connection's write token.
@@ -2594,9 +2636,8 @@ export class Store {
 
   /**
    * The ranges of audit entries that belong to the record's present life (see record-life.ts): from its latest creation
-   * that is not a put-back of a deleted record, plus, for a put-back, the life that delete ended. New ids continue after
-   * the highest one left, so a deleted last record's id is given to the next new one, and the log, keyed by table and id,
-   * holds every record that had the id: the entries outside these ranges belong to another one.
+   * that is not a put-back of a deleted record, plus, for a put-back, the life that delete ended. Older stores could
+   * reuse ids, so their log can hold several records under one table and id.
    */
   recordLife(table: string, recordId: number): LifeRange[] {
     const creates = this.sql.prepare("SELECT seq, revert_of FROM _fm_audit WHERE security = 0 AND kind = 'create' AND tbl = ? COLLATE NOCASE AND record_id = ?")
@@ -3305,11 +3346,16 @@ export class Store {
       case 'createTable': {
         const cols = e.table.fields.filter((f) => f.kind !== 'summary').map((f) => `, ${q(f.name)} ${SQL_TYPES[f.type]}`).join('');
         this.sql.exec(`CREATE TABLE ${q(e.table.name)} (_fm_record_id INTEGER PRIMARY KEY, _fm_mod_id INTEGER NOT NULL DEFAULT 0${this.fileMode === 'native' ? ", _fm_uuid TEXT NOT NULL DEFAULT ''" : ''}${cols})`);
+        this.ensureRecordIdTable(e.table.name);
         if (this.fileMode === 'native') this.nativeIdGuards(e.table);
         break;
       }
       case 'renameTable':
+        this.sql.exec(`DROP TRIGGER IF EXISTS ${q(`_fm_rid_${e.from}`)}`);
         this.sql.exec(`ALTER TABLE ${q(e.from)} RENAME TO ${q(e.to)}`);
+        this.sql.prepare('INSERT INTO _fm_record_id_high_water (tbl, id) SELECT ?, id FROM _fm_record_id_high_water WHERE tbl = ? ON CONFLICT(tbl) DO UPDATE SET id = max(id, excluded.id)').run(e.to, e.from);
+        this.sql.prepare('DELETE FROM _fm_record_id_high_water WHERE tbl = ?').run(e.from);
+        this.ensureRecordIdTable(e.to);
         for (const k of keys) renameKey(k, e.from, null, e.to);
         renameExcluded(e.from, null, e.to);
         break;
@@ -3342,6 +3388,7 @@ export class Store {
         const records = Number((this.sql.prepare(`SELECT count(*) AS n FROM ${q(e.table.name)}`).get() as { n: number }).n);
         const id = Number(this.sql.prepare('INSERT INTO _fm_deleted (kind, tbl, name, at, account, records, patch, meta) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
           .run('table', e.table.name, e.table.name, new Date().toISOString(), this.designAccount, records, JSON.stringify(e.patch), JSON.stringify(meta)).lastInsertRowid);
+        this.sql.exec(`DROP TRIGGER IF EXISTS ${q(`_fm_rid_${e.table.name}`)}`);
         this.sql.exec(`ALTER TABLE ${q(e.table.name)} RENAME TO ${q(`_fm_deleted_${id}`)}`);
         for (const k of keys) renameKey(k, e.table.name, null, null);
         break;
@@ -3371,6 +3418,7 @@ export class Store {
         const kept = this.sql.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(`_fm_deleted_${e.deleted}`);
         if (kept) this.sql.exec(`ALTER TABLE ${q(`_fm_deleted_${e.deleted}`)} RENAME TO ${q(e.table.name)}`);
         else this.designEffect({ k: 'createTable', table: e.table });
+        this.ensureRecordIdTable(e.table.name);
         for (const [k, v] of Object.entries(row ? JSON.parse(row.meta) as Record<string, unknown> : {})) {
           const value = this.keyedMeta(k) ?? ownKeyed({});
           value[e.table.name] = v;
@@ -9409,8 +9457,9 @@ export class Store {
     if (opts.dataEntry) this.checkEntry(table, data);
     this.refuseNul(data);
     const cols = this.setGlobals(table, this.columns(info, data, undefined, opts.dateOrder));
-    // New ids continue after the highest FileMaker record id, like FileMaker does.
+    // The durable mark includes deleted records and explicit inserts replayed by a standby.
     const next = Math.max((this.sql.prepare(`SELECT coalesce(max(_fm_record_id), 0) + 1 AS n FROM ${q(info.table)}`).get() as { n: number }).n,
+      (this.sql.prepare('SELECT id + 1 AS n FROM _fm_record_id_high_water WHERE tbl = ?').get(info.table) as { n: number }).n,
       (this.heldNewIds.get(info.table) ?? 0) + 1);
     const row: Row = { _fm_record_id: next, _fm_mod_id: 0 };
     for (const f of info.fields) row[f.name] = null;
@@ -9421,7 +9470,7 @@ export class Store {
     // Only a record the account can see gives its values.
     const pv = this.local(opts.privileges);
     if (lastVisited && pv && !this.allows(table, pv.table(info.table).view, lastVisited as Record<string, SqlValue>, pv.account)) lastVisited = undefined;
-    // A deleted record's id given again: its formatting isn't this record's (even with the same text).
+    // Clear any legacy formatting at this id before making the new record.
     this.textStyles.forget(table.id, next);
     const calcRuns = new Map<string, StyleRun[] | undefined>();
     // A record made uncommitted (or with its required fields checked at its first commit) gets its on-commit serial then.
@@ -9458,6 +9507,7 @@ export class Store {
     if (pv) this.checkRecordRule(table, pv, 'create', 'view', current);
     this.checkWrite(info, pv, []);
     const next = Math.max((this.sql.prepare(`SELECT coalesce(max(_fm_record_id), 0) + 1 AS n FROM ${q(info.table)}`).get() as { n: number }).n,
+      (this.sql.prepare('SELECT id + 1 AS n FROM _fm_record_id_high_water WHERE tbl = ?').get(info.table) as { n: number }).n,
       (this.heldNewIds.get(info.table) ?? 0) + 1);
     const row: Row = { _fm_record_id: next, _fm_mod_id: 0 };
     const copied = new Set<string>();
@@ -10163,8 +10213,7 @@ export class Store {
         // The lock is let go with the delete's outcome: a delete that rolls back leaves the record locked.
         if (lock) this.writePublications!.push(() => {
           if (this.locks.release(info.table, recordId, lock.owner)) {
-            // Said before the delete: a window that marked the record locked would otherwise keep the mark, and a record made
-            // later under the same id (the highest id is used again) would show as locked by someone who is not editing it.
+            // Said before the delete so windows do not keep a stale lock mark.
             this.notify('unlock', info.table, recordId, undefined, { account: lock.account, owner: lock.owner });
           }
         });

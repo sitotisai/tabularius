@@ -659,16 +659,22 @@ again…** shows that for every file at once, then converts the ones listed. If
 an account would ever be missing afterwards, converting refuses and changes
 nothing.
 
-Telling a new record from an original that has its id depends on the audit
-log. New ids continue after the highest one left, so deleting the last
-original record gives its id to the next new record, and only the log's create
-entry says whose it is. Once audit retention (400 days unless you changed it)
-has removed that entry, converting again takes the id for the untouched
-original and brings the original's data back over the new record, with nothing
-in the counts to show it. To keep this safe, set audit retention longer than
-you will go between converting again (0 keeps every entry); entries already
-removed can't be brought back, and the store kept beside the new one is the
-place to look for a record that came back as its original.
+New record ids continue above a per-table high-water mark, including after
+the highest record is deleted. Existing stores seed that mark from surviving
+records and audit entries. Converting again carries the mark over, so audit
+retention does not affect records created after this change. A store that
+already reused an id before this change still needs its surviving audit entries
+to distinguish those older records. If retention already removed those entries,
+their identity cannot be recovered. A deleted highest id absent from both the
+remaining records and retained audit entries cannot be included in the migrated
+mark, so a later creation may receive that older id. Review the backup kept
+beside a reconverted store if an older record appears in place of a newer one.
+Exact record-id allocation parity with FileMaker is unverified offline. <!-- known-difference: Records ;; Exact record-id allocation parity with FileMaker is unverified offline ;; A boundary case could receive a different new id than FileMaker assigns ;; A direct FileMaker run that creates and deletes the highest record id -->
+
+When part of an edited record's update history has been pruned, converting
+again carries all its fields. This keeps older edits, but it can also keep a
+value an older converter read incorrectly in a field whose edit history is
+incomplete.
 
 A log from before reverts were marked (no `revert_of` column) can't tell a
 record put back from one made new, so there every create counts as made here
@@ -788,14 +794,14 @@ client to see its changes and put one back (limited to what their account could
 change by hand). The same history is available to AI tools (`audit_log`,
 `explain_record_history`) and over the API (`GET /tabularius/admin/v1/audit`).
 
-New record ids continue after the highest one left, so deleting the last
-record gives its id to the next new record, and the audit log (kept by table
-and id) then holds both. Record History and **Put back** (web client, AI
-tools) start at the record's latest creation, so the earlier record's changes
-are not shown and can't be put back onto the new one. A record put back by a
-revert, the data cleanup's undo or the console's restore keeps its whole
-history; those put-backs made before they were marked in the log count as new
-records, and the earlier history is no longer shown for them.
+New record ids continue above a per-table high-water mark, even when the
+highest record was deleted. Older stores may already hold audit entries from
+different records that shared an id. Record History and **Put back** (web
+client, AI tools) use each record's creation entry to keep those older lives
+separate. A record put back by a revert, the data cleanup's undo or the
+console's restore keeps its whole history; put-backs made before they were
+marked in the log count as new records, and the earlier history is no longer
+shown for them.
 
 An account whose view of a table depends on a rule can put back changes to
 records it can see, but not a deleted record: with no values left to judge the
@@ -812,11 +818,10 @@ someone is editing the record, and when the table was emptied (Truncate
 Table) since that point. Records a cascading delete removed with it each have
 their own history.
 
-One thing the console does not check: the audit entry may belong to an earlier
-record that had the same id (see above), and putting back to it then writes
-that record's values over the record that has the id now. Check the table and
-the values in **History** first; the console's restore is not limited the way
-Record History is.
+For an older store that reused an id, the console's restore does not check
+whether the audit entry belongs to an earlier record with that id. Check the
+table and values in **History** first; the console's restore is not limited
+the way Record History is.
 
 ## Backups and restore
 

@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore, Store, writer } from '../src/index.ts';
 
-test('deleting a locked record announces the unlock before the delete, and the id can be locked again', (t) => {
+test('deleting a locked record announces the unlock before the delete, and a new record can be locked', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-delete-locked-'));
   createStore(join(dir, 'L.sqlite'));
   const store = new Store(join(dir, 'L.sqlite'), 'L');
@@ -20,6 +20,6 @@ test('deleting a locked record announces the unlock before the delete, and the i
   writer.run({ account: 'Ann', owner: 'session-1' }, () => store.delete('Items', recordId, { account: 'Ann' }));
   assert.deepEqual(heard, [`unlock:${recordId}:Ann`, `delete:${recordId}:Ann`]);
   const again = store.create('Items', { Name: 'b' });
-  assert.equal(again.recordId, recordId, 'the id comes back');
+  assert.ok(again.recordId > recordId, 'the deleted id is not given again');
   assert.ok(store.locks.acquire('Items', again.recordId, 'session-2', 'Bob').ok, 'and is not held by the earlier lock');
 });
