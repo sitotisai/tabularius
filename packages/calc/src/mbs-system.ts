@@ -1,5 +1,6 @@
 // Small MBS system and path calls. Their vendor results are inferred, not verified.
 import type { Env } from './evaluate.ts';
+import { stripTrailingSeparators } from './text.ts';
 import { num, text, type Value } from './values.ts';
 
 type MbsFunction = (values: Value[], env: Env) => Value;
@@ -20,7 +21,7 @@ export function mbsSystemFunctions(): Record<string, MbsFunction> {
       const path = argument(values, env, 0);
       const component = argument(values, env, 1);
       const separator = path.includes('/') ? '/' : '\\';
-      return text(path.replace(/[/\\]+$/, '') + separator + component.replace(/^[/\\]+/, ''));
+      return text(stripTrailingSeparators(path) + separator + component.replace(/^[/\\]+/, ''));
     },
     // Inferred: a server has no progress dialog to update or cancel.
     'curl.setupdateprogressdialog': () => text('OK'),

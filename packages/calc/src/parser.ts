@@ -157,8 +157,10 @@ function lex(src: string, names: NameTable, localNames: Iterable<string> = []): 
       runFrom = from;
       runEnd = j;
       runKeyword = keyword;
+      // Only a run of words can be a name: with none (j === from) there is nothing to look past, and the whitespace
+      // after it must not be walked again by every word that starts there.
       let after = j;
-      while (after < src.length && /\s/.test(src[after])) after++;
+      if (j > from) while (after < src.length && /\s/.test(src[after])) after++;
       runIsCall = j > from && src[after] === '(';
     }
     return runIsCall ? { end: runEnd, keyword: runKeyword } : undefined;
@@ -174,7 +176,8 @@ function lex(src: string, names: NameTable, localNames: Iterable<string> = []): 
       if (end < 0) throw new CalcError(ERR.unterminatedComment, 'The comment is not terminated with "*/"');
       // Block comments nest (FileMaker accepts "/* /* a */ b */" as one comment,
       // the usual way to comment out a formula that has comments); when the
-      // nesting never closes, the first "*/" ends it.
+      // nesting never closes, the first "*/" ends it. Known cost: a formula of many such unclosed openers
+      // ("/*/*a*/" repeated) walks to the end of the text from each, so it is quadratic (about 7 s for 140 KB).
       let depth = 0;
       let j = i;
       while (j < src.length) {
