@@ -202,6 +202,29 @@ function withLockGate<T>(path: string, busyMessage: string, action: () => T, wai
   }
 }
 
+/**
+ * Takes a name that was found stale out of the way, but only if it still holds the file that was inspected: it is renamed aside
+ * and the file's device and inode are compared with the inspection, so another contender's newer file is put back, not deleted,
+ * and `busy()` is thrown. Two processes that both inspected the same stale file cannot both end up deleting a replacement.
+ */
+function moveAside(path: string, inspected: Stats, busy: () => Error): void {
+  const aside = `${path}.${randomUUID()}`;
+  try { renameSync(path, aside); } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') throw busy();
+    throw e;
+  }
+  try {
+    const moved = lstatOrUndefined(aside);
+    if (!moved || moved.dev !== inspected.dev || moved.ino !== inspected.ino) {
+      // The name changed since the inspection. Put the newer owner's file back without replacing another one.
+      if (moved?.isFile()) try { linkSync(aside, path); } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      }
+      throw busy();
+    }
+  } finally { rmSync(aside, { force: true }); }
+}
+
 function enterLockGate<T>(path: string, busyMessage: string, action: () => T): T {
   const gate = `${path}.takeover`;
   let fd: number;
@@ -214,23 +237,8 @@ function enterLockGate<T>(path: string, busyMessage: string, action: () => T): T
     if (code !== 'EEXIST') throw error;
     const stat = lstatOrUndefined(gate);
     if (!stat?.isFile() || Date.now() - stat.mtimeMs <= LOCK_UNCERTAIN_AGE) throw new GateBusy(busyMessage, 409);
-    // A kill inside the short critical section may leave this gate. Move it aside and verify that the
-    // replacement is still ours before entering; another contender may have acted on the old observation.
-    const aside = `${gate}.${randomUUID()}`;
-    try { renameSync(gate, aside); } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') throw new GateBusy(busyMessage, 409);
-      throw e;
-    }
-    try {
-      const moved = lstatOrUndefined(aside);
-      if (!moved || moved.dev !== stat.dev || moved.ino !== stat.ino) {
-        // The name changed since our inspection. Put the newer owner's gate back without replacing another one.
-        if (moved?.isFile()) try { linkSync(aside, gate); } catch (e) {
-          if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-        }
-        throw new GateBusy(busyMessage, 409);
-      }
-    } finally { rmSync(aside, { force: true }); }
+    // A kill inside the short critical section may leave this gate.
+    moveAside(gate, stat, () => new GateBusy(busyMessage, 409));
     try { fd = openSync(gate, 'wx', 0o600); } catch (e) {
       if ((e as NodeJS.ErrnoException).code === 'EEXIST') throw new GateBusy(busyMessage, 409);
       throw e;
@@ -246,10 +254,13 @@ function enterLockGate<T>(path: string, busyMessage: string, action: () => T): T
 }
 
 interface ProcessLock { release: () => void; heartbeat: () => void }
+/** The ids of the locks this process holds: a lock with this process's pid and one of these ids is live, not left by an earlier process with the same pid. */
+const heldLocks = new Set<string>();
 const lockBusy = (target: string, message: string) => `${message} (${target}.lock); remove it if no export is running`;
 
 /** The sidecar remains in place when the stage is renamed to the finished folder. */
-function takeProcessLock(target: string, busyMessage: string): ProcessLock {
+/** Exported for the tests, which reach one lock file through spellings the in-process guard cannot fold. */
+export function takeProcessLock(target: string, busyMessage: string): ProcessLock {
   const path = `${target}.lock`;
   const busy = lockBusy(target, busyMessage);
   const id = randomUUID();
@@ -265,7 +276,7 @@ function takeProcessLock(target: string, busyMessage: string): ProcessLock {
       if (code !== 'EEXIST') throw error;
       const stat = lstatOrUndefined(path);
       if (!stat?.isFile()) throw new ExitBundleError(busy, 409);
-      let held: { pid?: unknown; startedAt?: unknown };
+      let held: { pid?: unknown; startedAt?: unknown; id?: unknown };
       try { held = JSON.parse(readFileSync(path, 'utf8')) as typeof held; } catch { held = {}; }
       if (typeof held.pid !== 'number' || !Number.isSafeInteger(held.pid) || held.pid <= 0 ||
           typeof held.startedAt !== 'number' || !Number.isFinite(held.startedAt) || held.startedAt < 0) {
@@ -274,18 +285,25 @@ function takeProcessLock(target: string, busyMessage: string): ProcessLock {
         const pid = held.pid;
         const startedAt = held.startedAt;
         let alive = false;
+        // Our own pid alone proves nothing (an earlier process may have had it), but one of our own lock ids is a live holder
+        // that the in-process guard did not recognise, because the folder was spelled in a way it does not fold.
+        if (pid === process.pid && typeof held.id === 'string' && heldLocks.has(held.id)) throw new ExitBundleError(busy, 409);
         if (pid !== process.pid) {
           try { process.kill(pid, 0); alive = true; } catch (e) { alive = (e as NodeJS.ErrnoException).code !== 'ESRCH'; }
         }
         if (pid !== process.pid && ((alive && Date.now() - startedAt <= LOCK_MAX_AGE) ||
             (!alive && Date.now() - startedAt <= LOCK_UNCERTAIN_AGE))) throw new ExitBundleError(busy, 409);
       }
-      console.warn(`Replacing stale exit-bundle lock at ${path}.`);
-      rmSync(path);
-      fd = openSync(path, 'wx', 0o600);
+      moveAside(path, stat, () => new ExitBundleError(busy, 409));
+      console.warn(`Replaced a stale exit-bundle lock at ${path}.`);
+      try { fd = openSync(path, 'wx', 0o600); } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === 'EEXIST') throw new ExitBundleError(busy, 409);
+        throw e;
+      }
     }
     try { writeSync(fd, owner); } catch (error) { closeSync(fd); rmSync(path, { force: true }); throw error; }
     closeSync(fd);
+    heldLocks.add(id);
   }, GATE_WAIT);
   const held = () => {
     try { return (JSON.parse(readFileSync(path, 'utf8')) as { id?: string }).id === id; }
@@ -308,6 +326,7 @@ function takeProcessLock(target: string, busyMessage: string): ProcessLock {
     },
     // Never throws: it runs in a `finally`, and a failed release must not replace the copy's result or its own error.
     release: () => {
+      heldLocks.delete(id);
       try { withLockGate(path, busy, () => { if (held()) rmSync(path); }, GATE_WAIT); return; }
       catch { /* the gate stayed busy or could not be used: remove our own lock without it, below */ }
       try { if (held()) rmSync(path, { force: true }); }

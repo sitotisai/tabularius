@@ -1071,9 +1071,10 @@ which remove the snapshot.
 `<folder>.lock` sits next to the folder, so a second run for the same folder,
 from another command or another process, is refused instead of mixing two
 copies. It is removed when the run ends. If a run was killed, a lock whose process
-is gone is replaced after a minute, and one whose process is still alive after six
-hours; a lock that cannot be read is replaced after a minute. A folder name cannot
-end in `.lock`.
+is gone is replaced a minute after its last heartbeat, and one whose process is still
+alive six hours after its last heartbeat; a lock that cannot be read is replaced
+after a minute. The console refuses folder names ending in `.lock` or `.takeover`
+(the second is the name of the short gate beside the lock).
 
 What the lock does not cover, plainly:
 
@@ -1086,15 +1087,18 @@ What the lock does not cover, plainly:
 - The lock is refreshed after each batch of rows and each megabyte of a container
   file, not while the snapshot is taken or while the finished copy is checked and
   published. On one computer this does not matter, because a lock whose process
-  is alive holds for six hours; where the process check is wrong (the first point),
+  is alive holds for six hours after its last heartbeat; where the process check is wrong (the first point),
   a step that takes more than a minute lets the lock be taken over.
 - A computer clock that jumps forward by more than six hours lets a live lock be
   taken over, and one that jumps back keeps a dead lock for that much longer.
 - The short gate that lets processes inspect the lock one at a time can stay
-  behind if a process is killed inside it. It is replaced after a minute, but when
-  three or more processes find it at that same moment, two of them can be let
-  through together. That narrow race is not closed; its effect would be two
-  copies working in one `<folder>.partial`.
+  behind if a process is killed inside it. It is replaced after a minute, and a
+  stale lock is replaced only if it is still the file that was inspected, but when
+  three or more processes find a stale gate at that same instant, two of them can
+  still be let through together. That much narrower race is not closed; its effect
+  would be two copies working in one `<folder>.partial`.
+- A running copy waits up to a second for the gate when another process is using
+  it, and the server does nothing else in that time.
 
 **Load and secrets in scripts.** The copy is made inside the server process, so a very large file slows every user until it finishes: run it at a quiet time. Layout and script text in `design/` is written as stored, so a script that holds a pasted password or key leaves with it.
 

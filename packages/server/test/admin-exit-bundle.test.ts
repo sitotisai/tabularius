@@ -50,7 +50,7 @@ test('an unauthenticated request is refused before any bundle code runs', async 
 });
 
 test('bad names, missing credentials and unhosted files are refused', async () => {
-  for (const name of ['', '.', '..', '../escape', 'a/b', '.hidden', 'x.partial', 'x.lock', 'a'.repeat(81)]) assert.equal((await copy(name)).status, 400, name);
+  for (const name of ['', '.', '..', '../escape', 'a/b', '.hidden', 'x.partial', 'x.lock', 'x.takeover', 'a'.repeat(81)]) assert.equal((await copy(name)).status, 400, name);
   assert.equal((await post('exit-bundle', { database: 'Shop', name: 'ok' })).status, 400);
   assert.equal((await post('exit-bundle', { database: 'Nothing', name: 'ok', account: 'Admin', password: PASSWORD })).status, 404);
   assert.equal(existsSync(join(dir, 'Exports', 'ok')), false);
@@ -162,3 +162,36 @@ test('a hosted folder given as a relative path leaks no part of the absolute pat
     rmSync(parent, { recursive: true, force: true });
   }
 });
+
+// Lower-casing changes the length of some letters (the dotted capital I) and crosses into ASCII for others (the Kelvin sign), so a
+// match on lower-cased text misses the original.
+for (const segment of ['\u0130stanbul-files', 'Kelvin\u212Adir', 'plain (a+b)[c]$', 'stra\u00DFe', '\u039F\u0394\u039F\u03A3']) {
+  test(`a hosted folder named ${segment} leaks no part of its path in a refusal`, async () => {
+    const parent = mkdtempSync(join(tmpdir(), 'tabularius-unicode-parent-'));
+    const hosted = join(parent, segment);
+    mkdirSync(hosted);
+    createStore(join(hosted, 'Shop.openhbam.sqlite'));
+    const shop = new Store(join(hosted, 'Shop.openhbam.sqlite'), 'Shop');
+    shop.applyDesign([{ op: 'createTable', name: 'Orders', fields: [{ name: 'Customer', type: 'text' }] }]);
+    shop.setPassword('Admin', PASSWORD);
+    shop.close();
+    setAdminPassword(hosted, CONSOLE);
+    const s = await serve({ dir: hosted, port: 0, log: () => {} });
+    try {
+      const send = (route: string, name: string) => fetch(`${s.url}/tabularius/admin/v1/${route}`, { method: 'POST', headers, body: JSON.stringify({ database: 'Shop', name, account: 'Admin', password: PASSWORD }) })
+        .then(async (r) => ({ status: r.status, text: JSON.stringify(await r.json()) }));
+      const answers = [await send('exit-bundle/discard', 'none')];
+      writeFileSync(join(hosted, 'Exports', 'busy.lock'), JSON.stringify({ pid: process.ppid, startedAt: Date.now() }));
+      answers.push(await send('exit-bundle', 'busy'));
+      mkdirSync(join(hosted, 'Exports', 'there'));
+      answers.push(await send('exit-bundle', 'there'));
+      assert.deepEqual(answers.map((a) => a.status), [404, 409, 409]);
+      for (const a of answers) {
+        for (const secret of [segment, basename(parent), parent, tmpdir()]) assert.ok(!a.text.includes(secret), `${secret} in ${a.text}`);
+      }
+    } finally {
+      await new Promise<void>((r) => s.server.close(() => r()));
+      rmSync(parent, { recursive: true, force: true });
+    }
+  });
+}

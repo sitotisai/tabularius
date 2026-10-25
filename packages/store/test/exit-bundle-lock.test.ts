@@ -3,11 +3,12 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { createStore, exitBundle, Store, totpCode } from '../src/index.ts';
+import { createStore, exitBundle, ExitBundleError, Store, totpCode } from '../src/index.ts';
+import { takeProcessLock } from '../src/exit-bundle.ts';
 
 const PASSWORD = ['correct', 'horse', 'battery', 'staple'].join(' ');
 let dir: string;
@@ -99,6 +100,28 @@ test('one folder reached through a symlinked parent is refused while a copy to i
   await assert.rejects(exitBundle(store, join(dir, 'alias', 'Exports', 'copy'), asAdmin()), /already exists/);
 });
 
+test('a lock this process holds is refused under a spelling the in-process guard does not fold, and its own heartbeat still works', () => {
+  // A bind mount, or a case-insensitive volume on Linux, reaches one lock file under two names the guard cannot tell apart;
+  // a hard link stands in for them here.
+  const a = join(dir, 'held-a');
+  const b = join(dir, 'held-b');
+  const lock = takeProcessLock(a, 'an export to that folder is already running');
+  try {
+    linkSync(`${a}.lock`, `${b}.lock`);
+    assert.throws(() => takeProcessLock(b, 'an export to that folder is already running'), (e: ExitBundleError) => e.status === 409 && /already running/.test(e.message));
+    lock.heartbeat();
+    assert.equal(JSON.parse(readFileSync(`${a}.lock`, 'utf8')).pid, process.pid);
+  } finally {
+    lock.release();
+    rmSync(`${b}.lock`, { force: true });
+  }
+  assert.equal(existsSync(`${a}.lock`), false);
+  // A lock with this pid that this process does not hold (an earlier process had the same pid) is still taken over.
+  writeFileSync(`${a}.lock`, JSON.stringify({ pid: process.pid, startedAt: Date.now(), id: 'an-earlier-process' }), { mode: 0o600 });
+  takeProcessLock(a, 'busy').release();
+  assert.equal(existsSync(`${a}.lock`), false);
+});
+
 test('no credential material from any column of any internal table reaches the bundle', async () => {
   const sql = sqlOf(store);
   const markers: string[] = [];
@@ -126,7 +149,10 @@ test('no credential material from any column of any internal table reaches the b
       markers.push(...columns.filter((c) => table !== '_fm_accounts' || !['name', 'privilege_set'].includes(c.name)).map((c) => `${mark}_${c.name}`));
     } catch { skipped.push(table); }
   }
-  assert.ok(planted.length >= 10, `only planted in ${planted.join(', ')}; skipped ${skipped.join(', ')}`);
+  // These hold version counters and chain state whose own constraints refuse a made-up row. The list is pinned so that a table
+  // that starts refusing the plant (a new credential table, say) fails here instead of dropping out of the scan unnoticed.
+  assert.deepEqual(skipped.sort(), ['_fm_cache_version', '_fm_metadata_versions', '_fm_record_chain_state', '_fm_security_chain_state']);
+  for (const table of ['_fm_accounts', '_fm_api_tokens', '_fm_recovery_codes', '_fm_passkeys', '_fm_meta']) assert.ok(planted.includes(table), `${table} was not planted`);
   // A value that lives only in a free page of the source.
   sql.exec('CREATE TABLE _scan_free (x TEXT)');
   sql.prepare('INSERT INTO _scan_free VALUES (?)').run('FREEPAGESECRET'.repeat(5000));
