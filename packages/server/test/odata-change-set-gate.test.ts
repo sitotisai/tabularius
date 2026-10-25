@@ -109,6 +109,14 @@ test('a change set holds only changes: a read in it fails the set and nothing is
   assert.match(await mixed.text(), /HTTP\/1\.1 200/);
 });
 
+test('a change set does not call a script (a script gives the event loop away as it runs): the set fails and nothing is kept', { skip }, async () => {
+  const before = count();
+  const r = await batch([post('Never Kept'), 'POST Script.Anything HTTP/1.1\r\nContent-Type: application/json\r\n\r\n{}']);
+  assert.deepEqual(r.answers.map((a) => a.status), [400]);
+  assert.match(r.answers[0].message!, /can't call a script/);
+  assert.equal(count(), before);
+});
+
 test('a change set holds at most BATCH_LIMIT.changeSetRequests requests: a longer one is not run at all, and each request of a JSON group says so', { skip }, async () => {
   const before = count();
   BATCH_LIMIT.changeSetRequests = 3;

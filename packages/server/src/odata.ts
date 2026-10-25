@@ -1231,8 +1231,8 @@ export class ODataEndpoint {
    * A change set: its requests in one transaction, kept only if every one of them succeeds. The transaction sits on the
    * file's one connection, so until it ends nobody else may read the file through OData (hold) and the set does not give other
    * clients a turn between its requests: what another surface read meanwhile would be rows that may be undone. Because it
-   * never yields, it holds only changes (reads are refused, as OData 4.0 has it), at most BATCH_LIMIT.changeSetRequests of
-   * them, and fails (keeping nothing) once it has run for BATCH_LIMIT.changeSetMs.
+   * never yields, it holds only changes (reads are refused, as OData 4.0 has it, and script calls too: a script yields as it
+   * runs), at most BATCH_LIMIT.changeSetRequests of them, and fails (keeping nothing) once it has run for BATCH_LIMIT.changeSetMs.
    */
   private async changeSet(outer: IncomingMessage, unit: BatchUnit, at: Service, located: Map<string, string>, used: { bytes: number; joins: number }): Promise<BatchResult> {
     const { requests } = unit;
@@ -1309,6 +1309,8 @@ export class ODataEndpoint {
       if (!url.pathname.startsWith(`${ROOT}/`)) throw bad(`"${r.url}" is not a request to this service`, '3');
       const parts = url.pathname.slice(ROOT.length).split('/').filter(Boolean).map(decodeURIComponent);
       if (this.host.get(parts[0]) !== at.store || parts.length < 2) throw bad(`"${r.url}" is not a request to this file's service`, '3');
+      // A script yields the event loop as it runs (and may run for a long time), which a change set must not do.
+      if (inChangeSet && /^Script\./i.test(parts[1]!)) throw bad('A change set can\'t call a script: send the Script call on its own, in the $batch itself', '3');
       // Each $crossjoin runs a worker for up to CROSSJOIN_LIMIT.ms, so a batch of them would hold the join slots for as long as it likes.
       if (/^\$crossjoin\(/i.test(parts[1]!) && ++used.joins > BATCH_LIMIT.crossjoins) {
         throw new ODataError(400, '3', `A $batch runs at most ${BATCH_LIMIT.crossjoins} $crossjoin requests: send the rest in another $batch`);
