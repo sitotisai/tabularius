@@ -12,6 +12,7 @@ import { DenialCollector, denialOperation } from './denial-audit.ts';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import { refreshAuthCache } from './auth-cache.ts';
+import { addressBucket } from '../../store/src/client-ip.ts';
 import { localOnlyRefused } from './password-login-policy.ts';
 import { SERVER_VERSION } from './version.ts';
 import { assertAiPolicy, assertAiDesignChanges } from './ai-policy.ts';
@@ -147,14 +148,39 @@ function checkSecondFactor(store: Store, who: { account: string; password: strin
   return true;
 }
 
-/** The cache key of a checked password: per file, account and address, since a lockout or a blank-password rule can differ by address. */
+/**
+ * The cache key of a checked password: per file, account and address group (an IPv6 /64 is one, as in the address budget,
+ * so an account the budget lets through finds its password already checked at every address of the group, and costs no
+ * hash). The local-only rule is judged for the exact address each time, after the cache.
+ */
 function verifiedKey(store: Store, who: { account: string; password: string; from?: string }): string {
-  return createHash('sha256').update(`${store.path}\0${who.account.toLowerCase()}\0${who.from ?? 'mcp'}\0${who.password}`).digest('hex');
+  return createHash('sha256').update(`${store.path}\0${who.account.toLowerCase()}\0${addressBucket(who.from ?? 'mcp')}\0${who.password}`).digest('hex');
 }
 
-function rememberPassword(key: string): void {
+function rememberPassword(key: string, store: Store, who: { account: string; password: string; from?: string }): void {
   if (verified.size >= VERIFIED_MAX) verified.clear();
   verified.set(key, performance.now());
+}
+
+// Basic credentials admitted (password right, account active, AI access and any second factor in place), for the address
+// budget only (it grants nothing). Kept apart from `verified`, which is
+// emptied whenever any hosted file's security changes (another person's lockout is enough), and tied to the account's own
+// credentials in each file instead, so a new password or a switched-off account ends it and unrelated changes do not.
+const proven = new Map<string, { at: number; stamps: Map<string, string> }>();
+// Per address group (an IPv6 /64 is one), the same key the address budget and the check line use; the local-only rule is still judged for the exact address.
+const provenKey = (who: { account: string; password: string; from?: string }) => createHash('sha256').update(`${who.account.toLowerCase()}\0${addressBucket(who.from ?? 'mcp')}\0${who.password}`).digest('hex');
+
+function markProven(store: Store, who: { account: string; password: string; from?: string }): void {
+  const stamp = store.credentialStamp(who.account);
+  if (stamp === undefined || localOnlyRefused(store, who.account, who.from ?? 'mcp', false)) return;
+  const key = provenKey(who);
+  const entry = proven.get(key) ?? { at: 0, stamps: new Map<string, string>() };
+  entry.at = performance.now();
+  entry.stamps.set(store.path, stamp);
+  // Re-insert so the map stays in order of last proof; a full table drops its oldest.
+  proven.delete(key);
+  if (proven.size >= VERIFIED_MAX) proven.delete(proven.keys().next().value!);
+  proven.set(key, entry);
 }
 
 type ToolConfig = { title?: string; inputSchema?: Record<string, { description?: string; describe(text: string): unknown }> } & Record<string, unknown>;
@@ -216,6 +242,45 @@ function clientOf(who: McpIdentity): string | undefined {
   return 'from' in who ? who.from : undefined;
 }
 
+/**
+ * Whether this Basic account and password were proven right in some hosted file within the last few minutes, and the
+ * account's password and status there are what they were then. One hash and a lookup; a file is read only for a hit.
+ */
+export function basicCredentialsRemembered(host: Host, who: { account: string; password: string; from?: string }): boolean {
+  const key = provenKey(who);
+  const entry = proven.get(key);
+  if (!entry) return false;
+  if (performance.now() - entry.at <= VERIFIED_MS) {
+    for (const name of host.names()) {
+      const store = host.get(name);
+      const stamp = store && entry.stamps.get(store.path);
+      if (stamp !== undefined && store!.credentialStamp(who.account) === stamp) return true;
+    }
+  }
+  proven.delete(key);
+  return false;
+}
+
+/**
+ * Checks a Basic account and password against the hosted files without blocking the server, and remembers a right one
+ * like a tool call would. Every file is tried the same way, whether or not it has the account, so how long a wrong
+ * answer takes does not tell which names exist.
+ */
+export async function proveBasicCredentials(host: Host, who: { account: string; password: string; from?: string }, gone: () => boolean = () => false): Promise<boolean> {
+  for (const name of host.names()) {
+    // A client that has hung up gets no check, and no failed attempt counted against its account.
+    if (gone()) return false;
+    const store = host.get(name);
+    if (!store || !await store.verifyAsync(who.account, who.password, who.from ?? 'mcp')) continue;
+    // A local-only account away from this computer is refused like a wrong password, and not remembered.
+    if (localOnlyRefused(store, who.account, who.from ?? 'mcp', false)) continue;
+    refreshAuthCache(store, verified);
+    rememberPassword(verifiedKey(store, who), store, who);
+    return true;
+  }
+  return false;
+}
+
 /** Which files an identity could open at all, without counting a use: for naming what is hosted. */
 function canSee(who: McpIdentity): (s: Store) => boolean {
   if ('admin' in who) return () => true;
@@ -232,7 +297,7 @@ function canSee(who: McpIdentity): (s: Store) => boolean {
         // Before the password is remembered: a refused one stays as costly as a wrong one, so the cost does not tell them apart.
         if (localOnlyRefused(s, who.account, who.from ?? 'mcp', false)) return false;
         refreshAuthCache(s, verified);
-        rememberPassword(key);
+        rememberPassword(key, s, who);
       }
       s.requireActiveAccount(who.account);
       if (localOnlyRefused(s, who.account, who.from ?? 'mcp', false)) return false;
@@ -241,7 +306,10 @@ function canSee(who: McpIdentity): (s: Store) => boolean {
       if (s.hasTotp(who.account) && !checkSecondFactor(s, who)) return false;
       if (secondFactorRequired && !s.hasSecondFactor(who.account)) return false;
       if (s.mustChangePassword(who.account)) return false;
-      return p.has('fmmcp');
+      // Admitted: the password is right, the account is active and may use AI, and its second factor, where needed, is there.
+      if (!p.has('fmmcp')) return false;
+      markProven(s, who);
+      return true;
     } catch {
       return false;
     }
@@ -276,7 +344,7 @@ function privilegesIn(store: Store, who: McpIdentity, via = 'MCP'): Privileges |
   if (at === undefined || performance.now() - at > VERIFIED_MS) {
     if (!store.verify(who.account, who.password, who.from ?? 'mcp')) throw new StoreError(212, `Invalid account or password for ${store.name}`);
     refreshAuthCache(store, verified);
-    rememberPassword(key);
+    rememberPassword(key, store, who);
   }
   try { store.requireActiveAccount(who.account); } catch {
     verified.clear();
@@ -305,6 +373,9 @@ function privilegesIn(store: Store, who: McpIdentity, via = 'MCP'): Privileges |
   const p = store.privileges(who.account);
   if (!p.has('fmmcp')) throw new StoreError(9, `Insufficient privileges: the "${p.name}" privilege set needs the fmmcp extended privilege (AI access) in ${store.name}`, p.extendedDenial(['fmmcp']));
   refuse();
+  // The whole admission has passed (password, active, second factor, fmmcp, the file's AI policy): only now is the
+  // account one the address budget may let through without a check.
+  markProven(store, who);
   store.recordUsage(who.account, 'mcp');
   return p;
 }
