@@ -30,7 +30,8 @@ de-duplication 16 steps for each value, out of the 5,000,000 a calculation has, 
 values to sort (about 310,000 for UniqueValues) is refused with error 1200, like any calculation that does too much work,
 rather than blocking the server for as long as it takes. This is the practical limit; the time is not read while the list
 is handled, so a list under it answers on a busy host as on an idle one (a calculation that has run for 2.5 seconds of
-processor time is stopped whatever it is doing). A list that fits makes each value's sort key once.
+processor time is stopped whatever it is doing). The charge is added up over the whole calculation, so a `While` loop or a long formula that calls them again and again
+shares the 5,000,000 steps (100 calls of `UniqueValues` over 5,000 values already reach them). A list that fits makes each value's sort key once.
 
 SQL `ORDER BY` on a direct text field in a single table uses the field's Default language here, so it agrees with Sort Records. An expression, join, or derived table keeps SQL's ordinary order because it cannot be assigned one field language without guessing. This direct-field behavior is a deliberate difference from [Claris's documented Unicode binary SQL order](https://help.claris.com/en/sql-reference/content/order-by-clause.html). Matching for equality does not follow the language either: a find for `=cafe`, a wildcard find and a unique-value check treat <!-- known-difference: Sorting and languages ;; Direct-field SQL ORDER BY uses the field's language where Claris documents Unicode binary SQL order ;; ExecuteSQL and read-only SQL can order a text field differently from FileMaker Server ;; An owner decision on cross-surface consistency versus Claris SQL parity -->
 case and accents as they did before, in every language.
