@@ -99,3 +99,94 @@ test('an identity made for an external account is not written into another sessi
   endTransaction(tx, false);
   assert.ok(s.externalIdentityId('Ann'));
 });
+
+/** The failed sign-in rows for one address, oldest first. */
+const rowsFor = (s: Store, address: string) =>
+  s.auditLog({ kind: 'sign-in-failed', security: true, limit: 50_000 }).filter((e) => JSON.stringify(e).includes(address));
+
+test('waiting rows written into a write savepoint of the holder that is rolled back wait again and are written once', (t) => {
+  const { s, hold } = setup(t);
+  const tx = hold();
+  s.auditSignIn('Ann', '10.66.2.1', false);
+  assert.throws(() => writer.run({ transaction: { open: tx } }, () => s.writeAtomically(() => {
+    s.setPassword('Cy', 'pw', '[Full Access]');
+    throw new Error('boom');
+  })), /boom/);
+  assert.equal(s.deferredSecurityStats().pending, 1, 'the row was put back to wait with the savepoint');
+  endTransaction(tx, true);
+  assert.equal(rowsFor(s, '10.66.2.1').length, 1);
+  assert.deepEqual(s.deferredSecurityStats(), { pending: 0, dropped: 0 });
+  assert.equal(s.verifySecurityAudit().ok, true);
+});
+
+test('waiting rows already written into the holder survive another window of the same script writing independently', (t) => {
+  const { s, open } = setup(t);
+  const tx = open();
+  writer.run({ transaction: { open: tx } }, () => s.create('T', { A: 'held' }));
+  s.auditSignIn('Ann', '10.66.0.1', false);
+  writer.run({ transaction: { open: tx } }, () => s.setPassword('Cy', 'pw', '[Full Access]'));
+  assert.equal(s.deferredSecurityStats().pending, 0, 'the row went into the holder ahead of its change');
+  s.independentWindowWrite(tx, () => writer.run({}, () => s.create('T', { A: 'other window' })));
+  endTransaction(tx, true);
+  assert.equal(rowsFor(s, '10.66.0.1').length, 1, 'the sign-in row is in the audit after the commit');
+  // (The holder's own security row is not replayed by an independent write, with or without waiting rows: that is not
+  // what this checks, and the chain's check is left out for it.)
+});
+
+test('a trial that is undone takes back waiting rows written into the file inside it, and they wait again', (t) => {
+  const { s, open } = setup(t);
+  const tx = open();
+  writer.run({ transaction: { open: tx } }, () => s.create('T', { A: 'held' }));
+  s.auditSignIn('Ann', '10.66.0.8', false);
+  const trial = s.trial();
+  writer.run({ transaction: { open: tx } }, () => s.setPassword('Cy', 'pw', '[Full Access]'));
+  trial.undo();
+  assert.equal(s.deferredSecurityStats().pending, 1);
+  endTransaction(tx, true);
+  assert.equal(rowsFor(s, '10.66.0.8').length, 1);
+  assert.equal(s.verifySecurityAudit().ok, true);
+});
+
+test('closing the file while a transaction holds it says how many sign-in rows are lost, those written into it included', (t) => {
+  const { s, open } = setup(t);
+  const tx = open();
+  writer.run({ transaction: { open: tx } }, () => s.create('T', { A: 'held' }));
+  s.auditSignIn('Ann', '10.66.0.9', false);
+  s.auditSignIn('Ann', '10.66.0.9', false);
+  writer.run({ transaction: { open: tx } }, () => s.setPassword('Cy', 'pw', '[Full Access]'));
+  s.auditSignIn('Ann', '10.66.0.9', false);
+  assert.deepEqual(s.deferredSecurityStats(), { pending: 1, dropped: 0 });
+  const warn = t.mock.method(console, 'warn', () => {});
+  s.close();
+  assert.equal(warn.mock.callCount(), 1);
+  assert.match(String(warn.mock.calls[0].arguments[0]), /^3 sign-in audit rows were still waiting/);
+  // The test's cleanup closes the file again.
+  s.close = () => {};
+});
+
+test('rows put back after a rollback over the bound are dropped with the one warning, as new ones are', (t) => {
+  const { s, open } = setup(t);
+  const warn = t.mock.method(console, 'warn', () => {});
+  const tx = open();
+  writer.run({ transaction: { open: tx } }, () => s.create('T', { A: 'held' }));
+  for (let i = 0; i < 300; i++) s.auditLockoutCleared(`a${i}`, 'account', '10.1.0.1');
+  writer.run({ transaction: { open: tx } }, () => s.setPassword('Cy', 'pw', '[Full Access]'));
+  assert.equal(s.deferredSecurityStats().pending, 0, 'all 300 went into the holder');
+  for (let i = 0; i < 10_000; i++) s.auditLockoutCleared(`b${i}`, 'account', '10.1.0.2');
+  assert.deepEqual(s.deferredSecurityStats(), { pending: 10_000, dropped: 0 });
+  endTransaction(tx, false);
+  assert.equal(s.deferredSecurityStats().dropped, 300, 'the oldest 300 of 10,300 went');
+  assert.equal(warn.mock.callCount(), 1, 'one warning for the run of drops');
+});
+
+test('a waiting row keeps few enough characters of every name that the queue stays small', (t) => {
+  const { s, hold } = setup(t);
+  const tx = hold();
+  s.auditSignIn('A'.repeat(100_000), 'B'.repeat(100_000), false);
+  s.auditLockoutCleared('C'.repeat(100_000), 'account', 'D'.repeat(100_000));
+  endTransaction(tx, false);
+  const rows = s.auditLog({ security: true, limit: 10 }).filter((e) => e.kind === 'sign-in-failed' || e.kind === 'lockout-cleared');
+  assert.equal(rows.length, 2);
+  // Each row is its account or target, an address and a little detail: about 600 characters at most, not 24,000.
+  for (const row of rows) assert.ok(JSON.stringify(row).length < 1500, `${JSON.stringify(row).length} characters in a row`);
+});

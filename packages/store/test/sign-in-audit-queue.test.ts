@@ -111,11 +111,11 @@ test('successful sign-ins are limited to 1,000 waiting, and over the bound they 
   assert.deepEqual(s.deferredSecurityStats(), { pending: 10_000, dropped: 105 });
 });
 
-test('names in a waiting row are cut to 4,096 characters', (t) => {
+test('names in a waiting row are cut to 256 characters', (t) => {
   const { s, hold } = setup(t);
   const tx = hold();
   s.auditSignIn('A'.repeat(100_000), 'B'.repeat(100_000), false);
   endTransaction(tx, false);
   const [row] = s.auditLog({ kind: 'sign-in-failed', security: true, limit: 10 });
-  assert.equal(row.account?.length, 4096);
+  assert.equal(row.account?.length, 256);
 });

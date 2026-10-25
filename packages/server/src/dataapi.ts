@@ -1186,9 +1186,16 @@ export class DataApi {
     const store = s && this.host.get(s.db);
     if (!s) return false;
     let off = !store || !store.identityAllowed(s.account, s.via, s.viaId, s.externalIdentity?.person, s.principalId, s.personId);
-    if (!off && s.signInMark !== undefined) off = s.signInMark !== store!.signInMark(s.account, s.via, s.externalIdentity?.person);
-    if (!off && token.startsWith('ohbt_')) {
-      try { off = !store!.apiToken(token); } catch { off = true; }
+    try {
+      if (!off && s.signInMark !== undefined) off = s.signInMark !== store!.signInMark(s.account, s.via, s.externalIdentity?.person);
+      if (!off && token.startsWith('ohbt_')) {
+        try { off = !store!.apiToken(token); } catch (e) { if (e instanceof StoreError && e.code === 301) throw e; off = true; }
+      }
+    } catch (e) {
+      // Another session's transaction holds the file and the answer waits for it: busy is not "turned off", so the session
+      // (its globals, record locks and live streams) is kept and asked again at the next request.
+      if (e instanceof StoreError && e.code === 301) return false;
+      throw e;
     }
     if (!off) return false;
     this.end(token, 'was signed out (account disabled)');
