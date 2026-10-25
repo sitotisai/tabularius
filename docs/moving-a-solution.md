@@ -1075,6 +1075,27 @@ is gone is replaced after a minute, and one whose process is still alive after s
 hours; a lock that cannot be read is replaced after a minute. A folder name cannot
 end in `.lock`.
 
+What the lock does not cover, plainly:
+
+- It only works between processes on one computer that share a process list. Two
+  servers (or containers) on separate hosts that share a folder over a network
+  drive cannot see each other's processes, so one asks whether the other's
+  process number is alive here, gets the wrong answer, and takes the lock over a
+  minute after the last heartbeat. Do not run copies to one shared folder from
+  two hosts.
+- The lock is refreshed after each batch of rows and each megabyte of a container
+  file, not while the snapshot is taken or while the finished copy is checked and
+  published. On one computer this does not matter, because a lock whose process
+  is alive holds for six hours; where the process check is wrong (the first point),
+  a step that takes more than a minute lets the lock be taken over.
+- A computer clock that jumps forward by more than six hours lets a live lock be
+  taken over, and one that jumps back keeps a dead lock for that much longer.
+- The short gate that lets processes inspect the lock one at a time can stay
+  behind if a process is killed inside it. It is replaced after a minute, but when
+  three or more processes find it at that same moment, two of them can be let
+  through together. That narrow race is not closed; its effect would be two
+  copies working in one `<folder>.partial`.
+
 **Load and secrets in scripts.** The copy is made inside the server process, so a very large file slows every user until it finishes: run it at a quiet time. Layout and script text in `design/` is written as stored, so a script that holds a pasted password or key leaves with it.
 
 **Not carried.** Summary fields and unstored calculations have no stored value.
