@@ -50,6 +50,10 @@ test('logic, Let and While', () => {
   assert.equal(t('Evaluate ( "1+1" )'), '2');
 });
 
+test('self-evaluating text returns the calculation error value instead of overflowing', () => {
+  assert.equal(evaluateText('Evaluate ( Input )', { field: () => text('Evaluate ( Input )') }), '?');
+});
+
 test('text and values', () => {
   assert.equal(t('Substitute ( "abc" ; [ "a" ; "x" ] ; [ "b" ; "y" ] )'), 'xyc');
   assert.equal(t('Position ( "banana" ; "an" ; 1 ; 2 )'), '4');
@@ -62,6 +66,11 @@ test('text and values', () => {
   assert.equal(t('Quote ( "a\\"b¶c" )'), '"a\\"b\\\rc"'); // Claris: a return is written with a backslash before it
   assert.equal(t('SerialIncrement ( "INV0099" ; 1 )'), 'INV0100');
   assert.equal(t('Filter ( "(555) 123-4567" ; "0123456789" )'), '5551234567');
+});
+
+test('GetAsURLEncoded replaces lone surrogates and Char bounds very large code points', () => {
+  assert.equal(evaluateText('GetAsURLEncoded ( Char ( 55296 ) )'), '%EF%BF%BD');
+  assert.equal(evaluateText('Char ( 1e21 )'), '?');
 });
 
 test('numbers', () => {
@@ -106,6 +115,14 @@ test('custom functions and variables', () => {
   assert.equal(evaluateText('Fact ( 5 )', c), '120');
   assert.equal(evaluateText('Let ( $x = 4 ; $x * 2 )', c), '8');
   assert.equal(evaluateText('$x', c), '4');
+});
+
+test('tail-recursive custom functions pass through a Let body', () => {
+  const c: CalcContext = { customFunction: (n) => n === 'SumLet' ? {
+    parameters: ['n', 'acc'],
+    formula: 'Let ( [ nn = n - 1 ; a = acc + n ] ; If ( n = 0 ; acc ; SumLet ( nn ; a ) ) )',
+  } : undefined };
+  assert.equal(evaluateText('SumLet ( 5000 ; 0 )', c), '12502500');
 });
 
 test('errors carry FileMaker codes', () => {
@@ -182,6 +199,12 @@ test('MBS: offline-safe functions run, the rest are refused', () => {
   assert.equal(evaluateText('MBS ( "IsError" )', c), '0');
 });
 
+test('MBS file functions with no argument return the normal MBS error value', () => {
+  for (const name of ['Files.FileExtension', 'Container.GetBase64', 'Container.GetTotalSize', 'Container.GetTypes', 'Container.GetDataURL']) {
+    assert.match(evaluateText(`MBS ( "${name}" )`), /^\[MBS\] ERROR:/, name);
+  }
+});
+
 test('runaway custom function recursion is "?", not a crash', () => {
   // A custom Months ( start ; end ) in a private sample never ends when start is not a date.
   const c: CalcContext = { customFunction: (n) => (n.toLowerCase() === 'forever' ? { parameters: ['n'], formula: 'Forever ( n + 1 )' } : undefined) };
@@ -201,6 +224,11 @@ test('BaseElements JSON functions', () => {
   assert.equal(evaluateText('Let ( e = BE_JSON_Encode ( "" ; "a:b" ) ; Right ( e ; Length ( e ) - Position ( e ; ":" ; 1 ; 1 ) ) )', c), '"a:b"');
   assert.equal(evaluateText('BE_JSON_Encode ( "n" ; 12 )', c), '"n":12');
   assert.equal(evaluateText('BE_EvaluateJavaScript ( "1+1" )', c), '?');
+});
+
+test('BE_JSONPath deep object results return ? instead of a raw RangeError', () => {
+  const json = '{"a":'.repeat(100_000) + '0' + '}'.repeat(100_000);
+  assert.equal(evaluateText('BE_JSONPath ( Input ; "$" )', { field: () => text(json) }), '?');
 });
 
 test('Get parameters win over fields of the same name', () => {

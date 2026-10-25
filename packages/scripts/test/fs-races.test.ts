@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { Script, ScriptStep } from '../../fmp12/src/index.ts';
 import { createStore, Store, parseScriptText } from '../../store/src/index.ts';
-import { num, type PluginFiles } from '../../calc/src/index.ts';
+import { markExecutionRefusal, num, type PluginFiles } from '../../calc/src/index.ts';
 import { withFilesystemHook } from '../../store/src/fs-boundary.ts';
 import { runScript } from '../src/index.ts';
 
@@ -44,6 +44,39 @@ for (const operation of ['read', 'write', 'append'] as const) {
     assert.equal(fs.readFileSync(s.secret, 'utf8'), 'outside');
   });
 }
+
+// A plug-in file write turns ordinary input and output failures into a failed write (a script error code), but it
+// must not hide a programming error, a host's execution refusal, or a swapped path, which stay loud like a read.
+test('PluginFiles write reports I/O failures as failure and rethrows everything else', async (t) => {
+  const s = setup(t);
+  const probe = async (fail: () => never): Promise<{ returned?: boolean; thrown?: unknown }> => {
+    let outcome: { returned?: boolean; thrown?: unknown } = {};
+    s.store.plugin = () => ({ min: 0, call: (_args, env) => {
+      const files: PluginFiles = env.ctx.files!;
+      try {
+        outcome = { returned: withFilesystemHook((e) => { if (e.phase === 'checked' && e.path.endsWith('plain.txt')) fail(); }, () => files.write('/Documents/plain.txt', 'data', false)) };
+      } catch (e) { outcome = { thrown: e }; }
+      return num(1);
+    } });
+    assert.equal((await s.text('Exit Script [ Text Result: Probe () ]')).result, '1');
+    return outcome;
+  };
+  const full = await probe(() => { throw Object.assign(new Error('No space left on device'), { code: 'ENOSPC', errno: -28 }); });
+  assert.deepEqual(full, { returned: false });
+  // The other genuine I/O failures return false too; signals of a race (a link or a changed entry) stay loud.
+  for (const code of ['ENAMETOOLONG', 'EDQUOT', 'EACCES', 'EPERM', 'EROFS', 'EIO', 'EFBIG']) {
+    assert.deepEqual(await probe(() => { throw Object.assign(new Error(code), { code }); }), { returned: false }, code);
+  }
+  for (const code of ['ELOOP', 'EEXIST', 'ENOTDIR', 'ENOENT', 'ESTALE']) {
+    const e = Object.assign(new Error(code), { code });
+    assert.equal((await probe(() => { throw e; })).thrown, e, code);
+  }
+  const bug = new TypeError('programming error');
+  assert.equal((await probe(() => { throw bug; })).thrown, bug);
+  const refusal = new Error('time limit'); markExecutionRefusal(refusal);
+  assert.equal((await probe(() => { throw refusal; })).thrown, refusal);
+  assert.equal(fs.existsSync(join(s.docs, 'plain.txt')), false);
+});
 
 test('Export Records refuses a replaced parent before creating its output', async (t) => {
   const s = setup(t), target = join(s.docs, 'exports'); fs.mkdirSync(target);
