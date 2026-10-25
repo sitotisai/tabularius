@@ -119,12 +119,14 @@ export function decimalSum(ns: number[]): number {
   let plain = false;
   let sum = 0;
   for (const raw of ns) {
-    // Whole numbers (most of a large table's values) need no look at their decimals.
+    // Whole numbers (most of a large table's values) need no look at their decimals, and a whole number the double
+    // holds exactly keeps every digit: rounding 4000000000000001 to 15 digits would change it.
     if (Number.isSafeInteger(raw)) {
       sum += raw;
       continue;
     }
-    // Binary noise from earlier arithmetic (13.950000000000001) is not a real decimal place.
+    // Binary noise from earlier arithmetic (13.950000000000001) is not a real decimal place. Digits past the 15th of
+    // a decimal are still dropped here (Sum ( 0.1234567890123456 ) is 0.123456789012346): finding #121 is only partly fixed.
     const n = Number.isInteger(raw) ? raw : Number(raw.toPrecision(15));
     sum += n;
     if (plain) continue;
@@ -135,6 +137,8 @@ export function decimalSum(ns: number[]): number {
   }
   if (plain) return sum;
   const scale = 10 ** places;
+  // Past 2^53 the scaled sum is no longer exact, so rounding it would change digits that were right (4000000000000001 + 0.5).
+  if (Math.abs(sum) * scale >= Number.MAX_SAFE_INTEGER) return sum;
   return Math.round(sum * scale) / scale;
 }
 
@@ -270,7 +274,7 @@ export function numberFromText(s: string): number | undefined {
 }
 
 /** FileMaker's limit on the digits of a number. */
-const MAX_DIGITS = 400;
+export const MAX_DIGITS = 400;
 
 /** A plain whole-number literal or argument outside the supported number range. */
 export function isOverlongWholeText(s: string): boolean {

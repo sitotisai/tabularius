@@ -47,7 +47,7 @@ import type { Node } from './parser.ts';
 import { ALL_STYLES, STYLE_BITS, restyle, rgbHex, sliceRuns, toCss, type TextFormat } from './styled.ts';
 import {
   CalcError, HostWait, ERR, EMPTY, asBoolean, asDate, asNumber, asNumberOrEmpty, asText, asTime, asTimestamp, bool, dayNumber,
-  decimalSum, exactAbs, exactDivFloor, exactMod, exactOf, exactSign, formatNumber, fromDayNumber, fromExact, isBeyondDouble, isEmpty, isOverlongWholeText, num, numberFromText, parseDateText, parseTimeText, parseTimestampText, text, tidy, type Value,
+  decimalSum, exactAbs, exactDivFloor, exactMod, exactOf, exactSign, formatNumber, fromDayNumber, fromExact, isBeyondDouble, isEmpty, isOverlongWholeText, MAX_DIGITS, num, numberFromText, parseDateText, parseTimeText, parseTimestampText, text, tidy, tidySum, type Value,
 } from './values.ts';
 
 export interface Fn {
@@ -455,14 +455,16 @@ eager('SerialIncrement', 2, 2, (v, env) => {
   const t = T(v[0], env);
   const m = /^(.*?)(\d+)(\D*)$/.exec(t);
   if (!m) return text(t);
-  const amount = N(v[1]);
-  if (!Number.isFinite(amount)) return text('?');
-  // Exact BigInt increment preserves long serial digits; large-number compatibility is unverified.
-  if (Number.isInteger(amount) && Number.isSafeInteger(amount)) {
-    const next = (BigInt(m[2]) + BigInt(Math.trunc(amount))).toString();
-    return text(m[1] + next.padStart(m[2].length, '0') + m[3]);
+  // Unverified against the product: what it returns for a non-finite or non-exact amount, or for a digit run past
+  // 400 digits. We return "?" rather than print exponent notation, a wrong digit, or spend BigInt time on a long run.
+  if (m[2].length > MAX_DIGITS) return text('?');
+  let by = exactOf(v[1]);
+  if (by === undefined) {
+    const amount = Math.trunc(N(v[1]));
+    if (!Number.isSafeInteger(amount)) return text('?');
+    by = BigInt(amount);
   }
-  const next = String(Number(m[2]) + Math.trunc(amount));
+  const next = (BigInt(m[2]) + by).toString();
   return text(m[1] + next.padStart(m[2].length, '0') + m[3]);
 });
 // 1,000 is one word, as FileMaker counts it; a comma between letters splits.
@@ -714,8 +716,22 @@ eager('Round', 2, 2, (v) => roundValue(v, true));
 eager('Truncate', 2, 2, (v) => roundValue(v, false));
 numeric('SetPrecision', 2, 2, (n) => n);
 // By zero these give "?", like the / operator.
-numeric('Mod', 2, 2, (n, d) => { if (d === 0) return NaN; const q = tidy(n / d); return tidy(n - d * Math.floor(q)); }, exactMod);
-numeric('Div', 2, 2, (n, d) => (d === 0 ? NaN : Math.floor(tidy(n / d))), exactDivFloor);
+// floor ( n / d ) for decimals. 0.7 / 0.1 is 6.999999999999999 as doubles, but 0.7 is exactly 7 times 0.1: the whole
+// number above is taken only when d times it gives n back as a decimal (so 2.9999999999999996 / 1 stays 2).
+// Unverified against the product: results for operands with more than 15 digits.
+function decimalFloorQuotient(n: number, d: number): number {
+  const q = Math.floor(n / d);
+  const near = tidy(n / d);
+  return near === q + 1 && tidySum(n, -tidy(d * near)) === 0 ? near : q;
+}
+numeric('Mod', 2, 2, (n, d) => {
+  if (d === 0) return NaN;
+  const r = tidySum(n, -tidy(d * decimalFloorQuotient(n, d)));
+  // The residue lies in [0, d) for a positive d and in (d, 0] for a negative one; anything else is double noise
+  // the decimal rule did not explain, so the plain double result stands.
+  return Number.isFinite(r) && (r === 0 || ((r < 0) === (d < 0) && Math.abs(r) < Math.abs(d))) ? r + 0 : n - d * Math.floor(n / d);
+}, exactMod);
+numeric('Div', 2, 2, (n, d) => (d === 0 ? NaN : decimalFloorQuotient(n, d)), exactDivFloor);
 numeric('Sign', 1, 1, Math.sign, exactSign);
 numeric('Sqrt', 1, 1, Math.sqrt);
 numeric('Exp', 1, 1, Math.exp);
@@ -1456,6 +1472,7 @@ eager('NumToJText', 3, 3, (v, env) => {
   const n = asNumberOrEmpty(v[0]);
   if (n === undefined) return EMPTY;
   const sep = Math.trunc(N(v[1])), rawKind = N(v[2]);
+  // A separator or digit style that is not a number (1/0) is an error, as in the other functions. Unverified against the product.
   if (!Number.isFinite(sep) || !Number.isFinite(rawKind)) return text('?');
   const kind = Math.min(3, Math.max(0, Math.trunc(rawKind)));
   const [int, frac] = T(num(Math.abs(n)), env).split('.');
@@ -1464,6 +1481,8 @@ eager('NumToJText', 3, 3, (v, env) => {
   else if (sep === 2 || sep === 3) {
     // Groups of four digits with 万, 億, 兆, 京 (3 also separates within groups).
     const units = ['', '万', '億', '兆', '京'];
+    // 京 (10^16) is the largest unit written, so 21 digits or more cannot be. Unverified: the product's result for such a
+    // number; we return "?" rather than guess a unit.
     if (int.length > 20) return text('?');
     const groups: string[] = [];
     for (let i = int.length, u = 0; i > 0; i -= 4, u++) {
