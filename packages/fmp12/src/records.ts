@@ -15,7 +15,7 @@ export interface RawRecord {
   values: Map<number, string[]>;
 }
 
-/** Key 252 on a record is bookkeeping (it looks like a modification counter). */
+/** The one-byte key 252 on a record is bookkeeping (it looks like a modification counter). The same number as a two-byte (wide) key is a field id. */
 const RECORD_META_KEY = 252;
 
 export function decodeFieldKey(key: number, wide: boolean, fieldIds: Set<number>): [number, number] | undefined {
@@ -80,7 +80,7 @@ export function* readRecords(file: FmpFile, tableId: number, fieldIds: Set<numbe
     if (path.length === 3) {
       flushLong();
       if (chunk.type === 'kv') {
-        if (chunk.key === RECORD_META_KEY) continue;
+        if (!chunk.wide && chunk.key === RECORD_META_KEY) continue;
         const target = decodeFieldKey(chunk.key, chunk.wide, fieldIds);
         if (target) setValue(current, target, decodeText(chunk.data));
       } else if (chunk.type === 'segment') {
