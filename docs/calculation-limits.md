@@ -9,7 +9,14 @@ text or a formula is nested, which a person can store in a field.
 The JSON functions (`JSONParse`, `JSONGetElement`, `JSONSetElement`, `JSONDeleteElement`, `JSONListKeys`,
 `JSONListValues`, `JSONGetElementType`, `JSONFormatElements` and `JSONMakeArray`) refuse a document nested more than 512
 levels of objects and arrays deep. The result is `? The document is nested more than 512 levels deep`, and `JSONParse`
-reports the document as invalid. A path with more than 512 parts (`[0][0][0]...`) is refused the same way.
+reports the document as invalid. The limit applies to what a function writes as well as to what it reads:
+`JSONSetElement` and `JSONMakeArray` give `?` when putting a document into another would make the result more than 512
+levels deep, even if each document is within it. `JSONSetElement` and `JSONDeleteElement` also refuse a path of more
+than 512 parts (`[0][0][0]...`), since it could not give a document within the limit. The functions that only read
+(`JSONGetElement`, `JSONGetElementType`, `JSONListKeys`, `JSONListValues`) accept a path of any length, and one that is
+longer than the document is deep finds nothing, as before. If the server's stack runs out inside a JSON function (a
+formula that is already deeply nested), the result is `? The document or formula is nested too deeply for this server's
+stack`.
 
 Before this limit, a document of a few thousand levels read fine as text but ran the server's stack out in every function
 that writes or lists it, and a stored or unstored calculation that read such a field failed the whole read or write of the
@@ -22,3 +29,15 @@ record. Real documents are nowhere near 512 levels. The `MBS ( "JSON.*" )` funct
 message `Evaluate is nested more than 100 levels deep`; a formula that has already recursed far through a custom function
 can reach the stack's end sooner and gives the same error. Evaluate calls one after another, or inside different
 arguments, do not add up.
+
+A custom function that calls itself through `Evaluate` (for example `Evaluate ( "Name ( " & n - 1 & " )" )`) is
+counted the same way: it works up to 100 levels and gives `?` from the 101st. A recursion of more than 100 levels that
+went through `Evaluate` and finished before this limit now stops; recursion that does not use `Evaluate` is not
+affected by this limit.
+
+### What is not covered
+
+`EvaluationError ( Evaluate ( G ) )` catches the nesting error, so a text that evaluates itself twice at each level,
+such as `EvaluationError ( Evaluate ( G ) ) + EvaluationError ( Evaluate ( G ) )`, still fans out into many calls. It is
+bounded: the calculation's work budget ends it after several seconds with the error value, but until then it holds the
+server's calculation thread. The nesting limit does not shorten that.
