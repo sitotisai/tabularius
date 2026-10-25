@@ -1781,9 +1781,12 @@ export class Store {
       // audit chains separately and let write triggers update the version counters (a container's too: replaying its
       // row writes the version again, and a second row for the same id is a conflict). The security chain's head is
       // one of the rebuilt things: the independent write may have added rows to the chain, and the head the held
-      // changes carry would point at a row that is no longer there.
+      // changes carry would point at a row that is no longer there. The record-id mark is rebuilt the same way: each
+      // replayed insert fires its table's mark trigger, which only moves the mark forward, so it ends at the higher of
+      // the held records and what the other window committed (replaying the held mark row would conflict with the latter).
       const applied = this.sql.applyChangeset(changes, { filter: (table) =>
-        !['_fm_audit', '_fm_record_chain_state', '_fm_security_chain_state', '_fm_metadata_versions', '_fm_cache_version', '_fm_container_versions'].includes(table) });
+        !['_fm_audit', '_fm_record_chain_state', '_fm_security_chain_state', '_fm_metadata_versions', '_fm_cache_version', '_fm_container_versions',
+          '_fm_record_id_high_water'].includes(table) });
       if (!applied) throw new StoreError(301, 'The pending transaction could not be restored');
       // What the chain ends at now is the committed part, which the transaction's next independent write starts from.
       this.heldChainBase = this.securityChainHeadAudit();
