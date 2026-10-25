@@ -1777,6 +1777,14 @@
  },
  {
   "file": "packages/store/src/store.ts",
+  "within": "Store.deleteBeingUndone",
+  "api": "sql.prepare",
+  "count": 1,
+  "gate": "store-internal",
+  "why": "Returns one audit sequence number (the record's latest delete entry, 0 if none), no record values; it only marks the create that puts a deleted record back, in restoreDeletedRow (cleanup undo) and restoreRecord (admin console), which run under their own privilege checks."
+ },
+ {
+  "file": "packages/store/src/store.ts",
   "within": "Store.deletedRows",
   "api": "sql.prepare",
   "count": 2,
