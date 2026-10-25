@@ -100,8 +100,40 @@ function columns(sql: DatabaseSync, table: string, schema = 'main'): string[] {
   return (sql.prepare(`PRAGMA ${schema}.table_info(${q(table)})`).all() as { name: string }[]).map((c) => c.name);
 }
 
-/** Whether a store needs converting again, and whether its edits can be carried over. */
-export function reconvertCheck(storePath: string, fmp12Path: string, opts: { sameFile?: boolean } = {}): ReconvertCheck {
+/**
+ * Source files' SHA-256 as last worked out, for the answers a status display asks for again and again. An entry stands for
+ * the file only while its device, inode, size, modification time and change time are all as they were (the change time moves
+ * with any write, even one that puts the modification time back), so a file that changed is read and hashed again.
+ */
+const sourceHashes = new Map<string, { identity: string; sha256: string }>();
+const SOURCE_HASHES_KEPT = 256;
+
+function sourceIdentity(path: string): string {
+  const st = statSync(path, { bigint: true });
+  return `${st.dev}:${st.ino}:${st.size}:${st.mtimeNs}:${st.ctimeNs}`;
+}
+
+function cachedSourceSha256(path: string): string {
+  const identity = sourceIdentity(path);
+  const known = sourceHashes.get(path);
+  if (known?.identity === identity) return known.sha256;
+  const sha256 = fileSha256(path);
+  // A file that was written while it was read is not remembered: its hash may be of neither version.
+  if (sourceIdentity(path) === identity) {
+    sourceHashes.delete(path);
+    if (sourceHashes.size >= SOURCE_HASHES_KEPT) sourceHashes.delete(sourceHashes.keys().next().value!);
+    sourceHashes.set(path, { identity, sha256 });
+  }
+  return sha256;
+}
+
+/**
+ * Whether a store needs converting again, and whether its edits can be carried over. Without `status` the source file is
+ * read and hashed in full every time: that is the check a conversion goes by. With `status` (a display that asks again every
+ * few seconds, and the log at startup) `unsafe` and `unverified` are only worked out for an outdated store, which is the only
+ * one they are shown for, and the source's hash is remembered while the file is unchanged (see sourceHashes).
+ */
+export function reconvertCheck(storePath: string, fmp12Path: string, opts: { sameFile?: boolean; status?: boolean } = {}): ReconvertCheck {
   const sql = new DatabaseSync(storePath, { readOnly: true });
   try {
     // A store from a newer Tabularius is not converted again here: this build's importer would rebuild it with the
@@ -110,6 +142,7 @@ export function reconvertCheck(storePath: string, fmp12Path: string, opts: { sam
     const version = Number(meta(sql, 'converterVersion') ?? 1);
     if (meta(sql, 'fileMode') === 'native') return { version, current: CONVERTER_VERSION, outdated: false, native: true };
     const out: ReconvertCheck = { version, current: CONVERTER_VERSION, outdated: version < CONVERTER_VERSION };
+    if (opts.status && !out.outdated) return out;
     const designChanges = tableExists(sql, DESIGN_LOG) ? (sql.prepare(`SELECT count(*) AS n FROM ${DESIGN_LOG}`).get() as { n: number }).n : 0;
     const source = meta(sql, 'source') as { importedAt?: string; size?: number; sha256?: string } | undefined;
     const importedAt = Date.parse(String(source?.importedAt ?? ''));
@@ -118,7 +151,7 @@ export function reconvertCheck(storePath: string, fmp12Path: string, opts: { sam
     else if (source?.sha256) {
       // A timestamp can be preserved while bytes change, so compare the recorded content.
       const st = statSync(fmp12Path);
-      const changed = st.size !== source.size || fileSha256(fmp12Path) !== source.sha256;
+      const changed = st.size !== source.size || (opts.status ? cachedSourceSha256(fmp12Path) : fileSha256(fmp12Path)) !== source.sha256;
       if (changed) out.unsafe = 'the .fmp12 changed since it was converted, so its records may not match';
     } else if (importedAt && statSync(fmp12Path).mtimeMs > importedAt && !opts.sameFile) {
       out.unsafe = "the .fmp12 is newer than the conversion, and this conversion is too old to tell a copy from a changed file; if it is the same file (copied), say so to keep edits";

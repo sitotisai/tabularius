@@ -2507,7 +2507,7 @@ function main(argv: string[]): number {
       }
       const names = all
         ? readdirSync(path).filter((f) => f.endsWith(STORE_EXT)).map((f) => f.slice(0, -STORE_EXT.length))
-          .filter((n) => existsSync(join(path, n + '.fmp12')) && reconvertCheck(join(path, n + STORE_EXT), join(path, n + '.fmp12'), { sameFile }).outdated)
+          .filter((n) => existsSync(join(path, n + '.fmp12')) && reconvertCheck(join(path, n + STORE_EXT), join(path, n + '.fmp12'), { sameFile, status: true }).outdated)
         : [database];
       if (all && !names.length) {
         console.log('no files need converting again');
