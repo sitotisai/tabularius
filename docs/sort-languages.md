@@ -25,6 +25,10 @@ A field's language puts text in order in each of these, so they agree with one a
 - **SortValues** with a named locale: its text sorts in that language. An omitted or blank locale currently uses English;
   Claris specifies the file's locale, so this needs a file-locale check before it can claim parity. <!-- known-difference: Sorting and languages ;; An omitted or blank SortValues locale uses English rather than the file locale Claris specifies ;; A file with a non-English locale can sort an omitted-locale list differently ;; Persist the file locale and compare a generated SortValues probe in FileMaker -->
 
+**SortValues and UniqueValues are bounded by the calculation work budget.** A list of more than about 290,000 values, or
+one that takes longer than the work budget while it sorts, is refused with error 1200, like any calculation that does too
+much work, rather than blocking the server. A list that fits sorts each value's key once.
+
 SQL `ORDER BY` on a direct text field in a single table uses the field's Default language here, so it agrees with Sort Records. An expression, join, or derived table keeps SQL's ordinary order because it cannot be assigned one field language without guessing. This direct-field behavior is a deliberate difference from [Claris's documented Unicode binary SQL order](https://help.claris.com/en/sql-reference/content/order-by-clause.html). Matching for equality does not follow the language either: a find for `=cafe`, a wildcard find and a unique-value check treat <!-- known-difference: Sorting and languages ;; Direct-field SQL ORDER BY uses the field's language where Claris documents Unicode binary SQL order ;; ExecuteSQL and read-only SQL can order a text field differently from FileMaker Server ;; An owner decision on cross-surface consistency versus Claris SQL parity -->
 case and accents as they did before, in every language.
 

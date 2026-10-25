@@ -47,6 +47,7 @@
         "docs/guides/building/debugger-and-design-history.md",
         "docs/guides/building/starter-solutions.md",
         "docs/text-comparison.md",
+        "docs/text-size-limit.md",
         "docs/numbers-and-precision.md",
         "docs/calculation-limits.md",
         "docs/sort-languages.md",

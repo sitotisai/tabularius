@@ -416,8 +416,12 @@ eager('PatternCount', 2, 2, (v, env) => {
   return num(n);
 });
 eager('Quote', 1, 1, (v, env) => text('"' + T(v[0], env).replace(/[\\"]/g, '\\$&').replace(/\r/g, '\\\r') + '"'));
+// A number's digits in groups of five, each a character; one with an exponent in its text (1e21 and up) has no such digits.
+const MAX_CHAR_NUMBER = 1e21;
 eager('Char', 1, 1, (v) => {
-  const digits = String(Math.trunc(Math.abs(N(v[0]))));
+  const n = Math.trunc(Math.abs(N(v[0])));
+  if (n >= MAX_CHAR_NUMBER) throw new CalcError(ERR.calculation, 'Char needs a number below 1e21');
+  const digits = String(n);
   let out = '';
   for (let end = digits.length; end > 0; end -= 5) {
     const code = Number(digits.slice(Math.max(0, end - 5), end));
@@ -426,10 +430,22 @@ eager('Char', 1, 1, (v) => {
   return text(out);
 });
 eager('Code', 1, 1, (v, env) => {
-  const chars = [...T(v[0], env)];
-  if (!chars.length) return EMPTY;
+  const t = T(v[0], env);
+  if (!t.length) return EMPTY;
+  // Five digits for each character, counted before anything is built.
+  let count = 0;
+  for (const _ of t) {
+    count++;
+    if ((count & 1023) === 0) env.checkWorkBudget();
+  }
+  checkCalcTextSize(5 * count);
   // First character in the lowest five digits.
-  return text(chars.map((c) => String(c.codePointAt(0)).padStart(5, '0')).reverse().join('').replace(/^0+/, '') || '0');
+  const out: string[] = [];
+  for (const c of t) {
+    out.push(String(c.codePointAt(0)).padStart(5, '0'));
+    if ((out.length & 1023) === 0) env.checkWorkBudget();
+  }
+  return text(out.reverse().join('').replace(/^0+/, '') || '0');
 });
 eager('SerialIncrement', 2, 2, (v, env) => {
   const t = T(v[0], env);
@@ -494,6 +510,8 @@ function typedNumber(s: string, kind: number, env: Env): number | undefined {
     default: return undefined;
   }
 }
+/** Charged before a sort of `n` values, about n log n comparisons: a list too long for the work budget is refused before any of it is sorted. */
+const chargeSort = (env: Env, n: number) => env.checkWorkBudget(Math.ceil(n * Math.log2(n + 1)));
 eager('UniqueValues', 1, 3, (v, env) => {
   if (!validLocale(v, env)) return text('?');
   const seen = new Set<string>();
@@ -502,7 +520,10 @@ eager('UniqueValues', 1, 3, (v, env) => {
   const locale = v[2] === undefined ? '' : T(v[2], env);
   const language = sortLanguage(locale);
   const textKey = (s: string) => `t${locale.trim().toLowerCase() === 'unicode_raw' ? s : sortKey(s, language)}`;
-  for (const s of splitValues(T(v[0], env))) {
+  const vals = splitValues(T(v[0], env));
+  env.checkWorkBudget(vals.length);
+  for (const [i, s] of vals.entries()) {
+    if ((i & 1023) === 0) env.checkWorkBudget();
     // With a number, date, time or timestamp type, 18 and 18.0 (or 7/4/2026 and 07/04/2026) are one value.
     const n = typedNumber(s, kind, env);
     const k = n !== undefined ? `#${n}` : textKey(s);
@@ -520,23 +541,25 @@ eager('SortValues', 1, 3, (v, env) => {
   const desc = type < 0;
   const kind = Math.abs(type);
   const language = sortLanguage(v[2] === undefined ? '' : T(v[2], env));
+  chargeSort(env, vals.length);
+  // Each value's sort key is made once, when it is first compared, not at every comparison.
+  const items = vals.map((s) => ({ s, n: kind < 2 || kind > 5 ? undefined : typedNumber(s, kind, env), key: undefined as string | undefined }));
+  let compared = 0;
   // English keeps the evaluator's own text comparison; another language compares the keys its order gives.
-  const compareText = (x: string, y: string): number => {
-    if (language === 'en') return compare(text(x), text(y));
-    const kx = sortKey(x, language);
-    const ky = sortKey(y, language);
-    return compareKeys(kx, ky);
+  const compareText = (x: (typeof items)[number], y: (typeof items)[number]): number => {
+    if ((++compared & 4095) === 0) env.checkWorkBudget(0);
+    if (language === 'en') return compare(text(x.s), text(y.s));
+    return compareKeys(x.key ??= sortKey(x.s, language), y.key ??= sortKey(y.s, language));
   };
   if (kind < 2 || kind > 5) {
-    vals.sort((x, y) => (desc ? -1 : 1) * compareText(x, y));
-    return text(joinValues(vals));
+    items.sort((x, y) => (desc ? -1 : 1) * compareText(x, y));
+    return text(joinValues(items.map((k) => k.s)));
   }
-  const keyed = vals.map((s) => ({ s, n: typedNumber(s, kind, env) }));
-  keyed.sort((x, y) => {
-    if (x.n === undefined || y.n === undefined) return x.n === y.n ? compareText(x.s, y.s) : x.n === undefined ? 1 : -1;
+  items.sort((x, y) => {
+    if (x.n === undefined || y.n === undefined) return x.n === y.n ? compareText(x, y) : x.n === undefined ? 1 : -1;
     return (desc ? -1 : 1) * (x.n - y.n);
   });
-  return text(joinValues(keyed.map((k) => k.s)));
+  return text(joinValues(items.map((k) => k.s)));
 });
 def('List', 1, undefined, (a, env) => {
   function* values(): Generator<string> {
@@ -599,7 +622,22 @@ for (const style of ['Plain', 'Bold', 'Italic', 'Underline', 'HighlightYellow', 
 eager('RGB', 3, 3, (v) => num(Math.trunc(N(v[0])) * 65536 + Math.trunc(N(v[1])) * 256 + Math.trunc(N(v[2]))));
 eager('GetAsCSS', 1, 1, (v, env) => text(toCss(T(v[0], env), v[0].type === 'text' ? v[0].runs : undefined)));
 eager('GetAsSVG', 1, 1, (v, env) => text(T(v[0], env)));
-eager('GetAsURLEncoded', 1, 1, (v, env) => text(encodeURIComponent(T(v[0], env))));
+/** The length of encodeURIComponent(t), counted without building it: a character outside the plain set takes three characters for each of its UTF-8 bytes. */
+function encodedLength(t: string): number {
+  let size = 0;
+  for (let i = 0; i < t.length; i++) {
+    const c = t.charCodeAt(i);
+    if (c < 0x80) size += /[A-Za-z0-9\-_.!~*'()]/.test(t[i]) ? 1 : 3;
+    else if (c < 0x800) size += 6;
+    else if (c >= 0xd800 && c <= 0xdbff && i + 1 < t.length) { size += 12; i++; } else size += 9;
+  }
+  return size;
+}
+eager('GetAsURLEncoded', 1, 1, (v, env) => {
+  const t = T(v[0], env);
+  checkCalcTextSize(encodedLength(t));
+  return text(encodeURIComponent(t));
+});
 
 // --- conversion ----------------------------------------------------------------
 
@@ -882,7 +920,16 @@ const bytesOf = (v: Value, env: Env): Uint8Array =>
   v.type === 'container' && v.data ? v.data : v.type === 'container' && v.changed ? new Uint8Array(0) : new TextEncoder().encode(T(v, env));
 const binary = (data: Uint8Array): Value => ({ type: 'container', value: '', data });
 
-eager('Base64Encode', 1, 1, (v, env) => text(Buffer.from(bytesOf(v[0], env)).toString('base64').replace(/(.{76})(?=.)/g, '$1\r')));
+/** The length of the Base64 of `bytes` bytes, with a line break of `eol` characters after every `wrap` characters (none for 0). */
+const base64Length = (bytes: number, wrap = 0, eol = 0) => {
+  const size = Math.ceil(bytes / 3) * 4;
+  return size + (wrap ? Math.max(0, Math.ceil(size / wrap) - 1) * eol : 0);
+};
+eager('Base64Encode', 1, 1, (v, env) => {
+  const data = bytesOf(v[0], env);
+  checkCalcTextSize(base64Length(data.length, 76, 1));
+  return text(Buffer.from(data).toString('base64').replace(/(.{76})(?=.)/g, '$1\r'));
+});
 // OpenPGP's 24-bit CRC (RFC 4880 section 6.1) of the data, as the four Base64 characters that follow "=".
 function crc24(data: Uint8Array): string {
   let crc = 0xb704ce;
@@ -900,6 +947,7 @@ function crc24(data: Uint8Array): string {
 eager('Base64EncodeRFC', 2, 2, (v, env) => {
   const rfc = Math.trunc(N(v[0]));
   const data = bytesOf(v[1], env);
+  checkCalcTextSize(base64Length(data.length, rfc === 1421 ? 64 : rfc === 2045 || rfc === 4880 ? 76 : 0, 2) + (rfc === 4880 ? 7 : 0));
   const s = Buffer.from(data).toString('base64');
   const wrap = (n: number) => s.replace(new RegExp(`(.{${n}})(?=.)`, 'g'), '$1\r\n');
   if (rfc === 1421) return text(wrap(64));
@@ -912,7 +960,11 @@ eager('Base64Decode', 1, 2, (v, env) => {
   const data = Buffer.from(T(v[0], env).replace(/\s/g, ''), 'base64');
   return v[1] === undefined ? text(data.toString('utf8')) : { type: 'container', value: T(v[1], env), data };
 });
-eager('HexEncode', 1, 1, (v, env) => text(Buffer.from(bytesOf(v[0], env)).toString('hex').toUpperCase()));
+eager('HexEncode', 1, 1, (v, env) => {
+  const data = bytesOf(v[0], env);
+  checkCalcTextSize(2 * data.length);
+  return text(Buffer.from(data).toString('hex').toUpperCase());
+});
 eager('HexDecode', 1, 2, (v, env) => {
   const data = Buffer.from(T(v[0], env).replace(/\s/g, ''), 'hex');
   return v[1] === undefined ? text(data.toString('utf8')) : { type: 'container', value: T(v[1], env), data };
