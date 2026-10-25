@@ -1781,7 +1781,15 @@
   "api": "sql.prepare",
   "count": 1,
   "gate": "store-internal",
-  "why": "Returns one audit sequence number (the record's latest delete entry, 0 if none), no record values; it only marks the create that puts a deleted record back, in restoreDeletedRow (cleanup undo) and restoreRecord (admin console), which run under their own privilege checks."
+  "why": "Returns one audit sequence number, no record values: the delete entry the caller names, or the latest delete of the record whose logged values equal the row the caller is putting back (compared in process, never returned). It only marks the create that puts a deleted record back, in restoreDeletedRow (cleanup undo, which runs under its own privilege checks)."
+ },
+ {
+  "file": "packages/store/src/store.ts",
+  "within": "Store.deleteEndingTheLifeAt",
+  "api": "sql.prepare",
+  "count": 1,
+  "gate": "store-internal",
+  "why": "Returns one audit sequence number (the first delete entry of the record at or after the entry restoreRecord restores to), no record values; it only marks the create that puts the record back."
  },
  {
   "file": "packages/store/src/store.ts",
@@ -2054,6 +2062,14 @@
   "count": 1,
   "gate": "no-record-data",
   "why": "Security sign-in events only (account -> time); access-review/admin."
+ },
+ {
+  "file": "packages/store/src/store.ts",
+  "within": "Store.latestDeleteSeq",
+  "api": "sql.prepare",
+  "count": 1,
+  "gate": "store-internal",
+  "why": "Returns one audit sequence number (the record's latest delete entry), no record values; the data cleanup keeps it in its undo journal right after its own privileged delete, so the put-back can name the delete it undoes."
  },
  {
   "file": "packages/store/src/store.ts",
