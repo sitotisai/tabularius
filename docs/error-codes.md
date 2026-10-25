@@ -128,7 +128,7 @@ a code that no row of this page mentions.
 | 5 | Command is invalid | A step missing a parameter it cannot run without (Set Web Viewer, the RAG steps' Space ID or data source, a negative repetition). |
 | 9 | Insufficient privileges | A step the account's privilege set does not allow: printing, exporting a field's contents, Set Next Serial Value, Set Error Logging, Configure Persistent Data, Save a Copy as XML. |
 | 20 | Canceled by a triggered script | A step whose script trigger ran before it and exited with False. |
-| 100 | File is missing | A hosted file a step names is not hosted; a file in the documents folder cannot be read or its folder is missing; a table with no table occurrence. |
+| 100 | File is missing | A hosted file a step names is not hosted; a file in the documents folder cannot be read or its folder is missing; a table with no table occurrence; a SQL connection finding that the file at a hosted file's path is no longer the file that was opened. |
 | 104 | Script is missing | Perform Script, Perform Script on Server, a callback script or a script trigger naming a script that is not there. |
 | 200 | Record access is denied | Set Field of a global field in Find mode, when the account cannot edit the table. |
 | 300 | File is locked or in use | Create, Open, Delete or Rename Data File on a file that is already open, or a file-writing step (Export Field Contents and the like) naming an open data file or a folder. |

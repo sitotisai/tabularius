@@ -37,7 +37,7 @@ import { Notifier } from './notifications.ts';
 import { compactInWorker, compactionDue, fileBytes, type CompactionReport } from './compaction.ts';
 import { BoundedMap } from './bounded-map.ts';
 import { serverLanguage } from './get-language.ts';
-import { approveInRecord, firstStartRecord, verifiedHostedRecord, vet, HOSTED_RECORD_FILE, LOST_RECORD_MESSAGE, type ApprovalHow } from './hosted-record.ts';
+import { approveInRecord, firstStartRecord, verifiedHostedRecord, vet, HOSTED_RECORD_FILE, LOST_RECORD_MESSAGE, type ApprovalHow, type HostedRecord } from './hosted-record.ts';
 
 export const STORE_EXT = '.openhbam.sqlite';
 
@@ -415,7 +415,10 @@ export class Host {
     }
     // A follower process of a cluster hosts the stores already there; the leader converts new files and says so.
     if (opts.follower) {
+      this.starting = true;
       for (const f of readdirSync(dir)) if (f.endsWith(STORE_EXT)) this.addIfOpens(join(dir, f), log);
+      this.starting = false;
+      this.vetAll();
       return;
     }
     this.encryptionKey = opts.encryptionKey || undefined;
@@ -510,7 +513,13 @@ export class Host {
       try { firstStartRecord(dir, [...this.stores.values()].filter((s) => firstStartFiles.has(basename(s.path))).map((s) => ({ name: s.name, id: s.fileId })), log); }
       catch (e) { log(`${HOSTED_RECORD_FILE} could not be written: ${(e as Error).message}`); }
     }
-    for (const store of this.stores.values()) this.vetFile(store, 'found');
+    this.vetAll();
+  }
+
+  /** Vets every open store against the record, which is worked out once: it opens every store in the folder. */
+  private vetAll(): void {
+    const known = { record: verifiedHostedRecord(this.dir) };
+    for (const store of this.stores.values()) this.vetFile(store, 'found', 'create', 'server', known);
   }
 
   /** At startup, one store that won't open is left out and named; the rest are still hosted. */
@@ -1205,14 +1214,14 @@ export class Host {
   }
 
   /** The record remembers the name as well as the identity. A copied store under a new name is new. */
-  vetFile(store: Store, origin: 'found' | 'trusted', how: ApprovalHow = 'create', by = 'server'): void {
+  vetFile(store: Store, origin: 'found' | 'trusted', how: ApprovalHow = 'create', by = 'server', known?: { record: HostedRecord | null | undefined }): void {
     if (this.starting) return;
     let writeFailed = false;
     if (origin === 'trusted' && !this.follower) {
       try { approveInRecord(this.dir, store.name, store.fileId, by, how, this.log); store.held = undefined; return; }
       catch (e) { writeFailed = true; this.log(`${store.name}: approval could not be saved: ${(e as Error).message}`); }
     }
-    const record = verifiedHostedRecord(this.dir);
+    const record = known && !writeFailed ? known.record : verifiedHostedRecord(this.dir);
     const result = writeFailed && record !== null ? 'held' : vet(record, store.name, store.fileId);
     if (result === 'approved') { store.held = undefined; return; }
     const reason = result === 'unknown-record' ? 'the approval record is damaged or missing'

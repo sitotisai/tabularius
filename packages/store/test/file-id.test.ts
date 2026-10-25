@@ -4,7 +4,7 @@ import { copyFileSync, mkdtempSync, renameSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { createStore, Store } from '../src/index.ts';
+import { createStore, Store, StoreError } from '../src/index.ts';
 
 test('created stores have stable identities; an older store gains one on opening', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'file-id-'));
@@ -44,7 +44,8 @@ test('read-only SQL refuses a file that replaced the opened one at its path', (t
   // The first query opens its connection by path, after the identity was read and vetted.
   store.checkpoint();
   renameSync(other, path);
-  assert.throws(() => [...store.iterateCommitted('SELECT 1 AS one')], /not the file that was opened/);
+  // Code 100 (file is missing: the file that was opened is not there), not 8310, which is the SQL request error.
+  assert.throws(() => [...store.iterateCommitted('SELECT 1 AS one')], (e: unknown) => e instanceof StoreError && e.code === 100 && /not the file that was opened/.test(e.message));
   // A file that is still the opened one keeps working.
   const kept = join(dir, 'B.openhbam.sqlite');
   createStore(kept);

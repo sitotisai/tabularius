@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { spawn } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createStore } from '../../store/src/index.ts';
@@ -188,4 +190,32 @@ test('an approval marks only the store that carries the approved identity', (t) 
   db.close();
   approveInRecord(dir, 'A', own, 'operator', 'admin');
   assert.equal(marker(), JSON.stringify(loadHostedRecord(dir)?.instance));
+});
+
+// Two processes writing the record at once (a leader and a restore, say) each need a temp file of their own: with one shared
+// name a rename could publish the other's half-written file, and a reader saw the record damaged.
+test('two processes writing the record at once never leave it unreadable for a reader', async (t) => {
+  const dir = folder(t);
+  firstStartRecord(dir, [{ name: 'A', id: '00000000-0000-4000-8000-000000000001' }]);
+  const module = pathToFileURL(join(import.meta.dirname, '..', 'src', 'hosted-record.ts')).href;
+  const script = `const { approveInRecord } = await import(${JSON.stringify(module)});
+    for (let i = 0; i < 150; i++) approveInRecord(${JSON.stringify(dir)}, 'W' + process.argv[1] + '-' + (i % 5), '00000000-0000-4000-8000-0000000000' + String(10 + (i % 5)), 'writer', 'admin', () => {});`;
+  let problems = '';
+  const writers = ['1', '2'].map((n) => new Promise<number | null>((ok) => {
+    const child = spawn(process.execPath, ['--no-warnings', '--input-type=module', '-e', script, n], { stdio: ['ignore', 'ignore', 'pipe'] });
+    child.stderr.setEncoding('utf8').on('data', (d: string) => { problems += d; });
+    child.once('exit', ok);
+    t.after(() => child.kill());
+  }));
+  let reads = 0, damaged = 0, running = true;
+  void Promise.all(writers).then(() => { running = false; });
+  while (running) {
+    reads++;
+    if (loadHostedRecord(dir) === null) damaged++;
+    await new Promise((r) => setImmediate(r));
+  }
+  assert.deepEqual(await Promise.all(writers), [0, 0], `both writers finished: ${problems}`);
+  assert.ok(reads > 0);
+  assert.equal(damaged, 0, `the record was unreadable in ${damaged} of ${reads} reads`);
+  assert.equal(readdirSync(dir).filter((n) => n.startsWith(HOSTED_RECORD_FILE) && n !== HOSTED_RECORD_FILE).length, 0, 'no temp file is left');
 });
