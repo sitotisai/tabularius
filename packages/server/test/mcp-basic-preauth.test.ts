@@ -1,7 +1,7 @@
 import { test, type TestContext } from 'node:test';
 import { request } from 'node:http';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { serve } from '../src/index.ts';
@@ -466,4 +466,32 @@ test('a remembered proof does not extend the time a password goes unchecked', as
   now += 60_000 + 1;
   await (await rpcFrom(s.url, basic('bob', 'bob-password'), from, getRecord())).arrayBuffer();
   assert.ok(verify.n > 0, 'five minutes after the password was last hashed it is hashed again');
+});
+
+test('a remembered proof ends at once when the LAN blank-password opt-in is switched off', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-mcp-basic-blank-'));
+  copyFileSync(join(import.meta.dirname, '../../../fixtures/fmp12/Charts.fmp12'), join(dir, 'Charts.fmp12'));
+  const s = await serve({ dir, port: 0, watch: false, log: () => {}, mcpToken: 'separate-admin-secret', proxyHeader: 'x-forwarded-for' as never, trustedProxies: ['127.0.0.1', '::1'] });
+  t.after(async () => {
+    await new Promise<void>((resolve) => s.server.close(() => resolve()));
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+  });
+  const store = s.host.get('Charts')!;
+  const from = '192.168.1.50';
+  const describe = async () => {
+    const r = await rpcFrom(s.url, basic('Admin', ''), from, { method: 'tools/call', params: { name: 'describe_database', arguments: { database: 'Charts' } } });
+    const body = await r.text();
+    return r.status === 200 && !body.includes('"isError":true') && !body.includes('"error"');
+  };
+  // The file's own blank password is let in from this LAN only while the opt-in is on.
+  assert.equal(await describe(), false, 'refused before the opt-in');
+  store.setAllowBlankPasswordFromLan(true);
+  assert.equal(await describe(), true, 'admitted with the opt-in');
+  assert.equal(basicCredentialsRemembered(s.host, { account: 'Admin', password: '', from }), true);
+  store.setAllowBlankPasswordFromLan(false);
+  assert.equal(await describe(), false, 'refused at once when the opt-in is switched off');
+  assert.equal(basicCredentialsRemembered(s.host, { account: 'Admin', password: '', from }), false);
+  // Switching it on again needs nothing special: the next request is checked and admitted.
+  store.setAllowBlankPasswordFromLan(true);
+  assert.equal(await describe(), true, 'admitted again once it is back on');
 });

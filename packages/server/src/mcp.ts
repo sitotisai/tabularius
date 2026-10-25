@@ -176,8 +176,8 @@ const provenKey = (who: { account: string; password: string; from?: string }) =>
  * What an admission rested on: the account's own credentials (`Store.credentialStamp`) and whether it may use AI in this
  * file at all (its privilege set has fmmcp, the file has AI on). A change in any of them ends a remembered proof.
  */
-function proofStamp(store: Store, account: string): string | undefined {
-  const stamp = store.credentialStamp(account);
+function proofStamp(store: Store, account: string, from = ''): string | undefined {
+  const stamp = store.credentialStamp(account, from);
   if (stamp === undefined) return undefined;
   let fmmcp = false;
   try { fmmcp = store.privileges(account).has('fmmcp'); } catch { /* an account that cannot be resolved has no AI access */ }
@@ -196,12 +196,12 @@ function rememberedProof(store: Store, who: { account: string; password: string;
   if (!proof || performance.now() - proof.checked > VERIFIED_MS) return false;
   const from = who.from ?? 'mcp';
   if (store.lockedOut(who.account, from) || store.addressLockedOut(from)) return false;
-  return proofStamp(store, who.account) === proof.stamp;
+  return proofStamp(store, who.account, who.from ?? 'mcp') === proof.stamp;
 }
 
 /** `checked` is when the password was last hashed (undefined when this admission rested on a remembered proof). */
 function markProven(store: Store, who: { account: string; password: string; from?: string }, checked?: number): void {
-  const stamp = proofStamp(store, who.account);
+  const stamp = proofStamp(store, who.account, who.from ?? 'mcp');
   if (stamp === undefined || localOnlyRefused(store, who.account, who.from ?? 'mcp', false)) return;
   const key = provenKey(who);
   const entry = proven.get(key) ?? { at: 0, stamps: new Map<string, { stamp: string; checked: number }>() };
@@ -285,7 +285,7 @@ export function basicCredentialsRemembered(host: Host, who: { account: string; p
     for (const name of host.names()) {
       const store = host.get(name);
       const proof = store && entry.stamps.get(store.path);
-      if (proof && proofStamp(store!, who.account) === proof.stamp) return true;
+      if (proof && proofStamp(store!, who.account, who.from ?? 'mcp') === proof.stamp) return true;
     }
   }
   proven.delete(key);

@@ -5144,17 +5144,20 @@ export class Store {
 
   /**
    * A value that changes when this account's sign-in does (its password, whether it is active or can use a password, its
-   * identity, where it may sign in from, its second-factor and password-change requirements, its privilege set) and not
+   * identity, where it may sign in from, whether an empty password is let in from `from`, its second-factor and password-change requirements, its privilege set) and not
    * when anything else in the file's security does; undefined for a name with no account. For caches that must outlive
    * unrelated security changes, such as another person's failed sign-in, but not these. Only hashes are kept in it.
    */
-  credentialStamp(account: string): string | undefined {
+  credentialStamp(account: string, from = ''): string | undefined {
     const row = this.sql.prepare('SELECT password_hash, source, inactive, password_disabled, identity_id, local_only, require_2fa, must_change, privilege_set FROM _fm_accounts WHERE name = ? COLLATE NOCASE').get(account) as Record<string, unknown> | undefined;
     if (!row) return undefined;
     // An imported account on the file's own password has no hash of ours; its verifier is in the design.
     const verifier = row.password_hash ? undefined : this.schema.accounts.find((a) => !a.external && a.name.toLowerCase() === account.toLowerCase())?.passwordVerifier;
     const secret = String(row.password_hash ?? verifier ?? '');
-    return createHash('sha256').update(JSON.stringify({ ...row, password_hash: undefined, secret: createHash('sha256').update(secret).digest('hex') })).digest('hex');
+    // Whether an empty password is let in from this address (the file's LAN opt-in and the server's flag), which decides the
+    // sign-in of an account left on the file's own blank password.
+    const blankHere = !row.password_hash && !!verifier && checkFmp12Password('', verifier) ? LOCAL.has(from) || PASSWORD_POLICY.blankFromNetwork || (this.allowBlankPasswordFromLan() && privateAddress(from)) : undefined;
+    return createHash('sha256').update(JSON.stringify({ ...row, password_hash: undefined, secret: createHash('sha256').update(secret).digest('hex'), blankHere })).digest('hex');
   }
 
   /** Committed or in-transaction security changes, including changes made by another worker. */
