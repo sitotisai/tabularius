@@ -7,8 +7,8 @@ import { Readable } from 'node:stream';
 import type { IncomingMessage } from 'node:http';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { ContainerUploads, sweepOrphanUploadFolders, MAX_CONTAINER_FILE } from '../src/container-uploads.ts';
-import { multipartUploadStream } from '../src/dataapi.ts';
+import { ContainerUploads, sweepOrphanUploadFolders, MAX_CONTAINER_FILE, MAX_REQUEST_SPOOLS_PER_ACCOUNT } from '../src/container-uploads.ts';
+import { ApiError, multipartUploadStream } from '../src/dataapi.ts';
 import { Host } from '../src/host.ts';
 import { Uploads } from '../src/uploads.ts';
 
@@ -121,28 +121,109 @@ test('#24 legacy request spools are swept after the safe age only', (t) => {
   assert.equal(existsSync(young), true);
 });
 
-const request = (destroyed = false) => Object.assign(Readable.from([Buffer.from('--test\r\nContent-Disposition: form-data; name="upload"; filename="generated.txt"\r\n\r\nx\r\n--test--\r\n')]), {
-  headers: {}, socket: { destroyed },
-}) as unknown as IncomingMessage;
+const body = Buffer.from('--test\r\nContent-Disposition: form-data; name="upload"; filename="generated.txt"\r\n\r\nx\r\n--test--\r\n');
+/** A request as the parser hands it over: Content-Length when the body has one, no header at all for a chunked body. */
+const request = (opts: { destroyed?: boolean; length?: number | null; chunked?: boolean; data?: Buffer } = {}) => {
+  const data = opts.data ?? body;
+  const headers: Record<string, string> = {};
+  if (opts.length !== null) headers['content-length'] = String(opts.length ?? data.length);
+  if (opts.chunked) headers['transfer-encoding'] = 'chunked';
+  return Object.assign(Readable.from([data]), { headers, socket: { destroyed: opts.destroyed ?? false } }) as unknown as IncomingMessage;
+};
 const type = 'multipart/form-data; boundary=test';
+type Held = Awaited<ReturnType<typeof multipartUploadStream>>;
+const who = (account: string, db = 'Db') => ({ db, account });
 
-test('#24 single-request spools reserve a bounded aggregate and release on success and failure', async () => {
-  const held: Awaited<ReturnType<typeof multipartUploadStream>>[] = [];
-  try {
-    for (let i = 0; i < 8; i++) held.push(await multipartUploadStream(request(), type, MAX_CONTAINER_FILE));
-    await assert.rejects(multipartUploadStream(request(), type, MAX_CONTAINER_FILE).then(file => { held.push(file); }), /Too many bytes/);
-    assert.ok('path' in held[0]);
-    assert.match(dirname(held[0].path), /tabularius-container-uploads-/);
-    held.pop()!.release();
-    const broken = request(true);
-    await assert.rejects(multipartUploadStream(broken, type, MAX_CONTAINER_FILE), /closed/);
-    const malformed = Object.assign(Readable.from([Buffer.from(`--test\r\nContent-Disposition: form-data; name="upload"; filename*=UTF-8''%zz\r\n\r\nx\r\n--test--\r\n`)]), { headers: {}, socket: { destroyed: false } }) as unknown as IncomingMessage;
-    await assert.rejects(multipartUploadStream(malformed, type, MAX_CONTAINER_FILE));
-    held.push(await multipartUploadStream(request(), type, MAX_CONTAINER_FILE));
-  } finally { for (const file of held) { file.release(); file.release(); } }
-  const again = await multipartUploadStream(request(), type, MAX_CONTAINER_FILE);
+/** Runs a test with the request spools in a folder of its own, and every spool released at the end. */
+function spools(t: { after(fn: () => void): void }) {
+  const tmp = mkdtempSync(join(tmpdir(), 'tabularius-request-spool-test-'));
+  const before = process.env.TABULARIUS_UPLOAD_TMP;
+  process.env.TABULARIUS_UPLOAD_TMP = tmp;
+  const held: Held[] = [];
+  t.after(() => {
+    for (const file of held) file.release();
+    if (before === undefined) delete process.env.TABULARIUS_UPLOAD_TMP; else process.env.TABULARIUS_UPLOAD_TMP = before;
+    rmSync(tmp, { recursive: true, force: true });
+  });
+  const take = async (req: IncomingMessage, account: string, db?: string) => { const file = await multipartUploadStream(req, type, MAX_CONTAINER_FILE, undefined, who(account, db)); held.push(file); return file; };
+  const drop = (file: Held) => { file.release(); held.splice(held.indexOf(file), 1); };
+  return { tmp, held, take, drop };
+}
+const busy = (error: unknown) => error instanceof ApiError && error.status === 503 && error.code === 301 && (error.retryAfter ?? 0) > 0 && /try again/.test(error.message);
+
+test('#24 a body with a Content-Length reserves that length, so small uploads do not use up the 8 GiB budget', async (t) => {
+  const { take } = spools(t);
+  // Twenty accounts, each with a small file: far more than eight, because each reserves only its own bytes.
+  for (let i = 0; i < 20; i++) await take(request(), 'account' + i);
+  // A body of unknown length reserves the whole 1 GiB each: seven fit beside the small ones, the eighth waits.
+  for (let i = 0; i < 7; i++) await take(request({ length: null, chunked: true }), 'chunked' + i);
+  await assert.rejects(take(request({ length: null, chunked: true }), 'chunked7'), busy);
+  // A Content-Length beside Transfer-Encoding is not trusted either.
+  await assert.rejects(take(request({ chunked: true }), 'both'), busy);
+  // A small one still fits.
+  await take(request(), 'late');
+});
+
+test('#24 a Content-Length over the limit is refused with 413 before anything is reserved', async (t) => {
+  const { take, held, tmp } = spools(t);
+  await assert.rejects(take(request({ length: MAX_CONTAINER_FILE + 1 }), 'a'), (e: unknown) => e instanceof ApiError && e.status === 413);
+  assert.equal(held.length, 0);
+  assert.deepEqual(readdirSync(tmp), []);
+  for (let i = 0; i < 8; i++) await take(request({ length: MAX_CONTAINER_FILE }), 'big' + i);
+});
+
+test('#24 a lying Content-Length cannot push more than it reserved to disk', async (t) => {
+  const { take, held } = spools(t);
+  await assert.rejects(take(request({ length: 10 }), 'liar'), (e: unknown) => e instanceof ApiError && e.status === 413);
+  assert.equal(held.length, 0);
+});
+
+test('#24 releasing a spool frees its reservation exactly once, on success and on every failure', async (t) => {
+  const { take, drop, held, tmp } = spools(t);
+  const first: Held[] = [];
+  for (let i = 0; i < 8; i++) first.push(await take(request({ length: null }), 'user' + i));
+  await assert.rejects(take(request({ length: null }), 'user8'), busy);
+  assert.ok('path' in first[0]);
+  assert.match(dirname(first[0].path), /tabularius-container-uploads-/);
+  assert.equal(dirname(dirname(first[0].path)), tmp, 'spools use the configured folder');
+  drop(first[0]);
+  first[0].release(); // a second release changes nothing
+  await assert.rejects(take(request({ destroyed: true }), 'closed'), /closed/);
+  const malformed = request({ data: Buffer.from(`--test\r\nContent-Disposition: form-data; name="upload"; filename*=UTF-8''%zz\r\n\r\nx\r\n--test--\r\n`) });
+  await assert.rejects(take(malformed, 'malformed'));
+  assert.equal(held.length, 7);
+  const again = await take(request({ length: null }), 'again');
   assert.ok('path' in again);
   const path = again.path;
-  again.release();
+  drop(again);
   assert.equal(existsSync(path), false);
+  await assert.rejects(take(request({ length: null }), 'user9').then(() => take(request({ length: null }), 'user10')), busy);
+});
+
+test('#24 one account may hold only a few single-request spools, whatever their size; others are unaffected', async (t) => {
+  const { take, drop } = spools(t);
+  assert.equal(MAX_REQUEST_SPOOLS_PER_ACCOUNT, 4);
+  const mine: Held[] = [];
+  for (let i = 0; i < MAX_REQUEST_SPOOLS_PER_ACCOUNT; i++) mine.push(await take(request(), 'Alice'));
+  // The fifth is turned away for now, however small, and the name's case does not matter.
+  await assert.rejects(take(request(), 'alice'), busy);
+  // Another account, and the same account name in another file, are not held up by it.
+  await take(request(), 'Bob');
+  await take(request(), 'Alice', 'OtherDb');
+  drop(mine[1]);
+  mine.splice(1, 1);
+  mine.push(await take(request(), 'ALICE'));
+  await assert.rejects(take(request(), 'Alice'), busy);
+});
+
+test('#24 a refused spool leaves nothing behind and does not count against the account', async (t) => {
+  const { take, drop, held, tmp } = spools(t);
+  for (let i = 0; i < 8; i++) await take(request({ length: null }), 'user' + i);
+  const before = readdirSync(tmp).length;
+  // Refused for the budget more often than the account's own limit: none of those may have counted against it.
+  for (let i = 0; i < 6; i++) await assert.rejects(take(request(), 'victim'), busy);
+  assert.equal(readdirSync(tmp).length, before);
+  drop(held[0]);
+  for (let i = 0; i < MAX_REQUEST_SPOOLS_PER_ACCOUNT; i++) await take(request(), 'victim');
+  assert.equal(held.length, 7 + MAX_REQUEST_SPOOLS_PER_ACCOUNT);
 });
