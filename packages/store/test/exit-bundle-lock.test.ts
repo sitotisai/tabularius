@@ -83,14 +83,20 @@ test('another process polling the gate does not abort a running copy', async () 
 test('one folder reached through a symlinked parent is refused while a copy to it runs', async () => {
   mkdirSync(join(dir, 'real', 'Exports'), { recursive: true });
   symlinkSync(join(dir, 'real'), join(dir, 'alias'));
-  const outcomes = await Promise.all([
-    exitBundle(store, join(dir, 'real', 'Exports', 'copy'), asAdmin()).then(() => 'ok', (e: Error) => e.message),
-    exitBundle(store, join(dir, 'alias', 'Exports', 'copy'), asAdmin()).then(() => 'ok', (e: Error) => e.message),
-  ]);
-  assert.equal(outcomes.filter((o) => o === 'ok').length, 1, JSON.stringify(outcomes));
-  assert.ok(outcomes.some((o) => /already running/.test(o)), JSON.stringify(outcomes));
-  assert.equal(existsSync(join(dir, 'real', 'Exports', 'copy', 'manifest.json')), true);
-  assert.equal(existsSync(join(dir, 'real', 'Exports', 'copy.lock')), false);
+  const real = join(dir, 'real', 'Exports', 'copy');
+  let second: Promise<string> | undefined;
+  // The second request is made while the first is between two batches, so the order does not depend on timing: the first
+  // holds the folder, the second reaches it through the symlink and must be refused for that, not because the folder exists.
+  await exitBundle(store, real, asAdmin({ afterBatch: () => {
+    second ??= exitBundle(store, join(dir, 'alias', 'Exports', 'copy'), asAdmin()).then(() => 'ok', (e: Error) => e.message);
+  } }));
+  const outcome = await second;
+  assert.match(String(outcome), /already running/);
+  assert.doesNotMatch(String(outcome), /already exists/);
+  assert.equal(existsSync(join(real, 'manifest.json')), true);
+  assert.equal(existsSync(`${real}.lock`), false);
+  // Once the first has finished the folder exists, and that is what a later request is told.
+  await assert.rejects(exitBundle(store, join(dir, 'alias', 'Exports', 'copy'), asAdmin()), /already exists/);
 });
 
 test('no credential material from any column of any internal table reaches the bundle', async () => {
