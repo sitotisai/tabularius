@@ -267,3 +267,40 @@ test('a made-up token does not exempt a body from the deadline, however the sign
   assert.match(await c.send('0\r\n\r\n').end(), /^HTTP\/1\.1 200 /);
   assert.equal(s.store.findIds('Items').length, 1);
 });
+
+test('a real token does not exempt the sign-in routes, which read their body without looking at it, and a stranger can still sign in', async t => {
+  const s = await start(t, undefined, { smallBodyMs: 400, checkMs: 10 });
+  const token = await s.login();
+  const held: RawClient[] = [];
+  const drip = setInterval(() => { for (const c of held) if (!c.socket.destroyed) c.socket.write('1\r\n \r\n'); }, 100);
+  t.after(() => { clearInterval(drip); for (const c of held) c.socket.destroy(); });
+  const sessions = '/fmi/data/vLatest/databases/Edge/sessions';
+  for (const [path, who] of [
+    [sessions, `Authorization: Bearer ${token}\r\n`],
+    [`${sessions}/passkey`, `Authorization: Bearer ${token}\r\n`],
+    [`${sessions}/recovery`, `Authorization: Bearer ${token}\r\n`],
+    [sessions, `X-FM-Data-Access-Token: ${token}\r\n`],
+  ] as const) {
+    const group: RawClient[] = [];
+    for (let i = 0; i < 12; i++) {
+      const c = await new RawClient(s.port).ready(); held.push(c); group.push(c);
+      c.send(request(path, `Transfer-Encoding: chunked\r\nContent-Type: application/json\r\n${who}`, 'POST') + '1\r\n \r\n');
+    }
+    await Promise.all(group.map(c => c.until(text => /^HTTP\/1\.1 (408|503) /.test(text))));
+    assert.ok(group.some(c => /^HTTP\/1\.1 408 /.test(c.text)), `${path}: a body that was let in ends at the total deadline`);
+    let signedIn = '';
+    for (let i = 0; i < 100 && !/^HTTP\/1\.1 200 /.test(signedIn); i++) { signedIn = await s.call(sessions, 'Authorization: Basic ' + Buffer.from('Admin:pw').toString('base64') + '\r\n', 'POST', '{}'); if (!/^HTTP\/1\.1 200 /.test(signedIn)) await sleep(50); }
+    assert.match(signedIn, /^HTTP\/1\.1 200 /);
+  }
+});
+
+test('asking whether a token is held does not record a use of it', async t => {
+  const s = await start(t);
+  const token = s.store.createApiToken('Admin');
+  const id = /^ohbt_([0-9a-f]+)\./.exec(token)![1];
+  const lastUsed = () => s.store.apiTokens().find(entry => entry.id === id)!.lastUsed;
+  assert.ok(s.store.apiToken(token, false));
+  assert.equal(lastUsed(), undefined, 'a look at the token leaves its last use alone');
+  assert.ok(s.store.apiToken(token));
+  assert.ok(lastUsed(), 'a use of it is recorded');
+});

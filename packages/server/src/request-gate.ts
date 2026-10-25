@@ -32,16 +32,23 @@ export const PRE_AUTH_BODY_LIMIT = 256 * 1024;
 // Whether the request carries a Data API token that the server holds, as the gate found out when it admitted the request.
 const verdicts = new WeakMap<IncomingMessage, boolean>();
 
-/** A Data API call that carries a token the server holds: the token is checked before any body is read (an unknown one is refused with no read), so
- * a slow body is a signed-in client's and may take as long as its progress allows. Anything else (a made-up token, no token, sign-in) is not.
+/** A Data API sign-in route (`.../sessions`, `.../sessions/passkey`, `.../sessions/recovery`): it reads its body whatever token the request carries, so
+ * a token does not make it a call that is checked first. The path is read as the Data API reads it, one decoded segment at a time, so `%73essions` is
+ * `sessions`; one that cannot be decoded is treated as sign-in too. */
+const signsIn = (path: string): boolean => {
+  try { return path.split('/').filter(Boolean).map(decodeURIComponent).includes('sessions'); } catch { return true; }
+};
+
+/** A Data API call that carries a token the server holds, to a route other than sign-in: the token is checked before any body is read (an unknown one
+ * is refused with no read), so a slow body is a signed-in client's and may take as long as its progress allows. Anything else is not.
  * The gate asks the Data API when it admits the request (`RequestGate.holdsToken`). A process that cannot (the cluster front, which hands the request
- * to a worker that does) goes by the shape of the request, reading the path as the Data API does, one decoded segment at a time. */
+ * to a worker that does) goes by the shape of the request: a token-shaped header, whatever it holds. */
 export function tokenCheckedFirst(req: IncomingMessage): boolean {
   const verdict = verdicts.get(req);
   if (verdict !== undefined) return verdict;
   const path = (req.url ?? '').split('?')[0];
-  if (!/^Bearer\s/i.test(req.headers.authorization ?? '') || !isDataApiPath(path)) return false;
-  try { return !path.split('/').filter(Boolean).map(decodeURIComponent).includes('sessions'); } catch { return false; }
+  const shaped = /^Bearer\s/i.test(req.headers.authorization ?? '') || !!req.headers['x-fm-data-access-token'];
+  return shaped && isDataApiPath(path) && !signsIn(path);
 }
 
 /** Emitted on a request when its whole body has arrived, or a chunked one has sent more than any route reads before it knows the caller. */
@@ -113,7 +120,7 @@ export class RequestGate {
   private readonly waiting: Waiter[] = [];
   private shedCount = 0;
   // Requests still waiting for a small body (a sign-in is read before the caller is known), so a few idle senders cannot take every slot.
-  /** Set by the server: whether a Data API request carries a token it holds (without side effects other than the token's own bookkeeping). */
+  /** Set by the server: whether a Data API request carries a token it holds (a look that records no use of the token). */
   holdsToken?: (req: IncomingMessage) => boolean;
   private readonly slow: { priority: SlowPool; normal: SlowPool };
   /** Most that both pools together may hold: always leaves a slot of ordinary capacity for a request that is not waiting on anyone. */
@@ -230,7 +237,8 @@ export class RequestGate {
     const address = addressBucket(clientAddress(req));
     watchBody(req);
     // Found out once, here, for a body still on its way: by header shape alone a made-up token (or an encoded path) would pass for a signed-in client.
-    if (this.holdsToken && smallBodyPending(req) && isDataApiPath((req.url ?? '').split('?')[0])) verdicts.set(req, this.holdsToken(req));
+    const path = (req.url ?? '').split('?')[0];
+    if (this.holdsToken && smallBodyPending(req) && isDataApiPath(path)) verdicts.set(req, !signsIn(path) && this.holdsToken(req));
     // The request is dispatched while the parser is still working through the bytes that arrived with its headers. Let it finish, so
     // only a body that is really still on its way counts as unfinished.
     if (slowBodyPending(req)) await new Promise<void>((resolve) => setImmediate(resolve));
