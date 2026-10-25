@@ -446,3 +446,24 @@ test('a remembered proof does not get a locked-out address past the lockout', as
   const body = (await locked.json()) as { result?: { isError?: boolean } };
   assert.equal(body.result?.isError, true, 'the right password is still refused while locked out');
 });
+
+test('a remembered proof does not extend the time a password goes unchecked', async (t) => {
+  const s = await start(t, { proxy: true });
+  const store = s.host.get('A')!;
+  const from = '2001:db8:1:2::1';
+  let now = performance.now();
+  t.mock.method(performance, 'now', () => now);
+  await (await rpcFrom(s.url, basic('bob', 'bob-password'), from, getRecord())).arrayBuffer();
+  // A security change empties the shared cache, so the next requests rest on the remembered proof, minute after minute.
+  const verify = countVerify(t);
+  for (let minute = 1; minute <= 4; minute++) {
+    store.setPassword('alice', `alice-password-${minute}`, 'Reader');
+    now += 60_000;
+    await (await rpcFrom(s.url, basic('bob', 'bob-password'), from, getRecord())).arrayBuffer();
+  }
+  assert.equal(verify.n, 0, 'remembered for four minutes without a hash');
+  store.setPassword('alice', 'alice-password-5', 'Reader');
+  now += 60_000 + 1;
+  await (await rpcFrom(s.url, basic('bob', 'bob-password'), from, getRecord())).arrayBuffer();
+  assert.ok(verify.n > 0, 'five minutes after the password was last hashed it is hashed again');
+});

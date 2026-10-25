@@ -166,7 +166,9 @@ function rememberPassword(key: string, store: Store, who: { account: string; pas
 // budget only (it grants nothing). Kept apart from `verified`, which is
 // emptied whenever any hosted file's security changes (another person's lockout is enough), and tied to the account's own
 // credentials in each file instead, so a new password or a switched-off account ends it and unrelated changes do not.
-const proven = new Map<string, { at: number; stamps: Map<string, string> }>();
+// `at` is the last admission (the budget window slides with use); a stamp's `checked` is when the password was last really
+// hashed, which a remembered proof never extends, so the password is hashed again at least every VERIFIED_MS.
+const proven = new Map<string, { at: number; stamps: Map<string, { stamp: string; checked: number }> }>();
 // Per address group (an IPv6 /64 is one), the same key the address budget and the check line use; the local-only rule is still judged for the exact address.
 const provenKey = (who: { account: string; password: string; from?: string }) => createHash('sha256').update(`${who.account.toLowerCase()}\0${addressBucket(who.from ?? 'mcp')}\0${who.password}`).digest('hex');
 
@@ -190,20 +192,22 @@ function proofStamp(store: Store, account: string): string | undefined {
 function rememberedProof(store: Store, who: { account: string; password: string; from?: string }): boolean {
   const entry = proven.get(provenKey(who));
   if (!entry || performance.now() - entry.at > VERIFIED_MS) return false;
-  const stamp = entry.stamps.get(store.path);
-  if (stamp === undefined) return false;
+  const proof = entry.stamps.get(store.path);
+  if (!proof || performance.now() - proof.checked > VERIFIED_MS) return false;
   const from = who.from ?? 'mcp';
   if (store.lockedOut(who.account, from) || store.addressLockedOut(from)) return false;
-  return proofStamp(store, who.account) === stamp;
+  return proofStamp(store, who.account) === proof.stamp;
 }
 
-function markProven(store: Store, who: { account: string; password: string; from?: string }): void {
+/** `checked` is when the password was last hashed (undefined when this admission rested on a remembered proof). */
+function markProven(store: Store, who: { account: string; password: string; from?: string }, checked?: number): void {
   const stamp = proofStamp(store, who.account);
   if (stamp === undefined || localOnlyRefused(store, who.account, who.from ?? 'mcp', false)) return;
   const key = provenKey(who);
-  const entry = proven.get(key) ?? { at: 0, stamps: new Map<string, string>() };
+  const entry = proven.get(key) ?? { at: 0, stamps: new Map<string, { stamp: string; checked: number }>() };
   entry.at = performance.now();
-  entry.stamps.set(store.path, stamp);
+  const before = entry.stamps.get(store.path);
+  entry.stamps.set(store.path, { stamp, checked: checked ?? (before?.stamp === stamp ? before.checked : performance.now()) });
   // Re-insert so the map stays in order of last proof; a full table drops its oldest.
   proven.delete(key);
   if (proven.size >= VERIFIED_MAX) proven.delete(proven.keys().next().value!);
@@ -280,8 +284,8 @@ export function basicCredentialsRemembered(host: Host, who: { account: string; p
   if (performance.now() - entry.at <= VERIFIED_MS) {
     for (const name of host.names()) {
       const store = host.get(name);
-      const stamp = store && entry.stamps.get(store.path);
-      if (stamp !== undefined && proofStamp(store!, who.account) === stamp) return true;
+      const proof = store && entry.stamps.get(store.path);
+      if (proof && proofStamp(store!, who.account) === proof.stamp) return true;
     }
   }
   proven.delete(key);
@@ -319,12 +323,16 @@ function canSee(who: McpIdentity): (s: Store) => boolean {
       refreshAuthCache(s, verified);
       const key = verifiedKey(s, who);
       const at = verified.get(key);
+      let remembered = false;
       if (at === undefined || performance.now() - at > VERIFIED_MS) {
-        if (!rememberedProof(s, who) && !s.verify(who.account, who.password, who.from ?? 'mcp')) return false;
+        remembered = rememberedProof(s, who);
+        if (!remembered && !s.verify(who.account, who.password, who.from ?? 'mcp')) return false;
         // Before the password is remembered: a refused one stays as costly as a wrong one, so the cost does not tell them apart.
         if (localOnlyRefused(s, who.account, who.from ?? 'mcp', false)) return false;
-        refreshAuthCache(s, verified);
-        rememberPassword(key, s, who);
+        if (!remembered) {
+          refreshAuthCache(s, verified);
+          rememberPassword(key, s, who);
+        }
       }
       s.requireActiveAccount(who.account);
       if (localOnlyRefused(s, who.account, who.from ?? 'mcp', false)) return false;
@@ -335,7 +343,7 @@ function canSee(who: McpIdentity): (s: Store) => boolean {
       if (s.mustChangePassword(who.account)) return false;
       // Admitted: the password is right, the account is active and may use AI, and its second factor, where needed, is there.
       if (!p.has('fmmcp')) return false;
-      markProven(s, who);
+      markProven(s, who, remembered ? undefined : verified.get(key));
       return true;
     } catch {
       return false;
@@ -368,10 +376,14 @@ function privilegesIn(store: Store, who: McpIdentity, via = 'MCP'): Privileges |
   refreshAuthCache(store, verified);
   const key = verifiedKey(store, who);
   const at = verified.get(key);
+  let remembered = false;
   if (at === undefined || performance.now() - at > VERIFIED_MS) {
-    if (!rememberedProof(store, who) && !store.verify(who.account, who.password, who.from ?? 'mcp')) throw new StoreError(212, `Invalid account or password for ${store.name}`);
-    refreshAuthCache(store, verified);
-    rememberPassword(key, store, who);
+    remembered = rememberedProof(store, who);
+    if (!remembered && !store.verify(who.account, who.password, who.from ?? 'mcp')) throw new StoreError(212, `Invalid account or password for ${store.name}`);
+    if (!remembered) {
+      refreshAuthCache(store, verified);
+      rememberPassword(key, store, who);
+    }
   }
   try { store.requireActiveAccount(who.account); } catch {
     verified.clear();
@@ -402,7 +414,7 @@ function privilegesIn(store: Store, who: McpIdentity, via = 'MCP'): Privileges |
   refuse();
   // The whole admission has passed (password, active, second factor, fmmcp, the file's AI policy): only now is the
   // account one the address budget may let through without a check.
-  markProven(store, who);
+  markProven(store, who, remembered ? undefined : verified.get(key));
   store.recordUsage(who.account, 'mcp');
   return p;
 }
