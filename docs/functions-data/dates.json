@@ -1,0 +1,134 @@
+[
+  {
+    "name": "Date",
+    "signature": "Date ( month ; day ; year )",
+    "summary": "Builds a date from a month, day, and year; overflowing values are normalized by the engine.",
+    "details": "An empty set of inputs produces an empty value.",
+    "examples": [
+      { "formula": "Date ( 2 ; 29 ; 2024 )", "result": "2/29/2024" },
+      { "formula": "Date ( 3 ; 1 ; 2024 ) - Date ( 2 ; 28 ; 2024 )", "result": "2" }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "Day",
+    "signature": "Day ( date )",
+    "summary": "Returns the day number from a date.",
+    "examples": [{ "formula": "Day ( Date ( 2 ; 29 ; 2024 ) )", "result": "29" }],
+    "status": "works"
+  },
+  {
+    "name": "DayName",
+    "signature": "DayName ( date )",
+    "summary": "Returns the English weekday name for a date.",
+    "examples": [{ "formula": "DayName ( Date ( 1 ; 1 ; 2024 ) )", "result": "Monday" }],
+    "status": "works"
+  },
+  {
+    "name": "DayOfWeek",
+    "signature": "DayOfWeek ( date )",
+    "summary": "Returns the weekday number, with Sunday as 1.",
+    "examples": [{ "formula": "DayOfWeek ( Date ( 1 ; 1 ; 2024 ) )", "result": "2" }],
+    "status": "works"
+  },
+  {
+    "name": "DayOfYear",
+    "signature": "DayOfYear ( date )",
+    "summary": "Returns the one-based day position within the date's year.",
+    "examples": [{ "formula": "DayOfYear ( Date ( 3 ; 1 ; 2024 ) )", "result": "61" }],
+    "status": "works"
+  },
+  {
+    "name": "GetAsDate",
+    "signature": "GetAsDate ( value )",
+    "summary": "Converts a value to a date when its contents can be interpreted as one.",
+    "examples": [{ "formula": "GetAsDate ( \"2/29/2024\" )", "result": "2/29/2024" }],
+    "status": "works"
+  },
+  {
+    "name": "GetAsTime",
+    "signature": "GetAsTime ( value )",
+    "summary": "Converts a value to a time when its contents can be interpreted as one.",
+    "examples": [{ "formula": "GetAsTime ( \"25:01:01\" )", "result": "25:01:01" }],
+    "status": "works"
+  },
+  {
+    "name": "GetAsTimestamp",
+    "signature": "GetAsTimestamp ( value )",
+    "summary": "Converts a value to a timestamp when its contents can be interpreted as one.",
+    "examples": [{ "formula": "GetAsTimestamp ( \"2/29/2024 12:34:56\" )", "result": "2/29/2024 12:34:56" }],
+    "status": "works"
+  },
+  {
+    "name": "Hour",
+    "signature": "Hour ( time )",
+    "summary": "Returns the hour component of a time as a number.",
+    "examples": [{ "formula": "Hour ( Time ( 12 ; 34 ; 56 ) )", "result": "12" }],
+    "status": "works"
+  },
+  {
+    "name": "Minute",
+    "signature": "Minute ( time )",
+    "summary": "Returns the minute component of a time as a number.",
+    "examples": [{ "formula": "Minute ( Time ( 12 ; 34 ; 56 ) )", "result": "34" }],
+    "status": "works"
+  },
+  {
+    "name": "Month",
+    "signature": "Month ( date )",
+    "summary": "Returns the month number from a date.",
+    "examples": [{ "formula": "Month ( Date ( 2 ; 29 ; 2024 ) )", "result": "2" }],
+    "status": "works"
+  },
+  {
+    "name": "MonthName",
+    "signature": "MonthName ( date )",
+    "summary": "Returns the English month name for a date.",
+    "examples": [{ "formula": "MonthName ( Date ( 2 ; 29 ; 2024 ) )", "result": "February" }],
+    "status": "works"
+  },
+  {
+    "name": "Seconds",
+    "signature": "Seconds ( time )",
+    "summary": "Returns the seconds component of a time as a number.",
+    "examples": [{ "formula": "Seconds ( Time ( 12 ; 34 ; 56 ) )", "result": "56" }],
+    "status": "works"
+  },
+  {
+    "name": "Time",
+    "signature": "Time ( hours ; minutes ; seconds )",
+    "summary": "Builds a time value from hours, minutes, and seconds.",
+    "examples": [{ "formula": "Time ( 12 ; 34 ; 56 )", "result": "12:34:56" }],
+    "status": "works"
+  },
+  {
+    "name": "Timestamp",
+    "signature": "Timestamp ( date ; time )",
+    "summary": "Combines a date and time into a timestamp value.",
+    "examples": [{ "formula": "Timestamp ( Date ( 2 ; 29 ; 2024 ) ; Time ( 12 ; 34 ; 56 ) )", "result": "2/29/2024 12:34:56" }],
+    "status": "works"
+  },
+  {
+    "name": "WeekOfYear",
+    "signature": "WeekOfYear ( date )",
+    "summary": "Returns the week number for a date, counting the week containing January 1 as week 1.",
+    "examples": [{ "formula": "WeekOfYear ( Date ( 1 ; 1 ; 2021 ) )", "result": "1" }],
+    "status": "works"
+  },
+  {
+    "name": "WeekOfYearFiscal",
+    "signature": "WeekOfYearFiscal ( date ; startDay )",
+    "summary": "Returns a week number using a supplied first weekday and a four-day first-week rule.",
+    "details": "The engine calculates weeks from its implemented start-day rule; compatibility beyond existing examples is unverified.",
+    "examples": [{ "formula": "WeekOfYearFiscal ( Date ( 1 ; 7 ; 2008 ) ; 1 )", "result": "2" }],
+    "status": "works-differently",
+    "differences": "The engine implementation uses an ISO-like rule in which the first week has at least four days of the new year."
+  },
+  {
+    "name": "Year",
+    "signature": "Year ( date )",
+    "summary": "Returns the year number from a date.",
+    "examples": [{ "formula": "Year ( Date ( 2 ; 29 ; 2024 ) )", "result": "2024" }],
+    "status": "works"
+  }
+]
