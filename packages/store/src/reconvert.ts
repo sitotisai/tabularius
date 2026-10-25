@@ -32,7 +32,7 @@ import { DatabaseSync, backup } from 'node:sqlite';
 import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ACCOUNT_STATUS_META, CONVERTER_VERSION, DESIGN_LOG, applyFileAccountStatus, fileSha256, importFmp12, q, type ImportProgress, type ImportStat } from './import.ts';
+import { ACCOUNT_STATUS_META, CONVERTER_VERSION, DESIGN_LOG, applyFileAccountStatus, fileSha256, importFmp12, nextImageId, q, type ImportProgress, type ImportStat } from './import.ts';
 import { refuseNewer } from './store-format.ts';
 
 /** Tables a fresh conversion makes, or that are rebuilt on their own: never copied from the old store. */
@@ -318,13 +318,20 @@ function carryRecords(sql: DatabaseSync, counts: { created: number; edited: numb
 }
 
 /**
- * Images added in Tabularius: in the old store's library but not in the fresh conversion's. An id the .fmp12's own
- * library also uses is left to the file (it can only differ if the file changed, which a forced convert accepts).
+ * Images added in Tabularius: in the old store's library but not in the fresh conversion's. One under an id the file's
+ * own library also uses (a store whose converter had not read the file's highest image) keeps its picture under a new
+ * id when it differs from the file's. Nothing names it: carrying edits over needs no design change in the old store, and
+ * converting afresh drops them.
  */
 function carryImages(sql: DatabaseSync): void {
   if (!tableExists(sql, '_fm_images', 'old')) return;
   if (!tableExists(sql, '_fm_images')) sql.exec('CREATE TABLE _fm_images (id INTEGER PRIMARY KEY, filename TEXT, mime TEXT NOT NULL, data BLOB NOT NULL)');
   sql.exec('INSERT INTO main._fm_images (id, filename, mime, data) SELECT id, filename, mime, data FROM old._fm_images WHERE id NOT IN (SELECT id FROM main._fm_images)');
+  const clashing = sql.prepare('SELECT o.id, o.filename, o.mime, o.data FROM old._fm_images o JOIN main._fm_images f ON f.id = o.id WHERE f.mime IS NOT o.mime OR f.data IS NOT o.data').all() as
+    { id: number; filename: string | null; mime: string; data: Uint8Array }[];
+  const oldIds = (sql.prepare('SELECT id FROM old._fm_images').all() as { id: number }[]).map((r) => r.id);
+  const add = sql.prepare('INSERT INTO main._fm_images (id, filename, mime, data) VALUES (?, ?, ?, ?)');
+  for (const img of clashing) add.run(nextImageId(sql, 'main', oldIds), img.filename, img.mime, img.data);
 }
 
 /** Accounts, privileges, tokens, the audit log and other settings, from the old store. */
