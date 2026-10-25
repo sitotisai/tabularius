@@ -1,7 +1,7 @@
 import { test, type TestContext } from 'node:test';
 import { request } from 'node:http';
 import assert from 'node:assert/strict';
-import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { serve } from '../src/index.ts';
@@ -469,9 +469,11 @@ test('a remembered proof does not extend the time a password goes unchecked', as
   assert.ok(verify.n > 0, 'five minutes after the password was last hashed it is hashed again');
 });
 
-test('a remembered proof ends at once when the LAN blank-password opt-in is switched off', async (t) => {
+const charts = join(import.meta.dirname, '../../../fixtures/fmp12/Charts.fmp12');
+
+test('a remembered proof ends at once when the LAN blank-password opt-in is switched off', { skip: existsSync(charts) ? false : 'fixtures missing: run npm run fixtures' }, async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-mcp-basic-blank-'));
-  copyFileSync(join(import.meta.dirname, '../../../fixtures/fmp12/Charts.fmp12'), join(dir, 'Charts.fmp12'));
+  copyFileSync(charts, join(dir, 'Charts.fmp12'));
   const s = await serve({ dir, port: 0, watch: false, log: () => {}, mcpToken: 'separate-admin-secret', proxyHeader: 'x-forwarded-for' as never, trustedProxies: ['127.0.0.1', '::1'] });
   t.after(async () => {
     await new Promise<void>((resolve) => s.server.close(() => resolve()));
