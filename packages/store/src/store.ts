@@ -2518,6 +2518,18 @@ export class Store {
   }
 
   /**
+   * The audit entry that began the record's present life: its latest creation that is not a revert putting the same
+   * record back (0 when none is logged, as for a record that came with the file). New ids continue after the highest
+   * one left, so a deleted last record's id is given to the next new one, and the log, keyed by table and id, holds both
+   * records' entries: those before this one belong to an earlier record.
+   */
+  recordLifeStart(table: string, recordId: number): number {
+    const row = this.sql.prepare("SELECT max(seq) AS seq FROM _fm_audit WHERE security = 0 AND kind = 'create' AND revert_of IS NULL AND tbl = ? COLLATE NOCASE AND record_id = ?")
+      .get(table, recordId) as { seq: number | null } | undefined;
+    return Number(row?.seq ?? 0);
+  }
+
+  /**
    * Puts back what one audit entry changed, as the account (its privileges apply, so it can put back only what it
    * could change by hand): an edit's fields get their old values again (`fields` picks some), a created record is
    * deleted, a deleted record is made again under its id. The change is logged like any other, saying which entry it
@@ -2526,7 +2538,8 @@ export class Store {
   revertAuditEntry(layout: string, recordId: number, seq: number, opts: WriteOptions & { fields?: string[] } = {}): { action: 'updated' | 'deleted' | 'created'; fields: string[]; skipped: { field: string; reason: string }[] } {
     const info = this.layout(layout);
     const entry = Number.isInteger(seq) && seq > 0 ? this.auditLog({ afterSeq: seq - 1, limit: 1 })[0] : undefined;
-    if (!entry || entry.seq !== seq || entry.security || entry.recordId !== recordId || entry.table.toLowerCase() !== info.table.toLowerCase()) {
+    if (!entry || entry.seq !== seq || entry.security || entry.recordId !== recordId || entry.table.toLowerCase() !== info.table.toLowerCase()
+      || entry.seq < this.recordLifeStart(info.table, recordId)) {
       throw new StoreError(101, `Audit entry ${seq} is not a change to this record`);
     }
     const w = { ...writer.getStore(), revertOf: seq, ...(opts.account ? { account: opts.account } : {}) };
