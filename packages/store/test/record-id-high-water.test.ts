@@ -71,6 +71,75 @@ test('renaming a table keeps its mark and a rolled back insert does not spend an
   });
 });
 
+/** Makes the store look as a format-1 one did: no mark table, no mark triggers, format 1. */
+function asFormat1(store: Store): void {
+  for (const t of store.sql.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name GLOB '_fm_rid_*'").all() as { name: string }[]) {
+    store.sql.exec(`DROP TRIGGER "${t.name.replace(/"/g, '""')}"`);
+  }
+  store.sql.exec('DROP TABLE _fm_record_id_high_water');
+  store.sql.prepare("UPDATE _fm_meta SET json = '1' WHERE key = 'storeFormat'").run();
+}
+
+test('upgrading a format-1 store whose table was renamed: the ids logged under the old name are not given again', () => {
+  withTable((path, store) => {
+    const ids = [1, 2, 3].map((n) => store.create('Items', { A: String(n) }).recordId);
+    store.delete('Items', ids[2]!);
+    store.applyDesign([{ op: 'renameTable', table: 'Items', name: 'Things' }]);
+    asFormat1(store);
+    // The log holds the deleted id under the name the table had then.
+    assert.deepEqual(store.sql.prepare('SELECT DISTINCT tbl FROM _fm_audit WHERE security = 0 AND record_id = ?').all(ids[2]!).map((r) => r.tbl), ['Items']);
+    const reopened = new Store(path);
+    try {
+      // The layout keeps its name; its table is now Things.
+      assert.ok(reopened.create('Items', { A: 'after upgrade' }).recordId > ids[2]!);
+    } finally { reopened.close(); }
+  });
+});
+
+test('a later table under a renamed table\'s old name starts above the ids it had', () => {
+  withTable((_path, store) => {
+    const ids = [1, 2].map((n) => store.create('Items', { A: String(n) }).recordId);
+    store.applyDesign([{ op: 'renameTable', table: 'Items', name: 'Things' }]);
+    store.applyDesign([{ op: 'createTable', name: 'Items', fields: [{ name: 'A' }] }]);
+    // "Items" is the renamed table's layout; the new table's is "Items 2".
+    assert.ok(store.create('Items 2', { A: 'new table' }).recordId > ids[1]!, 'the audit log holds the earlier ids under this name');
+  });
+});
+
+test('an explicit id beyond what a JavaScript number holds exactly: the store opens, and a new record is refused by name', () => {
+  withTable((path, store) => {
+    store.create('Items', { A: 'one' });
+    store.sql.prepare('INSERT INTO Items (_fm_record_id, A) VALUES (?, ?)').run(2n ** 60n, 'huge');
+    store.sql.prepare('DELETE FROM Items WHERE _fm_record_id = ?').run(2n ** 60n);
+    const reopened = new Store(path);
+    try {
+      assert.throws(() => reopened.create('Items', { A: 'after' }), (e: StoreError) => e.code === 812 && /table "Items"/.test(e.message));
+      assert.throws(() => reopened.duplicate('Items', 1), (e: StoreError) => e.code === 812 && /table "Items"/.test(e.message));
+      // Only that table: others go on.
+      reopened.applyDesign([{ op: 'createTable', name: 'Other', fields: [{ name: 'A' }] }]);
+      assert.equal(reopened.create('Other', { A: 'fine' }).recordId, 1);
+    } finally { reopened.close(); }
+    // Up to the last exact one is still given.
+    const edge = new Store(path);
+    try {
+      edge.sql.prepare("UPDATE _fm_record_id_high_water SET id = ? WHERE tbl = 'Items'").run(Number.MAX_SAFE_INTEGER - 1);
+      assert.equal(edge.create('Items', { A: 'last' }).recordId, Number.MAX_SAFE_INTEGER);
+      assert.throws(() => edge.create('Items', { A: 'past' }), (e: StoreError) => e.code === 812);
+    } finally { edge.close(); }
+  });
+});
+
+test('a missing mark row: new ids continue after the highest record, and the next insert writes the row again', () => {
+  withTable((_path, store) => {
+    store.create('Items', { A: 'one' });
+    store.create('Items', { A: 'two' });
+    store.sql.prepare("DELETE FROM _fm_record_id_high_water WHERE tbl = 'Items'").run();
+    assert.equal(store.create('Items', { A: 'three' }).recordId, 3);
+    assert.equal(store.duplicate('Items', 1).recordId, 4);
+    assert.equal((store.sql.prepare("SELECT id FROM _fm_record_id_high_water WHERE tbl = 'Items'").get() as { id: number }).id, 4);
+  });
+});
+
 function reconvertStore(run: (store: Store, baseline: string) => void | Promise<void>): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-record-reconvert-'));
   const baseline = join(dir, 'baseline.sqlite');

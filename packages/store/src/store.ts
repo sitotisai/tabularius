@@ -2145,21 +2145,25 @@ export class Store {
     }
   }
 
-  /** Seed old stores from surviving records and audit entries; pruned entries cannot be recovered. Explicit inserts advance the mark. */
+  /**
+   * The record-id mark (store format 2): per table, the highest record id it ever committed. New records are numbered
+   * after it (see nextRecordId), so once committed an id is never given to another record of the table, even after the
+   * record that had it is deleted. An AFTER INSERT trigger per table keeps it in the same transaction as the insert: an
+   * explicit id (a replayed change, a put-back, raw SQL) moves it forward too, and a rolled-back insert takes its mark
+   * change back with it. The mark only moves forward; a restore from a backup or a takeover by a standby that was behind
+   * brings back that copy's mark (ADMIN.md).
+   *
+   * A table without a mark (every table of a format-1 store) is seeded from what is left to go by: its highest record and
+   * the highest record id the retained audit log names for it. A table renamed in Tabularius has its older entries under
+   * a name the design log does not keep, so it is seeded from the highest record id the log names for any table. What
+   * audit retention removed, and the ids of a Truncate (logged as a count), cannot be seen (docs/upgrading.md). Every open
+   * also lifts each mark to its table's highest record, in case records came in while a trigger was missing.
+   */
   private ensureRecordIdHighWater(): void {
     this.sql.exec('SAVEPOINT record_id_high_water');
     try {
       this.sql.exec('CREATE TABLE IF NOT EXISTS _fm_record_id_high_water (tbl TEXT PRIMARY KEY COLLATE NOCASE, id INTEGER NOT NULL)');
-      const marked = new Set((this.sql.prepare('SELECT tbl FROM _fm_record_id_high_water').all() as { tbl: string }[]).map((r) => r.tbl.toLowerCase()));
-      const missing = this.schema.tables.some((t) => !marked.has(t.name.toLowerCase()));
-      const audited = new Map<string, number>();
-      if (missing) {
-        // One scan for all tables of an older store, rather than one full audit scan per table.
-        const rows = this.sql.prepare('SELECT tbl, max(record_id) AS id FROM _fm_audit WHERE security = 0 AND record_id IS NOT NULL GROUP BY tbl COLLATE NOCASE')
-          .all() as { tbl: string; id: number }[];
-        for (const row of rows) audited.set(row.tbl.toLowerCase(), row.id);
-      }
-      for (const table of this.schema.tables) this.ensureRecordIdTable(table.name, audited.get(table.name.toLowerCase()) ?? 0);
+      this.ensureRecordIdMarks(this.schema.tables.map((t) => t.name));
       this.sql.exec('RELEASE record_id_high_water');
     } catch (error) {
       this.sql.exec('ROLLBACK TO record_id_high_water; RELEASE record_id_high_water');
@@ -2167,23 +2171,56 @@ export class Store {
     }
   }
 
-  private ensureRecordIdTable(table: string, knownAudit?: number): void {
-    if (!this.sql.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table)) return;
-    const existing = this.sql.prepare('SELECT id FROM _fm_record_id_high_water WHERE tbl = ?').get(table) as { id: number } | undefined;
-    // The audit scan is needed only once per table, when the durable mark is first made.
-    const audited = existing ? 0 : knownAudit ?? (this.sql.prepare('SELECT coalesce(max(record_id), 0) AS id FROM _fm_audit WHERE security = 0 AND tbl = ? COLLATE NOCASE')
-      .get(table) as { id: number }).id;
-    const live = (this.sql.prepare(`SELECT coalesce(max(_fm_record_id), 0) AS id FROM ${q(table)}`).get() as { id: number }).id;
-    this.sql.prepare('INSERT INTO _fm_record_id_high_water (tbl, id) VALUES (?, ?) ON CONFLICT(tbl) DO UPDATE SET id = max(id, excluded.id)')
-      .run(table, Math.max(live, audited));
-    const trigger = `_fm_rid_${table}`;
-    if (!this.sql.prepare("SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = ? AND tbl_name = ?").get(trigger, table)) {
+  /**
+   * Makes sure each named table has its mark and its trigger (see ensureRecordIdHighWater). Seeding a table without a mark
+   * scans the audit log once for all of them: on the first open of a format-1 store, and when a design change makes or
+   * puts back a table whose name has no mark (the log has no index by table, so that is one scan of it per such change).
+   * Done in SQL throughout: an id above the highest number JavaScript holds exactly is kept, not read.
+   */
+  private ensureRecordIdMarks(names: string[]): void {
+    const present = new Set((this.sql.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map((r) => r.name));
+    const tables = names.filter((name) => present.has(name));
+    if (!tables.length) return;
+    const marked = new Set((this.sql.prepare('SELECT tbl FROM _fm_record_id_high_water').all() as { tbl: string }[]).map((r) => r.tbl.toLowerCase()));
+    const unmarked = tables.filter((name) => !marked.has(name.toLowerCase()));
+    if (unmarked.length) {
+      const renamed = new Set(present.has(DESIGN_LOG) ? (this.sql.prepare(`SELECT DISTINCT json_extract(op, '$.table') AS id FROM ${DESIGN_LOG} WHERE json_extract(op, '$.op') = 'renameTable'`)
+        .all() as { id: number | string | null }[]).map((r) => String(r.id)) : []);
+      const wanted = unmarked.map((name) => ({ name, renamed: renamed.has(String(this.schema.tables.find((t) => t.name === name)?.id)) }));
+      this.sql.prepare(`WITH audited AS MATERIALIZED (SELECT tbl, max(record_id) AS id FROM _fm_audit WHERE security = 0 AND record_id IS NOT NULL GROUP BY tbl COLLATE NOCASE),
+          wanted AS (SELECT json_extract(value, '$.name') AS name, json_extract(value, '$.renamed') AS renamed FROM json_each(?))
+        INSERT INTO _fm_record_id_high_water (tbl, id)
+        SELECT name, coalesce(CASE WHEN renamed THEN (SELECT max(id) FROM audited) ELSE (SELECT id FROM audited WHERE tbl = wanted.name COLLATE NOCASE) END, 0) FROM wanted WHERE true
+        ON CONFLICT(tbl) DO UPDATE SET id = max(id, excluded.id)`).run(JSON.stringify(wanted));
+    }
+    const triggers = new Map((this.sql.prepare("SELECT name, tbl_name FROM sqlite_master WHERE type = 'trigger' AND name GLOB '_fm_rid_*'").all() as { name: string; tbl_name: string }[])
+      .map((r) => [r.name, r.tbl_name]));
+    for (const table of tables) {
+      this.sql.prepare(`INSERT INTO _fm_record_id_high_water (tbl, id) SELECT ?, coalesce(max(_fm_record_id), 0) FROM ${q(table)} WHERE true
+        ON CONFLICT(tbl) DO UPDATE SET id = max(id, excluded.id)`).run(table);
+      const trigger = `_fm_rid_${table}`;
+      if (triggers.get(trigger) === table) continue;
       this.sql.exec(`DROP TRIGGER IF EXISTS ${q(trigger)}`);
       this.sql.exec(`CREATE TRIGGER ${q(trigger)} AFTER INSERT ON ${q(table)} BEGIN
         INSERT INTO _fm_record_id_high_water (tbl, id) VALUES ('${table.replace(/'/g, "''")}', NEW._fm_record_id)
         ON CONFLICT(tbl) DO UPDATE SET id = max(id, excluded.id);
       END`);
     }
+  }
+
+  /**
+   * The id a new record of `table` gets: after its highest record, its mark and any id an open transaction holds for one.
+   * A table whose ids reached the highest one a JavaScript number holds exactly (only an explicit id can put one there)
+   * takes no more records, rather than give one twice.
+   */
+  private nextRecordId(table: string): number {
+    const { n } = this.sql.prepare(`SELECT min(max(coalesce((SELECT max(_fm_record_id) FROM ${q(table)}), 0),
+      coalesce((SELECT id FROM _fm_record_id_high_water WHERE tbl = ?), 0)), ${Number.MAX_SAFE_INTEGER}) AS n`).get(table) as { n: number };
+    const next = Math.max(n, this.heldNewIds.get(table) ?? 0) + 1;
+    if (!Number.isSafeInteger(next)) {
+      throw new StoreError(812, `Exceeded host's capacity: table "${table}" has used record ids up to ${Number.MAX_SAFE_INTEGER}, the highest one Tabularius can give, so no new record can be made in it`);
+    }
+    return next;
   }
 
   /**
@@ -3349,16 +3386,17 @@ export class Store {
       case 'createTable': {
         const cols = e.table.fields.filter((f) => f.kind !== 'summary').map((f) => `, ${q(f.name)} ${SQL_TYPES[f.type]}`).join('');
         this.sql.exec(`CREATE TABLE ${q(e.table.name)} (_fm_record_id INTEGER PRIMARY KEY, _fm_mod_id INTEGER NOT NULL DEFAULT 0${this.fileMode === 'native' ? ", _fm_uuid TEXT NOT NULL DEFAULT ''" : ''}${cols})`);
-        this.ensureRecordIdTable(e.table.name);
+        this.ensureRecordIdMarks([e.table.name]);
         if (this.fileMode === 'native') this.nativeIdGuards(e.table);
         break;
       }
       case 'renameTable':
         this.sql.exec(`DROP TRIGGER IF EXISTS ${q(`_fm_rid_${e.from}`)}`);
         this.sql.exec(`ALTER TABLE ${q(e.from)} RENAME TO ${q(e.to)}`);
+        // The mark goes with the table. The old name keeps its row: a table made later under it starts above these ids,
+        // which the audit log still holds under that name (and a rename that changes only case keeps the one row).
         this.sql.prepare('INSERT INTO _fm_record_id_high_water (tbl, id) SELECT ?, id FROM _fm_record_id_high_water WHERE tbl = ? ON CONFLICT(tbl) DO UPDATE SET id = max(id, excluded.id)').run(e.to, e.from);
-        this.sql.prepare('DELETE FROM _fm_record_id_high_water WHERE tbl = ?').run(e.from);
-        this.ensureRecordIdTable(e.to);
+        this.ensureRecordIdMarks([e.to]);
         for (const k of keys) renameKey(k, e.from, null, e.to);
         renameExcluded(e.from, null, e.to);
         break;
@@ -3421,7 +3459,7 @@ export class Store {
         const kept = this.sql.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(`_fm_deleted_${e.deleted}`);
         if (kept) this.sql.exec(`ALTER TABLE ${q(`_fm_deleted_${e.deleted}`)} RENAME TO ${q(e.table.name)}`);
         else this.designEffect({ k: 'createTable', table: e.table });
-        this.ensureRecordIdTable(e.table.name);
+        this.ensureRecordIdMarks([e.table.name]);
         for (const [k, v] of Object.entries(row ? JSON.parse(row.meta) as Record<string, unknown> : {})) {
           const value = this.keyedMeta(k) ?? ownKeyed({});
           value[e.table.name] = v;
@@ -9460,10 +9498,8 @@ export class Store {
     if (opts.dataEntry) this.checkEntry(table, data);
     this.refuseNul(data);
     const cols = this.setGlobals(table, this.columns(info, data, undefined, opts.dateOrder));
-    // The durable mark includes deleted records and explicit inserts replayed by a standby.
-    const next = Math.max((this.sql.prepare(`SELECT coalesce(max(_fm_record_id), 0) + 1 AS n FROM ${q(info.table)}`).get() as { n: number }).n,
-      (this.sql.prepare('SELECT id + 1 AS n FROM _fm_record_id_high_water WHERE tbl = ?').get(info.table) as { n: number }).n,
-      (this.heldNewIds.get(info.table) ?? 0) + 1);
+    // After the table's record-id mark: a deleted record's id is not given again (see ensureRecordIdHighWater).
+    const next = this.nextRecordId(info.table);
     const row: Row = { _fm_record_id: next, _fm_mod_id: 0 };
     for (const f of info.fields) row[f.name] = null;
     for (const [k, v] of cols) row[k] = v;
@@ -9509,9 +9545,7 @@ export class Store {
     const pv = this.local(opts.privileges);
     if (pv) this.checkRecordRule(table, pv, 'create', 'view', current);
     this.checkWrite(info, pv, []);
-    const next = Math.max((this.sql.prepare(`SELECT coalesce(max(_fm_record_id), 0) + 1 AS n FROM ${q(info.table)}`).get() as { n: number }).n,
-      (this.sql.prepare('SELECT id + 1 AS n FROM _fm_record_id_high_water WHERE tbl = ?').get(info.table) as { n: number }).n,
-      (this.heldNewIds.get(info.table) ?? 0) + 1);
+    const next = this.nextRecordId(info.table);
     const row: Row = { _fm_record_id: next, _fm_mod_id: 0 };
     const copied = new Set<string>();
     for (const f of info.fields) {
