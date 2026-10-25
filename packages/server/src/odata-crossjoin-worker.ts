@@ -51,7 +51,7 @@ export function join(job: JoinJob): JoinResult {
     } catch (e) {
       if ((e as Error).message.includes(LATE)) return { refused: 'late' };
       if ((e as { code?: string }).code === 'ERR_SQLITE_ERROR' && /Expression tree is too large|too many SQL variables/.test((e as Error).message)) {
-        return { refused: `$filter is too complex: ${(e as Error).message}` };
+        return { refused: `Query is too complex: ${(e as Error).message}` };
       }
       throw e;
     }
