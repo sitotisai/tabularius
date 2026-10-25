@@ -8675,11 +8675,24 @@ export class Store {
         value = JSON.stringify(arr);
         this.markRepeating(info.table, field);
       }
-      this.sql.prepare(`UPDATE ${q(info.table)} SET _fm_mod_id = _fm_mod_id + 1, ${q(field)} = ? WHERE _fm_record_id = ?`).run(value, recordId);
+      // The file is a change to the record like an update's: modification auto-enters take their new values and the stored
+      // calculations that read the container are worked out again. (Validation is not run for an upload, as before.)
+      const table = this.table(info);
+      const row: Row = { ...(current as Row) };
+      row[field] = value;
+      const calcRuns = new Map<string, StyleRun[] | undefined>();
+      this.write(() => this.calc.beforeWrite(table, row, new Set([field]), { isNew: false, account: opts.account, previous: current as Row, noValidation: true, calcRuns }));
+      const changed = info.fields.map((f) => f.name).filter((n) => n === field || row[n] !== current[n]);
+      this.changeOne(table, recordId, current as Row, () => this
+        .prepared(`UPDATE ${q(info.table)} SET ${['_fm_mod_id = _fm_mod_id + 1', ...changed.map((n) => `${q(n)} = ?`)].join(', ')} WHERE _fm_record_id = ?`)
+        .run(...changed.map((n) => row[n] as SqlValue), recordId));
+      const kept = this.keepCalcRuns(table, recordId, row, calcRuns);
+      const diff = changed.filter((n) => row[n] !== current[n]);
       // Never the contents: the name, size and a hash that identifies them.
       const described = file && `${file.filename ?? '(file)'} (${containerFileSize(file)} bytes, sha256 ${containerFileHash(file)})`;
-      this.audit('update', info.table, recordId, { [repetition > 1 ? `${field}(${repetition})` : field]: [current[field] ?? null, described ?? null] }, opts);
-      this.notify('update', info.table, recordId, Number(current._fm_mod_id) + 1, undefined, [field]);
+      const entered = Object.fromEntries(diff.filter((n) => n !== field).map((n) => [n, [current[n] ?? null, row[n] ?? null]]));
+      this.audit('update', info.table, recordId, { [repetition > 1 ? `${field}(${repetition})` : field]: [current[field] ?? null, described ?? null], ...entered }, opts);
+      this.notify('update', info.table, recordId, Number(current._fm_mod_id) + 1, undefined, [...new Set([field, ...diff, ...kept])]);
       return { modId: Number(current._fm_mod_id) + 1 };
     });
   }
