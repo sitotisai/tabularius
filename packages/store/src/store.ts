@@ -5142,6 +5142,21 @@ export class Store {
     if (!this.canonicalAccount(account) || this.accountInactive(account)) throw new StoreError(212, 'The execution account is inactive or missing');
   }
 
+  /**
+   * A value that changes when this account's sign-in does (its password, whether it is active or can use a password, its
+   * identity, where it may sign in from, its second-factor and password-change requirements, its privilege set) and not
+   * when anything else in the file's security does; undefined for a name with no account. For caches that must outlive
+   * unrelated security changes, such as another person's failed sign-in, but not these. Only hashes are kept in it.
+   */
+  credentialStamp(account: string): string | undefined {
+    const row = this.sql.prepare('SELECT password_hash, source, inactive, password_disabled, identity_id, local_only, require_2fa, must_change, privilege_set FROM _fm_accounts WHERE name = ? COLLATE NOCASE').get(account) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    // An imported account on the file's own password has no hash of ours; its verifier is in the design.
+    const verifier = row.password_hash ? undefined : this.schema.accounts.find((a) => !a.external && a.name.toLowerCase() === account.toLowerCase())?.passwordVerifier;
+    const secret = String(row.password_hash ?? verifier ?? '');
+    return createHash('sha256').update(JSON.stringify({ ...row, password_hash: undefined, secret: createHash('sha256').update(secret).digest('hex') })).digest('hex');
+  }
+
   /** Committed or in-transaction security changes, including changes made by another worker. */
   securityToken(): string {
     const row = this.sql.prepare('SELECT head_seq, head_hash FROM _fm_security_chain_state WHERE id = 1').get();

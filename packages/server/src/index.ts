@@ -30,7 +30,8 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { Host } from './host.ts';
 import { COMPACTION_START_DELAY_MS, timedCompactionTick } from './compaction.ts';
 import { ApiError, DataApi, readBody } from './dataapi.ts';
-import { createMcpServer, type McpIdentity } from './mcp.ts';
+import { basicCredentialsRemembered, createMcpServer, proveBasicCredentials, type McpIdentity } from './mcp.ts';
+import { AddressBudget, CheckGate } from './address-budget.ts';
 import { invalidMessage } from './mcp-conformance.ts';
 export { aiStatus, excludeFromAi } from './ai-access.ts';
 export { IMAGE_EMBED_PROVIDERS, resolveImageEmbed, type ImageEmbedProvider, type ImageEmbedEndpoint } from './image-embed.ts';
@@ -519,6 +520,10 @@ export async function serve(opts: ServeOptions): Promise<{ server: Server; host:
     const mcpAdminToken = opts.mcpToken || localMcpToken(opts.dir);
     const mcpInFlight = new IdentityInFlight();
     const mcpStreams = new StreamSlots();
+    // Basic credentials are not checked before a whole MCP server is built for the request, so each address may send only so many unproven ones.
+    const mcpBasicBudget = new AddressBudget();
+    // Past it, a right password is still checked and served, in turns (see CheckGate), so a flood cannot shut a real account out.
+    const mcpBasicChecks = new CheckGate();
     disposers.push(() => mcpStreams.closeAll());
     // Sign-in for remote AI apps (claude.ai and Claude Desktop connectors) at /mcp, with the files' own accounts.
     const oauth = new OAuthServer(host, opts.dir, { publicUrl: opts.publicUrl });
@@ -709,7 +714,31 @@ export async function serve(opts: ServeOptions): Promise<{ server: Server; host:
           if (basic) {
             // An account: its password and privileges are checked in each file it touches.
             const [account, ...rest] = Buffer.from(basic, 'base64').toString('utf8').split(':');
-            if (account) who = { account, password: rest.join(':'), from: clientAddress(req), otp: String(req.headers['x-tabularius-otp'] ?? '') };
+            if (account) {
+              const password = rest.join(':');
+              const from = clientAddress(req);
+              if (!basicCredentialsRemembered(host, { account, password, from }) && !mcpBasicBudget.take(from)) {
+                // The address has used its share. A right password is still served, in turns of its own name's, so made-up
+                // names from the same address (or behind the same proxy) cannot keep a real account out; everything else waits.
+                // A client that hangs up while it waits is taken out of the line and gets no check.
+                const hungUp = new AbortController();
+                const gone = () => hungUp.signal.aborted || res.destroyed || req.socket.destroyed;
+                const onClose = () => hungUp.abort();
+                res.once('close', onClose);
+                let proved = false;
+                try {
+                  const endCheck = await mcpBasicChecks.enter(from, account, hungUp.signal);
+                  try { proved = !!endCheck && !gone() && (basicCredentialsRemembered(host, { account, password, from }) || await proveBasicCredentials(host, { account, password, from }, gone)); } finally { endCheck?.(); }
+                } finally { res.off('close', onClose); }
+                if (gone()) return;
+                if (!proved) {
+                  busyHeaders(res);
+                  res.writeHead(429, { 'content-type': 'application/json' }).end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'Too many requests with credentials not yet verified from this address; try again shortly' }, id: null }));
+                  return;
+                }
+              }
+              who = { account, password, from, otp: String(req.headers['x-tabularius-otp'] ?? '') };
+            }
           } else {
             // An API token of a file (Manage Security, or the admin console's Connect an AI app): one account of that file, its
             // privilege set narrowed to the token's scope. Older admin console tokens (ohm_) sign in as their account.
