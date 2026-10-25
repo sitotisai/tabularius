@@ -114,7 +114,7 @@ test('password sign-in rechecks activity after asynchronous hashing', { skip }, 
   }
 });
 
-test('recovery login refuses inactive accounts without consuming their codes', { skip }, () => {
+test('recovery login refuses inactive accounts, and deactivating removed their codes', { skip }, () => {
   const { dir, path } = converted();
   try {
     const store = new Store(path, 'Flicks');
@@ -122,7 +122,10 @@ test('recovery login refuses inactive accounts without consuming their codes', {
     const [code] = store.generateRecoveryCodes('recovery-test', 1);
     store.setAccountActive('recovery-test', false);
     assert.equal(store.useRecoveryCode('recovery-test', code!), false);
-    assert.equal(store.recoveryCodesRemaining('recovery-test'), 1);
+    // Deactivation ended the codes (they would otherwise work again on reactivation).
+    assert.equal(store.recoveryCodesRemaining('recovery-test'), 0);
+    store.setAccountActive('recovery-test', true);
+    assert.equal(store.useRecoveryCode('recovery-test', code!), false);
     store.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });
