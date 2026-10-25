@@ -11055,9 +11055,9 @@ export class Store {
     for (const name of calledFunctions(opened)) {
       const portable = this.portableQueryFunctions.get(name);
       if (portable) { functions.push({ name, ...portable }); continue; }
-      const defined = [...this.queryFunctions].find(([k]) => k.toLowerCase() === name)?.[1];
-      // The child has what it shares, and SQLite's built-ins when the store has not replaced them.
-      if (defined ? defined === SHARED_SQL_FUNCTIONS.get(name) : isBuiltinFunction(name)) continue;
+      // SQLite takes a name in any case and the last definition wins, so every definition under this name must be the shared one.
+      const defined = [...this.queryFunctions].filter(([k]) => k.toLowerCase() === name).map(([, f]) => f);
+      if (defined.length ? defined.every((f) => f === SHARED_SQL_FUNCTIONS.get(name)) : isBuiltinFunction(name)) continue;
       throw new StoreError(8310, `A recursive query can't call ${name}(): it runs apart from the server so that it can be stopped, with SQLite's own functions and a few portable ones only`);
     }
     const views = this.fileMode === 'native' ? this.schema.tables.flatMap((t) => this.decimalViewSql(this.readOnlySql!, t) ?? []) : [];
@@ -11150,7 +11150,7 @@ export class Store {
     if (wanted > params.length) throw new StoreError(8310, `The query has ${wanted} ? placeholder${wanted === 1 ? '' : 's'} but ${params.length} value${params.length === 1 ? ' was' : 's were'} given`);
     const { text, opened } = this.readOnlyChecked(sqlText);
     // This connection holds the transaction, so the query cannot run apart from it where it could be stopped.
-    if (!unbounded && usesRecursion(opened)) throw new StoreError(8310, "A recursive query can't run inside a transaction: it runs apart from the server so that it can be stopped, and there it would not see the transaction's changes. End the transaction first");
+    if (!unbounded && usesRecursion(opened)) throw new StoreError(8310, "A recursive query can't run on a file this transaction has written to: it runs apart from the server so that it can be stopped, and there it would not see the transaction's changes. End the transaction first");
     for (const [name, fn] of this.queryFunctions) this.sql.function(name, { varargs: true }, fn);
     const st = this.sql.prepare(text);
     const columns = st.columns();
