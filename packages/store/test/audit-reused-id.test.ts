@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createStore, Store } from '../src/index.ts';
+import { createStore, Store, StoreError } from '../src/index.ts';
 
 function withStore(fn: (store: Store) => void) {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-reused-id-'));
@@ -58,5 +58,68 @@ test('a deleted record that was put back by a revert keeps its whole history rev
     // The same record came back, so what was logged before still belongs to it.
     assert.equal(store.revertAuditEntry('Docs', id, edit.seq, { account: 'Cy' }).action, 'updated');
     assert.equal(store.get('Docs', id, 'iso').fieldData.Title, 'a');
+  });
+});
+
+test('a record put back by the cleanup undo keeps its own earlier edits revertable', () => {
+  withStore((store) => {
+    const id = store.create('Docs', { Title: 'a' }, { account: 'Ann' }).recordId;
+    store.update('Docs', id, { Title: 'b' }, undefined, { account: 'Ann' });
+    const edit = store.auditLog({ table: 'Docs', recordId: id, kind: 'update' })[0];
+    const before = store.sql.prepare('SELECT * FROM Docs WHERE _fm_record_id = ?').get(id) as Record<string, never>;
+    store.delete('Docs', id, { account: 'Ann' });
+    store.restoreDeletedRow('Docs', before, { account: 'Ann' });
+    // The same record came back, not a new one: its life did not start again.
+    assert.equal(store.recordLifeStart('Docs', id), store.auditLog({ table: 'Docs', recordId: id, kind: 'create' })[0].seq);
+    assert.equal(store.revertAuditEntry('Docs', id, edit.seq, { account: 'Ann' }).action, 'updated');
+    assert.equal(store.get('Docs', id, 'iso').fieldData.Title, 'a');
+  });
+});
+
+test('an original put back by the admin console restore keeps its earlier history (a record that came with the file)', () => {
+  withStore((store) => {
+    const id = store.create('Docs', { Title: 'a' }, { account: 'Ann' }).recordId;
+    // As a record from the file: nothing in the log says it was made here.
+    store.sql.prepare("DELETE FROM _fm_audit WHERE kind = 'create'").run();
+    store.update('Docs', id, { Title: 'b' }, undefined, { account: 'Ann' });
+    const edit = store.auditLog({ table: 'Docs', recordId: id, kind: 'update' })[0];
+    store.delete('Docs', id, { account: 'Ann' });
+    assert.equal(store.restoreRecord('Docs', id, edit.seq, { account: 'admin console' }).action, 'created');
+    assert.equal(store.recordLifeStart('Docs', id), 0, 'the restore is not a new record');
+    assert.equal(store.revertAuditEntry('Docs', id, edit.seq, { account: 'Ann' }).action, 'updated');
+  });
+});
+
+test('an account that cannot see a record learns nothing about it being made again from what revert answers', () => {
+  withStore((store) => {
+    const first = store.create('Docs', { Title: 'secret-A' }, { account: 'Admin' }).recordId;
+    store.delete('Docs', first, { account: 'Admin' });
+    const old = store.auditLog({ table: 'Docs', recordId: first, kind: 'create' })[0];
+    const second = store.create('Docs', { Title: 'secret-B' }, { account: 'Admin' }).recordId;
+    assert.equal(second, first);
+    const mine = store.auditLog({ table: 'Docs', recordId: second, kind: 'create' }).at(-1)!;
+    assert.ok(mine.seq > old.seq);
+
+    const open = { view: true, edit: true, create: true, delete: true };
+    const as = (name: string, tables: object) => {
+      store.savePrivilegeSet({ name, records: { ...open }, layouts: 'modifiable', valueLists: 'none', scripts: 'none', extendedPrivileges: [], tables } as never);
+      store.setPassword(name, 'pw', name);
+      return store.privileges(name);
+    };
+    const hidden = { 'no view': as('NoView', { Docs: { ...open, view: false } }), 'view rule that hides it': as('Rule', { Docs: { ...open, view: 'Title = "nothing"' } }) };
+    for (const [why, privileges] of Object.entries(hidden)) {
+      const says = (seq: number) => {
+        try {
+          store.revertAuditEntry('Docs', second, seq, { account: 'x', privileges });
+          return 'reverted';
+        } catch (e) {
+          return `${(e as StoreError).code}: ${(e as Error).message}`;
+        }
+      };
+      // An entry of the earlier record, one of the present record, and one that is nobody's: the same answer.
+      const answers = new Set([says(old.seq), says(mine.seq), says(mine.seq + 1000)].map((a) => a.replace(/\d+(?= is not)/, 'N')));
+      assert.equal(answers.size, 1, `${why}: ${[...answers].join(' | ')}`);
+    }
+    assert.equal(store.get('Docs', second, 'iso').fieldData.Title, 'secret-B', 'and nothing was changed');
   });
 });

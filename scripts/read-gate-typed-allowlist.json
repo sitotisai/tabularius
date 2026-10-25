@@ -2253,7 +2253,7 @@
   "api": "sql.prepare",
   "count": 1,
   "gate": "store-internal",
-  "why": "Returns one audit sequence number (the latest non-revert creation of the record, 0 if none), no record values. Its two callers use it only as a lower bound on audit entries they already filter: recordHistory (behind the callers' view checks and hideField/hideTable) and revertAuditEntry (which applies the account's privileges to the revert itself)."
+  "why": "Returns one audit sequence number (the latest non-revert creation of the record, 0 if none), no record values. Its two callers use it only as a lower bound on audit entries they already filter: recordHistory (whose callers check the account can see the record, or the whole table for a deleted one, and apply hideField/hideTable; mcp-design's is full access) and revertAuditEntry (which answers an account that cannot see the record the same way for every entry before it reads the log, then applies the account's privileges to the revert itself)."
  },
  {
   "file": "packages/store/src/store.ts",
@@ -2326,6 +2326,14 @@
   "count": 1,
   "gate": "checked-before",
   "why": "Applies opts.privileges itself: delete/update/restore go through privileged delete/update/checkLayout/checkWriteFields; hidden fields reported only as \"can't be put back\". Callers webclient.ts:452 and mcp.ts:1123 pass privileges."
+ },
+ {
+  "file": "packages/store/src/store.ts",
+  "within": "Store.revertAuditEntry",
+  "api": "sql.prepare",
+  "count": 1,
+  "gate": "store-internal",
+  "why": "An existence check (SELECT 1, no values) made before the log is read: it only picks which visibility test the account gets (the record's view rule when the record is there, the table's when it is gone), and an account that fails it is refused with the same answer whatever the entry. Nothing about the row is returned."
  },
  {
   "file": "packages/store/src/store.ts",
