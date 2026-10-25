@@ -47,7 +47,7 @@ import type { Node } from './parser.ts';
 import { ALL_STYLES, STYLE_BITS, restyle, rgbHex, sliceRuns, toCss, type TextFormat } from './styled.ts';
 import {
   CalcError, HostWait, ERR, EMPTY, asBoolean, asDate, asNumber, asNumberOrEmpty, asText, asTime, asTimestamp, bool, dayNumber,
-  decimalSum, exactAbs, exactDivFloor, exactMod, exactOf, exactSign, formatNumber, fromDayNumber, fromExact, isBeyondDouble, isEmpty, isOverlongWholeText, num, numberFromText, parseDateText, parseTimeText, parseTimestampText, text, type Value,
+  decimalSum, exactAbs, exactDivFloor, exactMod, exactOf, exactSign, formatNumber, fromDayNumber, fromExact, isBeyondDouble, isEmpty, isOverlongWholeText, num, numberFromText, parseDateText, parseTimeText, parseTimestampText, text, tidy, type Value,
 } from './values.ts';
 
 export interface Fn {
@@ -455,7 +455,14 @@ eager('SerialIncrement', 2, 2, (v, env) => {
   const t = T(v[0], env);
   const m = /^(.*?)(\d+)(\D*)$/.exec(t);
   if (!m) return text(t);
-  const next = String(Number(m[2]) + Math.trunc(N(v[1])));
+  const amount = N(v[1]);
+  if (!Number.isFinite(amount)) return text('?');
+  // Exact BigInt increment preserves long serial digits; large-number compatibility is unverified.
+  if (Number.isInteger(amount) && Number.isSafeInteger(amount)) {
+    const next = (BigInt(m[2]) + BigInt(Math.trunc(amount))).toString();
+    return text(m[1] + next.padStart(m[2].length, '0') + m[3]);
+  }
+  const next = String(Number(m[2]) + Math.trunc(amount));
   return text(m[1] + next.padStart(m[2].length, '0') + m[3]);
 });
 // 1,000 is one word, as FileMaker counts it; a comma between letters splits.
@@ -707,8 +714,8 @@ eager('Round', 2, 2, (v) => roundValue(v, true));
 eager('Truncate', 2, 2, (v) => roundValue(v, false));
 numeric('SetPrecision', 2, 2, (n) => n);
 // By zero these give "?", like the / operator.
-numeric('Mod', 2, 2, (n, d) => (d === 0 ? NaN : n - d * Math.floor(n / d)), exactMod);
-numeric('Div', 2, 2, (n, d) => (d === 0 ? NaN : Math.floor(n / d)), exactDivFloor);
+numeric('Mod', 2, 2, (n, d) => { if (d === 0) return NaN; const q = tidy(n / d); return tidy(n - d * Math.floor(q)); }, exactMod);
+numeric('Div', 2, 2, (n, d) => (d === 0 ? NaN : Math.floor(tidy(n / d))), exactDivFloor);
 numeric('Sign', 1, 1, Math.sign, exactSign);
 numeric('Sqrt', 1, 1, Math.sqrt);
 numeric('Exp', 1, 1, Math.exp);
@@ -1448,13 +1455,16 @@ const JDIGITS = ['0123456789', '０１２３４５６７８９', '〇一二三�
 eager('NumToJText', 3, 3, (v, env) => {
   const n = asNumberOrEmpty(v[0]);
   if (n === undefined) return EMPTY;
-  const sep = Math.trunc(N(v[1])), kind = Math.min(3, Math.max(0, Math.trunc(N(v[2]))));
+  const sep = Math.trunc(N(v[1])), rawKind = N(v[2]);
+  if (!Number.isFinite(sep) || !Number.isFinite(rawKind)) return text('?');
+  const kind = Math.min(3, Math.max(0, Math.trunc(rawKind)));
   const [int, frac] = T(num(Math.abs(n)), env).split('.');
   let out = int;
   if (sep === 1) out = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   else if (sep === 2 || sep === 3) {
     // Groups of four digits with 万, 億, 兆, 京 (3 also separates within groups).
     const units = ['', '万', '億', '兆', '京'];
+    if (int.length > 20) return text('?');
     const groups: string[] = [];
     for (let i = int.length, u = 0; i > 0; i -= 4, u++) {
       const g = String(Number(int.slice(Math.max(0, i - 4), i)));
