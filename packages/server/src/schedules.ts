@@ -283,6 +283,8 @@ export class Schedules {
   broadcast?: (text: string) => number;
   /** Set once the console's sync is up; sync schedules need it. */
   syncJobs?: SyncJobs;
+  /** The console destination, including an explicit startup override. */
+  backupDest?: () => string;
 
   constructor(host: Host, log: (m: string) => void = () => {}, now: () => number = Date.now) {
     this.host = host;
@@ -573,10 +575,11 @@ export class Schedules {
             throw e;
           }
         }
-        const made = await backupFolder(this.host.dir, s.dest, s.keep ?? 7);
+        const dest = s.dest ?? this.backupDest?.() ?? this.host.config.backupDir() ?? defaultBackupDir(this.host.dir);
+        const made = await backupFolder(this.host.dir, dest, s.keep ?? 7);
         // Read back before it counts as good, and one older set checked again (as the server's own backups are).
         if (s.verify !== false) {
-          const check = await verifyAfterBackup(s.dest ?? defaultBackupDir(this.host.dir), basename(made.dir), (m) => this.log(`schedule "${s.name}": ${m}`));
+          const check = await verifyAfterBackup(dest, basename(made.dir), (m) => this.log(`schedule "${s.name}": ${m}`));
           if (!check.ok) throw new ScheduleError(describeCheck(basename(made.dir), check));
         }
         run = { at: new Date(started).toISOString(), error: 0, result: basename(made.dir), steps: 0, ms: elapsed(), ...(manual ? { manual } : {}) };

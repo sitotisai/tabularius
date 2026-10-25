@@ -22,11 +22,13 @@ export const MAX_IDLE_MINUTES = 1440;
 export class ServerConfig {
   private readonly file: string;
   private readonly dir: string;
+  private lastValid: Record<string, unknown> = {};
   private seen?: { mtimeMs: number; size: number; values: Record<string, unknown> };
 
   constructor(dir: string) {
     this.dir = dir;
     this.file = join(dir, SETTINGS_FILE);
+    this.values(true);
   }
 
   /** Whether new users are refused. */
@@ -129,17 +131,26 @@ export class ServerConfig {
     this.write({ scriptPluginInstall: on || undefined });
   }
 
-  /** The file's values, read again only when it changed. Invalid settings are surfaced to the admin caller. */
-  private values(): Record<string, unknown> {
+  /** The file's values, read again only when it changed. Invalid startup settings fail early; invalid live edits keep the last valid values and warn. */
+  private values(startup = false): Record<string, unknown> {
     let st;
     try {
       st = statSync(this.file);
     } catch {
       this.seen = undefined;
-      return {};
+      this.lastValid = {};
+      return this.lastValid;
     }
     if (this.seen && this.seen.mtimeMs === st.mtimeMs && this.seen.size === st.size) return this.seen.values;
-    const values = readSettingsObject(this.dir);
+    let values: Record<string, unknown>;
+    try {
+      values = readSettingsObject(this.dir);
+      this.lastValid = values;
+    } catch (e) {
+      if (startup) throw e;
+      process.emitWarning(`Server settings were not applied: ${(e as Error).message}; fix the settings file. Keeping the last valid settings.`);
+      values = this.lastValid;
+    }
     this.seen = { mtimeMs: st.mtimeMs, size: st.size, values };
     return values;
   }
@@ -160,5 +171,6 @@ export class ServerConfig {
       return next;
     }, { mode: 0o600 });
     this.seen = undefined;
+    this.values(true);
   }
 }
