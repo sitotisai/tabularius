@@ -755,8 +755,8 @@ interface Expansion {
   filter?: { where: string; params: SqlValue[]; fields: string[] };
   sort?: SortSpec[];
 }
-/** How many more related record ids this response may read. */
-interface Budget { left: number }
+/** How many more related record ids this response may read, and the records each related table lets the account view (found once for the response). */
+interface Budget { left: number; viewable?: Map<string, ReadonlySet<number> | undefined> }
 
 /** A response's related records ran past EXPAND_LIMIT. */
 class Exhausted extends Error {}
@@ -1613,12 +1613,20 @@ export class ODataEndpoint {
       return (e.sort ? picked : all.ids.filter((x) => keep.has(x))).slice(e.skip, e.skip + take);
     }
     // Records the account can't view are left out before paging, as in portals; then the whole match has to be read.
-    const viewable = owner.limitsView(e.target.info.table, p) ? new Set(owner.viewableIds(e.target.info.table, p)) : undefined;
+    const viewable = this.viewableIn(budget, e.target.info.owner, e.target.info.table, p);
     const list = relatedIdList(set.graph, set.toId, row, e.target.toId, viewable || take === Infinity ? undefined : e.skip + take);
     if (!list) return [];
     budget.left -= list.ids.length;
     if (budget.left < 0) throw new Exhausted();
     return (viewable ? list.ids.filter((x) => viewable.has(x)) : list.ids).slice(e.skip, e.skip + take);
+  }
+
+  /** The records of `table` the account may view, undefined for all of them: worked out once for the response, not for each parent record. */
+  private viewableIn(budget: Budget, owner: Store, table: string, p: Privileges): ReadonlySet<number> | undefined {
+    const key = `${owner.name}\0${table}`;
+    const kept = (budget.viewable ??= new Map());
+    if (!kept.has(key)) kept.set(key, owner.limitsView(table, p) ? owner.viewableSet(table, p) : undefined);
+    return kept.get(key);
   }
 
   private relatedRecords(e: Expansion, ids: number[], p: Privileges): Record<string, unknown>[] {
