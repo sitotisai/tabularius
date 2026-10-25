@@ -181,6 +181,11 @@ const SENSITIVE_FIELD = /(^|[^a-z])(pass(word|code|phrase|wd)?|pwd|secret|token|
 /** One entry of the audit log: a record change, or a security/authentication event. */
 /** The sign-in events whose rows may wait for a transaction that holds the file to end (see logSecurity); no other row ever waits. */
 const DEFERRABLE_SECURITY_KINDS: ReadonlySet<string> = new Set(['sign-in', 'sign-in-failed', 'locked-out', 'lockout-cleared']);
+/**
+ * The tables a sign-in decides from. Sign-in reads share the connection, so they see what another session's open transaction
+ * has changed and not yet committed: while such a transaction has touched one of these, a sign-in is refused as busy (301).
+ */
+const SIGN_IN_STATE_TABLES = ['_fm_accounts', '_fm_privileges', '_fm_passkeys', '_fm_recovery_codes', '_fm_totp', '_fm_api_tokens', '_fm_sign_in_ledger'];
 /** The most sign-in rows kept waiting, and of them the most successful sign-ins (anyone can make those); past either the oldest of that kind are dropped. */
 const MAX_DEFERRED_SECURITY = 10_000;
 const MAX_DEFERRED_SIGN_INS = 1000;
@@ -1529,6 +1534,9 @@ export class Store {
   private heldBy?: Transaction;
   /** Changes made under the held savepoint, used to let another window commit on this file. */
   private heldSession?: Session;
+  /** One session per table a sign-in decides from, and whether the held transaction has changed any of them (see SIGN_IN_STATE_TABLES). */
+  private heldSignInSessions: Session[] = [];
+  private heldSignInTouched = false;
   private heldAudit: { seq: number; onAudit?: (file: object, seq: number) => void }[] = [];
 
   /** Audit rows still in this transaction, before commit publishes their callbacks. */
@@ -1634,6 +1642,30 @@ export class Store {
     this.heldBy = tx;
     tx.files.set(this, name);
     this.heldSession = this.sql.createSession();
+    this.heldSignInTouched = false;
+    try { this.heldSignInSessions = SIGN_IN_STATE_TABLES.map((table) => this.sql.createSession({ table })); }
+    catch { this.heldSignInTouched = true; }
+  }
+
+  /** Whether the transaction holding this file has changed what a sign-in decides from; a rolled back savepoint's changes do not count. */
+  private heldChangedSignInState(): boolean {
+    if (this.heldBy === undefined) return false;
+    if (!this.heldSignInTouched) this.heldSignInTouched = this.heldSignInSessions.some((s) => s.changeset().length > 0);
+    return this.heldSignInTouched;
+  }
+
+  private closeSignInSessions(): void {
+    for (const s of this.heldSignInSessions) { try { s.close(); } catch { /* already closed */ } }
+    this.heldSignInSessions = [];
+  }
+
+  /**
+   * A password, passkey, code, token or authority another session has changed and not committed must not decide a sign-in: it
+   * could be undone, and what was let in on it would stay in. Refused as busy until that transaction ends, as every sign-in
+   * was while any transaction held the file.
+   */
+  private requireSignInStateSettled(): void {
+    if (this.heldByOther() && this.heldChangedSignInState()) throw new StoreError(301, 'Record is in use by another user (a transaction is open)');
   }
 
   /**
@@ -1652,6 +1684,9 @@ export class Store {
     const changes = this.heldSession.changeset();
     this.heldSession.close();
     this.heldSession = undefined;
+    // The transaction is suspended and joined again below: what it had changed in sign-in state stays counted.
+    const touchedSignIn = this.heldChangedSignInState();
+    this.closeSignInSessions();
     const audit = this.heldAudit.map(({ seq, onAudit }) => ({
       row: this.sql.prepare('SELECT * FROM _fm_audit WHERE seq = ?').get(seq) as Record<string, SQLInputValue>, onAudit,
     }));
@@ -1673,6 +1708,7 @@ export class Store {
     try {
       // Rejoin using the originating transaction, regardless of the current window's writer context.
       writer.run({ ...writer.getStore(), transaction: { open: tx } }, () => this.joinTransaction());
+      if (touchedSignIn) this.heldSignInTouched = true;
       // Audit rows have generated sequence numbers and a hash chain. Reinsert and relink them
       // after the independent write, instead of replaying their old sequence numbers.
       // Node's changeset filter includes a table when it returns true. Rebuild the
@@ -1768,6 +1804,8 @@ export class Store {
     if (!name || this.heldBy !== tx) return;
     this.heldSession?.close();
     this.heldSession = undefined;
+    this.closeSignInSessions();
+    this.heldSignInTouched = false;
     const audit = this.heldAudit;
     this.heldAudit = [];
     this.heldNewIds.clear();
@@ -1781,6 +1819,9 @@ export class Store {
     this.heldPublications = [];
     const began = this.heldBegan;
     this.heldBegan = false;
+    // Sign-in rows written into this transaction ahead of its own security rows: kept with it, or waiting again if it is undone.
+    const waitingBefore = this.deferredIntoHold;
+    this.deferredIntoHold = [];
     const securityPublications = this.transactionSecurityPublications.get(tx);
     this.transactionSecurityPublications.delete(tx);
     try {
@@ -1788,12 +1829,14 @@ export class Store {
     } catch (e) {
       // Never left open holding the file's write lock: what wasn't committed is undone.
       if (began && this.sql.isTransaction) this.sql.exec('ROLLBACK');
+      this.requeueDeferred(waitingBefore);
       this.resetCaches();
       if (began) this.finishExternalFiles(written, markers, false);
       throw e;
     }
     if (keep) for (const publish of securityPublications ?? []) publish();
     if (!keep) {
+      this.requeueDeferred(waitingBefore);
       this.resetCaches();
       // No container names them any more: the files go too, as if they had never been put in.
       // A file that can't be removed (in use, no permission) is only left behind: the rollback stands, and other files' holds still end.
@@ -2755,6 +2798,7 @@ export class Store {
 
   /** Own the file before any security mutation; its state, audit row and chain roll back together. */
   private securityChange<T>(run: () => T): T {
+    this.settleDeferredSecurity();
     this.joinTransaction();
     try {
       return securityWrite(this.sql, () => {
@@ -2836,11 +2880,15 @@ export class Store {
     if (kind === 'sign-in-failed' && !this.failureAuditRoom()) return;
     const at = new Date().toISOString();
     if (!DEFERRABLE_SECURITY_KINDS.has(kind)) {
-      // Rows that happened before this one go first, so the chain and the times agree.
-      this.flushDeferredSecurity(true);
+      // Rows that happened before this one go first, so the chain and the times agree (securityChange writes them, or puts
+      // them into the holder's own transaction). A row that could not go first is refused, not written ahead of them.
+      this.settleDeferredSecurity();
+      if (this.hasDeferredSecurity()) throw new StoreError(301, 'Record is in use by another user (a transaction is open)');
       this.appendSecurity(at, kind, opts);
       return;
     }
+    // A success is recorded only for a sign-in decided on committed state (the checks before it refuse otherwise).
+    if (kind === 'sign-in') this.requireSignInStateSettled();
     this.flushDeferredSecurity();
     // A transaction holds the file, so this row cannot be written now: a sign-in must not fail for that (one account's BEGIN
     // would lock everyone else out), and a row written into the holder's savepoint would vanish if it were undone. It waits,
@@ -2923,12 +2971,13 @@ export class Store {
    * that cannot be written stays, with those behind it, for the next try: the end of a hold, a sign-in check, the next
    * security row, or closing the file.
    */
-  private flushDeferredSecurity(all = false): void {
-    if (!this.hasDeferredSecurity() || this.flushingSecurity || this.heldBy || this.sql.isTransaction) return;
+  private flushDeferredSecurity(all = false, intoHold = false): void {
+    if (!this.hasDeferredSecurity() || this.flushingSecurity) return;
+    // `intoHold`: the transaction holding the file is the caller's own, and the rows go into it (see settleDeferredSecurity).
+    if (intoHold ? this.heldBy === undefined || this.heldByOther() : this.heldBy || this.sql.isTransaction) return;
     this.flushingSecurity = true;
     let more = false;
-    // An unrelated script's async transaction context must never reach the append.
-    writer.exit(() => {
+    const write = () => {
       try {
         do {
           const chunk: [Map<number, DeferredSecurity>, number, DeferredSecurity][] = [];
@@ -2939,8 +2988,11 @@ export class Store {
             else { chunk.push([this.deferredOther, b.value![0], b.value![1]]); b = heads[1].next(); }
           }
           this.securityChange(() => { for (const [, , e] of chunk) this.appendSecurityRow(e.at, e.kind, e.opts); });
-          for (const [queue, key] of chunk) queue.delete(key);
-        } while (all && this.hasDeferredSecurity());
+          for (const [queue, key] of chunk) {
+            if (intoHold) this.deferredIntoHold.push([queue === this.deferredSignIns, key, queue.get(key)!]);
+            queue.delete(key);
+          }
+        } while ((all || intoHold) && this.hasDeferredSecurity());
         this.deferredSecurityFailing = false;
         if (!this.hasDeferredSecurity()) this.deferredSecurityDropped = 0;
         else more = true;
@@ -2951,8 +3003,41 @@ export class Store {
           console.warn('sign-in audit rows could not be written yet and are waiting; they are tried again at the next sign-in check');
         }
       } finally { this.flushingSecurity = false; }
-    });
-    if (more) setImmediate(() => this.flushDeferredSecurity()).unref();
+    };
+    // An unrelated script's async transaction context must never reach the append.
+    if (intoHold) write(); else writer.exit(write);
+    if (more && !intoHold) setImmediate(() => this.flushDeferredSecurity()).unref();
+  }
+
+  /** Waiting rows that were written into the held transaction, ahead of its own security row; they wait again if it is undone. */
+  private deferredIntoHold: [boolean, number, DeferredSecurity][] = [];
+
+  /**
+   * Before a security change, the sign-in rows that are waiting go first, so the audit's order agrees with the times: once
+   * nothing holds the file they are written now; when the change is the holder's own they go into its transaction, ahead of the
+   * change, and are put back to wait if that transaction is undone.
+   */
+  private settleDeferredSecurity(): void {
+    if (!this.hasDeferredSecurity() || this.flushingSecurity) return;
+    if (this.heldBy === undefined) this.flushDeferredSecurity(true);
+    else this.flushDeferredSecurity(true, true);
+  }
+
+  /** Puts rows that were written into a transaction that has been undone back in the queues, in their places. */
+  private requeueDeferred(rows: [boolean, number, DeferredSecurity][]): void {
+    const merge = (queue: Map<number, DeferredSecurity>, extra: [number, DeferredSecurity][]) => {
+      const all = [...extra, ...queue].sort((a, b) => a[0] - b[0]);
+      queue.clear();
+      for (const [key, event] of all) queue.set(key, event);
+    };
+    merge(this.deferredSignIns, rows.filter((r) => r[0]).map((r) => [r[1], r[2]]));
+    merge(this.deferredOther, rows.filter((r) => !r[0]).map((r) => [r[1], r[2]]));
+    // The bound holds here too: the oldest go, successful sign-ins first.
+    while (this.deferredSignIns.size + this.deferredOther.size > MAX_DEFERRED_SECURITY) {
+      const queue = this.deferredSignIns.size ? this.deferredSignIns : this.deferredOther;
+      queue.delete(queue.keys().next().value!);
+      this.deferredSecurityDropped++;
+    }
   }
 
   /**
@@ -4909,6 +4994,12 @@ export class Store {
     return (this.sql.prepare('SELECT identity_id FROM _fm_accounts WHERE name = ? COLLATE NOCASE').get(name) as { identity_id: string } | undefined)?.identity_id;
   }
 
+  /** The identity of an account that has one, and nothing for one that does not (this never writes, so a read may use it while a transaction holds the file). */
+  accountIdentityIdIfSet(name: string): string | undefined {
+    const row = this.sql.prepare('SELECT identity_id FROM _fm_accounts WHERE name = ? COLLATE NOCASE').get(name) as { identity_id: string | null } | undefined;
+    return row?.identity_id ?? undefined;
+  }
+
   /** Identity generation for any persisted account, captured by sessions. */
   accountIdentityId(name: string): string | undefined {
     const row = this.sql.prepare('SELECT identity_id FROM _fm_accounts WHERE name = ? COLLATE NOCASE').get(name) as { identity_id: string | null } | undefined;
@@ -4927,6 +5018,7 @@ export class Store {
    * still a different sign-in: a code, token or session made before the change is not the same one after it was undone.
    */
   signInMark(account: string, via?: string, person?: string): string {
+    this.requireSignInStateSettled();
     const key = this.signInKey(account, via, person);
     const base = this.signInBase(account, via, person);
     // First look, or it changed: record that under the write lock, with the state read again under it, so two writers
@@ -4934,6 +5026,9 @@ export class Store {
     try {
       const known = this.ledgerRow(key);
       if (known?.mark === base) return `${known.gen}:${base}`;
+      // The ledger is written on the shared connection: another session's open transaction would take the row, and give it
+      // back if it were undone, so a generation could be issued twice. Refused as busy instead (not an unrecorded mark).
+      this.requireFreeOfOthers();
       return this.ledgerWrite(() => {
         const fresh = this.signInBase(account, via, person);
         const row = this.ledgerRow(key);
@@ -4943,7 +5038,8 @@ export class Store {
         this.sql.prepare('INSERT INTO main._fm_sign_in_ledger (key, mark, gen) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET mark = excluded.mark, gen = excluded.gen').run(key, fresh, gen);
         return `${gen}:${fresh}`;
       });
-    } catch {
+    } catch (e) {
+      if (e instanceof StoreError && e.code === 301) throw e;
       // Not recorded (a file that cannot be written): a mark that matches nothing, so nothing issued with it is honoured.
       return `unrecorded:${randomUUID()}:${base}`;
     }
@@ -6494,6 +6590,7 @@ export class Store {
 
   /** Read verifier eligibility and identity together, so a peer cannot mix two account generations. */
   private passwordState(account: string, from: string): { hash: string; identity: string | null } | undefined {
+    this.requireSignInStateSettled();
     if (this.lockedOut(account, from)) return undefined;
     const row = this.sql.prepare('SELECT password_hash, source, inactive, password_disabled, identity_id FROM _fm_accounts WHERE name = ? COLLATE NOCASE').get(account) as
       | { password_hash: string | null; source: string; inactive: number; password_disabled: number; identity_id: string | null } | undefined;
