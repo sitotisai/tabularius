@@ -7,8 +7,8 @@
 // signs in again here), every refusal and every success is a security event, and an unfinished stage can be discarded.
 
 import { createHash, randomUUID } from 'node:crypto';
-import { chmodSync, closeSync, constants, copyFileSync, existsSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, writeFileSync, writeSync, type Stats } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { chmodSync, closeSync, constants, copyFileSync, existsSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, realpathSync, renameSync, rmSync, writeFileSync, writeSync, type Stats } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { designText, stableJson, writeDesignText } from './design-text.ts';
 import { Store } from './store.ts';
@@ -48,9 +48,22 @@ const BATCH = 500;
 const PIECE = 1024 * 1024;
 const LOCK_MAX_AGE = 6 * 60 * 60 * 1000;
 const LOCK_UNCERTAIN_AGE = 60 * 1000;
+/** How long a running copy waits for the takeover gate before it skips a heartbeat or releases without it. */
+const GATE_WAIT = 1000;
 const GENERIC_REFUSAL = 'this account and password cannot take a full copy of the file; use a Full Access account';
 
 const running = new Map<string, true>();
+
+/**
+ * What the in-process guard is keyed by: the folder itself, however it was spelled. A symlinked parent resolves to the same
+ * place, and on a case-insensitive volume (macOS, Windows) `Copy` and `copy` are one folder, so those are folded.
+ */
+function folderKey(target: string): string {
+  let parent = dirname(target);
+  try { parent = realpathSync.native(parent); } catch { /* a missing parent is refused later, with its own message */ }
+  const key = join(parent, basename(target));
+  return process.platform === 'win32' || process.platform === 'darwin' ? key.toLowerCase() : key;
+}
 
 const q = (name: string) => `"${name.replace(/"/g, '""')}"`;
 const transient = (rel: string) => rel === STAGE_FILE || rel === SNAPSHOT || rel === WORK || rel.endsWith('.pending') || rel === `${WORK}-wal` || rel === `${WORK}-shm` || rel === `${WORK}-journal`;
@@ -166,8 +179,30 @@ function remove(path: string): void {
   rmSync(path, { force: true });
 }
 
-/** Serialize inspection and replacement as well as creation, so a stale reader cannot unlink a new owner's lock. */
-function withLockGate<T>(path: string, busyMessage: string, action: () => T): T {
+/** Another process is inside the takeover gate right now (as opposed to the lock itself being held). */
+class GateBusy extends ExitBundleError {}
+
+function pause(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * Serialize inspection and replacement as well as creation, so a stale reader cannot unlink a new owner's lock. The gate is
+ * held for microseconds, so a caller that must not fail because someone else looked at the lock (a running copy's heartbeat
+ * and release) passes `waitMs` to retry for a short, bounded time; a throw from `action` is never retried.
+ */
+function withLockGate<T>(path: string, busyMessage: string, action: () => T, waitMs = 0): T {
+  const until = Date.now() + waitMs;
+  for (;;) {
+    try { return enterLockGate(path, busyMessage, action); }
+    catch (error) {
+      if (!(error instanceof GateBusy) || Date.now() >= until) throw error;
+      pause(1 + Math.floor(Math.random() * 4));
+    }
+  }
+}
+
+function enterLockGate<T>(path: string, busyMessage: string, action: () => T): T {
   const gate = `${path}.takeover`;
   let fd: number;
   try { fd = openSync(gate, 'wx', 0o600); }
@@ -178,12 +213,12 @@ function withLockGate<T>(path: string, busyMessage: string, action: () => T): T 
     }
     if (code !== 'EEXIST') throw error;
     const stat = lstatOrUndefined(gate);
-    if (!stat?.isFile() || Date.now() - stat.mtimeMs <= LOCK_UNCERTAIN_AGE) throw new ExitBundleError(busyMessage, 409);
+    if (!stat?.isFile() || Date.now() - stat.mtimeMs <= LOCK_UNCERTAIN_AGE) throw new GateBusy(busyMessage, 409);
     // A kill inside the short critical section may leave this gate. Move it aside and verify that the
     // replacement is still ours before entering; another contender may have acted on the old observation.
     const aside = `${gate}.${randomUUID()}`;
     try { renameSync(gate, aside); } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') throw new ExitBundleError(busyMessage, 409);
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') throw new GateBusy(busyMessage, 409);
       throw e;
     }
     try {
@@ -193,11 +228,11 @@ function withLockGate<T>(path: string, busyMessage: string, action: () => T): T 
         if (moved?.isFile()) try { linkSync(aside, gate); } catch (e) {
           if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
         }
-        throw new ExitBundleError(busyMessage, 409);
+        throw new GateBusy(busyMessage, 409);
       }
     } finally { rmSync(aside, { force: true }); }
     try { fd = openSync(gate, 'wx', 0o600); } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'EEXIST') throw new ExitBundleError(busyMessage, 409);
+      if ((e as NodeJS.ErrnoException).code === 'EEXIST') throw new GateBusy(busyMessage, 409);
       throw e;
     }
   }
@@ -251,18 +286,33 @@ function takeProcessLock(target: string, busyMessage: string): ProcessLock {
     }
     try { writeSync(fd, owner); } catch (error) { closeSync(fd); rmSync(path, { force: true }); throw error; }
     closeSync(fd);
-  });
+  }, GATE_WAIT);
   const held = () => {
     try { return (JSON.parse(readFileSync(path, 'utf8')) as { id?: string }).id === id; }
-    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false; throw error; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT' || error instanceof SyntaxError) return false; throw error; }
   };
+  let missed = false;
   return {
-    heartbeat: () => withLockGate(path, busy, () => {
-      if (!held()) throw new ExitBundleError(busy, 409);
-      owner = JSON.stringify({ pid: process.pid, startedAt: Date.now(), id });
-      writeFileSync(path, owner, { flag: 'w', mode: 0o600 });
-    }),
-    release: () => withLockGate(path, busy, () => { if (held()) rmSync(path); }),
+    // A beat that cannot get the gate in time is skipped: the lock is good for a minute (a dead process) or six hours (a live one),
+    // and the next batch beats again. Only a lock that is no longer ours stops the copy.
+    // After a miss the next beats try once without waiting until one gets through, so a busy gate costs one wait, not one per batch.
+    heartbeat: () => {
+      try {
+        withLockGate(path, busy, () => {
+          if (!held()) throw new ExitBundleError(busy, 409);
+          owner = JSON.stringify({ pid: process.pid, startedAt: Date.now(), id });
+          writeFileSync(path, owner, { flag: 'w', mode: 0o600 });
+        }, missed ? 0 : GATE_WAIT);
+        missed = false;
+      } catch (error) { if (!(error instanceof GateBusy)) throw error; missed = true; }
+    },
+    // Never throws: it runs in a `finally`, and a failed release must not replace the copy's result or its own error.
+    release: () => {
+      try { withLockGate(path, busy, () => { if (held()) rmSync(path); }, GATE_WAIT); return; }
+      catch { /* the gate stayed busy or could not be used: remove our own lock without it, below */ }
+      try { if (held()) rmSync(path, { force: true }); }
+      catch { console.warn(`Could not remove the exit-bundle lock ${path}; it is reclaimed by the stale-lock rules, or remove it if no export is running.`); }
+    },
   };
 }
 
@@ -273,11 +323,12 @@ function takeProcessLock(target: string, busyMessage: string): ProcessLock {
 export async function exitBundle(source: Store, folder: string, opts: ExitBundleOptions): Promise<ExitBundleReport> {
   const from = opts.from ?? '';
   const target = resolve(folder);
-  if (running.has(target)) throw new ExitBundleError(lockBusy(target, 'an export to that folder is already running'), 409);
+  const key = folderKey(target);
+  if (running.has(key)) throw new ExitBundleError(lockBusy(target, 'an export to that folder is already running'), 409);
   const account = await authorize(source, opts.account, opts.password, from);
   // Checked again: a second request may have been let in while this one signed in.
-  if (running.has(target)) throw new ExitBundleError(lockBusy(target, 'an export to that folder is already running'), 409);
-  running.set(target, true);
+  if (running.has(key)) throw new ExitBundleError(lockBusy(target, 'an export to that folder is already running'), 409);
+  running.set(key, true);
   let lock: ProcessLock | undefined;
   try {
     lock = takeProcessLock(target, 'an export to that folder is already running');
@@ -285,7 +336,7 @@ export async function exitBundle(source: Store, folder: string, opts: ExitBundle
     source.auditExitBundle(account, from, true, { folder: target });
     return report;
   } finally {
-    try { lock?.release(); } finally { running.delete(target); }
+    try { lock?.release(); } finally { running.delete(key); }
   }
 }
 
@@ -294,8 +345,9 @@ export async function discardExitBundle(source: Store, folder: string, opts: { a
   const from = opts.from ?? '';
   const account = await authorize(source, opts.account, opts.password, from);
   const target = resolve(folder);
-  if (running.has(target)) throw new ExitBundleError(lockBusy(target, 'an export to that folder is running; wait for it to finish'), 409);
-  running.set(target, true);
+  const key = folderKey(target);
+  if (running.has(key)) throw new ExitBundleError(lockBusy(target, 'an export to that folder is running; wait for it to finish'), 409);
+  running.set(key, true);
   let lock: ProcessLock | undefined;
   try {
     lock = takeProcessLock(target, 'an export to that folder is running; wait for it to finish');
@@ -306,7 +358,7 @@ export async function discardExitBundle(source: Store, folder: string, opts: { a
     rmSync(stage, { recursive: true, force: true });
     source.auditExitBundle(account, from, true, { folder: target, discarded: true });
   } finally {
-    try { lock?.release(); } finally { running.delete(target); }
+    try { lock?.release(); } finally { running.delete(key); }
   }
 }
 
