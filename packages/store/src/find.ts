@@ -83,29 +83,31 @@ const MAX_CRITERION = 4096;
 /** The most matching work one field value (or repetition) may cost, and what a find starts with before it has read a record. */
 const MAX_MATCH_WORK = 4_000_000;
 /**
- * What each field value a find reads earns the find's matching budget. The budget bounds a find that does more work than
- * the records it reads warrant (a long value against a long criterion), not a find on a big table: a wildcard find over a
- * 40-character value costs a few hundred steps a record, so a flat budget ran out on a table of a few tens of thousands
- * of records whatever the criterion. A step measures about 30 to 65 nanoseconds, so 1,024 steps are about 30 to 65
- * microseconds: a few times what a plain wildcard find costs a record. The allowance is earned as the values are read,
- * never paid up front, so a table of empty values does not fund a single long one.
+ * What a record the find scans earns the find's matching budget, shared by the matcher calls that read it. The budget
+ * bounds a find that does more work than the records it reads warrant (a long value against a long criterion), not a
+ * find on a big table: a wildcard find over a 40-character value costs a few hundred steps a record, so a flat budget ran
+ * out on a table of a few tens of thousands of records whatever the criterion. A step measures about 30 to 65
+ * nanoseconds, so 1,024 steps are about 30 to 65 microseconds: a few times what a plain wildcard find costs a record.
+ * The allowance is earned as the records are read, never paid up front, so a table of empty values does not fund a
+ * single long one; and it is split between the matcher calls the query makes of a record (a call is one `fm_find_text`
+ * in its SQL, so a repeated or padded criterion does not earn more), so a record earns 1,024 however many criteria read it.
  */
 const MATCH_WORK_PER_VALUE = 1024;
 /** The most a find may spend in all, however large the table: a few seconds of the synchronous matcher at the worst. */
 const MAX_FIND_WORK = 1 << 26;
 // Count requests and fields together, leaving room for each criterion's SQL below SQLite's expression depth limit.
 const MAX_QUERY_PARTS = 256;
-type MatchBudget = { remaining: number; unearned: number };
+type MatchBudget = { remaining: number; unearned: number; calls: number };
 const matchBudget = new AsyncLocalStorage<MatchBudget | undefined>();
 
 /**
  * One budget for a complete find, including related fields, repetitions and repeated SQL evaluations. It starts with a
- * fixed amount and earns MATCH_WORK_PER_VALUE for each field value the matcher is asked about, up to MAX_FIND_WORK in
- * all; a single value can never spend more than MAX_MATCH_WORK of it.
+ * fixed amount and earns MATCH_WORK_PER_VALUE for each record scanned (split between the matcher calls in the query's
+ * SQL, which findWhere counts), up to MAX_FIND_WORK in all; a single value can never spend more than MAX_MATCH_WORK.
  */
 export function beginFindBudget(): () => void {
   const previous = matchBudget.getStore();
-  if (!previous) matchBudget.enterWith({ remaining: MAX_MATCH_WORK, unearned: MAX_FIND_WORK - MAX_MATCH_WORK });
+  if (!previous) matchBudget.enterWith({ remaining: MAX_MATCH_WORK, unearned: MAX_FIND_WORK - MAX_MATCH_WORK, calls: 0 });
   return () => matchBudget.enterWith(previous);
 }
 
@@ -145,7 +147,7 @@ function textPattern(raw: string, relaxed: boolean, japanese = false): TextPatte
     // Relaxed matching also bounds normalization. Ordinary values are streamed, without a character array.
     // Outside a find (no shared budget) a value has MAX_MATCH_WORK to itself. Either way one value's own spend is capped,
     // so it cannot drain what the other records earned.
-    const budget = matchBudget.getStore() ?? { remaining: MAX_MATCH_WORK, unearned: 0 };
+    const budget = matchBudget.getStore() ?? { remaining: MAX_MATCH_WORK, unearned: 0, calls: 0 };
     let own = MAX_MATCH_WORK;
     if (relaxed) {
       own -= value.length;
@@ -212,10 +214,11 @@ export function registerFindFunctions(db: DatabaseSync): void {
   });
   const patterns = new Map<string, TextPattern>();
   db.function('fm_find_text', { deterministic: true }, (v, raw, relaxed) => {
-    // Every value the find reads earns its share of the budget, an empty one too: that is what the table's records are.
+    // Every record the find scans earns its share of the budget, an empty value too, split between the calls the query
+    // makes of a record: a query padded with cheap criteria earns no more per record than one criterion does.
     const budget = matchBudget.getStore();
     if (budget) {
-      const earned = Math.min(MATCH_WORK_PER_VALUE, budget.unearned);
+      const earned = Math.min(MATCH_WORK_PER_VALUE / Math.max(1, budget.calls), budget.unearned);
       budget.unearned -= earned;
       budget.remaining += earned;
     }
@@ -494,5 +497,8 @@ export function findWhere(
       : `(${where} ${omitting ? `AND ${omit}` : `OR ${clause}`})`;
     first = false;
   }
+  // Count the matcher calls this WHERE makes of a record (each one appears once in the SQL), so they share a record's allowance.
+  const budget = matchBudget.getStore();
+  if (budget) budget.calls += where.split('fm_find_text(').length - 1;
   return { where, params };
 }
