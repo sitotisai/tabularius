@@ -3,21 +3,30 @@
 // exception, an out-of-memory abort or a stall of the event loop.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CalcError, evaluate, evaluateText, text, type CalcContext } from '../src/index.ts';
-import { ComplexityError } from '../src/complexity-error.ts';
+import { CalcError, evaluate, evaluateText, rethrowExecutionRefusal, text, type CalcContext } from '../src/index.ts';
 
 const withField = (value: string): CalcContext => ({ field: (ref) => (ref.field === 'F' ? text(value) : undefined) });
-// A refusal before the sort takes milliseconds and the old stall seconds to tens of seconds; the limit allows for a busy host.
-const LIMIT_MS = 5000;
-/** The refusal every too-large result gives (as Substitute does): an error the host unwinds the write for, not a value. */
+// A refusal before the work takes milliseconds of processor time and the old stall seconds to tens of seconds. The
+// thread's own processor time is read, so a busy host that deschedules the test does not fail it.
+const LIMIT_MS = 2000;
+const cpuMs = (): number => {
+  if (typeof process.threadCpuUsage !== 'function') return performance.now();
+  const { user, system } = process.threadCpuUsage();
+  return (user + system) / 1000;
+};
+/** A refusal the host unwinds the write for, not a value: the size refusal, or the work budget's when a busy host reaches it first. */
+const isRefusal = (e: unknown) => {
+  try { rethrowExecutionRefusal(e); } catch { return true; }
+  return false;
+};
 const refused = (formula: string, ctx: CalcContext = {}) =>
-  assert.throws(() => evaluateText(formula, ctx), (e) => e instanceof ComplexityError, formula);
+  assert.throws(() => evaluateText(formula, ctx), (e) => e instanceof CalcError && isRefusal(e), formula);
 function quick<T>(f: () => T): T {
-  const started = performance.now();
+  const started = cpuMs();
   try {
     return f();
   } finally {
-    const took = performance.now() - started;
+    const took = cpuMs() - started;
     assert.ok(took < LIMIT_MS, `took ${Math.round(took)} ms`);
   }
 }
@@ -65,6 +74,65 @@ test('a container is encoded whole, whatever the length of its text (a stored pi
   refused('Length ( HexEncode ( Base64Encode ( F ) ) )', ctx);
 });
 
+// Built in the test, under the text limit: 2.6 million euro signs, three UTF-8 bytes each (7.8 million bytes).
+const EUROS = '\u20ac'.repeat(2_600_000);
+const euroField = withField(EUROS);
+const b64Len = (bytes: number) => Math.ceil(bytes / 3) * 4;
+
+test('TextEncode is held to the text limit, so a chain of encoders cannot grow the text without end', () => {
+  assert.equal(evaluateText('Length ( HexEncode ( TextEncode ( F ) ) )', euroField), String(2 * 7_800_000));
+  // A text of 2.7 million euro signs is 8.1 million bytes; the container it would make is refused, not built.
+  refused('Length ( HexEncode ( TextEncode ( F ) ) )', withField('\u20ac'.repeat(2_700_000)));
+  // The first round made 15.6 million characters of hex, which TextEncode does not take again.
+  quick(() => refused('Length ( HexEncode ( TextEncode ( HexEncode ( TextEncode ( F ) ) ) ) )', euroField));
+  quick(() => refused(`Length ( ${nest('HexEncode ( TextEncode', 4, 'F')}${' )'.repeat(4)} )`, euroField));
+  assert.equal(evaluateText('HexEncode ( TextEncode ( "a" ) )'), '61');
+  assert.equal(evaluateText('TextDecode ( TextEncode ( "caf\u00e9" ) )'), 'caf\u00e9');
+});
+
+test('the encoders that take text refuse a result past the text limit: CryptEncryptBase64, BE_EncryptAES', () => {
+  for (const formula of [
+    'Length ( CryptEncryptBase64 ( F ; "k" ) )',
+    'Length ( CryptEncryptBase64 ( CryptEncryptBase64 ( CryptEncryptBase64 ( F ; "k" ) ; "k" ) ; "k" ) )',
+    'Length ( BE_EncryptAES ( "k" ; F ) )',
+    'Length ( BE_EncryptAES ( "k" ; BE_EncryptAES ( "k" ; BE_EncryptAES ( "k" ; F ) ) ) )',
+  ]) quick(() => refused(formula, euroField));
+  // The size is exact: 33 bytes (the IV buffer and a return) and the encrypted text.
+  assert.equal(evaluateText('Length ( BE_EncryptAES ( "k" ; "hello" ) )'), String(b64Len(33 + 5)));
+  assert.equal(evaluateText('BE_DecryptAES ( "k" ; BE_EncryptAES ( "k" ; "caf\u00e9" ) )'), 'caf\u00e9');
+  assert.equal(evaluateText('CryptDecryptBase64 ( CryptEncryptBase64 ( "hello" ; "k" ) ; "k" )'), 'hello');
+  assert.equal(evaluateText('Length ( CryptEncryptBase64 ( "hello" ; "k" ) )'), String(b64Len(8 + 16 + 12 + 5 + 16)));
+});
+
+const PICTURE = new Uint8Array(7_000_000).fill(0xab);
+const pictureCtx: CalcContext = { field: () => ({ type: 'container', value: 'photo.jpg', data: PICTURE }) };
+
+test('a stored container of several megabytes goes through every encoder that takes a container', () => {
+  assert.equal(evaluateText('Length ( MBS ( "Container.GetBase64" ; F ) )', pictureCtx), String(b64Len(7_000_000)));
+  assert.equal(evaluateText('Length ( MBS ( "Container.GetDataURL" ; F ) )', pictureCtx), String('data:image/jpeg;base64,'.length + b64Len(7_000_000)));
+  assert.equal(evaluateText('Length ( CryptEncryptBase64 ( F ; "k" ) )', pictureCtx), String(b64Len(8 + 'photo.jpg'.length + 16 + 12 + 7_000_000 + 16)));
+  const cipher = 'BE_CipherEncrypt ( "aes-256-cbc" ; F ; "' + '00'.repeat(32) + '" ; "' + '00'.repeat(16) + '" )';
+  assert.equal(evaluateText(`Length ( ${cipher} )`, pictureCtx), String(2 * 7_000_016));
+});
+
+test('the encoders that take a container refuse a result JavaScript could not hold, before building it', () => {
+  // Allocated but never written, so it costs address space and no time; a function that built its text would fail.
+  const huge = new Uint8Array(410_000_000);
+  const ctx: CalcContext = { field: () => ({ type: 'container', value: 'big.bin', data: huge }) };
+  const cipher = 'BE_CipherEncrypt ( "aes-256-cbc" ; F ; "' + '00'.repeat(32) + '" ; "' + '00'.repeat(16) + '" )';
+  for (const formula of [
+    'HexEncode ( F )', 'Base64Encode ( F )', 'Base64EncodeRFC ( 2045 ; F )', 'MBS ( "Container.GetBase64" ; F )',
+    'MBS ( "Container.GetDataURL" ; F )', 'CryptEncryptBase64 ( F ; "k" )', cipher,
+  ]) quick(() => refused(`Length ( ${formula} )`, ctx));
+});
+
+test('text a container made is over the limit, so no function that grows text takes it again', () => {
+  refused('Length ( TextEncode ( MBS ( "Container.GetBase64" ; TextEncode ( F ) ) ) )', euroField);
+  refused('Length ( HexEncode ( MBS ( "Container.GetDataURL" ; TextEncode ( F ) ) ) )', euroField);
+  refused('Length ( BE_EncryptAES ( "k" ; MBS ( "Container.GetBase64" ; TextEncode ( F ) ) ) )', euroField);
+  refused('Length ( BE_CipherEncrypt ( "aes-256-cbc" ; HexEncode ( TextEncode ( F ) ) ; "' + '00'.repeat(32) + '" ; "' + '00'.repeat(16) + '" ) )', euroField);
+});
+
 test('Base64Encode and GetAsURLEncoded refuse a result past the text limit', () => {
   const big = `Substitute ( ${BIG} ; "a" ; "é" )`;
   refused(`Length ( GetAsURLEncoded ( ${big} ) )`);
@@ -81,6 +149,17 @@ test('SortValues is refused for a list too long to sort within the work budget',
   for (const formula of ['SortValues ( F ; 1 ; "German" )', 'SortValues ( F )', 'SortValues ( F ; -2 )']) {
     quick(() => refused(formula, ctx));
   }
+});
+
+test('UniqueValues is refused for a list too long for the step budget, and answers one under it', () => {
+  quick(() => refused('UniqueValues ( F )', withField(values(350_000))));
+  assert.equal(evaluateText('ValueCount ( UniqueValues ( F ) )', withField(values(100_000))), '100000');
+});
+
+test('SortValues with no locale sorts a long list correctly', () => {
+  const sorted = evaluateText('SortValues ( F )', withField(values(60_000))).split('\r');
+  assert.equal(sorted.pop(), '');
+  assert.deepEqual(sorted, values(60_000).split('\r').sort());
 });
 
 test('UniqueValues still answers a long list', () => {
