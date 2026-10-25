@@ -135,6 +135,33 @@ test('an original put back by the cleanup undo takes the fresh conversion and is
   }
 });
 
+test('an original put back after another record had and gave up its id is still the original', { skip }, async () => {
+  const { dir, path } = oldStore();
+  try {
+    const sql = new DatabaseSync(path);
+    const top = Number((sql.prepare('SELECT max(_fm_record_id) AS id FROM MOVIE').get() as { id: number }).id);
+    sql.prepare("UPDATE MOVIE SET director = 'wrong' WHERE _fm_record_id = ?").run(top);
+    sql.close();
+    const store = new Store(path, 'Flicks');
+    try {
+      const before = store.sql.prepare('SELECT * FROM MOVIE WHERE _fm_record_id = ?').get(top) as Record<string, never>;
+      store.delete(LAYOUT, top, { account: 'Ann' });
+      const deleted = store.auditLog({ table: 'MOVIE', recordId: top, kind: 'delete' }).at(-1)!;
+      // The id is given to a new record, which is deleted in turn; then the first delete is undone.
+      assert.equal(store.create(LAYOUT, { title_sort: 'B, made by a person' }, { account: 'Bo' }).recordId, top);
+      store.delete(LAYOUT, top, { account: 'Bo' });
+      store.restoreDeletedRow('MOVIE', before, { account: 'Ann', undoesDelete: deleted.seq });
+    } finally {
+      store.close();
+    }
+    const result = await reconvert(path, fixture);
+    assert.deepEqual([result.created, result.edited, result.deleted], [0, 0, 0]);
+    assert.notEqual(row(path, top)!.director, 'wrong', 'the original takes the fixed converter value');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
 test('a store whose audit log has no revert_of column still keeps a new record under a reused id', { skip }, async () => {
   const { dir, path } = oldStore();
   try {
