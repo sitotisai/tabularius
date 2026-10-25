@@ -1067,6 +1067,14 @@ name until the copy is complete and its hashes check out. To abandon an
 unfinished copy, use `--discard` or the console's "Discard an unfinished copy",
 which remove the snapshot.
 
+**One copy at a time.** While a copy (or a discard) runs, a small file named
+`<folder>.lock` sits next to the folder, so a second run for the same folder,
+from another command or another process, is refused instead of mixing two
+copies. It is removed when the run ends. If a run was killed, a lock whose process
+is gone is replaced after a minute, and one whose process is still alive after six
+hours; a lock that cannot be read is replaced after a minute. A folder name cannot
+end in `.lock`.
+
 **Load and secrets in scripts.** The copy is made inside the server process, so a very large file slows every user until it finishes: run it at a quiet time. Layout and script text in `design/` is written as stored, so a script that holds a pasted password or key leaves with it.
 
 **Not carried.** Summary fields and unstored calculations have no stored value.

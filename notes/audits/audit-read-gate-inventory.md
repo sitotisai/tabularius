@@ -555,11 +555,11 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/store/src/calc.ts:3226](../../packages/store/src/calc.ts#L3226) `rowsById/flush` | `Calculations.statement` (3226); `SQLite.iterate` (3226) | CALC |
 | [packages/store/src/calc.ts:2913](../../packages/store/src/calc.ts#L2913) `sameValuesElsewhere` | `SQLite.all` (2913); `SQLite.prepare` (2913, 2920, 2922); `Store.sql` (2913, 2920, 2922); `Calculations.value` (2915); `SQLite.get` (2920, 2922) | CALC |
 | [packages/store/src/damage.ts:93](../../packages/store/src/damage.ts#L93) `watchDatabase` | `SQLite.prepare` (93); `SQLite.iterate` (103) | CORE |
-| [packages/store/src/exit-bundle.ts:266](../../packages/store/src/exit-bundle.ts#L266) `build` | `SQLite.prepare` (266) | EXIT-BUNDLE |
-| [packages/store/src/exit-bundle.ts:289](../../packages/store/src/exit-bundle.ts#L289) `copyTables` | `SQLite.all` (289); `SQLite.prepare` (289, 295, 296, 312); `SQLite.get` (298, 309, 312) | EXIT-BUNDLE |
-| [packages/store/src/exit-bundle.ts:467](../../packages/store/src/exit-bundle.ts#L467) `finish` | `SQLite.all` (467); `SQLite.prepare` (467); `Calculations.globalValue` (479) | EXIT-BUNDLE |
-| [packages/store/src/exit-bundle.ts:322](../../packages/store/src/exit-bundle.ts#L322) `writeContainers` | `SQLite.all` (322, 334); `SQLite.prepare` (322, 334, 335, 365); `Store.containerInfo` (339); `Store.containerRange` (353); `SQLite.get` (365) | EXIT-BUNDLE |
-| [packages/store/src/exit-bundle.ts:381](../../packages/store/src/exit-bundle.ts#L381) `writeCsv` | `SQLite.prepare` (381); `SQLite.iterate` (385) | EXIT-BUNDLE |
+| [packages/store/src/exit-bundle.ts:377](../../packages/store/src/exit-bundle.ts#L377) `build` | `SQLite.prepare` (377) | EXIT-BUNDLE |
+| [packages/store/src/exit-bundle.ts:400](../../packages/store/src/exit-bundle.ts#L400) `copyTables` | `SQLite.all` (400); `SQLite.prepare` (400, 406, 407, 424); `SQLite.get` (409, 421, 424) | EXIT-BUNDLE |
+| [packages/store/src/exit-bundle.ts:583](../../packages/store/src/exit-bundle.ts#L583) `finish` | `SQLite.all` (583); `SQLite.prepare` (583); `Calculations.globalValue` (595) | EXIT-BUNDLE |
+| [packages/store/src/exit-bundle.ts:434](../../packages/store/src/exit-bundle.ts#L434) `writeContainers` | `SQLite.all` (434, 446); `SQLite.prepare` (434, 446, 447, 481); `Store.containerInfo` (451); `Store.containerRange` (467); `SQLite.get` (481) | EXIT-BUNDLE |
+| [packages/store/src/exit-bundle.ts:497](../../packages/store/src/exit-bundle.ts#L497) `writeCsv` | `SQLite.prepare` (497); `SQLite.iterate` (501) | EXIT-BUNDLE |
 | [packages/store/src/explain-related.ts:364](../../packages/store/src/explain-related.ts#L364) `explainCandidate` | `SQLite.get` (364, 378); `SQLite.prepare` (364, 378); `Store.sql` (364, 378); `keyValue` (375); `Calculations.context` (383) | RECORD |
 | [packages/store/src/explain-related.ts:301](../../packages/store/src/explain-related.ts#L301) `explainHop` | `keyValue` (301); `SQLite.get` (321); `SQLite.prepare` (321, 335); `Store.sql` (321, 335); `SQLite.all` (335) | RECORD |
 | [packages/store/src/explain-related.ts:103](../../packages/store/src/explain-related.ts#L103) `explainRelated` | `Store.row` (103); `Store.get` (193); `Calculations.value` (242); `Calculations.context` (250) | RECORD |

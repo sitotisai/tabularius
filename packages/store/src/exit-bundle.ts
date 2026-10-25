@@ -6,8 +6,8 @@
 // A full copy is the most sensitive thing the server can write, so who may ask is strict (a Full Access account that
 // signs in again here), every refusal and every success is a security event, and an unfinished stage can be discarded.
 
-import { createHash } from 'node:crypto';
-import { chmodSync, closeSync, constants, copyFileSync, existsSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, writeFileSync, writeSync, type Stats } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { chmodSync, closeSync, constants, copyFileSync, existsSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, writeFileSync, writeSync, type Stats } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { designText, stableJson, writeDesignText } from './design-text.ts';
@@ -46,6 +46,8 @@ const MANIFEST = 'manifest.json';
 const CONTAINER_TABLE = '_exit_containers';
 const BATCH = 500;
 const PIECE = 1024 * 1024;
+const LOCK_MAX_AGE = 6 * 60 * 60 * 1000;
+const LOCK_UNCERTAIN_AGE = 60 * 1000;
 const GENERIC_REFUSAL = 'this account and password cannot take a full copy of the file; use a Full Access account';
 
 const running = new Map<string, true>();
@@ -164,6 +166,106 @@ function remove(path: string): void {
   rmSync(path, { force: true });
 }
 
+/** Serialize inspection and replacement as well as creation, so a stale reader cannot unlink a new owner's lock. */
+function withLockGate<T>(path: string, busyMessage: string, action: () => T): T {
+  const gate = `${path}.takeover`;
+  let fd: number;
+  try { fd = openSync(gate, 'wx', 0o600); }
+  catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if ((code === 'ENOENT' || code === 'ENOTDIR') && !lstatOrUndefined(dirname(path))?.isDirectory()) {
+      throw new ExitBundleError(`the folder ${dirname(path)} does not exist`, 400);
+    }
+    if (code !== 'EEXIST') throw error;
+    const stat = lstatOrUndefined(gate);
+    if (!stat?.isFile() || Date.now() - stat.mtimeMs <= LOCK_UNCERTAIN_AGE) throw new ExitBundleError(busyMessage, 409);
+    // A kill inside the short critical section may leave this gate. Move it aside and verify that the
+    // replacement is still ours before entering; another contender may have acted on the old observation.
+    const aside = `${gate}.${randomUUID()}`;
+    try { renameSync(gate, aside); } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') throw new ExitBundleError(busyMessage, 409);
+      throw e;
+    }
+    try {
+      const moved = lstatOrUndefined(aside);
+      if (!moved || moved.dev !== stat.dev || moved.ino !== stat.ino) {
+        // The name changed since our inspection. Put the newer owner's gate back without replacing another one.
+        if (moved?.isFile()) try { linkSync(aside, gate); } catch (e) {
+          if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+        }
+        throw new ExitBundleError(busyMessage, 409);
+      }
+    } finally { rmSync(aside, { force: true }); }
+    try { fd = openSync(gate, 'wx', 0o600); } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'EEXIST') throw new ExitBundleError(busyMessage, 409);
+      throw e;
+    }
+  }
+  const gateOwner = randomUUID();
+  try { writeSync(fd, gateOwner); return action(); }
+  finally {
+    closeSync(fd);
+    try { if (readFileSync(gate, 'utf8') === gateOwner) rmSync(gate); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+  }
+}
+
+interface ProcessLock { release: () => void; heartbeat: () => void }
+const lockBusy = (target: string, message: string) => `${message} (${target}.lock); remove it if no export is running`;
+
+/** The sidecar remains in place when the stage is renamed to the finished folder. */
+function takeProcessLock(target: string, busyMessage: string): ProcessLock {
+  const path = `${target}.lock`;
+  const busy = lockBusy(target, busyMessage);
+  const id = randomUUID();
+  let owner = JSON.stringify({ pid: process.pid, startedAt: Date.now(), id });
+  withLockGate(path, busy, () => {
+    let fd: number | undefined;
+    try { fd = openSync(path, 'wx', 0o600); }
+    catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if ((code === 'ENOENT' || code === 'ENOTDIR') && !lstatOrUndefined(dirname(target))?.isDirectory()) {
+        throw new ExitBundleError(`the folder ${dirname(target)} does not exist`, 400);
+      }
+      if (code !== 'EEXIST') throw error;
+      const stat = lstatOrUndefined(path);
+      if (!stat?.isFile()) throw new ExitBundleError(busy, 409);
+      let held: { pid?: unknown; startedAt?: unknown };
+      try { held = JSON.parse(readFileSync(path, 'utf8')) as typeof held; } catch { held = {}; }
+      if (typeof held.pid !== 'number' || !Number.isSafeInteger(held.pid) || held.pid <= 0 ||
+          typeof held.startedAt !== 'number' || !Number.isFinite(held.startedAt) || held.startedAt < 0) {
+        if (Date.now() - stat.mtimeMs <= LOCK_UNCERTAIN_AGE) throw new ExitBundleError(busy, 409);
+      } else {
+        const pid = held.pid;
+        const startedAt = held.startedAt;
+        let alive = false;
+        if (pid !== process.pid) {
+          try { process.kill(pid, 0); alive = true; } catch (e) { alive = (e as NodeJS.ErrnoException).code !== 'ESRCH'; }
+        }
+        if (pid !== process.pid && ((alive && Date.now() - startedAt <= LOCK_MAX_AGE) ||
+            (!alive && Date.now() - startedAt <= LOCK_UNCERTAIN_AGE))) throw new ExitBundleError(busy, 409);
+      }
+      console.warn(`Replacing stale exit-bundle lock at ${path}.`);
+      rmSync(path);
+      fd = openSync(path, 'wx', 0o600);
+    }
+    try { writeSync(fd, owner); } catch (error) { closeSync(fd); rmSync(path, { force: true }); throw error; }
+    closeSync(fd);
+  });
+  const held = () => {
+    try { return (JSON.parse(readFileSync(path, 'utf8')) as { id?: string }).id === id; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false; throw error; }
+  };
+  return {
+    heartbeat: () => withLockGate(path, busy, () => {
+      if (!held()) throw new ExitBundleError(busy, 409);
+      owner = JSON.stringify({ pid: process.pid, startedAt: Date.now(), id });
+      writeFileSync(path, owner, { flag: 'w', mode: 0o600 });
+    }),
+    release: () => withLockGate(path, busy, () => { if (held()) rmSync(path); }),
+  };
+}
+
 /**
  * Writes a full copy of `source` to `folder`. Refuses unless `account` is an active Full Access account that signs in
  * with `password` the way any sign-in does; a half-finished copy stays in `<folder>.partial` and the next run resumes it.
@@ -171,17 +273,19 @@ function remove(path: string): void {
 export async function exitBundle(source: Store, folder: string, opts: ExitBundleOptions): Promise<ExitBundleReport> {
   const from = opts.from ?? '';
   const target = resolve(folder);
-  if (running.has(target)) throw new ExitBundleError('an export to that folder is already running', 409);
+  if (running.has(target)) throw new ExitBundleError(lockBusy(target, 'an export to that folder is already running'), 409);
   const account = await authorize(source, opts.account, opts.password, from);
   // Checked again: a second request may have been let in while this one signed in.
-  if (running.has(target)) throw new ExitBundleError('an export to that folder is already running', 409);
+  if (running.has(target)) throw new ExitBundleError(lockBusy(target, 'an export to that folder is already running'), 409);
   running.set(target, true);
+  let lock: ProcessLock | undefined;
   try {
-    const report = await build(source, target, opts);
+    lock = takeProcessLock(target, 'an export to that folder is already running');
+    const report = await build(source, target, opts, lock.heartbeat);
     source.auditExitBundle(account, from, true, { folder: target });
     return report;
   } finally {
-    running.delete(target);
+    try { lock?.release(); } finally { running.delete(target); }
   }
 }
 
@@ -190,16 +294,23 @@ export async function discardExitBundle(source: Store, folder: string, opts: { a
   const from = opts.from ?? '';
   const account = await authorize(source, opts.account, opts.password, from);
   const target = resolve(folder);
-  if (running.has(target)) throw new ExitBundleError('an export to that folder is running; wait for it to finish', 409);
-  const stage = `${target}.partial`;
-  const st = lstatOrUndefined(stage);
-  if (!st) throw new ExitBundleError(`there is no unfinished copy at ${stage}`, 404);
-  checkStage(stage, st);
-  rmSync(stage, { recursive: true, force: true });
-  source.auditExitBundle(account, from, true, { folder: target, discarded: true });
+  if (running.has(target)) throw new ExitBundleError(lockBusy(target, 'an export to that folder is running; wait for it to finish'), 409);
+  running.set(target, true);
+  let lock: ProcessLock | undefined;
+  try {
+    lock = takeProcessLock(target, 'an export to that folder is running; wait for it to finish');
+    const stage = `${target}.partial`;
+    const st = lstatOrUndefined(stage);
+    if (!st) throw new ExitBundleError(`there is no unfinished copy at ${stage}`, 404);
+    checkStage(stage, st);
+    rmSync(stage, { recursive: true, force: true });
+    source.auditExitBundle(account, from, true, { folder: target, discarded: true });
+  } finally {
+    try { lock?.release(); } finally { running.delete(target); }
+  }
 }
 
-async function build(source: Store, target: string, opts: ExitBundleOptions): Promise<ExitBundleReport> {
+async function build(source: Store, target: string, opts: ExitBundleOptions, heartbeat: () => void): Promise<ExitBundleReport> {
   if (source.schema.tables.some((t) => t.name.toLowerCase() === CONTAINER_TABLE)) {
     throw new ExitBundleError(`a table is named ${CONTAINER_TABLE}, which the copy uses for its own list of container files; rename that table first`, 400);
   }
@@ -264,7 +375,7 @@ async function build(source: Store, target: string, opts: ExitBundleOptions): Pr
     if (!existsSync(data)) closeSync(openSync(data, 'a', 0o600));
     out = new DatabaseSync(data);
     out.prepare('ATTACH DATABASE ? AS src').run(work);
-    const copied = copyTables(snap, out, source, stage, opts);
+    const copied = copyTables(snap, out, source, stage, opts, heartbeat);
     out.close();
     out = undefined;
     return finish(snap, closeWork, stage, target, copied);
@@ -282,7 +393,7 @@ interface CopiedTable {
 }
 
 /** Copies the stored columns of every table, 500 rows to a transaction, from where an earlier run stopped. */
-function copyTables(snap: Store, out: DatabaseSync, source: Store, stage: string, opts: ExitBundleOptions): { tables: CopiedTable[]; containers: { missing: number[]; count: number } } {
+function copyTables(snap: Store, out: DatabaseSync, source: Store, stage: string, opts: ExitBundleOptions, heartbeat: () => void): { tables: CopiedTable[]; containers: { missing: number[]; count: number } } {
   const tables: CopiedTable[] = [];
   out.exec(`CREATE TABLE IF NOT EXISTS main.${q(CONTAINER_TABLE)} (id INTEGER PRIMARY KEY, path TEXT NOT NULL, size INTEGER NOT NULL, sha256 TEXT NOT NULL, mime TEXT)`);
   for (const table of snap.schema.tables) {
@@ -306,16 +417,17 @@ function copyTables(snap: Store, out: DatabaseSync, source: Store, stage: string
         throw e;
       }
       if (!changes) break;
+      heartbeat();
       opts.afterBatch?.(table.name, Number((last.get() as { last: number }).last));
     }
     const containerColumns = fields.filter((f) => f.type === 'container').map((f) => ({ name: f.name, repeating: snap.isRepeating(table.name, f.name) || (f.options?.repetitions ?? 1) > 1 }));
     tables.push({ name: table.name, columns, containerColumns, rows: Number((out.prepare(`SELECT count(*) AS n FROM main.${q(table.name)}`).get() as { n: number }).n) });
   }
-  return { tables, containers: writeContainers(source, out, stage, tables) };
+  return { tables, containers: writeContainers(source, out, stage, tables, heartbeat) };
 }
 
 /** Every container file the records point at, written in 1 MiB pieces from the live file and checked against its size. */
-function writeContainers(source: Store, out: DatabaseSync, stage: string, tables: CopiedTable[]): { missing: number[]; count: number } {
+function writeContainers(source: Store, out: DatabaseSync, stage: string, tables: CopiedTable[], heartbeat: () => void): { missing: number[]; count: number } {
   const ids = new Set<number>();
   for (const t of tables) {
     for (const c of t.containerColumns) {
@@ -339,7 +451,8 @@ function writeContainers(source: Store, out: DatabaseSync, stage: string, tables
     const info = source.containerInfo(id);
     if (!info) { missing.push(id); continue; }
     if (info.external && (info.external.missing || info.external.changed)) {
-      throw new ExitBundleError(`the file for container ${id} is stored outside the database at ${info.external.path} and is ${info.external.missing ? 'missing' : 'not the size it was when stored'}; put it back and run again`, 409);
+      const filename = info.filename?.split(/[\\/]/).at(-1);
+      throw new ExitBundleError(`the file for container ${id}${filename ? ` (${safeName(filename)})` : ''} is ${info.external.missing ? 'missing' : 'not the size it was when stored'}; put the file back where the solution keeps it and run again`, 409);
     }
     const path = `containers/${id}-${safeName(info.filename ?? 'container')}`;
     const file = join(stage, ...path.split('/'));
@@ -350,11 +463,14 @@ function writeContainers(source: Store, out: DatabaseSync, stage: string, tables
     try {
       while (written < info.size) {
         const end = Math.min(written + PIECE, info.size) - 1;
-        const piece = source.containerRange(id, written, end);
+        let piece: Uint8Array;
+        try { piece = source.containerRange(id, written, end); }
+        catch { throw new ExitBundleError(`the file for container ${id} could not be read; check its storage permissions and run again`, 409); }
         if (piece.length !== end - written + 1) throw new ExitBundleError(`the file for container ${id} changed while it was being copied; run again`, 409);
         hash.update(piece);
         writeSync(fd, piece);
         written += piece.length;
+        heartbeat();
       }
     } finally {
       closeSync(fd);
