@@ -76,3 +76,27 @@ test('a function the store defines in place of a SQLite built-in, without being 
   assert.throws(() => store.select('with recursive c(x) as (select 1 union all select x + 1 from c where x < 2) select abs(-1) from c'),
     (e: unknown) => e instanceof StoreError && e.code === 8310 && /abs\(\)/.test(e.message));
 });
+
+test('a later definition under another spelling of a shared name is refused, not answered by the shared one', (t) => {
+  const store = fixture(t);
+  store.defineQueryFunction('lower', () => 'mine');
+  assert.equal(store.select("select lower('A')").rows[0][0], 'mine');
+  assert.throws(() => store.select("with recursive c(x) as (select 1 union all select x + 1 from c where x < 2) select lower('A') from c"),
+    (e: unknown) => e instanceof StoreError && e.code === 8310 && /lower\(\)/.test(e.message));
+});
+
+test('the time functions give the time of the same zone in a recursive query as in the server', (t) => {
+  const store = fixture(t);
+  const was = process.env.TZ;
+  t.after(() => { if (was === undefined) delete process.env.TZ; else process.env.TZ = was; });
+  // A zone far from UTC and from the machine's own, so that a child that lost the setting would be hours away.
+  for (const zone of ['Pacific/Kiritimati', 'America/Los_Angeles']) {
+    process.env.TZ = zone;
+    const plain = store.select('select NOW(), CURDATE(), CURTIME(), datetime(0, \'unixepoch\', \'localtime\')').rows[0] as string[];
+    const viaChild = store.select('with recursive c(x) as (select 1 union all select x + 1 from c where x < 2) select NOW(), CURDATE(), CURTIME(), datetime(0, \'unixepoch\', \'localtime\') from c where x = 1').rows[0] as string[];
+    const seconds = (v: string) => Date.parse(v) / 1000;
+    assert.ok(Math.abs(seconds(viaChild[0]) - seconds(plain[0])) < 120, `${zone}: NOW() ${viaChild[0]} against ${plain[0]}`);
+    assert.ok(Math.abs(seconds(`1970-01-01T${viaChild[2]}`) - seconds(`1970-01-01T${plain[2]}`)) % 86400 < 120, `${zone}: CURTIME()`);
+    assert.equal(viaChild[3], plain[3], `${zone}: SQLite's localtime`);
+  }
+});
