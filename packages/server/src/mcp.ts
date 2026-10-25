@@ -170,8 +170,35 @@ const proven = new Map<string, { at: number; stamps: Map<string, string> }>();
 // Per address group (an IPv6 /64 is one), the same key the address budget and the check line use; the local-only rule is still judged for the exact address.
 const provenKey = (who: { account: string; password: string; from?: string }) => createHash('sha256').update(`${who.account.toLowerCase()}\0${addressBucket(who.from ?? 'mcp')}\0${who.password}`).digest('hex');
 
+/**
+ * What an admission rested on: the account's own credentials (`Store.credentialStamp`) and whether it may use AI in this
+ * file at all (its privilege set has fmmcp, the file has AI on). A change in any of them ends a remembered proof.
+ */
+function proofStamp(store: Store, account: string): string | undefined {
+  const stamp = store.credentialStamp(account);
+  if (stamp === undefined) return undefined;
+  let fmmcp = false;
+  try { fmmcp = store.privileges(account).has('fmmcp'); } catch { /* an account that cannot be resolved has no AI access */ }
+  return `${stamp}\0${fmmcp ? 1 : 0}\0${aiBlocker(store) ? 0 : 1}`;
+}
+
+/**
+ * Whether this password was proven right for this account in this file, at this address group, and nothing the proof
+ * rested on has changed since (see `proofStamp`), the account is not locked out from this address, and the proof is
+ * recent. Then the password need not be hashed again, whatever happened to the shared `verified` cache meanwhile.
+ */
+function rememberedProof(store: Store, who: { account: string; password: string; from?: string }): boolean {
+  const entry = proven.get(provenKey(who));
+  if (!entry || performance.now() - entry.at > VERIFIED_MS) return false;
+  const stamp = entry.stamps.get(store.path);
+  if (stamp === undefined) return false;
+  const from = who.from ?? 'mcp';
+  if (store.lockedOut(who.account, from) || store.addressLockedOut(from)) return false;
+  return proofStamp(store, who.account) === stamp;
+}
+
 function markProven(store: Store, who: { account: string; password: string; from?: string }): void {
-  const stamp = store.credentialStamp(who.account);
+  const stamp = proofStamp(store, who.account);
   if (stamp === undefined || localOnlyRefused(store, who.account, who.from ?? 'mcp', false)) return;
   const key = provenKey(who);
   const entry = proven.get(key) ?? { at: 0, stamps: new Map<string, string>() };
@@ -254,7 +281,7 @@ export function basicCredentialsRemembered(host: Host, who: { account: string; p
     for (const name of host.names()) {
       const store = host.get(name);
       const stamp = store && entry.stamps.get(store.path);
-      if (stamp !== undefined && store!.credentialStamp(who.account) === stamp) return true;
+      if (stamp !== undefined && proofStamp(store!, who.account) === stamp) return true;
     }
   }
   proven.delete(key);
@@ -293,7 +320,7 @@ function canSee(who: McpIdentity): (s: Store) => boolean {
       const key = verifiedKey(s, who);
       const at = verified.get(key);
       if (at === undefined || performance.now() - at > VERIFIED_MS) {
-        if (!s.verify(who.account, who.password, who.from ?? 'mcp')) return false;
+        if (!rememberedProof(s, who) && !s.verify(who.account, who.password, who.from ?? 'mcp')) return false;
         // Before the password is remembered: a refused one stays as costly as a wrong one, so the cost does not tell them apart.
         if (localOnlyRefused(s, who.account, who.from ?? 'mcp', false)) return false;
         refreshAuthCache(s, verified);
@@ -342,7 +369,7 @@ function privilegesIn(store: Store, who: McpIdentity, via = 'MCP'): Privileges |
   const key = verifiedKey(store, who);
   const at = verified.get(key);
   if (at === undefined || performance.now() - at > VERIFIED_MS) {
-    if (!store.verify(who.account, who.password, who.from ?? 'mcp')) throw new StoreError(212, `Invalid account or password for ${store.name}`);
+    if (!rememberedProof(store, who) && !store.verify(who.account, who.password, who.from ?? 'mcp')) throw new StoreError(212, `Invalid account or password for ${store.name}`);
     refreshAuthCache(store, verified);
     rememberPassword(key, store, who);
   }

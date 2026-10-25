@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { serve } from '../src/index.ts';
 import { AddressBudget, BUDGET_BURST, CheckGate } from '../src/address-budget.ts';
 import { basicCredentialsRemembered, proveBasicCredentials } from '../src/mcp.ts';
+import { Store } from '../../store/src/store.ts';
 
 async function start(t: TestContext, options: { proxy?: boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-mcp-basic-'));
@@ -343,7 +344,7 @@ test('a flood that holds an address group\'s line full crowds out that group onl
   assert.ok(recovered, 'the group recovers when the flood stops');
 });
 
-test('a remembered account costs a cache hit, not a password hash, at every address of its /64', async (t) => {
+test('a remembered account costs no password hash while the shared cache is fresh, at every address of its /64', async (t) => {
   const s = await start(t, { proxy: true });
   const store = s.host.get('A')!;
   const call = { method: 'tools/call', params: { name: 'get_record', arguments: { database: 'A', layout: 'Items', recordId: 1 } } };
@@ -381,4 +382,67 @@ test('an account is remembered only after the whole MCP admission: no fmmcp, or 
   // And the same checks keep the password-only rescue in the line from remembering anyone.
   assert.equal(await proveBasicCredentials(s.host, who('mallory', 'mallory-password')), true);
   assert.equal(basicCredentialsRemembered(s.host, who('mallory', 'mallory-password')), false);
+});
+
+/** Counts the synchronous password checks, with a cheap stand-in so a test can make thousands of requests. */
+function countVerify(t: TestContext) {
+  const original = Store.prototype.verify;
+  const counter = { n: 0 };
+  Store.prototype.verify = function (this: Store, account: string, password: string) {
+    counter.n++;
+    return password === `${account.toLowerCase()}-password`;
+  };
+  t.after(() => { Store.prototype.verify = original; });
+  return counter;
+}
+const getRecord = (database = 'A') => ({ method: 'tools/call', params: { name: 'get_record', arguments: { database, layout: 'Items', recordId: 1 } } });
+
+test('a remembered account runs no password hash even after another account\'s lockout empties the shared cache', async (t) => {
+  const s = await start(t, { proxy: true });
+  const store = s.host.get('A')!;
+  const frozen = performance.now();
+  t.mock.method(performance, 'now', () => frozen);
+  const group = (i: number, host = 3) => `2001:db8:${(i + 1).toString(16)}::${host}`;
+  const N = 4;
+  for (let i = 0; i < N; i++) assert.equal((await rpcFrom(s.url, basic('bob', 'bob-password'), group(i), getRecord())).status, 200);
+  for (let i = 0; i < N; i++) for (let j = 0; j < BUDGET_BURST + 2; j++) await (await rpcFrom(s.url, basic(`n${j}`, 'x'), group(i, 2))).arrayBuffer();
+  const verify = countVerify(t);
+  const codes = new Set<number>();
+  for (let round = 0; round < 2; round++) {
+    // Any security change in the file (here another account's password) empties the cache of checked passwords.
+    store.setPassword('alice', `alice-password-${round}`, 'Reader');
+    const before = verify.n;
+    for (let i = 0; i < N; i++) { const r = await rpcFrom(s.url, basic('bob', 'bob-password'), group(i), getRecord()); await r.arrayBuffer(); codes.add(r.status); }
+    assert.equal(verify.n - before, 0, 'no synchronous password check for a remembered account');
+  }
+  assert.deepEqual([...codes], [200]);
+});
+
+test('a remembered account is not exempt after its privilege set loses AI access or the file turns AI off', async (t) => {
+  const s = await start(t, { proxy: true });
+  const store = s.host.get('A')!;
+  const from = '2001:db8:1:2::1';
+  const who = { account: 'bob', password: 'bob-password', from };
+  await (await rpcFrom(s.url, basic('bob', 'bob-password'), from, getRecord())).arrayBuffer();
+  assert.equal(basicCredentialsRemembered(s.host, who), true);
+  store.setAiAllowed(false);
+  assert.equal(basicCredentialsRemembered(s.host, who), false, 'AI turned off for the file');
+  store.setAiAllowed(true);
+  await (await rpcFrom(s.url, basic('bob', 'bob-password'), from, getRecord())).arrayBuffer();
+  assert.equal(basicCredentialsRemembered(s.host, who), true);
+  store.savePrivilegeSet({ name: 'Reader', records: { view: true, edit: false, create: false, delete: false }, layouts: 'viewOnly', valueLists: 'none', scripts: 'none', extendedPrivileges: ['fmrest', 'fmapp'] });
+  assert.equal(basicCredentialsRemembered(s.host, who), false, 'fmmcp removed from the privilege set');
+});
+
+test('a remembered proof does not get a locked-out address past the lockout', async (t) => {
+  const s = await start(t, { proxy: true });
+  const store = s.host.get('A')!;
+  const from = '2001:db8:1:2::1';
+  const ok = await rpcFrom(s.url, basic('bob', 'bob-password'), from, getRecord());
+  assert.equal(((await ok.json()) as { result: { isError?: boolean } }).result.isError ?? false, false);
+  for (let i = 0; i < 10; i++) store.verify('bob', `wrong-${i}`, from);
+  assert.ok(store.lockedOut('bob', from) || store.addressLockedOut(from), 'the address is locked out');
+  const locked = await rpcFrom(s.url, basic('bob', 'bob-password'), from, getRecord());
+  const body = (await locked.json()) as { result?: { isError?: boolean } };
+  assert.equal(body.result?.isError, true, 'the right password is still refused while locked out');
 });
