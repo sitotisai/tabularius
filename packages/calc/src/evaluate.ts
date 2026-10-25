@@ -701,20 +701,31 @@ export class Env {
 
   private compiled = new Map<string, Node>();
   private evaluateDepth = 0;
+  /** Set when Evaluate calls reached the limit: until the outermost Evaluate ends, no Evaluate that is inside another runs. */
+  private evaluateRefused = false;
 
-  /** Evaluate ( text ): the text read as a formula and evaluated here, an error once Evaluate calls nest past the limit. */
+  /**
+   * Evaluate ( text ): the text read as a formula and evaluated here, an error once Evaluate calls nest past the limit.
+   * Once the limit is hit, every Evaluate inside another is refused until the outermost one has ended. EvaluationError
+   * can catch the refusal and the text can go on to evaluate itself again, so without this a text that evaluates
+   * itself twice would still make a call for every path through 100 levels, far more than the work budget allows.
+   */
   evaluateNested(formula: string): Value {
-    if (this.evaluateDepth >= MAX_EVALUATE_DEPTH) throw new CalcError(ERR.recursion, `Evaluate is nested more than ${MAX_EVALUATE_DEPTH} levels deep`);
+    if (this.evaluateDepth >= MAX_EVALUATE_DEPTH) this.evaluateRefused = true;
+    if (this.evaluateRefused && this.evaluateDepth > 0) throw new CalcError(ERR.recursion, `Evaluate is nested more than ${MAX_EVALUATE_DEPTH} levels deep`);
     this.evaluateDepth++;
     try {
       return this.v(this.parse(formula));
     } catch (e) {
       rethrowExecutionRefusal(e);
       // Frames that are already deep (a long custom function recursion) can run the stack out before the limit.
-      if (e instanceof RangeError && (e.message.includes('call stack size exceeded') || e.message.includes('too much recursion'))) throw new CalcError(ERR.recursion, `Evaluate is nested too deeply (this server's stack ran out at level ${this.evaluateDepth})`);
+      if (e instanceof RangeError && (e.message.includes('call stack size exceeded') || e.message.includes('too much recursion'))) {
+        this.evaluateRefused = true;
+        throw new CalcError(ERR.recursion, `Evaluate is nested too deeply (this server's stack ran out at level ${this.evaluateDepth})`);
+      }
       throw e;
     } finally {
-      this.evaluateDepth--;
+      if (--this.evaluateDepth === 0) this.evaluateRefused = false;
     }
   }
 
