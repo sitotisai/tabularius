@@ -847,6 +847,11 @@ export class ODataEndpoint {
   private readonly inFlight = new IdentityInFlight();
   private readonly gates = new WeakMap<Store, Gate>();
 
+  /** Reads a request body: out of the gate while it arrives, when this request is in it (not one request of a $batch, whose body is read). */
+  private read<T>(at: Service, fn: () => Promise<T>): Promise<T> {
+    return at.unguard ? at.unguard(fn) : fn();
+  }
+
   private gate(store: Store): Gate {
     let g = this.gates.get(store);
     if (!g) this.gates.set(store, g = { readers: 0 });
@@ -944,19 +949,24 @@ export class ODataEndpoint {
       const sets = model(store, p);
       const at: Service = { store, p, readOnlyToken, via, base, sets };
       if (parts[1] === '$batch' && parts.length === 2) return await this.batch(req, res, at);
-      // A body is read before the request takes its place at the file: a client that sends its body slowly isn't using the file
-      // meanwhile, and must not hold up the change sets (and the requests behind them) that wait for requests like it.
-      const sending = method !== 'GET' && method !== 'HEAD';
-      const request = sending
-        ? buffered(req, await readBody(req, parts.length > 2 && (method === 'PATCH' || method === 'PUT') ? MAX_CONTAINER_BYTES : MAX_JSON_BYTES), { method, url: req.url ?? '', headers: req.headers })
-        : req;
+      // A body is read (in resource, once the account's right to send it is settled: a refused request is answered without it)
+      // with the request stepped out of the file's gate, so a client that sends it slowly isn't using the file meanwhile and
+      // can't hold up the change sets, and the requests behind them, that wait for requests like it.
       let leave: () => void;
       try { leave = await this.enter(store); }
       catch (e) { busyHeaders(res); throw e; }
       try {
         // It may have waited a while for a change set: a client that has gone since isn't served (its retry would repeat a write).
         if (gone(req, res)) return;
-        return await this.resource(request, res, url, parts, at);
+        at.unguard = async (fn) => {
+          leave();
+          const value = await fn();
+          try { leave = await this.enter(store); }
+          catch (e) { busyHeaders(res); throw e; }
+          if (gone(req, res)) throw new ODataError(503, '956', 'The client has gone, so this request was not run');
+          return value;
+        };
+        return await this.resource(req, res, url, parts, at);
       } finally { leave(); }
     } finally { done(); }
   }
@@ -987,11 +997,11 @@ export class ODataEndpoint {
     const script = /^Script\.(.+)$/.exec(parts[1]);
     if (script && parts.length === 2) {
       if (method !== 'POST') throw notAllowed('Scripts are run with POST', 'POST');
-      return this.script(req, res, store, p, script[1], at.via);
+      return this.script(req, res, at, script[1]);
     }
     if (SCHEMA_SETS.some((n) => n.toLowerCase() === parts[1].toLowerCase())) {
       if (!p.full) throw new ApiError(9, `Only [Full Access] can change the schema; "${p.name}" can't`, 403);
-      const body = method === 'POST' || method === 'PATCH' ? await readJson(req) : {};
+      const body = method === 'POST' || method === 'PATCH' ? await this.read(at, () => readJson(req)) : {};
       const r = schemaChange(store, p, method, parts.slice(1), body);
       if (r.status === 204) {
         res.writeHead(204, { 'odata-version': '4.0' }).end();
@@ -1022,7 +1032,7 @@ export class ODataEndpoint {
       if (parts.length !== 2) throw new ODataError(404, '3', 'Navigation is not supported');
       if (reading) return this.list(req, res, url, base, set, p);
       if (method === 'POST') {
-        const { data, files } = this.body(await readJson(req, set.info.owner.fileMode === 'native'), set);
+        const { data, files } = this.body(await this.read(at, () => readJson(req, set.info.owner.fileMode === 'native')), set);
         const r = allOrNothing(() => {
           const made = set.info.owner.create(set.info, data, opts);
           return { recordId: made.recordId, modId: this.fill(set, made.recordId, files, opts) ?? made.modId };
@@ -1060,7 +1070,7 @@ export class ODataEndpoint {
       }
       // The account's right to put a file there is settled before the body is read.
       if (method !== 'DELETE') owner.checkContainerWrite(set.info, id, prop.field, 1, opts);
-      const file = method === 'DELETE' ? null : await upload(req, prop);
+      const file = method === 'DELETE' ? null : await this.read(at, () => upload(req, prop));
       // Checked again once the body is in, with no wait before the write, so a change made meanwhile isn't overwritten.
       if (expected !== undefined && owner.get(set.info, id, 'iso', undefined, p, { fields: [] }).modId !== expected) {
         throw new ODataError(412, '306', 'Record modification id does not match');
@@ -1151,7 +1161,7 @@ export class ODataEndpoint {
       return send(res, 200, { '@odata.context': context, ...(keep ? Object.fromEntries(Object.entries(entity).filter(([k]) => keep.has(k))) : entity) });
     }
     if (method === 'PATCH' || method === 'PUT') {
-      const { data, files } = this.body(await readJson(req, set.info.owner.fileMode === 'native'), set);
+      const { data, files } = this.body(await this.read(at, () => readJson(req, set.info.owner.fileMode === 'native')), set);
       const expected = ifMatch(req);
       const r = allOrNothing(() => {
         const changed = owner.update(set.info, id, data, expected, opts);
@@ -1826,14 +1836,15 @@ export class ODataEndpoint {
     return modId;
   }
 
-  private async script(req: IncomingMessage, res: ServerResponse, store: Store, p: Privileges, name: string, via?: string): Promise<void> {
+  private async script(req: IncomingMessage, res: ServerResponse, at: Service, name: string): Promise<void> {
+    const { store, p, via } = at;
     // Claris form: Script.FMSID:<id> names the script by its id, so renaming it breaks no integration. A script really named that way still wins.
     const byId = /^FMSID:(\d+)$/i.exec(name);
     const found = store.schema.scripts.find((s) => s.name === name) ?? store.schema.scripts.find((s) => s.name.toLowerCase() === name.toLowerCase())
       ?? (byId ? store.schema.scripts.find((s) => s.id === Number(byId[1])) : undefined);
     if (!found) throw new ODataError(404, '104', `Script "${name}" is missing`);
     p.checkScript(found.name);
-    const body = await readJson(req);
+    const body = await this.read(at, () => readJson(req));
     const raw = body.scriptParameterValue;
     const parameter = raw === undefined || raw === null ? '' : typeof raw === 'string' ? raw : typeof raw === 'number' ? String(raw) : JSON.stringify(raw);
     const account = p.account;
@@ -1900,6 +1911,8 @@ interface Service {
   sets: EntitySet[];
   /** Answering one request of a $batch. */
   inBatch?: boolean;
+  /** Runs `fn` (reading a body) with the request out of the file's gate, and back in when it is done. Not set where the body is already read. */
+  unguard?: <T>(fn: () => Promise<T>) => Promise<T>;
 }
 
 /** Answers a failed request with an OData error. */
@@ -1933,8 +1946,6 @@ interface Fill { field: string; file: { filename: string | null; mime: string; d
 
 /** The most a container file sent through OData may be; bigger ones go through the Data API's streamed upload. */
 export const MAX_CONTAINER_BYTES = 64 * 1024 * 1024;
-/** The most a JSON body (a record, a script's parameter, a schema change) may hold: readJson's limit. */
-const MAX_JSON_BYTES = 10 * 1024 * 1024;
 
 /** A media type as stored for a container: type/subtype only, else application/octet-stream. */
 const mediaType = (v: string | undefined) => {
