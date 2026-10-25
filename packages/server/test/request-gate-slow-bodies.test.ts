@@ -140,6 +140,22 @@ test('only a token the server holds leaves a Data API body uncounted, not the lo
   await until(() => gate.unfinishedBodies === 2, 'both take a place');
 });
 
+test('a held token does not make the sign-in routes calls that check it first: they read their body whatever it says', async t => {
+  const { gate, hold } = await start(t);
+  gate.holdsToken = () => true;
+  const chunked = 'Transfer-Encoding: chunked\r\nAuthorization: Bearer held\r\n';
+  const sessions = '/fmi/data/vLatest/databases/X/sessions';
+  await hold('127.0.0.2', sessions, chunked);
+  await hold('127.0.0.3', `${sessions}/passkey`, chunked);
+  await hold('127.0.0.4', '/fmi/data/vLatest/databases/X/%73essions/recovery', chunked);
+  await hold('127.0.0.5', `${sessions}/passkey`, 'Transfer-Encoding: chunked\r\nX-FM-Data-Access-Token: held\r\n');
+  await until(() => gate.unfinishedBodies === 4, 'every one of them takes a place');
+  // Any other route of the Data API, with the same token, is left alone.
+  await hold('127.0.0.6', '/fmi/data/vLatest/databases/X/layouts/Items/records', chunked);
+  await sleep(100);
+  assert.equal(gate.unfinishedBodies, 4);
+});
+
 test('an IPv6 /64 is one address for the places a body may wait in', async t => {
   const gate = new RequestGate(8, 16, 50);
   const fake = (remoteAddress: string) => {
