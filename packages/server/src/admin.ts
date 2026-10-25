@@ -185,6 +185,7 @@ import { WebhookError, type Webhooks } from './changes.ts';
 import { ConnectionError, type Connections } from './connections.ts';
 import type { Profiler } from './profiler.ts';
 import type { McpTokens } from './mcp-tokens.ts';
+import { SettingsError } from './server-config.ts';
 import { whoCan } from './who-can.ts';
 import { dropScratch, scratchCopy, SCRATCH_MAX_BYTES } from './debug.ts';
 import { AdminPasskeyError, adminPasskeyIds, adminPasskeys, hasAdminPasskey, registerAdminPasskey, removeAdminPasskey, verifyAdminPasskeyAssertion } from './admin-passkey.ts';
@@ -239,7 +240,7 @@ function adminErrorText(e: unknown, scope: object): string {
       e instanceof CertificateError || e instanceof BackupFolderError || e instanceof BackupStopped || e instanceof PassphraseNeeded ||
       e instanceof StaleCalcError || e instanceof FixError || e instanceof RestoreError || e instanceof SolutionError ||
       e instanceof HookError || e instanceof ScheduleError || e instanceof SyncConsoleError || e instanceof UploadError ||
-      e instanceof WebhookError || e instanceof ConnectionError || e instanceof AdminPasskeyError) return e.message;
+      e instanceof WebhookError || e instanceof ConnectionError || e instanceof AdminPasskeyError || e instanceof SettingsError) return e.message;
   logFaultFor(scope)(e);
   return FAULT_MESSAGE;
 }
@@ -941,18 +942,15 @@ export class Admin {
           const config = this.host.config;
           const before = config.sessionIdleMinutes();
           const webBefore = config.webSessionIdleMinutes();
-          // Both are checked before either is saved.
-          if (body.minutes !== undefined) config.setSessionIdleMinutes(body.minutes as number);
-          if (body.webMinutes !== undefined) {
-            try { config.setWebSessionIdleMinutes(body.webMinutes as number | null); } catch (e) { if (body.minutes !== undefined) config.setSessionIdleMinutes(before); throw e; }
-          }
+          // Both are checked before either is saved, and saved together.
+          config.setIdleMinutes(body.minutes as number | undefined, body.webMinutes as number | null | undefined);
           const now = config.sessionIdleMinutes();
           if (now !== before) this.log(`The Data API session timeout is ${now} ${now === 1 ? 'minute' : 'minutes'} (admin console), was ${before}`);
           const webNow = config.webSessionIdleMinutes();
           if (webNow !== webBefore && body.webMinutes !== undefined) this.log(`The web client session timeout is ${webNow} ${webNow === 1 ? 'minute' : 'minutes'} (admin console), was ${webBefore}`);
           send(200, { sessionIdleMinutes: now, ...(body.webMinutes !== undefined ? { webSessionIdleMinutes: webNow } : {}) });
         } catch (e) {
-          send(400, { error: adminErrorText(e, this.host) });
+          send(e instanceof SettingsError ? 409 : 400, { error: adminErrorText(e, this.host) });
         }
       } else if (path === '/tabularius/admin/v1/device-storage' && req.method === 'POST') {
         const body = await readJson(req) as { on?: unknown };
@@ -1979,7 +1977,7 @@ export class Admin {
         } else send(404, { error: 'not found' });
       }
     } catch (e) {
-      const status = e instanceof SyncConsoleError || e instanceof ApiError ? e.status : e instanceof URIError || e instanceof ScheduleError || e instanceof WebhookError || e instanceof HookError || e instanceof StaleCalcError ? 400 : e instanceof StoreError ? (e.code === 301 ? 409 : 400) : e instanceof UploadError || e instanceof RestoreError ? e.status : 500;
+      const status = e instanceof SyncConsoleError || e instanceof ApiError ? e.status : e instanceof URIError || e instanceof ScheduleError || e instanceof WebhookError || e instanceof HookError || e instanceof StaleCalcError ? 400 : e instanceof StoreError ? (e.code === 301 ? 409 : 400) : e instanceof UploadError || e instanceof RestoreError ? e.status : e instanceof SettingsError ? 409 : 500;
       if (status === 500) logFaultFor(this.host)(e);
       send(status, { error: status === 500 ? 'Internal server error' : adminErrorText(e, this.host) });
     } finally { done(); }

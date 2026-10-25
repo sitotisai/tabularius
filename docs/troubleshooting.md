@@ -314,6 +314,15 @@ serving the folder you are looking at: `tabularius doctor <folder>` counts the f
 The sign-in page lists the hosted files only when the server was started with `--list-files-publicly`; otherwise
 it shows a **File name** box and a person types the file's name (`/app/?db=Name` fills it in), and a name that is not hosted looks like a wrong password.
 
+## The settings file has a value the server cannot use
+
+The folder's `.openhbam-settings.json` holds the settings the admin console changes (session timeout, block new users, the backup folder and more) and a few that `tabularius serve` reads at start (`backupEvery`, `keep`, `tlsCert`, `tlsKey`). A key with the wrong kind of value (`{"keep": "abc"}` where a number belongs), or a file that is not JSON, is reported with the file name and the key, and each part of Tabularius treats it in one way:
+
+- **`tabularius serve` stops before it starts**, and says which key or what is wrong. Fix the value or remove the key (or the whole file; the settings it held go back to their defaults) and start again.
+- **The offline commands** (`compact`, `optimize`, `report`, `test-scripts`, `script-tests` and the other commands that open a folder without serving it) print one warning with the same text and carry on with the default settings, so a folder with a broken settings file can still be repaired.
+- **A change made while the server runs** (someone edits the file by hand) is not applied if any one key is invalid: the whole file is rejected, one warning is logged, and the server keeps the last settings that were valid until the file is fixed.
+- **A change made in the admin console** (or the Admin API) while the file has an invalid key is refused with HTTP 409 and the key's name, and nothing is written. Fix or remove that key in the file, then make the change again.
+
 ## The first open of a big file is slow
 
 A `.fmp12` file is converted once, into the server's own store (`<name>.openhbam.sqlite`, beside it), and the converted store is what is

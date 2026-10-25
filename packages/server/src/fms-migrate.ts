@@ -62,6 +62,20 @@ export interface FolderSettings {
 export const SETTINGS_FILE = '.openhbam-settings.json';
 const SCHEDULES_FILE = '.openhbam-schedules.json';
 
+const SETTING_TYPES: Record<string, 'string' | 'number' | 'boolean'> = { backupEvery: 'string', keep: 'number', backupDir: 'string', tlsCert: 'string', tlsKey: 'string', blockNewUsers: 'boolean', sessionIdleMinutes: 'number', webSessionIdleMinutes: 'number', responsiveStackBelow: 'number', scriptPluginInstall: 'boolean' };
+
+/** The first key of a settings object that has the wrong type, as "keep must be a number"; nothing when every key is fine. */
+export function settingsProblem(settings: Record<string, unknown>): string | undefined {
+  for (const [key, type] of Object.entries(SETTING_TYPES)) {
+    if (settings[key] !== undefined && typeof settings[key] !== type) return `${key} must be a ${type}`;
+  }
+  return undefined;
+}
+
+/** What to do about a settings file that cannot be used, and about one key in it that cannot be. */
+export const FIX_FILE = 'fix or remove the file';
+export const FIX_KEY = 'fix or remove that key (or the file)';
+
 /** Read and check the settings object shared by serve and the admin console. */
 export function readSettingsObject(dir: string): Record<string, unknown> {
   const f = join(dir, SETTINGS_FILE);
@@ -69,14 +83,13 @@ export function readSettingsObject(dir: string): Record<string, unknown> {
   let value: unknown;
   try { value = readJsonStateSync<unknown>(f); } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') return {};
-    if (e instanceof Error && e.cause instanceof SyntaxError) throw new Error(`${f} isn't valid JSON: ${e.cause.message}`, { cause: e });
+    if (e instanceof Error && e.cause instanceof SyntaxError) throw new Error(`${f} isn't valid JSON: ${e.cause.message}; ${FIX_FILE}`, { cause: e });
     throw e;
   }
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${f}: settings must be an object`);
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${f}: settings must be an object; ${FIX_FILE}`);
   const s = value as Record<string, unknown>;
-  for (const [key, type] of Object.entries({ backupEvery: 'string', keep: 'number', backupDir: 'string', tlsCert: 'string', tlsKey: 'string', blockNewUsers: 'boolean', sessionIdleMinutes: 'number', webSessionIdleMinutes: 'number', responsiveStackBelow: 'number', scriptPluginInstall: 'boolean' })) {
-    if (s[key] !== undefined && typeof s[key] !== type) throw new Error(`${f}: ${key} must be a ${type}`);
-  }
+  const problem = settingsProblem(s);
+  if (problem) throw new Error(`${f}: ${problem}; ${FIX_KEY}`);
   return s;
 }
 
