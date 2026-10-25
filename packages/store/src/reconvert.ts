@@ -292,6 +292,16 @@ function carryRecords(sql: DatabaseSync, counts: { created: number; edited: numb
     // Deleted since: in the .fmp12, gone from the store.
     counts.deleted += Number(sql.prepare(`DELETE FROM main.${T} WHERE _fm_record_id NOT IN (SELECT _fm_record_id FROM old.${T})`).run().changes);
 
+    // Made since, under an id the .fmp12 also uses: new ids continue after the highest one left, so deleting the last
+    // original record gives its id to the next new one, which has no edits to tell it from the original. The audit log
+    // says it was made here (a revert that put an original back is not that); the original goes, the person's record
+    // is copied whole below.
+    if (audit && columns(sql, '_fm_audit', 'old').includes('revert_of')) {
+      const made = (sql.prepare("SELECT DISTINCT record_id FROM old._fm_audit WHERE security = 0 AND kind = 'create' AND revert_of IS NULL AND tbl = ? AND record_id IS NOT NULL").all(t.name) as { record_id: number }[]).map((r) => r.record_id);
+      const drop = sql.prepare(`DELETE FROM main.${T} WHERE _fm_record_id = ?`);
+      for (const id of made) drop.run(id);
+    }
+
     // Edited since: the fields the audit log says changed, or all of them.
     const edited = sql.prepare(`SELECT o._fm_record_id, ${shared.map((c) => `o.${q(c)}`).join(', ')} FROM old.${T} AS o JOIN main.${T} AS n ON n._fm_record_id = o._fm_record_id WHERE o._fm_mod_id > 0`).all() as Record<string, unknown>[];
     const changedFields = audit ? sql.prepare("SELECT changes FROM old._fm_audit WHERE security = 0 AND kind = 'update' AND tbl = ? AND record_id = ?") : undefined;
