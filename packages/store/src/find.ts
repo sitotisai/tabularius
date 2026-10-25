@@ -83,31 +83,38 @@ const MAX_CRITERION = 4096;
 /** The most matching work one field value (or repetition) may cost, and what a find starts with before it has read a record. */
 const MAX_MATCH_WORK = 4_000_000;
 /**
- * What a record the find scans earns the find's matching budget, shared by the matcher calls that read it. The budget
- * bounds a find that does more work than the records it reads warrant (a long value against a long criterion), not a
- * find on a big table: a wildcard find over a 40-character value costs a few hundred steps a record, so a flat budget ran
- * out on a table of a few tens of thousands of records whatever the criterion. A step measures about 30 to 65
- * nanoseconds, so 1,024 steps are about 30 to 65 microseconds: a few times what a plain wildcard find costs a record.
- * The allowance is earned as the records are read, never paid up front, so a table of empty values does not fund a
- * single long one; and it is split between the matcher calls the query makes of a record (a call is one `fm_find_text`
- * in its SQL, so a repeated or padded criterion does not earn more), so a record earns 1,024 however many criteria read it.
+ * What a record the find scans earns the find's matching budget, once per scan however many criteria, repetitions or
+ * requests read it. The budget bounds a find that does more work than the records it reads warrant (a long value against
+ * a long criterion), not a find on a big table: a wildcard find over a 40-character value costs a few hundred steps a
+ * record, so a flat budget ran out on a table of a few tens of thousands of records whatever the criterion. A step
+ * measures about 30 to 65 nanoseconds, so 1,024 steps are about 30 to 65 microseconds: a few times what a plain wildcard
+ * find costs a record. The allowance is earned as the records are read, never paid up front, so a table of empty values
+ * does not fund a single long one. Each matcher call names its record and its scan (see `scope`), and a record earns
+ * the first time it is named: the SQL decides how often the matcher runs on it (an AND skips the second term, a
+ * repeating field calls it once per repetition), so counting calls or criteria would give too much or too little.
  */
 const MATCH_WORK_PER_VALUE = 1024;
 /** The most a find may spend in all, however large the table: a few seconds of the synchronous matcher at the worst. */
 const MAX_FIND_WORK = 1 << 26;
 // Count requests and fields together, leaving room for each criterion's SQL below SQLite's expression depth limit.
 const MAX_QUERY_PARTS = 256;
-type MatchBudget = { remaining: number; unearned: number; calls: number };
+type MatchBudget = { remaining: number; unearned: number; seen: Map<number, Set<unknown>> };
 const matchBudget = new AsyncLocalStorage<MatchBudget | undefined>();
+/**
+ * The scan whose WHERE is being built: every findWhere is one scan of one table (the found set, a related table, a copy
+ * of the rows), and its matcher calls name this number, so a record read by two scans earns in each.
+ */
+let scope = 0;
+let scopes = 0;
 
 /**
  * One budget for a complete find, including related fields, repetitions and repeated SQL evaluations. It starts with a
- * fixed amount and earns MATCH_WORK_PER_VALUE for each record scanned (split between the matcher calls in the query's
- * SQL, which findWhere counts), up to MAX_FIND_WORK in all; a single value can never spend more than MAX_MATCH_WORK.
+ * fixed amount and earns MATCH_WORK_PER_VALUE for each record of each scan, up to MAX_FIND_WORK in all; a single value
+ * can never spend more than MAX_MATCH_WORK.
  */
 export function beginFindBudget(): () => void {
   const previous = matchBudget.getStore();
-  if (!previous) matchBudget.enterWith({ remaining: MAX_MATCH_WORK, unearned: MAX_FIND_WORK - MAX_MATCH_WORK, calls: 0 });
+  if (!previous) matchBudget.enterWith({ remaining: MAX_MATCH_WORK, unearned: MAX_FIND_WORK - MAX_MATCH_WORK, seen: new Map() });
   return () => matchBudget.enterWith(previous);
 }
 
@@ -147,7 +154,7 @@ function textPattern(raw: string, relaxed: boolean, japanese = false): TextPatte
     // Relaxed matching also bounds normalization. Ordinary values are streamed, without a character array.
     // Outside a find (no shared budget) a value has MAX_MATCH_WORK to itself. Either way one value's own spend is capped,
     // so it cannot drain what the other records earned.
-    const budget = matchBudget.getStore() ?? { remaining: MAX_MATCH_WORK, unearned: 0, calls: 0 };
+    const budget = matchBudget.getStore() ?? { remaining: MAX_MATCH_WORK, unearned: 0, seen: new Map() };
     let own = MAX_MATCH_WORK;
     if (relaxed) {
       own -= value.length;
@@ -213,14 +220,20 @@ export function registerFindFunctions(db: DatabaseSync): void {
     return 0;
   });
   const patterns = new Map<string, TextPattern>();
-  db.function('fm_find_text', { deterministic: true }, (v, raw, relaxed) => {
-    // Every record the find scans earns its share of the budget, an empty value too, split between the calls the query
-    // makes of a record: a query padded with cheap criteria earns no more per record than one criterion does.
+  db.function('fm_find_text', { deterministic: true }, (v, raw, relaxed, row, scope) => {
+    // Every record a scan reads earns its share of the budget the first time a call names it, an empty value too: a query
+    // padded with cheap criteria earns no more per record than one criterion does. Only the records that earned are
+    // remembered, so the set is as small as the budget is.
     const budget = matchBudget.getStore();
-    if (budget) {
-      const earned = Math.min(MATCH_WORK_PER_VALUE / Math.max(1, budget.calls), budget.unearned);
-      budget.unearned -= earned;
-      budget.remaining += earned;
+    if (budget && budget.unearned > 0 && row !== undefined && row !== null) {
+      let seen = budget.seen.get(Number(scope));
+      if (!seen) budget.seen.set(Number(scope), seen = new Set());
+      if (!seen.has(row)) {
+        seen.add(row);
+        const earned = Math.min(MATCH_WORK_PER_VALUE, budget.unearned);
+        budget.unearned -= earned;
+        budget.remaining += earned;
+      }
     }
     if (v == null || v === '') return 0;
     const key = `${relaxed}:${raw}`;
@@ -324,7 +337,7 @@ function criterion(col: string, type: FieldType, value: string, norm: Normalizer
     if (!v.trim()) throw new FindError('A relaxed find requires text after ~', 400);
     textPattern(v, true, japanese);
     params.push(v, japanese ? 2 : 1);
-    return `fm_find_text(${col}, ?, ?) = 1`;
+    return `fm_find_text(${col}, ?, ?, _fm_record_id, ${scope}) = 1`;
   }
   if ((type === 'date' || type === 'timestamp') && v.includes('//')) {
     const now = new Date();
@@ -355,7 +368,7 @@ function criterion(col: string, type: FieldType, value: string, norm: Normalizer
     if (type === 'number') v = '==' + v.replace(/^={1,2}/, '');
     textPattern(v, false);
     params.push(v, 0);
-    return `fm_find_text(${col}, ?, ?) = 1`;
+    return `fm_find_text(${col}, ?, ?, _fm_record_id, ${scope}) = 1`;
   }
   if (type === 'timestamp' && !v.startsWith('==')) {
     const days = timestampDays(col, v, norm, params);
@@ -449,8 +462,16 @@ function duplicateCriterion(f: FieldInfo, col: string, params: SqlValue[], sourc
 /** SQL condition for criteria on one related occurrence's fields, or undefined when it has no such fields. */
 export type RelatedCriteria = (occurrence: string, criteria: Record<string, string>) => { where: string; params: SqlValue[] } | undefined;
 
-/** WHERE clause for a list of find requests. */
+/** WHERE clause for a list of find requests: one scan of one table, with a scope number of its own for the matcher's calls. */
 export function findWhere(
+  requests: FindRequest[], fields: Map<string, FieldInfo>, norm: Normalizer, related?: RelatedCriteria, words?: WordIndex, source?: FindSource,
+): { where: string; params: SqlValue[] } {
+  const outer = scope;
+  scope = ++scopes;
+  try { return buildWhere(requests, fields, norm, related, words, source); } finally { scope = outer; }
+}
+
+function buildWhere(
   requests: FindRequest[], fields: Map<string, FieldInfo>, norm: Normalizer, related?: RelatedCriteria, words?: WordIndex, source?: FindSource,
 ): { where: string; params: SqlValue[] } {
   let complexity = requests.length;
@@ -497,8 +518,5 @@ export function findWhere(
       : `(${where} ${omitting ? `AND ${omit}` : `OR ${clause}`})`;
     first = false;
   }
-  // Count the matcher calls this WHERE makes of a record (each one appears once in the SQL), so they share a record's allowance.
-  const budget = matchBudget.getStore();
-  if (budget) budget.calls += where.split('fm_find_text(').length - 1;
   return { where, params };
 }
