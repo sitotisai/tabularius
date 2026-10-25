@@ -1,0 +1,384 @@
+[
+  {
+    "name": "AllStyles",
+    "signature": "AllStyles ( )",
+    "summary": "Returns the combined style bit value for every supported text style.",
+    "examples": [
+      {
+        "formula": "AllStyles ( )",
+        "result": "32765"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "Bold",
+    "signature": "Bold ( )",
+    "summary": "Returns the style bit value used for bold text.",
+    "examples": [
+      {
+        "formula": "Bold ( )",
+        "result": "256"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "DayNameJ",
+    "signature": "DayNameJ ( date )",
+    "summary": "Returns the Japanese weekday name for a date.",
+    "examples": [
+      {
+        "formula": "DayNameJ ( Date ( 1 ; 1 ; 2021 ) )",
+        "result": "金曜日"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "DoubleUnderline",
+    "signature": "DoubleUnderline ( )",
+    "summary": "Returns the style bit value used for double underlining.",
+    "examples": [
+      {
+        "formula": "DoubleUnderline ( )",
+        "result": "64"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "FieldStyle",
+    "signature": "FieldStyle ( )",
+    "summary": "Returns field style information supplied by the current design context.",
+    "details": "The engine delegates this to design metadata; without a host-provided design callback the result is empty, and compatibility with a live host is unverified.",
+    "examples": [],
+    "status": "partly",
+    "differences": "Needs host-provided design metadata; live-host behavior is unverified."
+  },
+  {
+    "name": "HighlightYellow",
+    "signature": "HighlightYellow ( )",
+    "summary": "Returns the style bit value used for yellow highlighting.",
+    "examples": [
+      {
+        "formula": "HighlightYellow ( )",
+        "result": "1"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "Hiragana",
+    "signature": "Hiragana ( text )",
+    "summary": "Converts eligible Japanese text to hiragana.",
+    "examples": [
+      {
+        "formula": "Hiragana ( \"カタカナ\" )",
+        "result": "かたかな"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "Italic",
+    "signature": "Italic ( )",
+    "summary": "Returns the style bit value used for italic text.",
+    "examples": [
+      {
+        "formula": "Italic ( )",
+        "result": "512"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "KanaHankaku",
+    "signature": "KanaHankaku ( text )",
+    "summary": "Converts eligible kana characters to half-width forms.",
+    "examples": [
+      {
+        "formula": "KanaHankaku ( \"カナ\" )",
+        "result": "ｶﾅ"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "KanaZenkaku",
+    "signature": "KanaZenkaku ( text )",
+    "summary": "Converts eligible kana characters to full-width forms.",
+    "examples": [
+      {
+        "formula": "KanaZenkaku ( \"ｶﾅ\" )",
+        "result": "カナ"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "Katakana",
+    "signature": "Katakana ( text )",
+    "summary": "Converts eligible Japanese text to katakana.",
+    "examples": [
+      {
+        "formula": "Katakana ( \"ひらがな\" )",
+        "result": "ヒラガナ"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "MonthNameJ",
+    "signature": "MonthNameJ ( date )",
+    "summary": "Returns the Japanese month label for a date.",
+    "examples": [
+      {
+        "formula": "MonthNameJ ( Date ( 7 ; 1 ; 2021 ) )",
+        "result": "7月"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "NumToJText",
+    "signature": "NumToJText ( number ; separator ; digitStyle )",
+    "summary": "Formats a number with a selected Japanese digit style and grouping option.",
+    "examples": [
+      {
+        "formula": "NumToJText ( 123 ; 0 ; 2 )",
+        "result": "一二三"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "Plain",
+    "signature": "Plain ( )",
+    "summary": "Returns the style bit value that represents unformatted text.",
+    "examples": [
+      {
+        "formula": "Plain ( )",
+        "result": "0"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "RGB",
+    "signature": "RGB ( red ; green ; blue )",
+    "summary": "Combines red, green, and blue channel values into one integer color value.",
+    "examples": [
+      {
+        "formula": "RGB ( 255 ; 0 ; 0 )",
+        "result": "16711680"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "RomanHankaku",
+    "signature": "RomanHankaku ( text )",
+    "summary": "Converts eligible Roman characters to half-width forms.",
+    "examples": [
+      {
+        "formula": "RomanHankaku ( \"ＡＢＣ\" )",
+        "result": "ABC"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "RomanZenkaku",
+    "signature": "RomanZenkaku ( text )",
+    "summary": "Converts eligible Roman characters to full-width forms.",
+    "examples": [
+      {
+        "formula": "RomanZenkaku ( \"ABC\" )",
+        "result": "ＡＢＣ"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "SmallCaps",
+    "signature": "SmallCaps ( )",
+    "summary": "Returns the style bit value used for small capitals.",
+    "examples": [
+      {
+        "formula": "SmallCaps ( )",
+        "result": "128"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "Strikethrough",
+    "signature": "Strikethrough ( )",
+    "summary": "Returns the style bit value used for struck-through text.",
+    "examples": [
+      {
+        "formula": "Strikethrough ( )",
+        "result": "2048"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "Subscript",
+    "signature": "Subscript ( )",
+    "summary": "Returns the style bit value used for subscript text.",
+    "examples": [
+      {
+        "formula": "Subscript ( )",
+        "result": "8"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "Superscript",
+    "signature": "Superscript ( )",
+    "summary": "Returns the style bit value used for superscript text.",
+    "examples": [
+      {
+        "formula": "Superscript ( )",
+        "result": "4"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "TextColor",
+    "signature": "TextColor ( text ; color )",
+    "summary": "Applies a numeric RGB color to all characters in text.",
+    "examples": [
+      {
+        "formula": "GetAsCSS ( TextColor ( \"x\" ; RGB ( 255 ; 0 ; 0 ) ) )",
+        "result": "<span style = \"color: #FF0000;\">x</span>"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "TextColorRemove",
+    "signature": "TextColorRemove ( text ; color )",
+    "summary": "Removes color formatting, optionally only when it matches a given color.",
+    "details": "Formatting stays in style runs while the text itself remains unchanged; a visible formatting result can be obtained with GetAsCSS.",
+    "examples": [
+      {
+        "formula": "GetAsCSS ( TextColorRemove ( TextColor ( \"x\" ; RGB ( 255 ; 0 ; 0 ) ) ) )",
+        "result": "x"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "TextFont",
+    "signature": "TextFont ( text ; font ; fontScript )",
+    "summary": "Applies a font name to all characters in text.",
+    "examples": [
+      {
+        "formula": "GetAsCSS ( TextFont ( \"x\" ; \"Helvetica\" ) )",
+        "result": "<span style = \"font-family: 'Helvetica';\">x</span>"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "TextFontRemove",
+    "signature": "TextFontRemove ( text ; font ; fontScript )",
+    "summary": "Removes font formatting, optionally only for a matching font name.",
+    "examples": [
+      {
+        "formula": "GetAsCSS ( TextFontRemove ( TextFont ( \"x\" ; \"Helvetica\" ) ) )",
+        "result": "x"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "TextFormatRemove",
+    "signature": "TextFormatRemove ( text )",
+    "summary": "Returns the text without its font, size, color, or style formatting.",
+    "examples": [
+      {
+        "formula": "GetAsCSS ( TextFormatRemove ( TextStyleAdd ( \"x\" ; Bold ) ) )",
+        "result": "x"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "TextSize",
+    "signature": "TextSize ( text ; size )",
+    "summary": "Applies a point size to all characters in text.",
+    "examples": [
+      {
+        "formula": "GetAsCSS ( TextSize ( \"x\" ; 12 ) )",
+        "result": "<span style = \"font-size: 12px;\">x</span>"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "TextSizeRemove",
+    "signature": "TextSizeRemove ( text ; size )",
+    "summary": "Removes size formatting, optionally only at a matching size.",
+    "examples": [
+      {
+        "formula": "GetAsCSS ( TextSizeRemove ( TextSize ( \"x\" ; 12 ) ) )",
+        "result": "x"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "TextStyleAdd",
+    "signature": "TextStyleAdd ( text ; style )",
+    "summary": "Adds the selected style bits to every character in text.",
+    "examples": [
+      {
+        "formula": "GetAsCSS ( TextStyleAdd ( \"x\" ; Bold ) )",
+        "result": "<span style = \"font-weight: bold;\">x</span>"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "TextStyleRemove",
+    "signature": "TextStyleRemove ( text ; style )",
+    "summary": "Removes the selected style bits from every character in text.",
+    "examples": [
+      {
+        "formula": "GetAsCSS ( TextStyleRemove ( TextStyleAdd ( \"x\" ; Bold ) ; Bold ) )",
+        "result": "x"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "Underline",
+    "signature": "Underline ( )",
+    "summary": "Returns the style bit value used for underlining.",
+    "examples": [
+      {
+        "formula": "Underline ( )",
+        "result": "1024"
+      }
+    ],
+    "status": "works"
+  },
+  {
+    "name": "WordUnderline",
+    "signature": "WordUnderline ( )",
+    "summary": "Returns the style bit value used for underlining words.",
+    "examples": [
+      {
+        "formula": "WordUnderline ( )",
+        "result": "4096"
+      }
+    ],
+    "status": "works"
+  }
+]
