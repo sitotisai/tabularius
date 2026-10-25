@@ -201,10 +201,12 @@ Each criterion is limited to 4,096 UTF-16 code units. Wildcard matching is itera
 without backtracking or recursion. Matching work is counted in token positions: each visited input position (including
 the end position if reached) costs pattern token count + 1. One field value (or repetition)
 may cost at most 4,000,000 of them. A whole find (all its criteria, related fields and
-repetitions) starts with 4,000,000 and earns 1,024 more for every field value it reads,
-empty ones included, as it reads them, up to 67,108,864 in all; so a plain wildcard find
-on a large table is not refused, but one very long value cannot spend what the other
-records earned. A step takes about 30 to 65 nanoseconds, so the most a single find can
+repetitions) starts with 4,000,000 and earns 1,024 more for every record it scans, empty
+values included, as it scans them, up to 67,108,864 in all. A record earns its 1,024 once:
+it is shared between the matcher calls the query makes of that record, so padding a query
+with more criteria earns nothing more. A plain wildcard find on a large table is therefore
+not refused, but one very long value cannot spend what the other records earned. A step
+takes about 30 to 65 nanoseconds, so the most a single find can
 spend is a few seconds of the (synchronous) matcher. Tokens are Unicode characters or wildcard operators; adjacent `*` operators
 collapse to one token. A trailing `*` can accept the remaining value immediately once
 its prefix matches. Values are streamed without allocating a character array; relaxed

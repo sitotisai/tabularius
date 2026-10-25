@@ -252,3 +252,38 @@ test('the allowance is earned by the records read before a value, not paid up fr
   late.create('Items', { Text: heavy });
   assert.equal(late.findIds('Items', { query }).length, 0);
 });
+
+// A record earns its allowance once, however many criteria read it: padding a query with cheap criteria that never match
+// must not fund a heavy one. Counted in steps, not time, so it does not depend on the machine.
+test('a query padded with cheap criteria earns no more per record than one criterion does', (t) => {
+  const { store } = fixture(t);
+  store.applyDesign([{ op: 'createTable', name: 'Pad', fields: [{ name: 'Empty' }, { name: 'Notes' }] }]);
+  const sql = (store as unknown as SqlHandle).sql;
+  sql.exec(`INSERT INTO Pad (_fm_record_id, Empty, Notes) WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 500) SELECT i, '', '' FROM n`);
+  // 8 records of about 3.9 million steps each against the heavy criterion: 31 million in all, far above what 500 records earn.
+  sql.exec(`INSERT INTO Pad (_fm_record_id, Empty, Notes) WITH RECURSIVE n(i) AS (SELECT 501 UNION ALL SELECT i + 1 FROM n WHERE i < 508) SELECT i, '', '${'c'.repeat(950)}' FROM n`);
+  const heavy: FindRequest = { Notes: '*' + 'c'.repeat(4094) + '*' };
+  assert.throws(() => store.findIds('Pad', { query: [heavy] }), (e: unknown) => e instanceof StoreError && e.code === 400, 'the heavy criterion alone is refused');
+  for (const padding of [1, 10, 127]) {
+    const query: FindRequest[] = [...Array.from({ length: padding }, () => ({ Empty: '*z*' })), heavy];
+    assert.throws(() => store.findIds('Pad', { query }), (e: unknown) => e instanceof StoreError && e.code === 400, `${padding} padding requests`);
+    assert.throws(() => store.find('Pad', { query, limit: 1 }), (e: unknown) => e instanceof StoreError && e.code === 400, `${padding} padding requests, paged`);
+  }
+  // The same padding as one request's fields, and as the same criterion repeated.
+  const fields: FindRequest = { Notes: heavy.Notes };
+  assert.throws(() => store.findIds('Pad', { query: [{ ...fields, Empty: '*z*' } as FindRequest, heavy] }), (e: unknown) => e instanceof StoreError && e.code === 400);
+});
+
+test('several plain criteria, include and omit, on a table of many short values are not refused', (t) => {
+  const { store } = fixture(t);
+  const rows = 40000;
+  (store as unknown as SqlHandle).sql.exec(
+    `INSERT INTO Items (_fm_record_id, Text) WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ${rows})
+     SELECT i, 'plain text of a normal length for a name ' || i || CASE WHEN i % 1000 = 0 THEN ' abc' ELSE '' END FROM n`);
+  const hits = rows / 1000;
+  const queries: FindRequest[][] = [[{ Text: '*abc*' }, { Text: '*zzz*', omit: 'true' }], [{ Text: 'plain*normal*abc' }], [{ Text: '*a*b*c*d*e*' }, { Text: '*abc*' }]];
+  for (const query of queries) {
+    assert.equal(store.findIds('Items', { query }).length, hits, JSON.stringify(query));
+    assert.equal(store.find('Items', { query, limit: 1 }).foundCount, hits, JSON.stringify(query));
+  }
+});
