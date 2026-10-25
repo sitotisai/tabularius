@@ -1744,7 +1744,6 @@ function main(argv: string[]): number {
       if (!primary || !token) throw new Error('standby: give --primary URL and --token or --token-file (the main server\'s replication token)');
       const standby = new Standby({ folder: path, primary, token, overwrite: bool(args, '--overwrite'), log: (m) => console.log(m) });
       standby.start();
-      console.log(`standby of ${primary} in ${path}: to take over, stop this (Ctrl-C) and run tabularius serve ${path}`);
       const stop = () => {
         void standby.stop().then(() => {
           const behind = standby.status().filter((f) => !f.whole).map((f) => f.file);
@@ -1754,6 +1753,9 @@ function main(argv: string[]): number {
       };
       process.once('SIGINT', stop);
       process.once('SIGTERM', stop);
+      // After the handlers: this line is the cue to stop the standby (the runbook test and scripts wait for it), and a stop sent
+      // as soon as it is seen must be handled, not kill the process before it has saved its state.
+      console.log(`standby of ${primary} in ${path}: to take over, stop this (Ctrl-C) and run tabularius serve ${path}`);
       return 0;
     }
     case 'encrypt':
