@@ -3,7 +3,7 @@
 // the table a tool starts on. Unknown executable constructs fail closed, including for Full Access.
 import { checkSqlSize, StoreError, type Store, type Privileges, type DesignOp } from '../../store/src/index.ts';
 import { dataSourceFile } from '../../store/src/import.ts';
-import { parse, resolveFunction, type Node } from '../../calc/src/index.ts';
+import { NameTable, parse, resolveFunction, type Node } from '../../calc/src/index.ts';
 import type { Script, Schema } from '../../fmp12/src/index.ts';
 import { secretName } from './ai-output.ts';
 import { assertNoAiVisibility } from './ai-security.ts';
@@ -48,6 +48,11 @@ export function assertAiPolicy(store: Store, who: Privileges | string | undefine
     if (seen.get(s) === true || (seen.has(s) && !on)) return;
     seen.set(s, on);
     if (on) {
+      let calcNames: NameTable | undefined;
+      const names = () => calcNames ??= new NameTable({
+        fields: s.schema.tables.flatMap((t) => t.fields.map((f) => f.name)),
+        occurrences: s.schema.tableOccurrences.map((o) => [o.name, s.schema.tables.find((t) => t.id === o.baseTableId)?.fields.map((f) => f.name) ?? []]),
+      });
       const p = typeof who === 'string' ? s.privileges(who) : who?.in(s);
       // The local MCP administrator uses the saved Full Access policy, never an implicit exception.
       const set = p?.set ?? s.privilegeSets().find((p) => p.id === 1 || p.name === '[Full Access]');
@@ -67,20 +72,20 @@ export function assertAiPolicy(store: Store, who: Privileges | string | undefine
       // Materialized and unstored formulas and record privileges can themselves execute dynamic reads.
       for (const table of s.schema.tables) for (const field of table.fields) {
         if ((field.hasCalculation || field.kind === 'calculation') && !field.calculation) refuse(s, operation, `calculation field "${table.name}::${field.name}" has no decoded source; its read set cannot be determined statically`);
-        if (field.calculation) formula(s, field.calculation, operation);
-        if (field.options?.validation?.calculation) formula(s, field.options.validation.calculation, operation);
+        if (field.calculation) formula(s, field.calculation, operation, names());
+        if (field.options?.validation?.calculation) formula(s, field.options.validation.calculation, operation, names());
       }
       for (const table of [set?.records, ...Object.values(set?.tables ?? {})]) {
-        for (const rule of [table?.view, table?.edit, table?.delete]) if (typeof rule === 'string') formula(s, rule, operation);
+        for (const rule of [table?.view, table?.edit, table?.delete]) if (typeof rule === 'string') formula(s, rule, operation, names());
       }
-      if (request.formula !== undefined) formula(s, request.formula, operation);
+      if (request.formula !== undefined) formula(s, request.formula, operation, names());
       if (request.sql !== undefined) sql(s, request.sql, operation);
       if (request.scripts) {
-        for (const script of s.schema.scripts) scriptReads(s, script, operation);
+        for (const script of s.schema.scripts) scriptReads(s, script, operation, names());
         // A referenced file's ON policy also constrains the entry file's program, even when that file is OFF.
-        if (s !== store) for (const script of store.schema.scripts) scriptReads(s, script, operation);
+        if (s !== store) for (const script of store.schema.scripts) scriptReads(s, script, operation, names());
       }
-      for (const script of request.programs ?? []) scriptReads(s, script, operation);
+      for (const script of request.programs ?? []) scriptReads(s, script, operation, names());
     }
     for (const source of s.schema.dataSources) {
       const name = dataSourceFile(source.paths) ?? source.name;
@@ -138,6 +143,7 @@ function secretFields(store: Store, schema: Schema, who?: Privileges): SecretDep
     return file;
   };
   const root = visit(store);
+  const nameTables = new Map<File, Map<number | undefined, NameTable>>();
   const occurrence = (file: File, ref: string | number) => {
     const to = file.schema.tableOccurrences.find((o) => typeof ref === 'number' ? o.id === ref : lower(o.name) === lower(ref));
     const owner = to?.dataSourceId ? file.sources.get(to.dataSourceId) : file;
@@ -147,8 +153,15 @@ function secretFields(store: Store, schema: Schema, who?: Privileges): SecretDep
   const readDependencies = (file: File, target: Dependency, text: string | undefined,
     parameters: string[] = [], table?: Schema['tables'][number]): void => {
     const unknown = () => { target.refs.add(file.unknown); };
-    const names = { fields: (table ? [table] : file.schema.tables).flatMap((t) => t.fields.map((f) => f.name)),
-      occurrences: file.schema.tableOccurrences.map((o): [string, string[]] => [o.name, occurrence(file, o.id)?.table.fields.map((f) => f.name) ?? []]) };
+    let byTable = nameTables.get(file);
+    if (!byTable) { byTable = new Map(); nameTables.set(file, byTable); }
+    const key = table?.id;
+    let names = byTable.get(key);
+    if (!names) {
+      names = new NameTable({ fields: (table ? [table] : file.schema.tables).flatMap((t) => t.fields.map((f) => f.name)),
+        occurrences: file.schema.tableOccurrences.map((o): [string, string[]] => [o.name, occurrence(file, o.id)?.table.fields.map((f) => f.name) ?? []]) });
+      byTable.set(key, names);
+    }
     // A standalone function has no caller table: union every possible local field.
     const addRef = (ref: { occurrence?: string; name: string }): boolean => {
       const source = ref.occurrence ? occurrence(file, ref.occurrence) : undefined;
@@ -346,14 +359,13 @@ function sql(store: Store, text: string, operation: string): void {
   }
 }
 
-function formula(store: Store, text: string, operation: string, visiting = new Set<string>(),
+function formula(store: Store, text: string, operation: string, names: NameTable, visiting = new Set<string>(),
   budget = { characters: DEPENDENCY_CHARACTERS, nodes: DEPENDENCY_NODES }, parameters: string[] = []): void {
   budget.characters -= text.length;
   if (visiting.size > DEPENDENCY_DEPTH || budget.characters < 0) refuse(store, operation, 'calculation read set cannot be determined statically within the analysis limit');
   let ast: Node;
   try {
-    ast = parse(text, { fields: store.schema.tables.flatMap((t) => t.fields.map((f) => f.name)),
-      occurrences: store.schema.tableOccurrences.map((o) => [o.name, store.schema.tables.find((t) => t.id === o.baseTableId)?.fields.map((f) => f.name) ?? []]) }, parameters.map((p) => p.trim()));
+    ast = parse(text, names, parameters.map((p) => p.trim()));
   } catch { refuse(store, operation, 'calculation read set cannot be determined statically'); }
   const call = (name: string, args: Node[]): void => {
     const resolved = policyFunction(store, store.schema, name);
@@ -361,7 +373,7 @@ function formula(store: Store, text: string, operation: string, visiting = new S
     if (resolved?.kind === 'custom') {
       const custom = resolved.fn;
       if (custom.formula === undefined || custom.language === 'javascript' || visiting.has(key)) refuse(store, operation, `${name} has an uncertain read set`);
-      formula(store, custom.formula, operation, new Set([...visiting, key]), budget, custom.parameters);
+      formula(store, custom.formula, operation, names, new Set([...visiting, key]), budget, custom.parameters);
     } else if (resolved?.kind !== 'builtin') refuse(store, operation, `${name} has an uncertain read set`);
     else if (key === 'evaluate') refuse(store, operation, 'Evaluate has an uncertain read set');
     else if (key === 'executesql') {
@@ -406,31 +418,31 @@ function formula(store: Store, text: string, operation: string, visiting = new S
   }
 }
 
-function scriptReads(store: Store, script: Script, operation: string): void {
+function scriptReads(store: Store, script: Script, operation: string, names: NameTable): void {
   for (const step of script.steps) {
     if (!step.enabled || step.stepId === 89) continue;
     if (!STEPS.has(step.stepId)) refuse(store, operation, `script "${script.name}" step "${step.name}" has an uncertain read set`);
     const params = step.params ?? {};
-    for (const calc of [params.serial?.initial, params.serial?.increment]) if (calc !== undefined) formula(store, calc, operation);
+    for (const calc of [params.serial?.initial, params.serial?.increment]) if (calc !== undefined) formula(store, calc, operation, names);
     if (params.ai) {
       const calculations = new Set('accountName apiKey model input vector returnCount threshold endpoint prompt parameters templateName ragAccountName spaceId tokensPerChunk instructions historyCount historyRepetition'.split(' '));
       const options = new Set('sourceField replaceTarget continueOnError showSummary queryBy recordSet condition findGet ragAction dataSource responseVariable messagesVariable historyVariable'.split(' '));
       for (const [key, value] of Object.entries(params.ai)) {
-        if (calculations.has(key) && typeof value === 'string') formula(store, value, operation);
+        if (calculations.has(key) && typeof value === 'string') formula(store, value, operation, names);
         else if (!options.has(key)) refuse(store, operation, `script "${script.name}" has unanalysed AI options`);
         if (['messagesVariable', 'historyVariable'].includes(key) && typeof value === 'string' && value.startsWith('$$')) refuse(store, operation, 'AI message history has an uncertain cross-run read set');
       }
       if (params.ai.dataSource && params.ai.dataSource !== 'from text' && !params.ai.dataSource.startsWith('from container')) refuse(store, operation, 'RAG file input has an uncertain read set');
     }
     for (const key of Object.keys(params)) if (!PARAMS.has(key)) refuse(store, operation, `script "${script.name}" step "${step.name}" has unanalysed options`);
-    for (const calc of step.calculations ?? []) formula(store, calc, operation);
+    for (const calc of step.calculations ?? []) formula(store, calc, operation, names);
     for (const [key, value] of Object.entries(params)) if (CALCS.has(key) && typeof value === 'string') {
       if (['fieldName', 'layoutCalculation', 'scriptCalculation'].includes(key)) {
         let node: Node;
         try { node = parse(value); } catch { refuse(store, operation, `script "${script.name}" has a dynamic target`); }
         if (node.k !== 'str') refuse(store, operation, `script "${script.name}" has a dynamic target; its read set cannot be determined statically`);
       }
-      formula(store, value, operation);
+      formula(store, value, operation, names);
     }
     // Calls to other files are accounted for by the source graph above; missing script targets fail closed.
     if ([1, 164].includes(step.stepId) && (!params.script || params.script.file || !store.schema.scripts.some((s) => s.id === params.script?.id || s.name === params.script?.name))) {
