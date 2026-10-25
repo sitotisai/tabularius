@@ -659,16 +659,39 @@ again…** shows that for every file at once, then converts the ones listed. If
 an account would ever be missing afterwards, converting refuses and changes
 nothing.
 
-New record ids continue above a per-table high-water mark, including after
-the highest record is deleted. Existing stores seed that mark from surviving
-records and audit entries. Converting again carries the mark over, so audit
-retention does not affect records created after this change. A store that
-already reused an id before this change still needs its surviving audit entries
-to distinguish those older records. If retention already removed those entries,
-their identity cannot be recovered. A deleted highest id absent from both the
-remaining records and retained audit entries cannot be included in the migrated
-mark, so a later creation may receive that older id. Review the backup kept
-beside a reconverted store if an older record appears in place of a newer one.
+New record ids continue after the highest id the table has ever committed (a
+per-table mark kept in the file, file format 2), so the id of a deleted record,
+the highest one's included, is not given to another record. Converting again
+carries the mark over with the other settings, so for records made since, the
+audit log no longer has to say whose an id is, and audit retention does not
+matter. The mark is how far the file has got, not a promise kept outside it:
+
+- restoring a backup brings back the backup's mark with the rest of the file,
+  so ids given after that backup was taken are given again;
+- a standby that was behind when it took over has the mark of the state it
+  holds, so ids the primary gave that never reached it are given again;
+- a record made in a transaction that is then reverted gives its id back
+  (nothing of it was committed);
+- an id can't go past 9007199254740991, the highest a JavaScript number holds
+  exactly. A table whose ids reach it (only an id written directly with SQL can
+  get there) refuses new records with error 812 naming the table; deleting that
+  record does not lower the mark.
+
+The first time this version opens a file from before (format 1), it seeds each
+table's mark from what is left to go by: the table's highest record and the
+highest record id the audit log still holds for it. A table renamed in
+Tabularius has its older entries under a name the design log does not link to
+it, so it starts after the highest record id the audit log holds for any table
+(a gap in the numbers, not a reused id); a rename whose design-log entry is gone
+(converting again afresh, with force, drops the design log) is not seen. Two
+things can't be seen at all: entries audit retention had already removed, and
+the ids a Truncate Table removed (the log keeps only how many). A deleted
+highest id that is in neither the records nor the log may be given once more,
+after the upgrade. A store that had already given an id again before the
+upgrade still needs its surviving audit entries to tell those older records
+apart (below); where retention removed them, which record is which can't be
+recovered. Review the backup kept beside a reconverted store if an older record
+appears in place of a newer one.
 Exact record-id allocation parity with FileMaker is unverified offline. <!-- known-difference: Records ;; Exact record-id allocation parity with FileMaker is unverified offline ;; A boundary case could receive a different new id than FileMaker assigns ;; A direct FileMaker run that creates and deletes the highest record id -->
 
 When part of an edited record's update history has been pruned, converting
@@ -794,14 +817,16 @@ client to see its changes and put one back (limited to what their account could
 change by hand). The same history is available to AI tools (`audit_log`,
 `explain_record_history`) and over the API (`GET /tabularius/admin/v1/audit`).
 
-New record ids continue above a per-table high-water mark, even when the
-highest record was deleted. Older stores may already hold audit entries from
-different records that shared an id. Record History and **Put back** (web
-client, AI tools) use each record's creation entry to keep those older lives
-separate. A record put back by a revert, the data cleanup's undo or the
-console's restore keeps its whole history; put-backs made before they were
-marked in the log count as new records, and the earlier history is no longer
-shown for them.
+A deleted record's id is not given to another record (see "Converting a file
+again" for the per-table mark and when it goes back: a restored backup, a
+standby that was behind). A file from before the mark, or one whose mark went
+back, can hold audit entries from different records that had one id. Record
+History and **Put back** (web client, AI tools) start at the record's latest
+creation, so an earlier record's changes are not shown and can't be put back
+onto the one that has the id now. A record put back by a revert, the data
+cleanup's undo or the console's restore keeps its whole history; put-backs made
+before they were marked in the log count as new records, and the earlier
+history is no longer shown for them.
 
 An account whose view of a table depends on a rule can put back changes to
 records it can see, but not a deleted record: with no values left to judge the
@@ -818,10 +843,11 @@ someone is editing the record, and when the table was emptied (Truncate
 Table) since that point. Records a cascading delete removed with it each have
 their own history.
 
-For an older store that reused an id, the console's restore does not check
-whether the audit entry belongs to an earlier record with that id. Check the
-table and values in **History** first; the console's restore is not limited
-the way Record History is.
+Where an id was given again (a file from before the mark, or after its mark
+went back), the console's restore does not check whether the audit entry
+belongs to an earlier record with that id. Check the table and values in
+**History** first; the console's restore is not limited the way Record History
+is.
 
 ## Backups and restore
 
@@ -872,7 +898,9 @@ account without a password until `tabularius passwd` sets one. In-memory session
 are not restored. The account active flag is
 point-in-time data: restoring an older active flag can reactivate the
 account. Review account status after a restore and deactivate it again if
-needed.
+needed. Each table's record-id mark is point-in-time data too: the restored
+file numbers new records after the highest id it had then, so ids given after
+that backup was taken can be given again (see "Converting a file again").
 
 While the server runs, the admin console's **Restore a file to a moment**
 puts one file back, by default as a copy hosted next to the current one (the
