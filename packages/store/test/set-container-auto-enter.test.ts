@@ -102,3 +102,69 @@ test('a key an auto-enter fills in on a container upload is checked like an upda
   assert.throws(() => s.setContainer('Scans', id, 'File', 1, file('nobody.txt', 'b')), (e: { code?: number }) => e.code === 505);
   assert.equal(s.get('Scans', id).fieldData.OwnerID, 'x.txt', 'the refused upload changed nothing');
 });
+
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+
+test('a field that is itself a container (a thumbnail, a calculated file) keeps what it held when another container gets a file', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-set-container-thumb-'));
+  const path = join(dir, 'Thumbs.sqlite');
+  createStore(path);
+  const s = new Store(path, 'Thumbs');
+  t.after(() => { s.close(); rmSync(dir, { recursive: true, force: true }); });
+  s.applyDesign([{ op: 'createTable', name: 'Docs', fields: [
+    { name: 'File', type: 'container' },
+    { name: 'Thumb', type: 'container', calculation: 'GetThumbnail ( File ; 10 ; 10 )', options: { autoEnter: { calculation: true, replaceExisting: true } } },
+    { name: 'CalcC', type: 'container', kind: 'calculation', calculation: 'File' },
+    { name: 'Name', kind: 'calculation', calculation: 'GetAsText ( File )' },
+    { name: 'Tag', options: { autoEnter: { calculation: true, replaceExisting: true } }, calculation: 'GetAsText ( File ) & "!"' },
+  ] }] as never);
+  const id = s.create('Docs', {}).recordId;
+  s.setContainer('Docs', id, 'Thumb', 1, { filename: 'old-thumb.png', mime: 'image/png', data: PNG });
+  const raw = () => s.query('SELECT Thumb, CalcC FROM "Docs"', 5)[0];
+  const thumb = raw().Thumb;
+  const calcC = raw().CalcC;
+  assert.ok(thumb);
+
+  s.setContainer('Docs', id, 'File', 1, { filename: 'new.png', mime: 'image/png', data: PNG });
+  assert.equal(raw().Thumb, thumb, 'the thumbnail is the one that was there');
+  assert.equal(raw().CalcC, calcC, 'a calculated container is not turned into a file name');
+  assert.ok(!String(s.get('Docs', id).fieldData.CalcC).includes('NaN') && !String(s.get('Docs', id).fieldData.Thumb).includes('NaN'));
+  assert.match(String(s.get('Docs', id).fieldData.Thumb), /old-thumb\.png/);
+  // Text results over the file still follow it.
+  assert.equal(s.get('Docs', id).fieldData.Name, 'new.png');
+  assert.equal(s.get('Docs', id).fieldData.Tag, 'new.png!');
+});
+
+test('a calculation over a file\'s contents is not copied into the audit row', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-set-container-audit-'));
+  const path = join(dir, 'Audit.sqlite');
+  createStore(path);
+  const s = new Store(path, 'Audit');
+  t.after(() => { s.close(); rmSync(dir, { recursive: true, force: true }); });
+  s.applyDesign([{ op: 'createTable', name: 'Docs', fields: [
+    { name: 'File', type: 'container' },
+    { name: 'B64', kind: 'calculation', calculation: 'Base64Encode ( File )' },
+    { name: 'FileName', kind: 'calculation', calculation: 'GetAsText ( File )' },
+  ] }] as never);
+  const id = s.create('Docs', {}).recordId;
+  s.setContainer('Docs', id, 'File', 1, file('s.txt', 'SECRETSECRET'.repeat(100)));
+  assert.ok(String(s.get('Docs', id).fieldData.B64).length > 1000, 'the calculation holds the contents');
+  const entry = s.auditLog({ table: 'Docs', recordId: id, limit: 1 })[0];
+  const text = JSON.stringify(entry);
+  assert.ok(text.includes('B64'), 'the log says the calculation changed');
+  assert.ok(!text.includes('SECRETSECRET') && !text.includes(Buffer.from('SECRETSECRET').toString('base64').slice(0, 12)), 'not what it holds');
+  assert.match(text, /characters, sha256/);
+  assert.ok(text.includes('FileName') && text.includes('s.txt'), 'a short result is logged as it is');
+});
+
+test('reverting a container upload puts back the fields that can be put back and skips the calculations', (t) => {
+  const s = setup(t);
+  const id = s.create('Docs', { Title: 'a' }, { account: 'alice' }).recordId;
+  s.setContainer('Docs', id, 'File', 1, file('hello.txt', 'hello'), { account: 'bob' });
+  const entry = s.auditLog({ table: 'Docs', recordId: id, limit: 1 })[0];
+  const r = s.revertAuditEntry('Docs', id, entry.seq, { account: 'carol' });
+  assert.equal(r.action, 'updated');
+  assert.ok(r.skipped.some((x) => x.field === 'File'), 'the file is not kept in the log');
+  assert.ok(r.skipped.some((x) => x.field === 'FileName'), 'a calculation is skipped, not refused');
+  assert.ok(r.skipped.some((x) => x.field === 'FileSize'));
+});
