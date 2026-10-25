@@ -10,7 +10,7 @@
 import { statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { readJsonStateSync, updateJsonStateSync } from '../../store/src/durable.ts';
-import { readSettingsObject, SETTINGS_FILE } from './fms-migrate.ts';
+import { FIX_FILE, FIX_KEY, readSettingsObject, settingsProblem, SETTINGS_FILE } from './fms-migrate.ts';
 import { NOTIFY_ADDRESS, type NotifySettings } from './notifications.ts';
 
 export const DEFAULT_IDLE_MINUTES = 15;
@@ -19,16 +19,23 @@ export const DEFAULT_STACK_BELOW = 640;
 export const MAX_STACK_BELOW = 10000;
 export const MAX_IDLE_MINUTES = 1440;
 
+/** The settings file cannot take a change as it is; the message names the problem and what to do, without the server's folder. */
+export class SettingsError extends Error {}
+
 export class ServerConfig {
   private readonly file: string;
   private readonly dir: string;
   private lastValid: Record<string, unknown> = {};
   private seen?: { mtimeMs: number; size: number; values: Record<string, unknown> };
 
-  constructor(dir: string) {
+  /**
+   * Serving (the default) fails at once on a settings file that cannot be used. With `lenient`, for the commands that repair or
+   * inspect a folder offline, the same file is warned about once (naming the file and the key) and the defaults apply.
+   */
+  constructor(dir: string, opts: { lenient?: boolean } = {}) {
     this.dir = dir;
     this.file = join(dir, SETTINGS_FILE);
-    this.values(true);
+    this.values(!opts.lenient);
   }
 
   /** Whether new users are refused. */
@@ -47,10 +54,21 @@ export class ServerConfig {
   }
 
   setSessionIdleMinutes(minutes: number): void {
-    if (!Number.isInteger(minutes) || minutes < MIN_IDLE_MINUTES || minutes > MAX_IDLE_MINUTES) {
+    this.setIdleMinutes(minutes, undefined);
+  }
+
+  /** Sets the Data API's idle time and/or the web client's own (null: it follows the Data API's again); both are checked before either is saved, and they are saved together. */
+  setIdleMinutes(minutes: number | undefined, webMinutes: number | null | undefined): void {
+    if (minutes !== undefined && (!Number.isInteger(minutes) || minutes < MIN_IDLE_MINUTES || minutes > MAX_IDLE_MINUTES)) {
       throw new RangeError(`the session timeout is a whole number of minutes from ${MIN_IDLE_MINUTES} to ${MAX_IDLE_MINUTES}`);
     }
-    this.write({ sessionIdleMinutes: minutes === DEFAULT_IDLE_MINUTES ? undefined : minutes });
+    if (webMinutes !== undefined && webMinutes !== null && (!Number.isInteger(webMinutes) || webMinutes < MIN_IDLE_MINUTES || webMinutes > MAX_IDLE_MINUTES)) {
+      throw new RangeError(`the web client's session timeout is a whole number of minutes from ${MIN_IDLE_MINUTES} to ${MAX_IDLE_MINUTES}`);
+    }
+    this.write({
+      ...(minutes !== undefined ? { sessionIdleMinutes: minutes === DEFAULT_IDLE_MINUTES ? undefined : minutes } : {}),
+      ...(webMinutes !== undefined ? { webSessionIdleMinutes: webMinutes ?? undefined } : {}),
+    });
   }
 
   /**
@@ -80,10 +98,7 @@ export class ServerConfig {
 
   /** Gives the web client its own idle time, or null to have it follow the Data API's again. */
   setWebSessionIdleMinutes(minutes: number | null): void {
-    if (minutes !== null && (!Number.isInteger(minutes) || minutes < MIN_IDLE_MINUTES || minutes > MAX_IDLE_MINUTES)) {
-      throw new RangeError(`the web client's session timeout is a whole number of minutes from ${MIN_IDLE_MINUTES} to ${MAX_IDLE_MINUTES}`);
-    }
-    this.write({ webSessionIdleMinutes: minutes ?? undefined });
+    this.setIdleMinutes(undefined, minutes);
   }
 
   /** Partial device policy: server-directed clearing and a 30-day web session limit; browser writes are unchanged. */
@@ -148,14 +163,17 @@ export class ServerConfig {
       this.lastValid = values;
     } catch (e) {
       if (startup) throw e;
-      process.emitWarning(`Server settings were not applied: ${(e as Error).message}; fix the settings file. Keeping the last valid settings.`);
+      process.emitWarning(`Server settings were not applied: ${(e as Error).message}. Using the last valid settings (the defaults if there were none) until then.`);
       values = this.lastValid;
     }
     this.seen = { mtimeMs: st.mtimeMs, size: st.size, values };
     return values;
   }
 
-  /** Sets some keys (undefined removes one), keeping the rest of the file as it is. */
+  /**
+   * Sets some keys (undefined removes one), keeping the rest of the file as it is. The merged file is checked before anything is
+   * written, so a key that is invalid on disk refuses the change (naming the key, not the folder) rather than being saved beside it.
+   */
   private write(changes: Record<string, unknown>): void {
     let current: Record<string, unknown> = {};
     try {
@@ -163,14 +181,18 @@ export class ServerConfig {
       if (v && typeof v === 'object' && !Array.isArray(v)) current = v as Record<string, unknown>;
     } catch (e) {
       // Missing is fine; a file there that isn't JSON is someone's to fix, not to overwrite.
-      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw new Error(`${SETTINGS_FILE} could not be read: ${(e as Error).message}`);
+      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
+        const syntax = e instanceof Error && e.cause instanceof SyntaxError;
+        throw new SettingsError(`${SETTINGS_FILE} ${syntax ? "isn't valid JSON" : 'could not be read'}, so nothing was changed; ${FIX_FILE}`);
+      }
     }
     updateJsonStateSync<Record<string, unknown>>(this.file, current, (latest) => {
       const next = { ...latest, ...changes };
       for (const [k, v] of Object.entries(next)) if (v === undefined) delete next[k];
+      const problem = settingsProblem(next);
+      if (problem) throw new SettingsError(`${SETTINGS_FILE}: ${problem}, so nothing was changed; ${FIX_KEY}`);
       return next;
     }, { mode: 0o600 });
     this.seen = undefined;
-    this.values(true);
   }
 }
