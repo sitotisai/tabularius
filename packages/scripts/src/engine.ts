@@ -1229,34 +1229,6 @@ function redactorCacheFor(store: Store): CredentialRedactorCache {
   return cache;
 }
 
-/** Follow listed calls before the first diagnostic so a callee's credential sink can hide caller inputs. */
-function diagnosticScripts(store: Store, root: Script): Script[] {
-  const byId = new Map(store.schema.scripts.map((script) => [script.id, script]));
-  const byName = new Map<string, Script>();
-  for (const script of store.schema.scripts) if (!byName.has(script.name.toLowerCase())) byName.set(script.name.toLowerCase(), script);
-  const seen = new Set<Script>();
-  const reached: Script[] = [];
-  const pending = [root];
-  while (pending.length) {
-    const script = pending.pop()!;
-    if (seen.has(script)) continue;
-    seen.add(script);
-    reached.push(script);
-    for (const step of script.steps) {
-      if (![1, 164, 210].includes(step.stepId)) continue;
-      const listed = step.params?.script;
-      const byNameText = /^\s*"([^"\\]*)"\s*$/.exec(step.params?.scriptCalculation ?? '')?.[1];
-      const separator = byNameText?.lastIndexOf('::') ?? -1;
-      const fileName = separator < 0 ? '' : byNameText!.slice(0, separator).trim();
-      const localName = !fileName || fileName.toLowerCase() === store.name.toLowerCase()
-        ? (separator < 0 ? byNameText?.trim() : byNameText!.slice(separator + 2).trim()) : undefined;
-      const target = listed && !listed.file ? byId.get(listed.id) : !listed && localName ? byName.get(localName.toLowerCase()) : undefined;
-      if (target) pending.push(target);
-    }
-  }
-  return reached;
-}
-
 /** Aggregate cache counters for diagnostics and synthetic performance tests. */
 export function redactorCacheStats(store: Store): { nameTableBuilds: number; fieldSets: number; formulaParses: number; inspections: number } | undefined {
   const entry = redactorCaches.get(store);
@@ -1399,6 +1371,8 @@ export class ScriptEngine {
   private identityStore?: Store;
   private identityVia?: string;
   private diagnostics = new CredentialRedactor();
+  /** The schema object of each file whose whole script list this run's redactor has inspected. */
+  private diagnosedSchemas = new Map<Store, Store['schema']>();
   // Provenance belongs to a variable repetition, not its text: an equal field/SQL/calc result is still hidden.
   private diagnosticLiterals = new WeakMap<Value[], Map<number, Value>>();
   /** Recordings use the run's discovered names and values for committed audit data too. */
@@ -1595,7 +1569,8 @@ export class ScriptEngine {
       this.identityVia = this.opts.executionVia;
     }
     this.enforceExecution(store);
-    this.diagnostics = redactorCacheFor(store).forRun(s, () => diagnosticScripts(store, s), store.schema.scripts.includes(s));
+    this.diagnostics = redactorCacheFor(store).forRun(s, () => store.schema.scripts);
+    this.diagnosedSchemas = new Map([[store, store.schema]]);
     this.diagnosticLiterals = new WeakMap();
     const start = this.opts.startWindow;
     // The person's other windows in this file, behind the start one (frontmost last).
@@ -3667,7 +3642,15 @@ export class ScriptEngine {
       this.actions.push({ step: 'Skip Script', script: script.name, reason: 'skipped: never run' });
       throw new ScriptError(ERROR.unavailable, `Script "${script.name}" is skipped and was not run`);
     }
-    this.diagnostics.inspect([script], store.schema.customFunctions.map((cf) => cf.name));
+    // Every script of the file is inspected before its first call, as at a run's start: a callee's credential
+    // use must hide the caller's inputs even when it is reached by a computed name or another call. The root
+    // file's list is already in this run's redactor; another file's list is added once per schema object.
+    const functions = store.schema.customFunctions.map((cf) => cf.name);
+    if (this.diagnosedSchemas.get(store) === store.schema) this.diagnostics.inspect([script], functions);
+    else {
+      this.diagnostics.inspect([...store.schema.scripts, script], functions);
+      this.diagnosedSchemas.set(store, store.schema);
+    }
     this.diagnostics.scriptState(asText(parameter, store.dateOrder), asText(this.lastResult, store.dateOrder));
     const frame: Frame = {
       script, store, locals, parameter, result: text(''), window: win,
