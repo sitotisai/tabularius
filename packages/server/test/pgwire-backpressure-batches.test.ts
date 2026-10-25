@@ -154,3 +154,52 @@ test('a client that cannot take the FATAL of the transaction limit does not keep
   while (!server.destroyed && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
   assert.equal(server.destroyed, true, 'the connection was kept for a client that cannot read');
 });
+
+/** A table with many long-named columns: what a statement that returns no rows still answers (its column list) is large. */
+function wideTable(store: { applyDesign(ops: unknown[]): unknown }): void {
+  const wide = Array.from({ length: 200 }, (_, i) => ({ name: `Column${String(i).padStart(3, '0')}_${'n'.repeat(150)}` }));
+  store.applyDesign([{ op: 'createTable', name: 'Wide', fields: [{ name: 'Name' }, ...wide] }]);
+}
+
+test('statements that return no rows still wait for a client that is not reading', async (t) => {
+  const { store, open, serverSockets } = await serveWriter(t);
+  wideTable(store);
+  const c = await open();
+  const [server] = serverSockets();
+  const queued = watchQueued(server);
+  c.socket.pause();
+  // Each answers about 35 KB of column descriptions and no rows: 4,000 of them are 140 MB if nothing waits.
+  c.send('Q', Buffer.from(Array.from({ length: 4000 }, () => "SELECT * FROM Wide WHERE Name = 'none'").join(';') + '\0'));
+  await untilStalled(server);
+  assert.ok(queued() < 3 * MB, `${(queued() / MB).toFixed(1)} MB were queued for a client that was not reading`);
+});
+
+test('writes in one query that return no rows still wait for a client that is not reading', async (t) => {
+  const { store, open, serverSockets } = await serveWriter(t);
+  wideTable(store);
+  const c = await open();
+  const [server] = serverSockets();
+  const queued = watchQueued(server);
+  c.socket.pause();
+  c.send('Q', Buffer.from(Array.from({ length: 3000 }, () => "DELETE FROM Wide WHERE Name = 'none' RETURNING *").join(';') + '\0'));
+  await untilStalled(server);
+  assert.ok(queued() < 3 * MB, `${(queued() / MB).toFixed(1)} MB were queued for a client that was not reading`);
+});
+
+test('the rows a query of writes keeps count with the rows the connection already holds in portals', async (t) => {
+  withEnv({ TABULARIUS_PGWIRE_MAX_ROWS: '100', TABULARIUS_PGWIRE_MAX_BUFFERED_ROWS: '100' }, t);
+  const { store, open } = await serveWriter(t);
+  for (let i = 0; i < 80; i++) store.create('Items', { Name: `n${i}`, Count: i });
+  const c = await open();
+  const z = (s: string) => Buffer.concat([Buffer.from(s), Buffer.alloc(1)]);
+  const i16 = (n: number) => { const b = Buffer.alloc(2); b.writeInt16BE(n); return b; };
+  const i32 = (n: number) => { const b = Buffer.alloc(4); b.writeInt32BE(n); return b; };
+  // A portal that stops after 10 of its 80 rows keeps them all (no Sync yet: the connection is outside a transaction).
+  c.send('P', Buffer.concat([z(''), z('SELECT Name FROM Items'), i16(0)]));
+  c.send('B', Buffer.concat([z(''), z(''), i16(0), i16(0), i16(0)]));
+  c.send('E', Buffer.concat([z(''), i32(10)]));
+  // Two writes of 30 rows each fit alone (60 of 100) but not beside the 80 held.
+  const r = await c.simple('UPDATE Items SET Count = Count WHERE Count < 30 RETURNING Name; UPDATE Items SET Count = Count WHERE Count < 30 RETURNING Name');
+  assert.equal(r.error?.code, '54000');
+  assert.match(r.error?.message ?? '', /buffered SQL results on this connection are limited to 100 rows/);
+});
