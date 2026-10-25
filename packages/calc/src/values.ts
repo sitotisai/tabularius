@@ -91,13 +91,27 @@ export const EMPTY: Value = text('');
 const SECONDS_PER_DAY = 86400;
 // Day number of 1/1/1970 in FileMaker's count (1/1/0001 = 1).
 const UNIX_EPOCH_DAY = 719163;
+/** Last day of FileMaker's date range, 12/31/4000: the 1/1/0001 to 12/31/4000 range mbs-math.ts and mbs-dict.ts already use (not re-checked against a Claris page). Dates a calculation builds (Date, GetAsDate of a number, date and timestamp arithmetic) must fall inside it; outside it they are invalid ("?"). */
+export const LAST_DAY = 1460970;
+/** Last day the store can hold, 12/31/9999: the file reader, CSV import, pgwire and OData accept years to 9999. Values read from the store keep their value, text and sort position between LAST_DAY and this day. */
+export const LAST_STORED_DAY = 3652059;
 
-/** FileMaker day number for a proleptic Gregorian date; month and day may overflow, as Date() allows. */
-export function dayNumber(year: number, month: number, day: number): number {
+/** A day number the store can hold (a fraction of a day, as date arithmetic leaves, counts with its day). */
+export function isStoredDay(n: number): boolean {
+  return Number.isFinite(n) && n >= 1 && n < LAST_STORED_DAY + 1;
+}
+/** Day number of a proleptic Gregorian date with no range check (month and day may overflow, as Date() allows); NaN only where JavaScript's own date range ends. For calendar arithmetic. */
+export function calendarDay(year: number, month: number, day: number): number {
   const d = new Date(0);
   d.setUTCFullYear(year, month - 1, day);
   d.setUTCHours(0, 0, 0, 0);
   return Math.round(d.getTime() / 86400000) + UNIX_EPOCH_DAY;
+}
+
+/** FileMaker day number for a proleptic Gregorian date; month and day may overflow, as Date() allows. NaN when the day is not one the store can hold. */
+export function dayNumber(year: number, month: number, day: number): number {
+  const n = calendarDay(year, month, day);
+  return isStoredDay(n) ? n : NaN;
 }
 
 export function fromDayNumber(n: number): { year: number; month: number; day: number; weekday: number } {
@@ -206,6 +220,7 @@ export function formatNumber(n: number): string {
 const pad = (n: number, w = 2) => String(Math.trunc(n)).padStart(w, '0');
 
 export function formatDate(day: number, order: DateStyle = 'MDY'): string {
+  if (!isStoredDay(day)) return '?';
   const { year, month, day: d } = fromDayNumber(day);
   const o = dateOrderOf(order);
   // Year-first systems (Japanese, ISO-like) write months and days with two digits.
@@ -229,10 +244,23 @@ export function formatTime(seconds: number, places = 6): string {
   return `${neg ? '-' : ''}${h}:${pad(m)}:${pad(whole)}${frac === '' || frac === '0' ? '' : frac}`;
 }
 
+/** The day and seconds of a timestamp. `places`: the decimals the text shows; a time that rounds up to a whole day is the start of the next day (formatTime would write 24:00:00). Undefined when the day is not one the store can hold. */
+function splitTimestamp(ts: number, places: number): { day: number; seconds: number } | undefined {
+  if (!Number.isFinite(ts)) return undefined;
+  let day = Math.floor(ts / SECONDS_PER_DAY) + 1;
+  let seconds = ts - (day - 1) * SECONDS_PER_DAY;
+  const scale = 10 ** places;
+  if (Math.round(Math.abs(seconds) * scale) / scale >= SECONDS_PER_DAY) {
+    day += 1;
+    seconds = 0;
+  }
+  return isStoredDay(day) ? { day, seconds } : undefined;
+}
+
 export function formatTimestamp(ts: number, order: DateStyle = 'MDY'): string {
-  const day = Math.floor(ts / SECONDS_PER_DAY) + 1;
   if (dateOrderOf(order) === 'ISO') return isoTimestamp(ts);
-  return `${formatDate(day, order)} ${formatTime(ts - (day - 1) * SECONDS_PER_DAY, 3)}`;
+  const p = splitTimestamp(ts, 3);
+  return p ? `${formatDate(p.day, order)} ${formatTime(p.seconds, 3)}` : '?';
 }
 
 /** Text of a value, as GetAsText gives it. */
@@ -397,7 +425,13 @@ export function fullYear(year: number, nowYear = new Date().getFullYear()): numb
 function parsedDay(year: number, month: number, day: number): number | undefined {
   const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
   const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  return month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1] ? dayNumber(year, month, day) : undefined;
+  return month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1] ? parsedDayOrUndefined(year, month, day) : undefined;
+}
+
+/** A parsed date's day number, or undefined when it is not a day the store can hold (the text then stays text). */
+function parsedDayOrUndefined(year: number, month: number, day: number): number | undefined {
+  const n = dayNumber(year, month, day);
+  return Number.isNaN(n) ? undefined : n;
 }
 
 export function parseDateText(s: string, order: DateStyle = 'MDY', nowYear?: number): number | undefined {
@@ -407,14 +441,14 @@ export function parseDateText(s: string, order: DateStyle = 'MDY', nowYear?: num
     return iso ? parsedDay(+iso[1], +iso[2], +iso[3]) : undefined;
   }
   let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(t);
-  if (m) return dayNumber(+m[1], +m[2], +m[3]);
+  if (m) return parsedDayOrUndefined(+m[1], +m[2], +m[3]);
   m = /^(\d{1,4})[/.-](\d{1,2})[/.-](\d{1,4})$/.exec(t);
   if (!m) return undefined;
   const [a, b, c] = [+m[1], +m[2], +m[3]];
   const o = dateOrderOf(order);
-  if (o === 'YMD' || m[1].length === 4) return dayNumber(m[1].length <= 2 ? fullYear(a, nowYear) : a, b, c);
+  if (o === 'YMD' || m[1].length === 4) return parsedDayOrUndefined(m[1].length <= 2 ? fullYear(a, nowYear) : a, b, c);
   const year = m[3].length <= 2 ? fullYear(c, nowYear) : c;
-  return o === 'DMY' ? dayNumber(year, b, a) : dayNumber(year, a, b);
+  return o === 'DMY' ? parsedDayOrUndefined(year, b, a) : parsedDayOrUndefined(year, a, b);
 }
 
 export function parseTimeText(s: string): number | undefined {
@@ -445,7 +479,7 @@ export function asDate(v: Value, order: DateStyle = 'MDY'): number | undefined {
   switch (v.type) {
     case 'date': return v.value;
     case 'timestamp': return Math.floor(v.value / SECONDS_PER_DAY) + 1;
-    case 'number': return Math.trunc(v.value);
+    case 'number': return Number.isFinite(v.value) ? Math.trunc(v.value) : undefined;
     case 'time': return undefined;
     default: {
       const d = parseDateText(v.value, order);
@@ -460,7 +494,8 @@ export function asTime(v: Value): number | undefined {
   switch (v.type) {
     case 'time': return v.value;
     case 'timestamp': return v.value - Math.floor(v.value / SECONDS_PER_DAY) * SECONDS_PER_DAY;
-    case 'number': return v.value;
+    // An invalid number (1 / 0, an out-of-range date) has no time.
+    case 'number': return Number.isFinite(v.value) ? v.value : undefined;
     case 'date': return undefined;
     default: {
       const t = parseTimeText(v.value);
@@ -479,6 +514,24 @@ export function asTimestamp(v: Value, order: DateStyle = 'MDY'): number | undefi
   }
 }
 
+/** The last day a result may reach: FileMaker's own, or the store's when the date it comes from is already past FileMaker's (a date read from the store keeps working as it did). */
+const limitFrom = (sourceDay: number) => (sourceDay > LAST_DAY ? LAST_STORED_DAY : LAST_DAY);
+
+/** A new date (days; `sourceDay` the date it is computed from, if any). Outside the range it is "?" (an invalid number, as 1/0 is), never a date holding NaN. */
+export function checkedDate(day: number, sourceDay = 0): Value {
+  return Number.isFinite(day) && day >= 1 && day < limitFrom(sourceDay) + 1 ? { type: 'date', value: day } : num(NaN);
+}
+
+/** A new timestamp (seconds from 1/1/0001 0:00:00), "?" outside the range. */
+export function checkedTimestamp(ts: number, sourceDay = 0): Value {
+  return Number.isFinite(ts) && ts >= 0 && ts < limitFrom(sourceDay) * SECONDS_PER_DAY ? { type: 'timestamp', value: ts } : num(NaN);
+}
+
+/** A new date named by a number of days. */
+export const dateFromNumber = (n: number): Value => checkedDate(Math.trunc(n));
+/** A new timestamp named by a number of seconds. */
+export const timestampFromNumber = (n: number): Value => checkedTimestamp(n);
+
 /** A value converted to a field's type, the way a calculation result is stored. */
 export function coerce(v: Value, type: ValueType, order: DateStyle = 'MDY'): Value {
   if (v.type === type) return v;
@@ -494,6 +547,8 @@ export function coerce(v: Value, type: ValueType, order: DateStyle = 'MDY'): Val
     }
     case 'date': {
       const d = asDate(v, order);
+      // A number names a new date, which must fall inside FileMaker's range; anything else is "?" (an invalid number), as 1/0 is.
+      if (v.type === 'number') return dateFromNumber(v.value);
       return d === undefined ? EMPTY : { type: 'date', value: d };
     }
     case 'time': {
@@ -502,6 +557,7 @@ export function coerce(v: Value, type: ValueType, order: DateStyle = 'MDY'): Val
     }
     case 'timestamp': {
       const t = asTimestamp(v, order);
+      if (v.type === 'number') return timestampFromNumber(v.value);
       return t === undefined ? EMPTY : { type: 'timestamp', value: t };
     }
     case 'container': return { type: 'container', value: asText(v, order) };
@@ -511,6 +567,7 @@ export function coerce(v: Value, type: ValueType, order: DateStyle = 'MDY'): Val
 // --- ISO forms, as the Tabularius store keeps dates and times -----------------
 
 export function isoDate(day: number): string {
+  if (!isStoredDay(day)) return '?';
   const { year, month, day: d } = fromDayNumber(day);
   return `${pad(year, 4)}-${pad(month)}-${pad(d)}`;
 }
@@ -521,8 +578,8 @@ export function isoTime(seconds: number): string {
 }
 
 export function isoTimestamp(ts: number): string {
-  const day = Math.floor(ts / SECONDS_PER_DAY) + 1;
-  return `${isoDate(day)}T${isoTime(ts - (day - 1) * SECONDS_PER_DAY)}`;
+  const p = splitTimestamp(ts, 6);
+  return p ? `${isoDate(p.day)}T${isoTime(p.seconds)}` : '?';
 }
 
 /** A stored value of a field type (ISO dates as the store keeps them) as a calculation value. */
@@ -561,10 +618,12 @@ export function toStored(v: Value, type: StoredType, order: DateStyle = 'MDY'): 
     : type === 'decimal' || type === 'json' || type === 'uuid' ? 'text' : type;
   const c = target === 'unknown' ? v : coerce(v, target, order);
   switch (c.type) {
-    case 'number': return c.value;
-    case 'date': return isoDate(c.value);
+    // An invalid number ("?", as an out-of-range date becomes) is no value to store.
+    case 'number': return Number.isNaN(c.value) && (target === 'date' || target === 'timestamp') ? null : c.value;
+    // A date or timestamp value the store cannot hold is stored as nothing (a text result "?" is text, and is kept as such).
+    case 'date': { const d = isoDate(c.value); return d === '?' ? null : d; }
     case 'time': return isoTime(c.value);
-    case 'timestamp': return isoTimestamp(c.value);
+    case 'timestamp': { const t = isoTimestamp(c.value); return t === '?' ? null : t; }
     default: return c.value === '' ? null : c.value.replace(/\r\n?/g, '\n');
   }
 }

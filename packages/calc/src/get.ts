@@ -7,16 +7,25 @@ import { randomUUID } from 'node:crypto';
 import { hostname, networkInterfaces, release, tmpdir } from 'node:os';
 import type { Env } from './evaluate.ts';
 import { GET_NAMES } from './get-names.ts';
-import { EMPTY, num, text, timestampFromDate, dayNumber, type Value } from './values.ts';
+import { EMPTY, calendarDay, fromExact, num, text, timestampFromDate, type Value } from './values.ts';
 
 function systemPlatform(platform: NodeJS.Platform = process.platform): number {
   return platform === 'win32' ? -2 : platform === 'darwin' ? 1 : 5;
 }
 export const APPLICATION_VERSION = 'Tabularius Server 0.1';
 const unknownNoticed = new WeakMap<Env['ctx'], Set<string>>();
+/**
+ * The last microsecond reading of each clock, so that readings from one clock never repeat within a millisecond. A clock is
+ * the function a host injects as `ctx.now` (the script engine passes the same one to every evaluation, though it builds a new
+ * context object for each) or, with none injected, the real clock. This is not a high-water mark: a clock that goes back is followed.
+ */
+const lastMicroseconds = new WeakMap<object, bigint>();
+const REAL_CLOCK = {};
+// Microseconds from 1/1/0001 to 1/1/1970 (FileMaker's timestamp epoch).
+const UNIX_EPOCH_MICROSECONDS = 62_135_596_800_000_000n;
 
 function localParts(d: Date) {
-  return { day: dayNumber(d.getFullYear(), d.getMonth() + 1, d.getDate()), seconds: d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds() };
+  return { day: calendarDay(d.getFullYear(), d.getMonth() + 1, d.getDate()), seconds: d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds() };
 }
 
 const DEFAULTS: Record<string, (env: Env) => Value> = {
@@ -30,7 +39,19 @@ const DEFAULTS: Record<string, (env: Env) => Value> = {
   currenthosttime: (env) => DEFAULTS.currenttime(env),
   currenthosttimestamp: (env) => DEFAULTS.currenttimestamp(env),
   currenttimeutcmilliseconds: (env) => num(Math.round(timestampFromDate(now(env).getTime()) * 1000)),
-  currenttimeutcmicroseconds: (env) => num(Math.round(timestampFromDate(now(env).getTime()) * 1e6)),
+  currenttimeutcmicroseconds: (env) => {
+    // The clock (the host's, or the one injected) reads whole milliseconds, so the microseconds are those milliseconds
+    // times 1000: micro / 1000 is always the CurrentTimeUTCMilliseconds value. Readings from one clock in the millisecond it last
+    // gave count up by one microsecond so that they stay distinct (at most 1000 distinct readings in a millisecond).
+    // A clock that has gone back, or moved on, is followed as it is.
+    const reading = BigInt(now(env).getTime()) * 1000n + UNIX_EPOCH_MICROSECONDS;
+    const clock = env.ctx.now ?? REAL_CLOCK;
+    const last = lastMicroseconds.get(clock);
+    let micros = reading;
+    if (last !== undefined && last / 1000n === reading / 1000n && last >= reading) micros = last % 1000n === 999n ? last : last + 1n;
+    lastMicroseconds.set(clock, micros);
+    return fromExact(micros);
+  },
   uuid: () => text(randomUUID().toUpperCase()),
   uuidnumber: () => {
     // 41 decimal digits like FileMaker's UUIDNumber: a random 128-bit value.

@@ -11,7 +11,7 @@ import { checkCalcTextSize } from './text-budget.ts';
 import { Decimal, decimalFunction, decimalNumberText, supportsDecimalFunction, withDecimalBudget } from './decimal.ts';
 import { assertTraversalDepth, NameTable, parse, type CalcNames, type Node } from './parser.ts';
 import {
-  CalcError, ERR, EMPTY, asBoolean, asNumber, asNumberOrEmpty, asText, bool, exactOf, exactPow, fromExact, isBeyondDouble, isEmpty, isOverlongWholeText, num, text, tidy, tidySum,
+  CalcError, ERR, EMPTY, asBoolean, asNumber, asNumberOrEmpty, asText, bool, checkedDate, checkedTimestamp, exactOf, exactPow, fromExact, isBeyondDouble, isEmpty, isOverlongWholeText, num, text, tidy, tidySum,
   type DateStyle, type Value,
 } from './values.ts';
 
@@ -1003,14 +1003,21 @@ function negate(a: Value): Value {
   return n === undefined ? EMPTY : num(-n);
 }
 
+/** A date, time or timestamp moved by days or seconds; a date or timestamp that leaves its range is "?" (an invalid number), and stays invalid through more arithmetic. */
+function moved(from: Value, value: number): Value {
+  if (from.type === 'date') return checkedDate(value, from.value);
+  if (from.type === 'timestamp') return checkedTimestamp(value, Math.floor(from.value / 86400) + 1);
+  return { type: from.type as 'time', value };
+}
+
 /** Date + days, time + seconds and timestamp + seconds keep their type, as FileMaker does.
  * Timestamp seconds have no UTC offset: arithmetic can name a skipped or repeated local time at a DST transition. */
 function add(a: Value, b: Value, sign: 1 | -1): Value {
   const dated = (v: Value) => v.type === 'date' || v.type === 'time' || v.type === 'timestamp';
-  if (dated(a) && !dated(b)) return { type: a.type as 'date', value: a.value as number + sign * asNumber(b) };
-  if (dated(b) && !dated(a) && sign === 1) return { type: b.type as 'date', value: (b.value as number) + asNumber(a) };
-  if (a.type === 'date' && b.type === 'time') return { type: 'timestamp', value: (a.value - 1) * 86400 + sign * b.value };
-  if (a.type === 'timestamp' && b.type === 'time') return { type: 'timestamp', value: a.value + sign * b.value };
+  if (dated(a) && !dated(b)) return moved(a, a.value as number + sign * asNumber(b));
+  if (dated(b) && !dated(a) && sign === 1) return moved(b, (b.value as number) + asNumber(a));
+  if (a.type === 'date' && b.type === 'time') return checkedTimestamp((a.value - 1) * 86400 + sign * b.value, a.value);
+  if (a.type === 'timestamp' && b.type === 'time') return moved(a, a.value + sign * b.value);
   return whole(a, b, (x, y) => (sign === 1 ? x + y : x - y)) ?? num(tidySum(asNumber(a), sign * asNumber(b)));
 }
 
