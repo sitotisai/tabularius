@@ -245,7 +245,7 @@ function toJson(v: string | number | undefined, type: string): string | number |
 /** A timestamp from OData (with a time zone) as stored: UTC, without one. */
 function storedTimestamp(s: string): string {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?$/i.test(s)) throw bad(`"${s}" is not a timestamp`, '500');
-  const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(s)!;
+  const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/i.exec(s)!;
   const [year, month, day, hour, minute, second] = parts.slice(1).map(Number);
   const days = [31, year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
   const zone = /[+-](\d{2}):(\d{2})$/.exec(s);
@@ -759,7 +759,8 @@ function crossJoin(job: JoinJob): Promise<JoinResult> {
 /** $orderby as sort specs. */
 function orderBy(text: string, props: Prop[]): SortSpec[] {
   const parts = text.split(',');
-  if (parts.length > 32) throw bad('$orderby: at most 32 sort terms are allowed');
+  // A blank term is reported by name below, before the count.
+  if (parts.length > 32 && parts.every((part) => part.trim())) throw bad('$orderby: at most 32 sort terms are allowed');
   return parts.map((part) => {
     const [name, dir, extra] = part.trim().split(/\s+/);
     if (!name || extra || (dir && !/^(asc|desc)$/i.test(dir))) throw bad(`$orderby: "${part.trim()}" is not a property and asc or desc`);

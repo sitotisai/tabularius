@@ -577,6 +577,10 @@ function portalDataOf(v: unknown, nativeType?: (portal: string, field: string) =
     if (!Array.isArray(rows) || !rows.every((r) => r !== null && typeof r === 'object' && !Array.isArray(r))) {
       throw new ApiError(960, `Parameter is invalid: portalData "${portal}" must be a list of rows`, 400);
     }
+    for (const row of rows as Record<string, unknown>[]) for (const [name, value] of Object.entries(row)) {
+      if (typeof value === 'string' && value.includes('\0')) throw new ApiError(960, `The value of "${name}" contains a NUL character`, 400);
+      if (typeof value === 'number' && !Number.isFinite(value)) throw new ApiError(960, `The value of "${name}" must be a finite number`, 400);
+    }
     if (nativeType) for (const row of rows as Record<string, unknown>[]) for (const [name, value] of Object.entries(row)) {
       const type = nativeType(portal, name);
       if (type === 'json' && value !== null && typeof value === 'object') {
