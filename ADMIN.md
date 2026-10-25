@@ -754,6 +754,15 @@ client to see its changes and put one back (limited to what their account could
 change by hand). The same history is available to AI tools (`audit_log`,
 `explain_record_history`) and over the API (`GET /tabularius/admin/v1/audit`).
 
+New record ids continue after the highest one left, so deleting the last
+record gives its id to the next new record, and the audit log (kept by table
+and id) then holds both. Record History and **Put back** (web client, AI
+tools) start at the record's latest creation, so the earlier record's changes
+are not shown and can't be put back onto the new one. A record put back by a
+revert, the data cleanup's undo or the console's restore keeps its whole
+history; those put-backs made before they were marked in the log count as new
+records, and the earlier history is no longer shown for them.
+
 ## Putting a record back
 
 In the admin console's **Audit log**, **History** on any record change lists
@@ -764,6 +773,12 @@ change of its own, so it can be undone the same way. It is refused while
 someone is editing the record, and when the table was emptied (Truncate
 Table) since that point. Records a cascading delete removed with it each have
 their own history.
+
+One thing the console does not check: the audit entry may belong to an earlier
+record that had the same id (see above), and putting back to it then writes
+that record's values over the record that has the id now. Check the table and
+the values in **History** first; the console's restore is not limited the way
+Record History is.
 
 ## Backups and restore
 
