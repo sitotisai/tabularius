@@ -1,4 +1,4 @@
-import { compile, nodeText, type CalcNames, type Node } from '../../calc/src/index.ts';
+import { compile, NameTable, nodeText, type CalcNames, type Node } from '../../calc/src/index.ts';
 import { FUNCTIONS } from '../../calc/src/functions.ts';
 import type { Script, ScriptStep } from '../../fmp12/src/index.ts';
 import { isCredentialName, isCredentialLabelName } from './credentials.ts';
@@ -82,6 +82,37 @@ function strings(value: unknown): string[] {
 }
 
 type LetNode = Extract<Node, { k: 'let' }>;
+type Expression = { refs: string[]; literals: string[]; direct: boolean; dynamic: boolean; node?: Node; literal: boolean; credentialLiteral: boolean; malformed: boolean };
+const MAX_CACHED_EXPRESSIONS = 5000;
+/** Schema-scoped parsing shared by separate runs; runtime values remain in each redactor. */
+export class CredentialRedactorCache {
+  readonly names: NameTable;
+  readonly expressions = new Map<string, Expression>();
+  readonly customFunctions: string[];
+  private readonly templates = new WeakMap<Script, CredentialRedactor>();
+  formulaParses = 0;
+  inspections = 0;
+  constructor(names: CalcNames, customFunctions: Iterable<string> = []) {
+    this.names = new NameTable(names);
+    this.customFunctions = [...customFunctions];
+  }
+  forRun(root: Script, scripts: () => Script[], cacheable: boolean): CredentialRedactor {
+    if (!cacheable) {
+      const redactor = new CredentialRedactor(this.names, this);
+      redactor.inspect(scripts());
+      return redactor;
+    }
+    let template = this.templates.get(root);
+    if (!template) {
+      template = new CredentialRedactor(this.names, this);
+      template.inspect(scripts());
+      this.templates.set(root, template);
+      this.inspections++;
+    }
+    return template.fork();
+  }
+  get fieldSets(): number { return this.names.fieldSetBuilds; }
+}
 const SCRIPT_PARAMETER = 'get:scriptparameter';
 const SCRIPT_RESULT = 'get:scriptresult';
 // These built-ins can read data outside their visible arguments. Keep the opaque
@@ -145,13 +176,38 @@ export class CredentialRedactor {
   private rememberFull = false;
   private sqlRememberedBytes = 0;
   private sqlRememberFull = false;
-  private readonly expressions = new Map<string, { refs: string[]; literals: string[]; direct: boolean; dynamic: boolean; node?: Node; literal: boolean; credentialLiteral: boolean; malformed: boolean }>();
+  private expressions: Map<string, Expression>;
   private readonly steps = new Set<ScriptStep>();
   private inspected = false;
   private readonly customFunctions = new Set<string>();
   private opaqueCredentials = false;
-  private readonly calcNames?: CalcNames;
-  constructor(calcNames?: CalcNames) { this.calcNames = calcNames; }
+  private readonly calcNames?: NameTable;
+  private readonly cache?: CredentialRedactorCache;
+  constructor(calcNames?: CalcNames | NameTable, cache?: CredentialRedactorCache) {
+    this.calcNames = calcNames instanceof NameTable ? calcNames : calcNames ? new NameTable(calcNames) : undefined;
+    this.cache = cache;
+    this.expressions = cache?.expressions ?? new Map();
+    for (const name of cache?.customFunctions ?? []) this.customFunctions.add(name.toLowerCase());
+  }
+
+  /** Static analysis can be reused; remembered runtime values must belong to one run. */
+  fork(): CredentialRedactor {
+    const next = new CredentialRedactor(this.calcNames, this.cache);
+    for (const name of this.names) next.names.add(name);
+    for (const value of this.values) next.values.add(value);
+    for (const name of this.referencedNames) next.referencedNames.add(name);
+    for (const [hash, values] of this.prefixes) next.prefixes.set(hash, new Set(values));
+    next.rememberedBytes = this.rememberedBytes;
+    next.rememberFull = this.rememberFull;
+    next.sqlRememberedBytes = this.sqlRememberedBytes;
+    next.sqlRememberFull = this.sqlRememberFull;
+    next.expressions = this.expressions;
+    for (const step of this.steps) next.steps.add(step);
+    next.inspected = this.inspected;
+    for (const name of this.customFunctions) next.customFunctions.add(name);
+    next.opaqueCredentials = this.opaqueCredentials;
+    return next;
+  }
 
   private expression(formula: string) {
     let parsed = this.expressions.get(formula);
@@ -202,7 +258,12 @@ export class CredentialRedactor {
       refs.push(...(formula.match(/\$\$?[^\s[\];()&"+*/=]+/g) ?? []).map((s) => s.toLowerCase()));
     }
     parsed = { refs, literals, direct, dynamic, node, literal, credentialLiteral, malformed };
+    if (this.expressions === this.cache?.expressions && this.expressions.size >= MAX_CACHED_EXPRESSIONS) {
+      const oldest = this.expressions.keys().next().value;
+      if (oldest !== undefined) this.expressions.delete(oldest);
+    }
     this.expressions.set(formula, parsed);
+    if (this.expressions === this.cache?.expressions) this.cache.formulaParses++;
     return parsed;
   }
 
@@ -249,7 +310,7 @@ export class CredentialRedactor {
         }
         Object.values(value).forEach(walk);
       };
-      walk(compile(formula, this.calcNames).node);
+      walk(this.expression(formula).node);
     } catch {
       // Other sensitive-name and URL policies still apply to malformed formulas.
     }
@@ -260,7 +321,9 @@ export class CredentialRedactor {
     let changed = !this.inspected;
     for (const name of customFunctions) if (!this.customFunctions.has(name.toLowerCase())) {
       this.customFunctions.add(name.toLowerCase());
-      this.expressions.clear();
+      // A newly reached external file can have different custom functions.
+      // Its formulas must not alter the root store's schema-scoped parse cache.
+      this.expressions = new Map();
       changed = true;
     }
     for (const script of scripts) for (const step of script.steps) if (!this.steps.has(step)) {

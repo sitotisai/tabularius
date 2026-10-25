@@ -125,15 +125,23 @@ class NameSet {
 export class NameTable {
   readonly fields: NameSet;
   readonly occurrences: NameSet;
+  /** Field-name sets built for this table, including the unqualified set. */
+  readonly fieldSetBuilds: number;
   private readonly toFields = new Map<string, NameSet>();
   constructor(names: CalcNames = {}) {
     this.fields = new NameSet(names.fields ?? []);
+    let fieldSetBuilds = 1;
     const tos: string[] = [];
+    const shared = new Map<Iterable<string>, NameSet>();
+    if (names.fields) shared.set(names.fields, this.fields);
     for (const [to, fields] of names.occurrences ?? []) {
       tos.push(to);
-      this.toFields.set(to.toLowerCase(), new NameSet(fields));
+      let set = shared.get(fields);
+      if (!set) { shared.set(fields, (set = new NameSet(fields))); fieldSetBuilds++; }
+      this.toFields.set(to.toLowerCase(), set);
     }
     this.occurrences = new NameSet(tos);
+    this.fieldSetBuilds = fieldSetBuilds;
   }
   fieldsOf(to: string): NameSet | undefined {
     return this.toFields.get(to.toLowerCase());

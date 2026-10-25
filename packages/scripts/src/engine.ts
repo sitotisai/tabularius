@@ -16,7 +16,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { renewTransactionLocks } from '../../store/src/activity.ts';
 import { defineFold } from '../../store/src/words.ts';
 import { getHeapStatistics } from 'node:v8';
-import { CredentialRedactor } from './redaction.ts';
+import { CredentialRedactor, CredentialRedactorCache } from './redaction.ts';
 import { TEST_ONLY_CUSTOM_FETCH } from './test-only.ts';
 import { sqlMayReadSecret } from './credentials.ts';
 import { DELIMITED_SEPARATORS, parseDelimitedRows, sniffSeparator } from '../../store/src/delimited.ts';
@@ -1216,6 +1216,54 @@ function unbalancedQuote(text: string): boolean {
   return open;
 }
 
+const redactorCaches = new WeakMap<Store, { schema: Store['schema']; cache: CredentialRedactorCache; builds: number }>();
+
+function redactorCacheFor(store: Store): CredentialRedactorCache {
+  const schema = store.schema;
+  const old = redactorCaches.get(store);
+  if (old?.schema === schema) return old.cache;
+  const fields = schema.tables.flatMap((t) => t.fields.map((f) => f.name));
+  const cache = new CredentialRedactorCache({ fields, occurrences: schema.tableOccurrences.map((to) => [to.name, fields]) },
+    schema.customFunctions.map((cf) => cf.name));
+  redactorCaches.set(store, { schema, cache, builds: (old?.builds ?? 0) + 1 });
+  return cache;
+}
+
+/** Follow listed calls before the first diagnostic so a callee's credential sink can hide caller inputs. */
+function diagnosticScripts(store: Store, root: Script): Script[] {
+  const byId = new Map(store.schema.scripts.map((script) => [script.id, script]));
+  const byName = new Map<string, Script>();
+  for (const script of store.schema.scripts) if (!byName.has(script.name.toLowerCase())) byName.set(script.name.toLowerCase(), script);
+  const seen = new Set<Script>();
+  const reached: Script[] = [];
+  const pending = [root];
+  while (pending.length) {
+    const script = pending.pop()!;
+    if (seen.has(script)) continue;
+    seen.add(script);
+    reached.push(script);
+    for (const step of script.steps) {
+      if (![1, 164, 210].includes(step.stepId)) continue;
+      const listed = step.params?.script;
+      const byNameText = /^\s*"([^"\\]*)"\s*$/.exec(step.params?.scriptCalculation ?? '')?.[1];
+      const separator = byNameText?.lastIndexOf('::') ?? -1;
+      const fileName = separator < 0 ? '' : byNameText!.slice(0, separator).trim();
+      const localName = !fileName || fileName.toLowerCase() === store.name.toLowerCase()
+        ? (separator < 0 ? byNameText?.trim() : byNameText!.slice(separator + 2).trim()) : undefined;
+      const target = listed && !listed.file ? byId.get(listed.id) : !listed && localName ? byName.get(localName.toLowerCase()) : undefined;
+      if (target) pending.push(target);
+    }
+  }
+  return reached;
+}
+
+/** Aggregate cache counters for diagnostics and synthetic performance tests. */
+export function redactorCacheStats(store: Store): { nameTableBuilds: number; fieldSets: number; formulaParses: number; inspections: number } | undefined {
+  const entry = redactorCaches.get(store);
+  return entry?.schema === store.schema ? { nameTableBuilds: entry.builds, fieldSets: entry.cache.fieldSets,
+    formulaParses: entry.cache.formulaParses, inspections: entry.cache.inspections } : undefined;
+}
+
 export class ScriptEngine {
   private readonly session: ScriptSession;
   /** This run's global field values, for the store to read and write. */
@@ -1547,10 +1595,8 @@ export class ScriptEngine {
       this.identityVia = this.opts.executionVia;
     }
     this.enforceExecution(store);
-    const fields = store.schema.tables.flatMap((t) => t.fields.map((f) => f.name));
-    this.diagnostics = new CredentialRedactor({ fields, occurrences: store.schema.tableOccurrences.map((to) => [to.name, fields]) });
+    this.diagnostics = redactorCacheFor(store).forRun(s, () => diagnosticScripts(store, s), store.schema.scripts.includes(s));
     this.diagnosticLiterals = new WeakMap();
-    this.diagnostics.inspect([...store.schema.scripts, s], store.schema.customFunctions.map((cf) => cf.name));
     const start = this.opts.startWindow;
     // The person's other windows in this file, behind the start one (frontmost last).
     const others = (this.opts.openWindows ?? []).filter((w) => w.id !== start?.id).slice(-50);
@@ -3621,7 +3667,7 @@ export class ScriptEngine {
       this.actions.push({ step: 'Skip Script', script: script.name, reason: 'skipped: never run' });
       throw new ScriptError(ERROR.unavailable, `Script "${script.name}" is skipped and was not run`);
     }
-    this.diagnostics.inspect([...store.schema.scripts, script], store.schema.customFunctions.map((cf) => cf.name));
+    this.diagnostics.inspect([script], store.schema.customFunctions.map((cf) => cf.name));
     this.diagnostics.scriptState(asText(parameter, store.dateOrder), asText(this.lastResult, store.dateOrder));
     const frame: Frame = {
       script, store, locals, parameter, result: text(''), window: win,
