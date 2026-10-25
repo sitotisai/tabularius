@@ -2,7 +2,9 @@
 
 The proposed opt-in HTTP SQL and pgwire deadline cannot safely use a
 `worker_threads` pool with `node:sqlite` on Node 22. This note records the
-stopped prototype; no deadline option or changed endpoint behavior is shipped.
+stopped prototype. A deadline for every statement is not shipped; the one case
+that held the whole server for ever, a recursive query that does not end, is
+stopped (see below).
 
 ## Blocking observation
 
@@ -48,3 +50,20 @@ keep any query depending on uncommitted state in-process so it can preserve
 read-your-writes. Tests should cover result and privilege parity, recursive CTE
 termination, replacement after a kill, simultaneous short queries, and both
 simple and extended pgwire cancellation.
+
+## What is shipped: recursive queries
+
+SQL a person or a model writes (HTTP SQL, `sql_query`, ExecuteSQL, pgwire)
+whose compiled program loops over a recursive queue (a `WITH RECURSIVE` query,
+which SQLite also accepts without the keyword) runs in a child process that is
+killed after 5 seconds, and the call answers error 812, as the result-size limit does. All
+other queries run in the server process as before. Such a query sees the
+committed file with the same views of native decimal fields, and has SQLite's
+own functions only: a recursive query that calls a function the server defines
+(such as the PostgreSQL catalog functions) is refused with 8310, and inside a
+transaction (`BEGIN` on the SQL port, a script's Open Transaction) a recursive
+query is refused with 8310, because it would not see the transaction's changes.
+The server still waits for the child while it runs, so one such query holds
+the server for up to the deadline, not for ever. Any other query with no end in
+practice (a join of large tables with no condition, say) is not bounded.
+<!-- known-difference: SQL and calculations ;; A recursive SQL query is stopped after 5 seconds, can use SQLite's own functions only, and is refused inside a transaction; the server is held for that time, and other long SQL statements are not bounded ;; A long recursive query answers error 812; one that calls a PostgreSQL catalog function or runs inside BEGIN answers 8310 ;; FileMaker's ExecuteSQL has no such limit (a deadline for every statement would need the child process design above for all queries) -->
