@@ -31,3 +31,9 @@ test('the server and its libraries start no program by a bare name', () => {
   }
   assert.deepEqual(bare, [], 'give the program as a full path (findExecutable, or the system folder), not a bare name');
 });
+
+test('the tasklist path in the sandbox worker is the fixed system folder, not read from the environment', () => {
+  const text = readFileSync(join(packages, 'calc', 'src', 'javascript.ts'), 'utf8');
+  assert.doesNotMatch(text, /process\.env\.(SystemRoot|windir)/);
+  assert.match(text, /C:\\\\Windows\\\\System32\\\\tasklist\.exe/);
+});
