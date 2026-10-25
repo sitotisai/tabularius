@@ -268,8 +268,10 @@ export class AdminApi {
   // Schedule 1 is FileMaker Server's own; user schedules start at 2.
   private readonly scheduleIds = new Ids(2);
   private readonly pluginIds = new Ids(1);
-  /** Set when the server was stopped through the API: which files to open again on RUNNING. */
-  private stoppedFiles?: string[];
+  /** Whether a server stop is in force (reported as STOPPED until RUNNING, or until every file it closed is open again). */
+  private stopped = false;
+  /** The files a stop actually closed, so RUNNING reopens exactly those. */
+  private closedByStop: string[] = [];
   schedules?: Schedules;
   live?: Live;
   /**
@@ -382,7 +384,7 @@ export class AdminApi {
   private async route(method: string, path: string, url: URL, body: Record<string, unknown>): Promise<unknown> {
     if (path === '/server/metadata' && method === 'GET') return this.metadata();
     if (path === '/server/status') {
-      if (method === 'GET') return { status: this.stoppedFiles ? 'STOPPED' : 'RUNNING' };
+      if (method === 'GET') return { status: this.stopped ? 'STOPPED' : 'RUNNING' };
       if (method === 'PATCH') return await this.serverStatus(body);
     }
     if (path === '/databases') {
@@ -533,17 +535,23 @@ export class AdminApi {
     this.messageText(body.messageText, false);
     const status = body.status.toUpperCase();
     if (status === 'STOPPED') {
-      if (!this.stoppedFiles) {
-        const open = this.host.files().filter((f) => f.status !== 'closed').map((f) => f.name);
-        const text = this.messageText(body.messageText, false);
-        this.stoppedFiles = open;
-        for (const name of open) await this.setStatus(name, 'CLOSED', { messageText: text });
+      // Every STOPPED closes every file that is open now: files opened on their own since, or left open by a stop that failed
+      // part way, are closed on the next one. Only files actually closed are remembered for RUNNING.
+      const open = this.host.files().filter((f) => f.status !== 'closed').map((f) => f.name);
+      const text = this.messageText(body.messageText, false);
+      this.stopped = true;
+      for (const name of open) {
+        await this.setStatus(name, 'CLOSED', { messageText: text });
+        if (!this.closedByStop.some((n) => n.toLowerCase() === name.toLowerCase())) this.closedByStop.push(name);
       }
       return { status: 'STOPPED' };
     }
     if (status === 'RUNNING') {
-      for (const name of this.stoppedFiles ?? []) await this.host.openFileEverywhere(name);
-      this.stoppedFiles = undefined;
+      for (const name of [...this.closedByStop]) {
+        await this.host.openFileEverywhere(name);
+        this.closedByStop = this.closedByStop.filter((n) => n !== name);
+      }
+      this.stopped = false;
       return { status: 'RUNNING' };
     }
     throw new AdminApiError(960, 'Parameter is invalid: status is RUNNING or STOPPED');
@@ -587,8 +595,10 @@ export class AdminApi {
     } else {
       if (this.fileStatus(name) === 'CLOSED') await this.host.openFileEverywhere(name);
     }
-    if (this.stoppedFiles && (status === 'OPENED' || status === 'RESUMED')) {
-      this.stoppedFiles = this.stoppedFiles.filter((n) => n.toLowerCase() !== name.toLowerCase());
+    // A file that is open again is no longer one the stop has to give back; a RESUMED on a file that stayed closed is not.
+    if (this.closedByStop.length && (status === 'OPENED' || status === 'RESUMED') && this.fileStatus(name) !== 'CLOSED') {
+      this.closedByStop = this.closedByStop.filter((n) => n.toLowerCase() !== name.toLowerCase());
+      if (!this.closedByStop.length) this.stopped = false;
     }
     // fileMode only for native files: a compat file's response keeps FileMaker Server's shape.
     const native = this.host.files().find((f) => f.name.toLowerCase() === name.toLowerCase())?.fileMode === 'native';
