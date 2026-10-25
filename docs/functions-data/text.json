@@ -1,0 +1,527 @@
+[
+  {
+    "name": "Base64decode",
+    "signature": "Base64decode ( arg1 {; arg} )",
+    "summary": "Decodes Base64 text to UTF-8 text, or to a container when a file name is supplied.",
+    "examples": [
+      {
+        "formula": "Base64Decode ( \"SGk=\" )",
+        "result": "Hi"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Base64encode",
+    "signature": "Base64encode ( arg1 )",
+    "summary": "Encodes text or container bytes as Base64, with long output wrapped at 76 characters.",
+    "examples": [
+      {
+        "formula": "Base64Encode ( \"Hi\" )",
+        "result": "SGk="
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Base64encoderfc",
+    "signature": "Base64encoderfc ( arg1 ; arg2 )",
+    "summary": "Encodes text or container bytes using the selected Base64 line format.",
+    "examples": [
+      {
+        "formula": "Base64EncodeRFC ( 4648 ; \"Hi\" )",
+        "result": "SGk="
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Char",
+    "signature": "Char ( arg1 )",
+    "summary": "Builds characters from the numeric code points in its argument.",
+    "examples": [
+      {
+        "formula": "Char ( 65 )",
+        "result": "A"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Code",
+    "signature": "Code ( arg1 )",
+    "summary": "Returns the code points of the input text as a string of five-digit groups.",
+    "examples": [
+      {
+        "formula": "Code ( \"A\" )",
+        "result": "65"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Condense",
+    "signature": "Condense (  )",
+    "summary": "Returns the style constant used to remove inter-character spacing.",
+    "details": "Returns the style constant used to remove inter-character spacing.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Convertfromfilemakerpath",
+    "signature": "Convertfromfilemakerpath ( arg1 ; arg2 )",
+    "summary": "Converts a FileMaker path to the selected native path or URL form.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Converttofilemakerpath",
+    "signature": "Converttofilemakerpath ( arg1 ; arg2 )",
+    "summary": "Converts a native path or URL in the selected form to a FileMaker path.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Exact",
+    "signature": "Exact ( arg1 ; arg2 )",
+    "summary": "Compares two text values with case-sensitive equality.",
+    "examples": [
+      {
+        "formula": "Exact ( \"a\" ; \"a\" )",
+        "result": "1"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Getascss",
+    "signature": "Getascss ( arg1 )",
+    "summary": "Returns CSS text for the input, including available text formatting runs.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Getassvg",
+    "signature": "Getassvg ( arg1 )",
+    "summary": "Returns its input as text; it does not construct SVG markup.",
+    "examples": [
+      {
+        "formula": "GetAsSVG ( \"hello\" )",
+        "result": "hello"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Getastext",
+    "signature": "Getastext ( arg1 )",
+    "summary": "Converts the input value to text.",
+    "examples": [
+      {
+        "formula": "GetAsText ( \"hello\" )",
+        "result": "hello"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Getasurlencoded",
+    "signature": "Getasurlencoded ( arg1 )",
+    "summary": "Percent-encodes text for use in a URL component.",
+    "examples": [
+      {
+        "formula": "GetAsURLEncoded ( \"hello world\" )",
+        "result": "hello%20world"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Gettokencount",
+    "signature": "Gettokencount ( arg1 )",
+    "summary": "Estimates a token count by rounding the input length up in groups of four characters.",
+    "examples": [
+      {
+        "formula": "GetTokenCount ( \"hello world\" )",
+        "result": "3"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Hexdecode",
+    "signature": "Hexdecode ( arg1 {; arg} )",
+    "summary": "Decodes hexadecimal text to UTF-8 text, or to a container when a file name is supplied.",
+    "examples": [
+      {
+        "formula": "HexDecode ( \"4869\" )",
+        "result": "Hi"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Hexencode",
+    "signature": "Hexencode ( arg1 )",
+    "summary": "Encodes text or container bytes as uppercase hexadecimal.",
+    "examples": [
+      {
+        "formula": "HexEncode ( \"Hi\" )",
+        "result": "4869"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Left",
+    "signature": "Left ( arg1 ; arg2 )",
+    "summary": "Returns the requested number of characters from the start of the text.",
+    "examples": [
+      {
+        "formula": "Left ( \"hello\" ; 2 )",
+        "result": "he"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Leftwords",
+    "signature": "Leftwords ( arg1 ; arg2 )",
+    "summary": "Returns the requested number of words from the start of the text.",
+    "examples": [
+      {
+        "formula": "LeftWords ( \"one two three\" ; 2 )",
+        "result": "one two"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Length",
+    "signature": "Length ( arg1 )",
+    "summary": "Returns the number of characters in the text.",
+    "examples": [
+      {
+        "formula": "Length ( \"hello\" )",
+        "result": "5"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Lower",
+    "signature": "Lower ( arg1 )",
+    "summary": "Converts text to lowercase.",
+    "examples": [
+      {
+        "formula": "Lower ( \"HELLO\" )",
+        "result": "hello"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Lowercase",
+    "signature": "Lowercase (  )",
+    "summary": "Returns the lowercase text-style constant; this is a style name, not an alias for Lower.",
+    "details": "Returns the lowercase text-style constant; this is a style name, not an alias for Lower.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Middle",
+    "signature": "Middle ( arg1 ; arg2 ; arg3 )",
+    "summary": "Returns a character range using a one-based start position.",
+    "examples": [
+      {
+        "formula": "Middle ( \"hello\" ; 2 ; 3 )",
+        "result": "ell"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Middlewords",
+    "signature": "Middlewords ( arg1 ; arg2 ; arg3 )",
+    "summary": "Returns a word range using a one-based start position.",
+    "examples": [
+      {
+        "formula": "MiddleWords ( \"one two three\" ; 2 ; 1 )",
+        "result": "two"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Patterncount",
+    "signature": "Patterncount ( arg1 ; arg2 )",
+    "summary": "Counts non-overlapping occurrences of a search string, ignoring case.",
+    "examples": [
+      {
+        "formula": "PatternCount ( \"banana\" ; \"an\" )",
+        "result": "2"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Position",
+    "signature": "Position ( arg1 ; arg2 ; arg3 ; arg4 )",
+    "summary": "Finds an occurrence of text and returns its one-based character position.",
+    "examples": [
+      {
+        "formula": "Position ( \"banana\" ; \"an\" ; 1 ; 2 )",
+        "result": "4"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Posixpath",
+    "signature": "Posixpath (  )",
+    "summary": "Returns the POSIX path style constant.",
+    "details": "Returns the POSIX path style constant.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Proper",
+    "signature": "Proper ( arg1 )",
+    "summary": "Lowercases text and capitalizes letters at word boundaries.",
+    "examples": [
+      {
+        "formula": "Proper ( \"hello world\" )",
+        "result": "Hello World"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Quote",
+    "signature": "Quote ( arg1 )",
+    "summary": "Wraps text in quotes and escapes embedded quotes and backslashes.",
+    "examples": [
+      {
+        "formula": "Quote ( \"hello\" )",
+        "result": "\"hello\""
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Replace",
+    "signature": "Replace ( arg1 ; arg2 ; arg3 ; arg4 )",
+    "summary": "Replaces a character range using a one-based start position.",
+    "examples": [
+      {
+        "formula": "Replace ( \"hello\" ; 2 ; 2 ; \"XX\" )",
+        "result": "hXXlo"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Right",
+    "signature": "Right ( arg1 ; arg2 )",
+    "summary": "Returns the requested number of characters from the end of the text.",
+    "examples": [
+      {
+        "formula": "Right ( \"hello\" ; 2 )",
+        "result": "lo"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Rightwords",
+    "signature": "Rightwords ( arg1 ; arg2 )",
+    "summary": "Returns the requested number of words from the end of the text.",
+    "examples": [
+      {
+        "formula": "RightWords ( \"one two three\" ; 2 )",
+        "result": "two three"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Self",
+    "signature": "Self (  )",
+    "summary": "Reads the current field value; with no current field or record there is no deterministic result.",
+    "details": "Reads the current field value; with no current field or record there is no deterministic result.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Substitute",
+    "signature": "Substitute ( arg1 ; arg2 {; arg} )",
+    "summary": "Replaces each specified search string in the input text.",
+    "examples": [
+      {
+        "formula": "Substitute ( \"banana\" ; \"a\" ; \"o\" )",
+        "result": "bonono"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Textdecode",
+    "signature": "Textdecode ( arg1 {; arg} )",
+    "summary": "Decodes container bytes as text using UTF-8.",
+    "examples": [
+      {
+        "formula": "TextDecode ( TextEncode ( \"Hi\" ) )",
+        "result": "Hi"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Textencode",
+    "signature": "Textencode ( arg1 {; arg} )",
+    "summary": "Encodes text as UTF-8 bytes in a container.",
+    "examples": [
+      {
+        "formula": "TextDecode ( TextEncode ( \"Hi\" ) )",
+        "result": "Hi"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Titlecase",
+    "signature": "Titlecase (  )",
+    "summary": "Returns the title-case text-style constant; this entry is a style name rather than a text-transform function.",
+    "details": "Returns the title-case text-style constant; this entry is a style name rather than a text-transform function.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Trim",
+    "signature": "Trim ( arg1 )",
+    "summary": "Removes leading and trailing ordinary spaces.",
+    "examples": [
+      {
+        "formula": "Trim ( \"  hello  \" )",
+        "result": "hello"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Trimall",
+    "signature": "Trimall ( arg1 {; arg} )",
+    "summary": "Collapses repeated spaces and trims edges, with options for full-width spaces or removing all spaces.",
+    "examples": [
+      {
+        "formula": "TrimAll ( \"a   b\" )",
+        "result": "a b"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Trtext_getline",
+    "signature": "Trtext_getline ( arg1 ; arg2 {; arg} )",
+    "summary": "Returns a line selected from the supplied text according to the plug-in function arguments.",
+    "examples": [
+      {
+        "formula": "TrText_GetLine ( 1 ; \"one¶two\" )",
+        "result": "one\r"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Upper",
+    "signature": "Upper ( arg1 )",
+    "summary": "Converts text to uppercase.",
+    "examples": [
+      {
+        "formula": "Upper ( \"hello\" )",
+        "result": "HELLO"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Uppercase",
+    "signature": "Uppercase (  )",
+    "summary": "Returns the uppercase text-style constant; this is a style name, not an alias for Upper.",
+    "details": "Returns the uppercase text-style constant; this is a style name, not an alias for Upper.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Urlpath",
+    "signature": "Urlpath (  )",
+    "summary": "Returns the URL path style constant.",
+    "details": "Returns the URL path style constant.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Winpath",
+    "signature": "Winpath (  )",
+    "summary": "Returns the Windows path style constant.",
+    "details": "Returns the Windows path style constant.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  },
+  {
+    "name": "Wordcount",
+    "signature": "Wordcount ( arg1 )",
+    "summary": "Counts words in the input text.",
+    "examples": [
+      {
+        "formula": "WordCount ( \"one two three\" )",
+        "result": "3"
+      }
+    ],
+    "status": "works-differently",
+    "differences": "Compatibility with the external product is unverified."
+  }
+]
