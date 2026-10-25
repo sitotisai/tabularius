@@ -107,6 +107,27 @@ async function openPalette(page: Page): Promise<void> {
   await page.locator('.palette').waitFor({ state: 'visible' });
 }
 
+test('the alternative client signs in on a server that keeps its list of files off, by typing the name (or ?db=)', { skip }, async () => {
+  const quiet = await host({ stores: ['Town'], listFilesOff: true });
+  try {
+    quiet.store('Town').applyDesign([{ op: 'createTable', name: 'People', fields: [{ name: 'Name' }] }] as DesignOp[]);
+    quiet.store('Town').setPassword('Ann', PASSWORD, '[Full Access]');
+    for (const typedByHand of [true, false]) {
+      const page = await window(await browser.newContext());
+      await page.goto(`${quiet.url}/next/${typedByHand ? '' : '?db=Town'}`);
+      assert.equal(await page.locator('select[name="db"]').count(), 0, 'no file list to pick from');
+      const file = page.locator('input[name="db"]');
+      if (typedByHand) await file.fill('Town'); else assert.equal(await file.inputValue(), 'Town');
+      await page.locator('input[name="account"]').fill('Ann');
+      await page.locator('input[name="password"]').fill(PASSWORD);
+      await page.getByRole('button', { name: 'Open', exact: true }).click();
+      await page.locator('.rail-item').first().waitFor();
+    }
+  } finally {
+    await quiet.close();
+  }
+});
+
 test('the alternative client lists, searches, edits and adds records', { skip }, async () => {
   const page = await open();
   assert.deepEqual((await names(page)).sort(), ['Ada', 'Alan', 'Edsger', 'Grace']);
