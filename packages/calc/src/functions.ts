@@ -64,8 +64,16 @@ function def(names: string | string[], min: number, max: number | undefined, run
 
 /** A function of evaluated arguments. */
 function eager(names: string | string[], min: number, max: number | undefined, f: (v: Value[], env: Env) => Value): void {
-  def(names, min, max, (args, env) => f(args.map((a) => env.v(a)), env));
+  def(names, min, max, (args, env) => {
+    const values = args.map((a) => env.v(a));
+    const r = f(values, env);
+    // A container no argument holds was made by this function, not stored: see checkEncodedSize.
+    if (r.type === 'container' && r.data && !values.some((x) => x.type === 'container' && x.data === r.data)) calcMade.add(r.data);
+    return r;
+  });
 }
+/** The data of containers that a calculation made (TextEncode, Base64Decode, BE_UnGzip and the like), as opposed to ones a file or field holds. */
+const calcMade = new WeakSet<Uint8Array>();
 
 const T = (v: Value | undefined, env: Env) => (v === undefined ? '' : env.textOf(v));
 const N = (v: Value | undefined) => (v === undefined ? 0 : asNumber(v));
@@ -434,9 +442,10 @@ eager('Code', 1, 1, (v, env) => {
   if (!t.length) return EMPTY;
   // Five digits for each character, counted before anything is built. Both passes are linear in a text that is under
   // the text limit, so the work needs no clock reading; it would only refuse a text that fits when the host is busy.
-  let count = 0;
-  for (const _ of t) count++;
-  checkCalcTextSize(5 * count);
+  // A character writes its code point in at least five digits: six from U+186A0 and seven from U+F4240.
+  let digits = 0;
+  for (const c of t) { const cp = c.codePointAt(0)!; digits += cp >= 1_000_000 ? 7 : cp >= 100_000 ? 6 : 5; }
+  checkCalcTextSize(digits);
   // First character in the lowest five digits.
   const out: string[] = [];
   for (const c of t) out.push(String(c.codePointAt(0)).padStart(5, '0'));
@@ -620,6 +629,7 @@ for (const style of ['Plain', 'Bold', 'Italic', 'Underline', 'HighlightYellow', 
 eager('RGB', 3, 3, (v) => num(Math.trunc(N(v[0])) * 65536 + Math.trunc(N(v[1])) * 256 + Math.trunc(N(v[2]))));
 eager('GetAsCSS', 1, 1, (v, env) => text(toCss(T(v[0], env), v[0].type === 'text' ? v[0].runs : undefined)));
 eager('GetAsSVG', 1, 1, (v, env) => text(T(v[0], env)));
+const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g;
 /** The length of encodeURIComponent(t), counted without building it: a character outside the plain set takes three characters for each of its UTF-8 bytes. */
 function encodedLength(t: string): number {
   let size = 0;
@@ -632,7 +642,8 @@ function encodedLength(t: string): number {
   return size;
 }
 eager('GetAsURLEncoded', 1, 1, (v, env) => {
-  const t = T(v[0], env);
+  // A lone surrogate is not text encodeURIComponent takes; it is the replacement character, as TextEncoder makes it.
+  const t = T(v[0], env).replace(LONE_SURROGATE, '\ufffd');
   checkCalcTextSize(encodedLength(t));
   return text(encodeURIComponent(t));
 });
@@ -921,12 +932,13 @@ const binary = (data: Uint8Array): Value => ({ type: 'container', value: '', dat
 const MAX_STRING = 0x1fffffe8;
 /**
  * Refuses text made from `v` that would be `size` characters long. Text is held to the text limit, so a chain of
- * encoders cannot multiply it. A container is a stored file (a picture is several megabytes, and its Base64 is read
- * back whole), so only what JavaScript could not hold is refused; the text it makes is over the limit for any
- * function that takes text, and cannot grow further.
+ * encoders cannot multiply it. A container a field or file holds is a stored file (a picture is several megabytes,
+ * and its Base64 is read back whole), so only what JavaScript could not hold is refused. A container a calculation
+ * made (`calcMade`) is held to the text limit like text: otherwise HexEncode of it (twice its size) and Base64Decode
+ * of that hex text (0.75 of it) would take turns and grow it by half each round.
  */
 function checkEncodedSize(v: Value, size: number): void {
-  if (v.type !== 'container') return checkCalcTextSize(size);
+  if (v.type !== 'container' || (v.data && calcMade.has(v.data))) return checkCalcTextSize(size);
   if (!Number.isSafeInteger(size) || size > MAX_STRING) throw new ComplexityError('The result is too large');
 }
 
@@ -1070,13 +1082,7 @@ eager('CryptEncrypt', 2, 2, (v, env) => ({ type: 'container', value: 'encrypted.
 eager('CryptEncryptBase64', 2, 2, (v, env) => text(cryptEncrypt(v, env, true).toString('base64')));
 eager('CryptDecrypt', 2, 2, (v, env) => (v[0].type === 'container' && v[0].data ? cryptDecrypt(v[0].data, T(v[1], env)) : EMPTY));
 eager('CryptDecryptBase64', 2, 2, (v, env) => cryptDecrypt(Buffer.from(T(v[0], env).replace(/\s/g, ''), 'base64'), T(v[1], env)));
-eager('TextEncode', 1, 3, (v, env) => {
-  const t = T(v[0], env);
-  // The container is exempt from the text limit when it is encoded (see checkEncodedSize), so the text it is made from
-  // is held to it: text cannot be turned into a container, encoded to longer text and turned into a container again.
-  checkCalcTextSize(Buffer.byteLength(t, 'utf8'));
-  return { type: 'container', value: 'Untitled.txt', data: new TextEncoder().encode(t) };
-});
+eager('TextEncode', 1, 3, (v, env) => ({ type: 'container', value: 'Untitled.txt', data: new TextEncoder().encode(T(v[0], env)) }));
 eager('TextDecode', 1, 2, (v, env) => text(new TextDecoder().decode(bytesOf(v[0], env))));
 // FileMaker 2025: "?" for an empty container, a file that isn't a PDF, an encrypted one, or one with no text.
 eager('GetTextFromPDF', 1, 1, (v) => {
