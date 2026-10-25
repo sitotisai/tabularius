@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { request } from 'node:http';
 import { containerFixture, pattern, type ContainerFixture } from './container-fixture.ts';
-import { ContainerUploadError, ContainerUploads, MAX_CONTAINER_FILE, MAX_CONTAINER_UPLOADS_PER_ACCOUNT } from '../src/container-uploads.ts';
+import { ContainerUploadError, ContainerUploads, MAX_CONTAINER_FILE, MAX_CONTAINER_UPLOADS_PER_ACCOUNT, MAX_REQUEST_SPOOLS_PER_ACCOUNT, requestUploadSpool } from '../src/container-uploads.ts';
 
 let f: ContainerFixture;
 let admin: string;
@@ -306,6 +306,27 @@ test('a request with a single multipart body still works, for a file bigger than
   assert.equal(got.info.chunked, true);
   assert.ok(got.bytes.equals(data));
   assert.equal(got.info.modified !== undefined, true);
+});
+
+test('a single request while the account already has its spools arriving is a temporary 503 with Retry-After, and goes through once one ends', async (t) => {
+  const post = (contact: number) => {
+    const form = new FormData();
+    form.append('upload', new Blob([new Uint8Array(pattern(0, 1000, 5))], { type: 'image/png' }), 'small.png');
+    return fetch(`${f.api}/layouts/Contacts/records/${f.contact(contact)}/containers/Photo/1`, { method: 'POST', headers: { authorization: admin }, body: form });
+  };
+  const slow = Array.from({ length: MAX_REQUEST_SPOOLS_PER_ACCOUNT }, () => requestUploadSpool(1, { db: f.store.name, account: 'Admin' }));
+  t.after(() => { for (const spool of slow) spool.release(); });
+  const refused = await post(3);
+  assert.equal(refused.status, 503);
+  assert.ok(Number(refused.headers.get('retry-after')) > 0);
+  const answer = await refused.json();
+  assert.equal(answer.messages[0].code, '301');
+  assert.match(answer.messages[0].message, /try again/);
+  assert.notEqual(held(3)?.info.filename, 'small.png', 'the refused file was not stored');
+  slow[0].release();
+  const ok = await post(3);
+  assert.equal(ok.status, 200);
+  assert.equal(held(3)!.info.filename, 'small.png');
 });
 
 test('the manager: idle uploads go, the bytes are counted, the folder is emptied', async (t) => {
