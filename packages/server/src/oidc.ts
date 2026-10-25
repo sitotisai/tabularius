@@ -159,6 +159,9 @@ const START_PER_SECOND = 1;
 
 /** What a test may change: the size of the pending table, one address's share of it, and the rate of starts. */
 export interface OidcLimits { maxPending?: number; perAddress?: number; starts?: AddressBudget }
+/** What the callback says when makeRoom removed the sign-in being finished. */
+const CANCELLED_FOR_ROOM = 'This sign-in was cancelled because too many sign-ins were started from this address at once; please start again in a moment';
+const RETRY_AFTER_S = 60;
 const OIDC_DIR = '.openhbam-oidc';
 const OIDC_DB = 'pending.sqlite';
 const b64url = (b: Buffer) => b.toString('base64url');
@@ -176,6 +179,12 @@ export class Oidc {
   private readonly db: DatabaseSync;
   /** Resume handlers are process-local because they hold HTTP response callbacks; cluster routing pins these flows to the leader. */
   private readonly resumes = new Map<string, { resume: Resume; expires: number }>();
+  /**
+   * States of pending sign-ins that makeRoom removed (value: when the note lapses, performance.now), so the callback can say why instead
+   * of "took too long". At most as many notes as the table has rows, each kept as long as the sign-in could have waited. Process-local like `resumes`: the
+   * start and its callback go to the same leader, and after a restart the person gets the ordinary text.
+   */
+  private readonly evicted = new Map<string, number>();
   private readonly resumePruner: NodeJS.Timeout;
   readonly storageWarning?: string;
   private closed = false;
@@ -257,7 +266,9 @@ export class Oidc {
         await this.dataApiStart(req, res, url);
       } catch (e) {
         if (!(e instanceof SignInError)) console.error(e);
-        json(res, 400, { error: e instanceof SignInError ? e.message : 'Sign-in failed' });
+        const wait = e instanceof SignInError ? e.retryAfter : undefined;
+        // A refusal that waiting cures is 429 with Retry-After; anything the app must change is 400.
+        res.writeHead(wait ? 429 : 400, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...(wait ? { 'retry-after': String(wait) } : {}) }).end(JSON.stringify({ error: e instanceof SignInError ? e.message : 'Sign-in failed' }));
       }
       return true;
     }
@@ -300,6 +311,14 @@ export class Oidc {
   private pruneResumes(now: number): void {
     for (const [state, entry] of this.resumes) if (entry.expires <= now) this.resumes.delete(state);
     while (this.resumes.size > MAX_PENDING) this.resumes.delete(this.resumes.keys().next().value!);
+    for (const [state, until] of this.evicted) if (until <= now) this.evicted.delete(state);
+  }
+
+  /** Notes that these sign-ins were removed to make room, forgetting the oldest notes past the bound. */
+  private noteEvicted(states: string[]): void {
+    const until = performance.now() + PENDING_MS;
+    for (const state of states) { this.evicted.delete(state); this.evicted.set(state, until); }
+    while (this.evicted.size > this.maxPending) this.evicted.delete(this.evicted.keys().next().value!);
   }
 
   /**
@@ -416,14 +435,14 @@ export class Oidc {
       evict(this.db.prepare('DELETE FROM pending WHERE state = (SELECT state FROM pending WHERE address = ? ORDER BY created, rowid LIMIT 1) RETURNING state').all(heaviest.address) as { state: string }[]);
       return removed;
     }
-    throw new SignInError('Too many sign-ins are in progress; try again in a minute');
+    throw new SignInError('Too many sign-ins are in progress; try again in a minute', RETRY_AFTER_S);
   }
 
   /** Starts a sign-in: the provider's address to send the person to. */
   private async authorizeUrl(s: ProviderState, db: string, req: IncomingMessage, resume?: Resume, dataApi?: Pending['dataApi']): Promise<string> {
     // Before anything is fetched or written: starting a sign-in needs no sign-in.
     const address = addressBucket(clientAddress(req));
-    if (!this.starts.take(address)) throw new SignInError('Too many sign-in attempts from this address; try again in a minute');
+    if (!this.starts.take(address)) throw new SignInError('Too many sign-in attempts from this address; try again in a minute', RETRY_AFTER_S);
     const d = await this.config(s);
     const state = b64url(randomBytes(24));
     const verifier = b64url(randomBytes(32));
@@ -440,6 +459,7 @@ export class Oidc {
       this.db.prepare('INSERT INTO pending (state,provider,database,verifier,nonce,redirect_uri,expires,flow,created,data_api,address) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(state, s.slug, db, verifier, nonce, redirectUri, expires, resume ? 'ai' : dataApi ? 'data' : 'web', now, dataApi ? JSON.stringify(dataApi) : null, address);
       this.db.exec('COMMIT');
       for (const gone of evicted) this.resumes.delete(gone);
+      this.noteEvicted(evicted);
       if (resume) this.resumes.set(state, { resume, expires: performance.now() + PENDING_MS });
     } catch (e) {
       this.db.exec('ROLLBACK');
@@ -491,6 +511,7 @@ export class Oidc {
     this.resumes.delete(state);
     if (!row) {
       this.db.prepare('DELETE FROM pending WHERE expires <= ?').run(expiryClock.now());
+      if (this.evicted.delete(state)) throw new SignInError(CANCELLED_FOR_ROOM);
       throw new SignInError('The sign-in took too long or was already used; please try again');
     }
     if (row.expires <= expiryClock.now()) throw new SignInError('The sign-in took too long or was already used; please try again');
@@ -685,7 +706,11 @@ export class Oidc {
 
 }
 
-export class SignInError extends Error {}
+/** Why a sign-in could not go on, in words for the person. `retryAfter` (seconds) is set when waiting is the way out: Data API apps get 429 with it. */
+export class SignInError extends Error {
+  readonly retryAfter?: number;
+  constructor(message: string, retryAfter?: number) { super(message); this.retryAfter = retryAfter; }
+}
 
 /** A configured claim can be a top-level name or a dot-separated object path. */
 function groupClaim(claims: Record<string, unknown>, name: string): unknown {
