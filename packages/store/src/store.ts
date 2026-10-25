@@ -2499,7 +2499,7 @@ export class Store {
         this.checkChildKeys(t, then as Row);
         this.sql.prepare(`INSERT INTO ${T} (_fm_record_id${this.fileMode === 'native' ? ', _fm_uuid' : ''}${cols.length ? `, ${cols.map(q).join(', ')}` : ''}) VALUES (?${this.fileMode === 'native' ? ', ?' : ''}${', ?'.repeat(cols.length)})`)
           .run(recordId, ...(this.fileMode === 'native' ? [this.uuid.next()] : []), ...cols.map((c) => then[c]));
-        this.audit('create', t.name, recordId, Object.fromEntries(cols.filter((c) => then[c] !== null).map((c) => [c, then[c]])), opts);
+        this.audit('create', t.name, recordId, Object.fromEntries(cols.filter((c) => then[c] !== null).map((c) => [c, then[c]])), opts, undefined, this.deleteBeingUndone(t.name, recordId));
         this.notify('create', t.name, recordId, 0);
         return { action: 'created', fields: cols.filter((c) => then[c] !== null) };
       }
@@ -2708,7 +2708,7 @@ export class Store {
     return !!listed?.some((f) => f.toLowerCase() === name.toLowerCase());
   }
 
-  private audit(kind: AuditEntry['kind'], table: string, recordId: number | undefined, changes: Record<string, unknown> | undefined, opts: WriteOptions, copyOf?: number): void {
+  private audit(kind: AuditEntry['kind'], table: string, recordId: number | undefined, changes: Record<string, unknown> | undefined, opts: WriteOptions, copyOf?: number, revertOf?: number): void {
     const w = writer.getStore();
     const account = opts.account ?? w?.account ?? opts.privileges?.account ?? null;
     let logged = changes;
@@ -2718,7 +2718,7 @@ export class Store {
     const json = logged && JSON.stringify(logged, (_k, v) => (v instanceof Uint8Array ? `<${v.length} bytes>` : typeof v === 'bigint' ? Number(v) : v));
     const agent = account && this.isAgent(account) ? 1 : 0;
     const r = this.prepared('INSERT INTO _fm_audit (at, account, kind, tbl, record_id, changes, security, agent, surface, script, copy_of, revert_of) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)')
-      .run(new Date().toISOString(), account, kind, table, recordId ?? null, json ?? null, agent, w?.surface ?? null, w?.script ?? null, copyOf ?? null, w?.revertOf ?? null);
+      .run(new Date().toISOString(), account, kind, table, recordId ?? null, json ?? null, agent, w?.surface ?? null, w?.script ?? null, copyOf ?? null, w?.revertOf ?? revertOf ?? null);
     const seq = Number(r.lastInsertRowid);
     const pending = this.heldBy !== undefined && this.heldBy === w?.transaction?.open;
     if (pending) this.heldAudit.push({ seq, onAudit: w?.onAudit });
@@ -10035,6 +10035,16 @@ export class Store {
   }
 
   /**
+   * What a create that puts a deleted record back says it reverts: the record's latest delete entry (0 when the log no
+   * longer has it). Without a mark such a create reads as the record being made, and readers that look for where a
+   * record's life began (converting again, record history, revert) would start there.
+   */
+  private deleteBeingUndone(table: string, recordId: number): number {
+    const row = this.sql.prepare("SELECT max(seq) AS seq FROM _fm_audit WHERE security = 0 AND kind = 'delete' AND tbl = ? COLLATE NOCASE AND record_id = ?").get(table, recordId) as { seq: number | null } | undefined;
+    return Number(row?.seq ?? 0);
+  }
+
+  /**
    * Puts a deleted record back as it was, under its own id (undoing a merge of duplicates): `row` is the record's
    * row as it was read before the delete. Fails when its id has been used again since.
    */
@@ -10066,7 +10076,7 @@ export class Store {
       }
     }
     this.sql.prepare(`INSERT INTO ${q(table)} (${names.map(q).join(', ')}) VALUES (${names.map(() => '?').join(', ')})`).run(...names.map((n) => kept[n]));
-    this.audit('create', table, id, Object.fromEntries(names.filter((n) => !n.startsWith('_fm_') && row[n] !== null).map((n) => [n, row[n]])), opts);
+    this.audit('create', table, id, Object.fromEntries(names.filter((n) => !n.startsWith('_fm_') && row[n] !== null).map((n) => [n, row[n]])), opts, undefined, this.deleteBeingUndone(table, id));
     this.notify('create', table, id, Number(row._fm_mod_id ?? 0));
   }
 
