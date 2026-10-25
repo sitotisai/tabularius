@@ -8,6 +8,6 @@ How many hours an upload in pieces (`container-uploads`) may receive nothing bef
 | Accepted values | nonnegative number; 0 keeps uploads until restart |
 | Restart needed | Yes for a running server. |
 | Explained in | [ADMIN.md](../../../../ADMIN.md) |
-| Code | [packages/server/src/container-uploads.ts:31](../../../../packages/server/src/container-uploads.ts#L31) |
+| Code | [packages/server/src/container-uploads.ts:35](../../../../packages/server/src/container-uploads.ts#L35) |
 
 [All environment variables](../../../environment-variables.md)
