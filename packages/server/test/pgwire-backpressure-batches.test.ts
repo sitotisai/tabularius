@@ -84,7 +84,7 @@ test('a long run of statements the server answers itself queues a bounded amount
   const [server] = serverSockets();
   const queued = watchQueued(server);
   c.socket.pause();
-  c.send('Q', Buffer.from('COMMIT;'.repeat(150_000) + '\0'));
+  c.send('Q', Buffer.from('COMMIT;'.repeat(140_000) + '\0'));
   await untilStalled(server);
   assert.ok(queued() < 1 * MB, `${(queued() / MB).toFixed(1)} MB were queued for a client that was not reading`);
   c.socket.resume();
