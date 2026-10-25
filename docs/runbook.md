@@ -116,7 +116,7 @@ Or in the admin console: **Security health**, **Account access**, **Set password
 curl -sS -u ":<console-password>" -H "x-tabularius-admin: 1" -H "content-type: application/json" -X POST http://localhost:8080/tabularius/admin/v1/accounts/unlock -d '{"database":"<database>","account":"<account>"}'
 ```
 
-For a blocked address, give `"address":"<address>"` in place of the account. Setting the account a new password also lifts its lock. Restarting the server clears every lock too.
+For a blocked address, give `"address":"<address>"` in place of the account. Setting the account a new password also lifts its lock. Restarting the server clears every lock too. While a transaction holds the file (a script's Open Transaction, or `BEGIN` on the SQL port) the audit rows for sign-ins and lockouts are written when it ends, with the times they happened at; each carries `deferred: true` in its detail (see [SQL writes](pgwire-writes.md)).
 
 **Check:** the answer is `{"ok":true,"cleared":true}` and the right password signs in. `"cleared":false` means there was no lock to lift.
 

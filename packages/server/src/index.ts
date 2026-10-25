@@ -88,7 +88,7 @@ function addressOnly(address: string): string {
 }
 import { Schedules } from './schedules.ts';
 import { SyncConsole } from './sync-console.ts';
-import { watchEventLoop, writer, type Store } from '../../store/src/index.ts';
+import { StoreError, watchEventLoop, writer, type Store } from '../../store/src/index.ts';
 import { Assistant, type AssistantOptions } from './assistant.ts';
 import { DesignApi } from './design.ts';
 import { DashboardApi } from './dashboards.ts';
@@ -713,7 +713,17 @@ export async function serve(opts: ServeOptions): Promise<{ server: Server; host:
           } else {
             // An API token of a file (Manage Security, or the admin console's Connect an AI app): one account of that file, its
             // privilege set narrowed to the token's scope. Older admin console tokens (ohm_) sign in as their account.
-            const api = bearer?.startsWith('ohbt_') ? apiTokenIdentity(host, oauth, req, bearer, clientAddress(req)) : undefined;
+            let api: McpIdentity | undefined;
+            try {
+              api = bearer?.startsWith('ohbt_') ? apiTokenIdentity(host, oauth, req, bearer, clientAddress(req)) : undefined;
+            } catch (e) {
+              // Another session's transaction holds the file and has changed what a token is checked against: the token is
+              // neither accepted nor refused until it ends, so the app is told to try again, not that it is signed out.
+              if (!(e instanceof StoreError && e.code === 301)) throw e;
+              busyHeaders(res);
+              res.writeHead(503, { 'content-type': 'application/json' }).end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'The file is busy: another session has a transaction open that changes sign-in settings. Try again shortly.' }, id: null }));
+              return;
+            }
             // An ohm_ token is its account's sign-in, so a local-only account's works only from this computer, as an ohbt_ one does.
             const legacy = api || !bearer ? undefined : mcpTokens.check(bearer);
             const legacyStore = legacy && host.get(legacy.database);
