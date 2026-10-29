@@ -39,6 +39,7 @@ npm run precheck        # type check, repo gates and the tests for what you chan
 - Browser tests need Chromium and are not part of `test:ci`: `npm run smoke:web`, `npm run a11y:web`, `npm run test:e2e` (they run in the `browser-tests` workflow for changes under `packages/web` and the server pages; `scripts/require-browser.ts` checks a browser is found).
 - After adding, renaming or describing an MCP tool, a route or a setting, run `npm run docs:reference` (and `npm run docs:plugins` for the plug-in page) and commit the result. The suite fails on a stale generated page.
 - A new guide page must be listed in `docs/contents.json`; a guide needs a `#` title and no skipped heading level.
+- Scripts you will not run every day: `npm run docs:check` runs the settings-and-CLI reference check and the glossary check; `npm run docs:settings-cli`, `npm run docs:glossary`, `npm run docs:script-steps` and `npm run docs:error-strings` write the generated pages and tables they name; `npm run licences:audit` checks the licences and runs `npm audit` for what ships; `npm run public:snapshot` builds the one-commit public copy of the repository and checks it (it pushes nothing); `npm run ask:timing` asks a running server's assistant one question and times each step (it calls the real model and spends tokens); `npm run openhbam` is the deprecated alias of `npm run tabularius`.
 
 ## Code conventions
 
