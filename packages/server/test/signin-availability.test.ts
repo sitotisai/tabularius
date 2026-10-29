@@ -54,7 +54,7 @@ async function pgSetup(t: TestContext) {
   syncBuiltinESMExports();
   t.after(() => { hashes.mock.restore(); syncBuiltinESMExports(); });
   const port = await pg.listen();
-  return { port, ctl, pg, store, hashes, close: async () => { pg.close(); await host.close(); rmSync(dir, { recursive: true, force: true }); } };
+  return { port, ctl, pg, host, store, hashes, close: async () => { pg.close(); await host.close(); rmSync(dir, { recursive: true, force: true }); } };
 }
 const norm = (m: string) => m.replace(/"[^"]*"/g, '""');
 async function pool<T>(n: number, conc: number, f: (i: number) => Promise<T>) { let i = 0; await Promise.all(Array.from({ length: conc }, async () => { while (i < n) { const k = i++; await f(k); } })); }
@@ -66,14 +66,14 @@ test('hosted and unhosted lockouts both survive names beyond table capacity', as
     const lock = async (db: string) => { s.ctl.from = A; const out: string[] = []; for (let i = 0; i < LOCKOUT.attempts + 1; i++) out.push(norm(await pgTry(s.port, 'Ann', db, 'wrong'))); return out.at(-1); };
     const before = { hosted: await lock('Payroll'), unhosted: await lock('Payrol1') };
     s.ctl.from = B;
-    await pool(LOCKOUT.maxFailures * 2, 2, (i) => pgTry(s.port, `spray${i}`, 'Payrol1', 'wrong'));
+    await pool(256 * 2, 2, (i) => pgTry(s.port, `spray${i}`, 'Payrol1', 'wrong'));
     await pool(LOCKOUT.maxFailures * 2, 2, (i) => pgTry(s.port, `spray${i}`, 'Payroll', 'wrong'));
     s.ctl.from = A;
     const after = { hosted: norm(await pgTry(s.port, 'Ann', 'Payroll', 'wrong')), unhosted: norm(await pgTry(s.port, 'Ann', 'Payrol1', 'wrong')) };
     assert.equal(before.hosted, before.unhosted);
     assert.match(after.unhosted, /password authentication failed/);
     assert.ok(s.store.lockedOut('Ann', A), 'the hosted lock survives unrelated names');
-    assert.ok((s.pg as unknown as { unhostedFailures: SignInFailures }).unhostedFailures.lockedOut('payrol1\0ann\0' + A, A), 'the unhosted lock survives unrelated names');
+    assert.ok(s.host.unhostedSignIns.table('Payrol1').lockedOut('payrol1\0ann\0' + A, A), 'the unhosted lock survives unrelated names');
     assert.equal(after.hosted, after.unhosted, 'eviction policy cannot reveal file existence');
   } finally { await s.close(); }
 });
@@ -82,7 +82,7 @@ test('hosted and unhosted address lockouts match after distinct /64s fill the ta
   const s = await pgSetup(t);
   try {
     // Cross the reduced table limit through real PostgreSQL connections.
-    for (let i = 0; i < LOCKOUT.maxFailures * 2; i++) { s.ctl.from = `2001:db8:1:${i.toString(16)}::1`; await pgTry(s.port, `f${i}`, 'Payrol1', 'wrong'); }
+    for (let i = 0; i < 256 * 2; i++) { s.ctl.from = `2001:db8:1:${i.toString(16)}::1`; await pgTry(s.port, `f${i}`, 'Payrol1', 'wrong'); }
     const out: Record<string, string> = {};
     for (const [db, prefix] of [['Payroll', '2001:db8:2:1::'], ['Payrol1', '2001:db8:2:2::']] as const) {
       const msgs: string[] = [];
@@ -92,7 +92,7 @@ test('hosted and unhosted address lockouts match after distinct /64s fill the ta
     }
     assert.match(out.Payrol1, /password authentication failed/);
     assert.ok(s.store.addressLockedOut('2001:db8:2:1::5'));
-    assert.ok((s.pg as unknown as { unhostedFailures: SignInFailures }).unhostedFailures.addressLockedOut('2001:db8:2:2::5'));
+    assert.ok(s.host.unhostedSignIns.table('Payrol1').addressLockedOut('2001:db8:2:2::5'));
     assert.equal(out.Payroll, out.Payrol1, 'capacity cannot reveal file existence');
   } finally { await s.close(); }
 });
@@ -101,23 +101,23 @@ test('PostgreSQL rotating /64s retain their budgets with only 52 slots free in e
   const s = await pgSetup(t);
   t.after(() => s.close());
   const tables = [
-    ['Payroll', (s.store as unknown as { failures: SignInFailures }).failures],
-    ['Payrol1', (s.pg as unknown as { unhostedFailures: SignInFailures }).unhostedFailures],
+    ['Payroll', (s.store as unknown as { failures: SignInFailures }).failures, LOCKOUT.maxFailures],
+    ['Payrol1', s.host.unhostedSignIns.table('Payrol1'), 256],
   ] as const;
   const now = Math.floor(performance.now());
   t.mock.method(performance, 'now', () => now);
-  for (const [, table] of tables) for (let i = 0; i < LOCKOUT.maxFailures - 52; i++) {
+  for (const [, table, capacity] of tables) for (let i = 0; i < capacity - 52; i++) {
     table.set(`locked${i}`, { count: LOCKOUT.attempts, first: now, until: now + LOCKOUT.lockMs });
   }
   for (let round = 0; round <= LOCKOUT.addressAttempts; round++) for (let i = 0; i < 30; i++) {
     s.ctl.from = `2001:db8:1:${i.toString(16)}::1`;
     const replies: string[] = [];
-    for (const [database, table] of tables) {
+    for (const [database, table, capacity] of tables) {
       const before = s.hashes.mock.callCount();
       replies.push(norm(await pgTry(s.port, 'Ann', database, 'wrong')));
       assert.equal(s.hashes.mock.callCount() - before, 1, 'every refusal retains the same hash work');
       assert.equal(table.get(`\0address\0${addressBucket(s.ctl.from)}`)?.count, Math.min(round + 1, LOCKOUT.addressAttempts));
-      assert.ok(table.size <= LOCKOUT.maxFailures);
+      assert.ok(table.size <= capacity);
       if (round >= LOCKOUT.addressAttempts - 1) assert.ok(table.addressLockedOut(s.ctl.from));
     }
     assert.match(replies[0], /^28P01 password authentication failed/);
@@ -129,12 +129,12 @@ test('PostgreSQL failure messages and password work hide independent table satur
   const s = await pgSetup(t);
   t.after(() => s.close());
   const hosted = (s.store as unknown as { failures: SignInFailures }).failures;
-  const unhosted = (s.pg as unknown as { unhostedFailures: SignInFailures }).unhostedFailures;
+  const unhosted = s.host.unhostedSignIns.table('Payrol1');
   let now = Math.floor(performance.now());
   t.mock.method(performance, 'now', () => now);
-  const fill = (table: SignInFailures) => {
-    for (let i = table.size; i < LOCKOUT.maxFailures; i++) table.set(`filler${i}`, { count: 1, first: now });
-    assert.equal(table.size, LOCKOUT.maxFailures);
+  const fill = (table: SignInFailures, capacity: number) => {
+    for (let i = table.size; i < capacity; i++) table.set(`filler${i}`, { count: 1, first: now });
+    assert.equal(table.size, capacity);
   };
   const attempt = async (db: string, user = 'Ann') => {
     const before = s.hashes.mock.callCount();
@@ -147,19 +147,19 @@ test('PostgreSQL failure messages and password work hide independent table satur
     for (const user of ['Ann', 'made-up']) {
       assert.equal(await attempt('Payroll', user), await attempt('Payrol1', user), label);
     }
-    assert.ok(hosted.size <= LOCKOUT.maxFailures && unhosted.size <= LOCKOUT.maxFailures);
+    assert.ok(hosted.size <= LOCKOUT.maxFailures && unhosted.size <= 256);
   };
   // A real address spray, then generated live entries to reach capacity.
   s.ctl.from = '203.0.113.5';
-  await pool(100, 2, (i) => pgTry(s.port, `user${i}`, `Missing${i}`, 'wrong'));
+  await pool(100, 2, (i) => pgTry(s.port, `user${i}`, 'Payrol1', 'wrong'));
   assert.equal(unhosted.size, LOCKOUT.addressAttempts, 'a locked address admits no more names');
-  fill(unhosted);
+  fill(unhosted, 256);
   s.ctl.from = '192.0.2.77';
   await compare('only the unhosted table is full');
   for (let i = 0; i <= LOCKOUT.attempts; i++) await attempt('Payrol1');
   assert.ok(unhosted.lockedOut(unhosted.accountKey('Ann', s.ctl.from, 'Payrol1'), s.ctl.from));
   await compare('only the unhosted account is locked');
-  fill(hosted);
+  fill(hosted, LOCKOUT.maxFailures);
   await compare('both tables are full');
   for (let i = 0; i <= LOCKOUT.attempts; i++) await attempt('Payroll');
   assert.ok(s.store.lockedOut('Ann', s.ctl.from));
@@ -176,9 +176,10 @@ test('PostgreSQL failure messages and password work hide independent table satur
   assert.equal(unhosted.lockedOut(unhosted.accountKey('Ann', s.ctl.from, 'Payrol1'), s.ctl.from), undefined);
   hosted.clear();
   unhosted.clear();
-  fill(hosted);
+  fill(hosted, LOCKOUT.maxFailures);
   await compare('only the hosted table is full');
   for (const saturated of [hosted, unhosted]) {
+    const capacity = saturated === unhosted ? 256 : LOCKOUT.maxFailures;
     LOCKOUT.sharedFailures = 8;
     hosted.clear();
     unhosted.clear();
@@ -193,11 +194,11 @@ test('PostgreSQL failure messages and password work hide independent table satur
     s.ctl.from = '192.0.2.77';
     hosted.clear();
     unhosted.clear();
-    for (let i = 0; i < LOCKOUT.maxFailures; i++) saturated.set(`locked${i}`, { count: 5, first: now, until: now + LOCKOUT.lockMs });
+    for (let i = 0; i < capacity; i++) saturated.set(`locked${i}`, { count: 5, first: now, until: now + LOCKOUT.lockMs });
     await compare('only one table is full of protected locks');
     hosted.clear();
     unhosted.clear();
-    for (let i = 0; i < LOCKOUT.maxFailures; i++) saturated.countAddressFailure(`2001:db8:3:${i.toString(16)}::1`);
+    for (let i = 0; i < capacity; i++) saturated.countAddressFailure(`2001:db8:3:${i.toString(16)}::1`);
     const before = [...saturated];
     await compare('only one table is full of open address windows');
     assert.deepEqual([...saturated], before, 'capacity refusal preserves every live address budget');

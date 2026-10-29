@@ -24,7 +24,7 @@ import { chmodSync, existsSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { StoreError, type Store } from '../../store/src/index.ts';
+import { spendPasswordCheck, StoreError, type Store } from '../../store/src/index.ts';
 import { publicPasswordLockout } from './password-login-policy.ts';
 import { aiBlocker, aiRefusal } from './ai-access.ts';
 import type { Host } from './host.ts';
@@ -535,7 +535,15 @@ export class OAuthServer {
     // The account is asked for first, so the order of the checks doesn't tell a hosted file from one that isn't.
     if (!account) return again('Enter an account name.', 400);
     // Without a list to choose from, a name that isn't hosted is refused like a wrong password, so it doesn't say which files exist.
-    if (!store) return this.host.listFilesPublicly ? again('Choose a hosted file.', 400) : again(PASSWORD_REFUSAL);
+    if (!store) {
+      if (this.host.listFilesPublicly) return again('Choose a hosted file.', 400);
+      if (this.host.config.blockNewUsers()) return again(PASSWORD_REFUSAL);
+      const failures = this.host.unhostedSignIns.table(database);
+      const key = failures.accountKey(account, from, database);
+      if (failures.lockedOut(key, from) === undefined) await spendPasswordCheck(form.get('password') ?? '');
+      failures.record(key, from, false);
+      return again(PASSWORD_REFUSAL);
+    }
     // Every check, and the token, use the account's name as the file keeps it, found the way the file finds it at sign-in
     // (SQLite's case folding), so no name that only matches another one under a wider folding can stand in for it.
     const name = storedName(store, account) ?? account;
