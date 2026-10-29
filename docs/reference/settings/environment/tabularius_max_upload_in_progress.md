@@ -8,6 +8,6 @@ Combined byte reservation allowed across ongoing uploads and conversions.
 | Accepted values | Positive safe whole bytes, decimal digits only; 0, empty or anything else is refused |
 | Restart needed | Yes for a running server. |
 | Explained in | [ADMIN.md](../../../../ADMIN.md) |
-| Code | [packages/server/src/uploads.ts:49](../../../../packages/server/src/uploads.ts#L49) |
+| Code | [packages/server/src/uploads.ts:48](../../../../packages/server/src/uploads.ts#L48) |
 
 [All environment variables](../../../environment-variables.md)

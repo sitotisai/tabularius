@@ -20,7 +20,7 @@
 //   [field]  3801.2 ms  calc t12.f40 related 3 sql 1 cf 0 agg 2 stable  412 statements
 
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
-import { boolean } from './settings.ts';
+import { boolean, wholeNumber } from './settings.ts';
 
 const KEYWORDS = new Set(`
   select from where and or not in is null as on join cross left inner outer distinct order by group having limit offset
@@ -41,9 +41,15 @@ export function sqlShape(sql: string): string {
     .trim();
 }
 
-function minMs(): number {
-  const n = Number(process.env.TABULARIUS_TRACE_SQL_MIN_MS);
-  return Number.isFinite(n) && n > 0 ? n : 0;
+let minMsFor: string | undefined;
+let cachedMinMs = 0;
+export function minMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.TABULARIUS_TRACE_SQL_MIN_MS;
+  if (raw !== minMsFor) {
+    cachedMinMs = wholeNumber('TABULARIUS_TRACE_SQL_MIN_MS', { min: 0, max: 86_400_000, env }) ?? 0;
+    minMsFor = raw;
+  }
+  return cachedMinMs;
 }
 
 let tracedFor: string | undefined;

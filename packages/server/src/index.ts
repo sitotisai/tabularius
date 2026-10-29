@@ -7,6 +7,7 @@ import { AUTH_BODY_LIMIT } from './request-body.ts';
 import { parseRequestJson } from './request-json.ts';
 import { IdentityInFlight, busyHeaders } from './in-flight.ts';
 import { RequestGate, requestClass, isDataApiPath, isEventStream, isMcpStream } from './request-gate.ts';
+import { requestQueueLimit } from './setting-values.ts';
 import { StreamSlots } from './stream-slots.ts';
 import type { SmtpConfig } from './smtp.ts';
 import type { IncomingMessage, Server } from 'node:http';
@@ -384,7 +385,7 @@ export async function serve(opts: ServeOptions): Promise<{ server: Server; host:
     admin.log = log;
     const metrics = new Metrics();
     disposers.push(() => metrics.stop());
-    const requestGate = new RequestGate(opts.requestLimit, opts.requestQueue ?? Number(process.env.TABULARIUS_REQUEST_QUEUE ?? 64));
+    const requestGate = new RequestGate(opts.requestLimit, opts.requestQueue ?? requestQueueLimit());
     metrics.requestGate = requestGate;
     requestGate.holdsToken = (req) => api.holdsToken(req);
     admin.metrics = metrics;
