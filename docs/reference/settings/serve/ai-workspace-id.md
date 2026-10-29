@@ -8,7 +8,7 @@
 | Accepted values | Workspace id |
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | [`TABULARIUS_AI_WORKSPACE_ID`](../environment/tabularius_ai_workspace_id.md) |
-| Explained in | [README.md](../../../../README.md) |
+| Explained in | [docs/features.md](../../../features.md) |
 | Code | [packages/cli/src/main.ts:1450](../../../../packages/cli/src/main.ts#L1450) |
 
 [All serve flags](../serve-flags.md)

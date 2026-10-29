@@ -8,7 +8,7 @@
 | Accepted values | Whole number of tokens, 1 to 10,000,000 |
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | [`TABULARIUS_AI_RUN_TOKENS`](../environment/tabularius_ai_run_tokens.md) |
-| Explained in | [README.md](../../../../README.md) |
+| Explained in | [docs/features.md](../../../features.md) |
 | Code | [packages/cli/src/main.ts:1457](../../../../packages/cli/src/main.ts#L1457) |
 
 [All serve flags](../serve-flags.md)

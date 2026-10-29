@@ -8,6 +8,6 @@
 | Accepted values | Token string |
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | No direct environment equivalent |
-| Explained in | [README.md](../../../../README.md) |
+| Explained in | [docs/hosting-and-connecting.md](../../../hosting-and-connecting.md) |
 
 [All serve flags](../serve-flags.md)
