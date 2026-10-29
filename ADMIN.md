@@ -172,7 +172,7 @@ You need one of:
   (macOS, Linux) or `powershell -ExecutionPolicy Bypass -File scripts\install.ps1`
   (Windows). Each puts a `tabularius` command on your PATH and fetches Node
   if yours is too old.
-- **Docker**: `docker compose up -d` hosts `./Databases` on port 8080 (the README's Docker steps make the folder writable for the container and set the passwords).
+- **Docker**: `docker compose up -d` hosts `./Databases` on port 8080 ([Hosting for a team](docs/hosting-for-a-team.md) has the Docker steps that make the folder writable for the container and set the passwords).
 
 Then, on the server machine:
 
