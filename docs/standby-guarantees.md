@@ -171,7 +171,7 @@ These are listed rather than guessed. Each is behaviour the code has today, with
 | A standby of a standby | No: a standby serves no replication routes while it runs |
 | Automatic promotion, a witness or fencing | None; promotion is a person stopping the standby and starting `serve` |
 | `--workers` with a standby | `serve --workers N --replication-token T` is refused at start; run one process |
-| Encryption at rest with a standby | Not offered ([ADMIN.md](../ADMIN.md)); `serve` does not refuse the combination and no test runs it |
+| Encryption at rest with a standby | Not offered ([ADMIN.md](../ADMIN.md)); `serve` does not refuse the combination and no test runs it. The [design blocker](research/encryption-standby.md) explains why the current path writes plaintext and cannot check matching keys |
 | Standby disk full, or a copy cut off | The error is logged and retried with a growing delay; the half copy is a `.standby-partial` file that the next `serve` on the folder sweeps |
 | How long a takeover takes, how many seconds behind a standby may be | No fixed bound: lag is reported in changes and in seconds by `tabularius_standby_lag_seconds`; asynchronous replication means a takeover can lose up to that many seconds of acknowledged writes. A copy of a large file takes as long as the copy |
 | A standby's own edits to its file (a command line change such as `passwd` while the standby is stopped) | The standby refuses to start or to follow the file, names it and points to `--overwrite`; see Failback above (held by tests) |
