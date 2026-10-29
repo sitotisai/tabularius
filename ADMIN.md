@@ -1107,8 +1107,12 @@ first process unlocks the files before the others start, and encrypts each
 one again once the others have let go of it, when a file is closed from the
 admin console and when the server stops.
 
-Not yet together with `--workers`: `--progressive` and <!-- known-difference: Server operation ;; --progressive and --replication-token do not work together with --workers ;; Run one process, the default, to use them ;; An owner decision -->
-`--replication-token`. For those, run one process (the default).
+Not yet together with `--workers`: `--progressive` and <!-- known-difference: Server operation ;; --progressive and --replication-token do not work together with --workers ;; Run one process, the default, to use them ;; A cross-worker WAL and checkpoint protocol with integration tests -->
+`--replication-token`. For those, run one process (the default). Each worker
+has its own SQLite connection; a worker can checkpoint changes before another
+worker saves them for a progressive backup or standby. The required ownership,
+coordination and failure cases are in the
+[worker backup and replication design](docs/research/progressive-with-workers.md).
 
 Whole-table summaries, ExecuteSQL results and unstored calculations that
 depend only on the data are worked out once per server and kept beside each
