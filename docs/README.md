@@ -114,6 +114,7 @@ To read these pages offline with search, build the site: `npm run docs:build` wr
 - [Accessibility](accessibility.md) — Review accessibility checks, fixes and remaining gaps.
 - [File format](research/fmp12-format.md) — Explore what is known about the .fmp12 format and the evidence behind it.
 - [Prior work](research/prior-work.md) — Find the projects and sources behind the format research.
+- [Encryption and point-in-time backups](research/encryption-pitr.md) — Read what was found about encrypted stores with point-in-time backups, and the decisions needed to combine them.
 - [Write-back study](research/write-back.md) — Explore how design changes could be written back to a FileMaker file.
 - [UUIDv7 record identity](research/n3-uuid-record-ids.md) — Explore the design note for giving native-file records a durable, portable id beside the file-local record number.
 - [Secret taint tracking](research/secret-taint-tracking.md) — Explore a defense-in-depth design for preventing AI tools from returning values derived from secret fields.
