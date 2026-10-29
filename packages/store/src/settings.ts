@@ -146,6 +146,13 @@ export function checkServeSettings(env: Env = process.env): void {
   check(() => wholeNumber('TABULARIUS_PGWIRE_MAX_BUFFERED_ROWS', { min: 1, env }));
   check(() => wholeNumber('TABULARIUS_DRAIN_SECONDS', { min: 1, max: 86400, env }));
   check(() => wholeNumber('TABULARIUS_SCRIPT_MAX_RECORD_OPS', { env }));
+  check(() => wholeNumber('TABULARIUS_UPLOAD_IDLE_HOURS', { min: 0, max: 87600, env }));
+  check(() => wholeNumber('TABULARIUS_REQUEST_QUEUE', { min: 0, max: 100000, env }));
+  check(() => wholeNumber('TABULARIUS_CONTAINER_TTL', { min: 1, max: 3600, env }));
+  check(() => wholeNumber('TABULARIUS_MAX_UPLOAD', { min: 0, env }));
+  check(() => wholeNumber('TABULARIUS_PGWIRE_MAX_PARAM_BYTES', { min: 1, env }));
+  check(() => wholeNumber('TABULARIUS_MAX_SESSION_LOCKS', { min: 1, env }));
+  check(() => wholeNumber('TABULARIUS_TRACE_SQL_MIN_MS', { min: 0, max: 86_400_000, env }));
   for (const name of ['TABULARIUS_SQL_WRITES', 'TABULARIUS_LIST_FILES_PUBLICLY', 'TABULARIUS_ALLOW_PLAIN_HTTP']) check(() => boolean(name, { env }));
   check(() => boolean('TABULARIUS_OIDC_TRUST_EMAIL', { env, words: 'strict' }));
   if (problems.length) throw new Error(problems.join('\n'));

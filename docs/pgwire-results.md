@@ -9,8 +9,8 @@ A client that does not read what the server sent does not make the server queue 
 
 Bound parameters in a connection's portals share a separate **64 MiB
 (67,108,864 bytes)** cap. `TABULARIUS_PGWIRE_MAX_PARAM_BYTES` sets a positive
-whole-number byte limit, read at each Bind; unset, invalid or non-positive
-values (including 0) keep the default. Text counts by its UTF-8 byte length,
+whole-number byte limit in digits only, checked when the server starts and read at each Bind.
+Unset uses the default; invalid or non-positive values (including 0) stop startup. Text counts by its UTF-8 byte length,
 binary parameters by their input byte length, and nulls count as zero.
 A Bind that would exceed the total, including a single Bind larger than the
 cap, answers SQLSTATE `54000` with the limit and advice to close portals or
