@@ -1,0 +1,306 @@
+[
+  {
+    "name": "Filter",
+    "signature": "Filter ( text ; filterText )",
+    "summary": "Filter processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [
+      {
+        "formula": "Filter ( \"abc123\" ; \"a1\" )",
+        "result": "a1"
+      }
+    ]
+  },
+  {
+    "name": "Filtervalues",
+    "signature": "FilterValues ( text ; filterValues )",
+    "summary": "Filtervalues processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [
+      {
+        "formula": "FilterValues ( \"red¶blue¶red\" ; \"red¶green\" )",
+        "result": "red¶red"
+      }
+    ]
+  },
+  {
+    "name": "Getvalue",
+    "signature": "GetValue ( text ; number )",
+    "summary": "Getvalue processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [
+      {
+        "formula": "GetValue ( \"red¶blue\" ; 2 )",
+        "result": "blue"
+      }
+    ]
+  },
+  {
+    "name": "JSONarray",
+    "signature": "JSONArray",
+    "summary": "Jsonarray processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [],
+    "details": "A JSON type constant used as the type argument by JSONSetElement or JSONMakeArray."
+  },
+  {
+    "name": "JSONboolean",
+    "signature": "JSONBoolean",
+    "summary": "Jsonboolean processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [],
+    "details": "A JSON type constant used as the type argument by JSONSetElement or JSONMakeArray."
+  },
+  {
+    "name": "JSONdeleteelement",
+    "signature": "JSONDeleteElement ( json ; keyOrIndex )",
+    "summary": "Jsondeleteelement processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [
+      {
+        "formula": "JSONDeleteElement ( \"{\\\"a\\\":1,\\\"b\\\":2}\" ; \"a\" )",
+        "result": "{\"b\":2}"
+      }
+    ]
+  },
+  {
+    "name": "JSONformatelements",
+    "signature": "JSONFormatElements ( json )",
+    "summary": "Jsonformatelements processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [
+      {
+        "formula": "JSONFormatElements ( \"{\\\"a\\\":1}\" )",
+        "result": "{\r\t\"a\": 1\r}"
+      }
+    ]
+  },
+  {
+    "name": "JSONgetelement",
+    "signature": "JSONGetElement ( json ; keyOrIndex )",
+    "summary": "Jsongetelement processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [
+      {
+        "formula": "JSONGetElement ( \"{\\\"a\\\":1}\" ; \"a\" )",
+        "result": "1"
+      }
+    ]
+  },
+  {
+    "name": "JSONgetelementtype",
+    "signature": "JSONGetElementType ( json ; keyOrIndex )",
+    "summary": "Jsongetelementtype processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [
+      {
+        "formula": "JSONGetElementType ( \"{\\\"a\\\":1}\" ; \"a\" )",
+        "result": "2"
+      }
+    ]
+  },
+  {
+    "name": "JSONlistkeys",
+    "signature": "JSONListKeys ( json ; keyOrIndex )",
+    "summary": "Jsonlistkeys processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [
+      {
+        "formula": "JSONListKeys ( \"{\\\"a\\\":1}\" ; \"\" )",
+        "result": "a"
+      }
+    ]
+  },
+  {
+    "name": "JSONlistvalues",
+    "signature": "JSONListValues ( json ; keyOrIndex )",
+    "summary": "Jsonlistvalues processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [
+      {
+        "formula": "JSONListValues ( \"{\\\"a\\\":1}\" ; \"\" )",
+        "result": "1"
+      }
+    ]
+  },
+  {
+    "name": "JSONmakearray",
+    "signature": "JSONMakeArray ( text ; separator ; type )",
+    "summary": "Jsonmakearray processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [
+      {
+        "formula": "JSONMakeArray ( \"1|2\" ; \"|\" ; 2 )",
+        "result": "[1,2]"
+      }
+    ]
+  },
+  {
+    "name": "JSONnull",
+    "signature": "JSONNull",
+    "summary": "Jsonnull processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [],
+    "details": "A JSON type constant used as the type argument by JSONSetElement or JSONMakeArray."
+  },
+  {
+    "name": "JSONnumber",
+    "signature": "JSONNumber",
+    "summary": "Jsonnumber processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [],
+    "details": "A JSON type constant used as the type argument by JSONSetElement or JSONMakeArray."
+  },
+  {
+    "name": "JSONobject",
+    "signature": "JSONObject",
+    "summary": "Jsonobject processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [],
+    "details": "A JSON type constant used as the type argument by JSONSetElement or JSONMakeArray."
+  },
+  {
+    "name": "JSONparse",
+    "signature": "JSONParse ( json )",
+    "summary": "Jsonparse processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [
+      {
+        "formula": "JSONParse ( \"{\\\"a\\\":1}\" )",
+        "result": "{\"a\":1}"
+      }
+    ]
+  },
+  {
+    "name": "JSONparsedstate",
+    "signature": "JSONParsedState ( json )",
+    "summary": "Jsonparsedstate processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [
+      {
+        "formula": "JSONParsedState ( \"{\\\"a\\\":1}\" )",
+        "result": "1"
+      }
+    ]
+  },
+  {
+    "name": "JSONraw",
+    "signature": "JSONRaw",
+    "summary": "Jsonraw processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [],
+    "details": "A JSON type constant used as the type argument by JSONSetElement or JSONMakeArray."
+  },
+  {
+    "name": "JSONsetelement",
+    "signature": "JSONSetElement ( json ; key ; value ; type )",
+    "summary": "Jsonsetelement processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [
+      {
+        "formula": "JSONSetElement ( \"{}\" ; \"a\" ; 1 ; JSONNumber )",
+        "result": "{\"a\":1}"
+      }
+    ]
+  },
+  {
+    "name": "JSONstring",
+    "signature": "JSONString",
+    "summary": "Jsonstring processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [],
+    "details": "A JSON type constant used as the type argument by JSONSetElement or JSONMakeArray."
+  },
+  {
+    "name": "Leftvalues",
+    "signature": "LeftValues ( text ; number )",
+    "summary": "Leftvalues processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [
+      {
+        "formula": "LeftValues ( \"a¶b¶c\" ; 2 )",
+        "result": "a¶b"
+      }
+    ]
+  },
+  {
+    "name": "List",
+    "signature": "List ( value { ; value... } )",
+    "summary": "List processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [
+      {
+        "formula": "List ( \"a\" ; \"b\" )",
+        "result": "a¶b"
+      }
+    ]
+  },
+  {
+    "name": "Middlevalues",
+    "signature": "MiddleValues ( text ; start ; number )",
+    "summary": "Middlevalues processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [
+      {
+        "formula": "MiddleValues ( \"a¶b¶c\" ; 2 ; 1 )",
+        "result": "b"
+      }
+    ]
+  },
+  {
+    "name": "Rightvalues",
+    "signature": "RightValues ( text ; number )",
+    "summary": "Rightvalues processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [
+      {
+        "formula": "RightValues ( \"a¶b¶c\" ; 2 )",
+        "result": "b¶c"
+      }
+    ]
+  },
+  {
+    "name": "Sortvalues",
+    "signature": "SortValues ( text { ; dataType ; locale } )",
+    "summary": "Sortvalues processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [
+      {
+        "formula": "SortValues ( \"c¶a¶b\" )",
+        "result": "a¶b¶c"
+      }
+    ]
+  },
+  {
+    "name": "Uniquevalues",
+    "signature": "UniqueValues ( text { ; dataType ; locale } )",
+    "summary": "Uniquevalues processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [
+      {
+        "formula": "UniqueValues ( \"a¶b¶a\" )",
+        "result": "a¶b"
+      }
+    ]
+  },
+  {
+    "name": "Valuecount",
+    "signature": "ValueCount ( text )",
+    "summary": "Valuecount processes JSON or return-delimited values as named.",
+    "status": "works",
+    "examples": [
+      {
+        "formula": "ValueCount ( \"a¶b\" )",
+        "result": "2"
+      }
+    ]
+  },
+  {
+    "name": "Valuelistitems",
+    "signature": "ValueListItems ( fileName ; valueListName )",
+    "summary": "Reads the named value list from the current file context; the result depends on file state.",
+    "status": "works-differently",
+    "examples": [],
+    "differences": "Value-list contents require a file context and are unverified here."
+  }
+]
