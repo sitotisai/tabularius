@@ -714,3 +714,20 @@ for (const create of [false, true]) test(`Import Records: existing empty file ch
     assert.deepEqual(s.store.findIds('People'), []);
   } finally { s.close(); }
 });
+
+test('an update import does not charge the record budget for rows with no key to match', async () => {
+  const s = setup();
+  const old = process.env.TABULARIUS_SCRIPT_MAX_RECORD_OPS;
+  process.env.TABULARIUS_SCRIPT_MAX_RECORD_OPS = '10';
+  try {
+    const a = s.add({ Code: 'A', Region: 'West', Name: 'old' });
+    // Fifty rows with an empty key are skipped; one row matches. Charged as work done, the import needs 3 operations, not 53.
+    writeFileSync(join(s.dir, 'data.csv'), `${Array.from({ length: 50 }, () => ',,x,').join('\n')}\nA,West,new,\n`);
+    const r = await s.run({ importAction: 'update', fieldMapping: s.mapping(['Code', 'Region', 'Name', 'Note'], ['Code', 'Region']) }, { foundSet: [a] });
+    assert.equal(r.error, 0, JSON.stringify(r.actions));
+    assert.equal(s.data(a).Name, 'new');
+  } finally {
+    if (old === undefined) delete process.env.TABULARIUS_SCRIPT_MAX_RECORD_OPS; else process.env.TABULARIUS_SCRIPT_MAX_RECORD_OPS = old;
+    s.close();
+  }
+});

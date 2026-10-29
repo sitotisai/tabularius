@@ -145,6 +145,7 @@ export function checkServeSettings(env: Env = process.env): void {
   check(() => wholeNumber('TABULARIUS_WARM_HEAP_MB', { min: 1, env }));
   check(() => wholeNumber('TABULARIUS_PGWIRE_MAX_BUFFERED_ROWS', { min: 1, env }));
   check(() => wholeNumber('TABULARIUS_DRAIN_SECONDS', { min: 1, max: 86400, env }));
+  check(() => wholeNumber('TABULARIUS_SCRIPT_MAX_RECORD_OPS', { env }));
   for (const name of ['TABULARIUS_SQL_WRITES', 'TABULARIUS_LIST_FILES_PUBLICLY', 'TABULARIUS_ALLOW_PLAIN_HTTP']) check(() => boolean(name, { env }));
   check(() => boolean('TABULARIUS_OIDC_TRUST_EMAIL', { env, words: 'strict' }));
   if (problems.length) throw new Error(problems.join('\n'));
