@@ -1,10 +1,11 @@
+import { oidcBrowser } from './oidc-browser.ts';
 // Sign-in through an identity provider, against a stand-in OpenID Connect provider.
 import { test, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, chownSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, chownSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createHash, generateKeyPairSync, sign } from 'node:crypto';
+import { createHash, generateKeyPairSync, randomBytes, sign } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { assertSameOidcFile, oidcHostDirectoryWarning, Oidc, type Resume } from '../src/oidc.ts';
@@ -13,6 +14,8 @@ import { Host } from '../src/host.ts';
 import { serve } from '../src/index.ts';
 import type { Store } from '../../store/src/index.ts';
 import { expiryClock, ExpiryClock } from '../../store/src/clock.ts';
+
+const fetch = oidcBrowser();
 
 // The remote identity provider has its own clock, independent of host-clock tests.
 const providerNow = Date.now;
@@ -24,8 +27,6 @@ beforeEach((t) => {
   t.mock.method(expiryClock, 'now', () => clock.now());
 });
 
-const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
-const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtures';
 let dir: string;
 let server: Server;
 let idp: Server;
@@ -52,7 +53,6 @@ function idToken(claims: Record<string, unknown>): string {
 }
 
 before(async () => {
-  if (skip) return;
   idp = createServer(async (req, res) => {
     const url = new URL(req.url!, issuer);
     const send = (body: unknown, status = 200) => res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body));
@@ -80,16 +80,16 @@ before(async () => {
 
   dir = mkdtempSync(join(tmpdir(), 'tabularius-'));
   chmodSync(dir, 0o755); // Same mode as the CLI's recursive mkdir under the usual umask.
-  copyFileSync(fixture, join(dir, 'Charts.fmp12'));
   const s = await serve({ dir, port: 0, log: () => {}, oidc: { name: 'Test IdP', issuer, clientId: 'tabularius' } });
   server = s.server;
   base = s.url;
-  store = s.host.get('Charts')!;
+  store = s.host.create('Test');
+  store.applyDesign([{ op: 'createTable', name: 'Items', fields: [{ name: 'Name' }] }]);
+  store.create('Items', { Name: 'Synthetic' });
   host = s.host;
   store.setExternalAccount('Staff', store.privilegeSets().find((p) => p.id === 1)!.name);
+  store.savePrivilegeSet({ name: '[Read-Only Access]', records: { view: true, edit: false, create: false, delete: false }, layouts: 'viewOnly', valueLists: 'viewOnly', scripts: 'viewOnly', extendedPrivileges: ['fmapp', 'fmrest'] });
   store.setExternalAccount('pat@example.com', '[Read-Only Access]');
-  const ro = store.privilegeSet('[Read-Only Access]')!;
-  store.savePrivilegeSet({ ...ro, extendedPrivileges: [...ro.extendedPrivileges, 'fmapp'] });
   secondOidc = new Oidc(s.host, new DataApi(s.host), { name: 'Test IdP', issuer, clientId: 'tabularius' });
   secondary = createServer((req, res) => { void secondOidc.handle(req, res, new URL(req.url!, 'http://localhost')); });
   await new Promise<void>((r) => secondary.listen(0, '127.0.0.1', r));
@@ -105,7 +105,8 @@ after(async () => {
 
 /** Goes through the whole sign-in; returns where the server sends the browser back to. */
 async function signIn(): Promise<URLSearchParams> {
-  const start = await fetch(`${base}/tabularius/auth/v1/oidc/start?db=Charts`, { redirect: 'manual' });
+  const clientState = randomBytes(24).toString('hex');
+  const start = await fetch(`${base}/tabularius/auth/v1/oidc/start?db=Test&client_state=${clientState}`, { redirect: 'manual' });
   assert.equal(start.status, 302);
   const auth = new URL(start.headers.get('location')!);
   assert.equal(auth.origin + auth.pathname, `${issuer}/authorize`);
@@ -116,35 +117,37 @@ async function signIn(): Promise<URLSearchParams> {
   assert.equal(back.status, 302);
   const to = back.headers.get('location')!;
   assert.ok(to.startsWith('/app/#'), to);
-  return new URLSearchParams(to.slice('/app/#'.length));
+  const fragment = new URLSearchParams(to.slice('/app/#'.length));
+  assert.equal(fragment.get('state'), clientState, 'a signed provider response echoes only the initiating tab state');
+  return fragment;
 }
 
-const layouts = (token: string) => fetch(`${base}/fmi/data/vLatest/databases/Charts/layouts`, { headers: { authorization: `Bearer ${token}` } }).then((r) => r.json());
+const layouts = (token: string) => fetch(`${base}/fmi/data/vLatest/databases/Test/layouts`, { headers: { authorization: `Bearer ${token}` } }).then((r) => r.json());
 
-test('identity provider sign-in: a group gives its external account\'s privilege set', { skip }, async () => {
+test('identity provider sign-in: a group gives its external account\'s privilege set', async () => {
   const providers = await fetch(`${base}/tabularius/auth/v1/providers`).then((r) => r.json());
   assert.deepEqual(providers.providers.map((p: { name: string }) => p.name), ['Test IdP']);
 
   person = { email: 'sam@example.com', email_verified: true, groups: ['Interns', 'Staff'] };
   const ok = await signIn();
-  assert.equal(ok.get('db'), 'Charts');
+  assert.equal(ok.get('db'), 'Test');
   const r = await layouts(ok.get('token')!);
   assert.equal(r.messages[0].code, '0');
 });
 
-test('pending sign-in is shared between handlers, single-use and expires', { skip }, async () => {
+test('pending sign-in is shared between handlers, single-use and expires', async () => {
   person = { email: 'sam@example.com', email_verified: true, groups: ['Staff'] };
-  const start = await fetch(`${base}/tabularius/auth/v1/oidc/start?db=Charts`, { redirect: 'manual' });
+  const start = await fetch(`${base}/tabularius/auth/v1/oidc/start?db=Test`, { redirect: 'manual' });
   const auth = new URL(start.headers.get('location')!);
   const code = Math.random().toString(36).slice(2);
   codes.set(code, { nonce: auth.searchParams.get('nonce')!, challenge: auth.searchParams.get('code_challenge')! });
   const callback = () => fetch(`${secondaryBase}/tabularius/auth/v1/oidc/callback?code=${code}&state=${auth.searchParams.get('state')}`, { redirect: 'manual' });
   const done = await callback();
-  assert.match(done.headers.get('location')!, /#db=Charts&token=/);
+  assert.match(done.headers.get('location')!, /#db=Test&token=/);
   const replay = await callback();
   assert.match(decodeURIComponent(replay.headers.get('location')!), /already used/);
 
-  const expiredStart = await fetch(`${base}/tabularius/auth/v1/oidc/start?db=Charts`, { redirect: 'manual' });
+  const expiredStart = await fetch(`${base}/tabularius/auth/v1/oidc/start?db=Test`, { redirect: 'manual' });
   const expiredAuth = new URL(expiredStart.headers.get('location')!);
   const db = new DatabaseSync(join(dir, '.openhbam-oidc', 'pending.sqlite'));
   db.prepare('UPDATE pending SET expires = 0 WHERE state = ?').run(expiredAuth.searchParams.get('state'));
@@ -153,7 +156,7 @@ test('pending sign-in is shared between handlers, single-use and expires', { ski
   db.close();
 });
 
-test('a Data API app\'s sign-in is shared between handlers: started on one, finished on another, taken once by a third', { skip }, async () => {
+test('a Data API app\'s sign-in is shared between handlers: started on one, finished on another, taken once by a third', async () => {
   person = { email: 'sam@example.com', email_verified: true, groups: ['Staff'] };
   const start = await fetch(`${secondaryBase}/oauth/getoauthurl?trackingID=t1&provider=test-idp`, { headers: { 'x-fms-return-url': `${secondaryBase}/done` } });
   assert.equal(start.status, 200, await start.clone().text());
@@ -183,38 +186,38 @@ test('a Data API app\'s sign-in is shared between handlers: started on one, fini
   assert.equal(secondOidc.takeGrant(requestId2, identifier2), undefined, 'good once');
 });
 
-test('abandoned AI resume expires and a late callback fails', { skip }, async () => {
+test('abandoned AI resume expires and a late callback fails', async () => {
   const request = { headers: { host: 'localhost' }, socket: { encrypted: false } } as never;
-  let location = '';
-  const response = { writeHead(_status: number, headers: Record<string, string>) { location = headers.location; return this; }, end() {} } as never;
+  let location = '', cookie = '';
+  const response = { setHeader(name: string, value: string | string[]) { if (name === 'set-cookie') cookie = (Array.isArray(value) ? value.at(-1)! : value).split(';')[0]; }, writeHead(_status: number, headers: Record<string, string>) { location = headers.location; return this; }, end() {} } as never;
   const resume: Resume = { done() {}, fail() {} };
   const oidc = new Oidc(host, new DataApi(host), { name: 'Test IdP', issuer, clientId: 'tabularius' });
   const local = createServer((req, res) => { void oidc.handle(req, res, new URL(req.url!, 'http://localhost')); });
   await new Promise<void>((resolve) => local.listen(0, '127.0.0.1', resolve));
-  await oidc.begin('test-idp', 'Charts', request, response, resume);
+  await oidc.begin('test-idp', 'Test', request, response, resume);
   const auth = new URL(location);
   const db = new DatabaseSync(join(dir, '.openhbam-oidc', 'pending.sqlite'));
   db.prepare('UPDATE pending SET expires = 0 WHERE state = ?').run(auth.searchParams.get('state'));
-  const late = await fetch(`http://127.0.0.1:${(local.address() as { port: number }).port}/tabularius/auth/v1/oidc/callback?code=x&state=${auth.searchParams.get('state')}`, { redirect: 'manual' });
+  const late = await fetch(`http://127.0.0.1:${(local.address() as { port: number }).port}/tabularius/auth/v1/oidc/callback?code=x&state=${auth.searchParams.get('state')}`, { redirect: 'manual', headers: { cookie } });
   assert.match(decodeURIComponent(late.headers.get('location')!), /took too long/);
   await new Promise<void>((resolve) => local.close(() => resolve()));
   db.close();
 });
 
-test('persisted AI sign-in with a lost resume handler cannot fall back to web login', { skip }, async () => {
+test('persisted AI sign-in with a lost resume handler cannot fall back to web login', async () => {
   const request = { headers: { host: 'localhost' }, socket: { encrypted: false } } as never;
-  let location = '';
-  const response = { writeHead(_status: number, headers: Record<string, string>) { location = headers.location; return this; }, end() {} } as never;
+  let location = '', cookie = '';
+  const response = { setHeader(name: string, value: string | string[]) { if (name === 'set-cookie') cookie = (Array.isArray(value) ? value.at(-1)! : value).split(';')[0]; }, writeHead(_status: number, headers: Record<string, string>) { location = headers.location; return this; }, end() {} } as never;
   const resume: Resume = { done() { assert.fail('must not finish as web login'); }, fail() {} };
   const first = new Oidc(host, new DataApi(host), { name: 'Test IdP', issuer, clientId: 'tabularius' });
-  await first.begin('test-idp', 'Charts', request, response, resume);
+  await first.begin('test-idp', 'Test', request, response, resume);
   const state = new URL(location).searchParams.get('state')!;
-  const reply = await fetch(`${secondaryBase}/tabularius/auth/v1/oidc/callback?code=x&state=${state}`, { redirect: 'manual' });
+  const reply = await fetch(`${secondaryBase}/tabularius/auth/v1/oidc/callback?code=x&state=${state}`, { redirect: 'manual', headers: { cookie } });
   assert.match(decodeURIComponent(reply.headers.get('location')!), /app sign-in expired/);
 });
 
-test('callback does not continue when consuming pending state fails', { skip }, async () => {
-  const start = await fetch(`${base}/tabularius/auth/v1/oidc/start?db=Charts`, { redirect: 'manual' });
+test('callback does not continue when consuming pending state fails', async () => {
+  const start = await fetch(`${base}/tabularius/auth/v1/oidc/start?db=Test`, { redirect: 'manual' });
   const state = new URL(start.headers.get('location')!).searchParams.get('state')!;
   const db = new DatabaseSync(join(dir, '.openhbam-oidc', 'pending.sqlite'));
   db.exec("CREATE TRIGGER refuse_oidc_consume BEFORE DELETE ON pending BEGIN SELECT RAISE(ABORT, 'forced consume failure'); END");
@@ -229,7 +232,7 @@ test('callback does not continue when consuming pending state fails', { skip }, 
   }
 });
 
-test('OIDC pending state and Data API grants issued during rollback remain usable', { skip }, async (t) => {
+test('OIDC pending state and Data API grants issued during rollback remain usable', async (t) => {
   let wall = Date.now(), mono = performance.now();
   t.mock.method(Date, 'now', () => wall);
   t.mock.method(performance, 'now', () => mono);
@@ -253,8 +256,8 @@ test('OIDC pending state and Data API grants issued during rollback remain usabl
   assert.equal(grant.expires, clock.now() + 5 * 60_000);
 });
 
-test('callback rechecks expiry after consuming the pending row', { skip }, async () => {
-  const start = await fetch(`${base}/tabularius/auth/v1/oidc/start?db=Charts`, { redirect: 'manual' });
+test('callback rechecks expiry after consuming the pending row', async () => {
+  const start = await fetch(`${base}/tabularius/auth/v1/oidc/start?db=Test`, { redirect: 'manual' });
   const state = new URL(start.headers.get('location')!).searchParams.get('state')!;
   const db = new DatabaseSync(join(dir, '.openhbam-oidc', 'pending.sqlite'));
   db.prepare('UPDATE pending SET expires = ? WHERE state = ?').run(Date.now() + 50_000, state);
@@ -273,8 +276,8 @@ test('callback rechecks expiry after consuming the pending row', { skip }, async
   }
 });
 
-test('callback rejects pending expiry implausibly far in the future after clock rollback', { skip }, async () => {
-  const start = await fetch(`${base}/tabularius/auth/v1/oidc/start?db=Charts`, { redirect: 'manual' });
+test('callback rejects pending expiry implausibly far in the future after clock rollback', async () => {
+  const start = await fetch(`${base}/tabularius/auth/v1/oidc/start?db=Test`, { redirect: 'manual' });
   const state = new URL(start.headers.get('location')!).searchParams.get('state')!;
   const db = new DatabaseSync(join(dir, '.openhbam-oidc', 'pending.sqlite'));
   db.prepare('UPDATE pending SET expires = ? WHERE state = ?').run(Date.now() + 20 * 60_000, state);
@@ -286,11 +289,11 @@ test('callback rejects pending expiry implausibly far in the future after clock 
   } finally { db.close(); }
 });
 
-test('pending OIDC sign-in expires after elapsed lifetime despite a backward wall-clock jump', { skip }, async (t) => {
+test('pending OIDC sign-in expires after elapsed lifetime despite a backward wall-clock jump', async (t) => {
   let wall = Date.now(), mono = performance.now();
   t.mock.method(Date, 'now', () => wall);
   t.mock.method(performance, 'now', () => mono);
-  const start = await fetch(`${base}/tabularius/auth/v1/oidc/start?db=Charts`, { redirect: 'manual' });
+  const start = await fetch(`${base}/tabularius/auth/v1/oidc/start?db=Test`, { redirect: 'manual' });
   const state = new URL(start.headers.get('location')!).searchParams.get('state')!;
   const before = tokenRequests;
   wall -= 3600_000;
@@ -300,8 +303,8 @@ test('pending OIDC sign-in expires after elapsed lifetime despite a backward wal
   assert.equal(tokenRequests, before);
 });
 
-test('callback rejects a pending row created in the future after a clock rollback', { skip }, async () => {
-  const start = await fetch(`${base}/tabularius/auth/v1/oidc/start?db=Charts`, { redirect: 'manual' });
+test('callback rejects a pending row created in the future after a clock rollback', async () => {
+  const start = await fetch(`${base}/tabularius/auth/v1/oidc/start?db=Test`, { redirect: 'manual' });
   const state = new URL(start.headers.get('location')!).searchParams.get('state')!;
   const db = new DatabaseSync(join(dir, '.openhbam-oidc', 'pending.sqlite'));
   const future = Date.now() + 120_000;
@@ -316,7 +319,7 @@ test('callback rejects a pending row created in the future after a clock rollbac
   } finally { Date.now = realNow; db.close(); }
 });
 
-test('OIDC closes SQLite when the initial pending-row prune fails', { skip }, () => {
+test('OIDC closes SQLite when the initial pending-row prune fails', () => {
   const testDir = mkdtempSync(join(tmpdir(), 'tabularius-oidc-init-'));
   const storeDir = join(testDir, '.openhbam-oidc');
   mkdirSync(storeDir, { mode: 0o700 });
@@ -338,7 +341,7 @@ test('OIDC closes SQLite when the initial pending-row prune fails', { skip }, ()
   }
 });
 
-test('OIDC file identity check rejects replacement and host folder warning is nonblocking', { skip }, () => {
+test('OIDC file identity check rejects replacement and host folder warning is nonblocking', () => {
   assert.throws(() => assertSameOidcFile({ dev: 1, ino: 2 }, { dev: 1, ino: 3 }), /changed while opening/);
   const testDir = mkdtempSync(join(tmpdir(), 'tabularius-oidc-host-'));
   try {
@@ -354,11 +357,11 @@ test('OIDC file identity check rejects replacement and host folder warning is no
   } finally { rmSync(testDir, { recursive: true, force: true }); }
 });
 
-test('SQLite lock contention returns a temporary-unavailable sign-in error', { skip }, async () => {
+test('SQLite lock contention returns a temporary-unavailable sign-in error', async () => {
   const db = new DatabaseSync(join(dir, '.openhbam-oidc', 'pending.sqlite'));
   db.exec('BEGIN IMMEDIATE');
   try {
-    const reply = await fetch(`${base}/tabularius/auth/v1/oidc/start?db=Charts`, { redirect: 'manual' });
+    const reply = await fetch(`${base}/tabularius/auth/v1/oidc/start?db=Test`, { redirect: 'manual' });
     assert.match(decodeURIComponent(reply.headers.get('location')!), /temporarily unavailable/);
   } finally {
     db.exec('ROLLBACK');
@@ -366,7 +369,7 @@ test('SQLite lock contention returns a temporary-unavailable sign-in error', { s
   }
 });
 
-test('OIDC storage refuses symlinks and permissive main files and sidecars', { skip }, () => {
+test('OIDC storage refuses symlinks and permissive main files and sidecars', () => {
   const testDir = mkdtempSync(join(tmpdir(), 'tabularius-oidc-secure-'));
   const storeDir = join(testDir, '.openhbam-oidc');
   const path = join(storeDir, 'pending.sqlite');
@@ -405,7 +408,7 @@ test('OIDC storage refuses symlinks and permissive main files and sidecars', { s
   rmSync(testDir, { recursive: true, force: true });
 });
 
-test('OIDC startup failure is visible in administrator status', { skip }, async () => {
+test('OIDC startup failure is visible in administrator status', async () => {
   const badDir = mkdtempSync(join(tmpdir(), 'tabularius-oidc-admin-'));
   const path = join(badDir, '.openhbam-oidc');
   symlinkSync(join(badDir, 'missing'), path);
@@ -420,7 +423,7 @@ test('OIDC startup failure is visible in administrator status', { skip }, async 
   }
 });
 
-test('pending sign-in cap is shared by handlers', { skip }, async () => {
+test('pending sign-in cap is shared by handlers', async () => {
   const db = new DatabaseSync(join(dir, '.openhbam-oidc', 'pending.sqlite'));
   try {
     db.prepare('DELETE FROM pending').run();
@@ -428,9 +431,9 @@ test('pending sign-in cap is shared by handlers', { skip }, async () => {
     // One transaction: 2000 separate commits took 7 s on a slow disk, long enough for the server to close the
     // test's idle keep-alive connection (ECONNRESET), and the rows then stayed and failed the tests after it.
     db.exec('BEGIN');
-    for (let i = 0; i < 2000; i++) insert.run(`cap-${i}`, 'test-idp', 'Charts', 'v', 'n', 'http://localhost/callback', Date.now() + 60_000);
+    for (let i = 0; i < 2000; i++) insert.run(`cap-${i}`, 'test-idp', 'Test', 'v', 'n', 'http://localhost/callback', Date.now() + 60_000);
     db.exec('COMMIT');
-    const denied = await fetch(`${secondaryBase}/tabularius/auth/v1/oidc/start?db=Charts`, { redirect: 'manual' });
+    const denied = await fetch(`${secondaryBase}/tabularius/auth/v1/oidc/start?db=Test`, { redirect: 'manual' });
     assert.match(decodeURIComponent(denied.headers.get('location')!), /Too many sign-ins/);
   } finally {
     if (db.isTransaction) db.exec('ROLLBACK');
@@ -439,17 +442,17 @@ test('pending sign-in cap is shared by handlers', { skip }, async () => {
   }
 });
 
-test('identity provider sign-in: an account named the email wins over groups', { skip }, async () => {
+test('identity provider sign-in: an account named the email wins over groups', async () => {
   person = { email: 'Pat@Example.com', email_verified: true, groups: ['Staff'] };
   const back = await signIn();
   const token = back.get('token')!;
-  const rec = await fetch(`${base}/fmi/data/vLatest/databases/Charts/layouts/Congress/records/1`, {
+  const rec = await fetch(`${base}/fmi/data/vLatest/databases/Test/layouts/Items/records/1`, {
     method: 'PATCH', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ fieldData: { Name: 'x' } }),
   }).then((r) => r.json());
   assert.equal(rec.messages[0].code, '200', '[Read-Only Access] can\'t edit');
 });
 
-test('identity provider sign-in: refused without a matching account or with a forged token', { skip }, async () => {
+test('identity provider sign-in: refused without a matching account or with a forged token', async () => {
   person = { email: 'stranger@example.com', email_verified: true, groups: ['Nobody'] };
   const none = await signIn();
   assert.match(none.get('error')!, /no external account/);

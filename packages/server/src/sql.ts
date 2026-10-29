@@ -216,6 +216,7 @@ export async function signIn(req: IncomingMessage, store: Store, api: DataApi, v
     const [name, ...rest] = Buffer.from(basic, 'base64').toString('utf8').split(':');
     refreshAuthCache(store, verified);
     const from = clientAddress(req);
+    api.refuseIfBlocked(store, from, name);
     // Per address: a password checked from one place (a lockout or a blank-password rule can differ) is not proof for another.
     const key = createHash('sha256').update(`${store.path}\0${from}\0${basic}`).digest('hex');
     let checkedPassword = false;

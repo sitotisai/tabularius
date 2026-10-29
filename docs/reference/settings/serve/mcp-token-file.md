@@ -5,7 +5,7 @@
 | Setting | Value |
 | --- | --- |
 | Default | Unset; loopback administration only |
-| Accepted values | File path (a private regular file holding the token) |
+| Accepted values | File path (a private regular file holding a token of at least 16 characters) |
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | No direct environment equivalent |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |

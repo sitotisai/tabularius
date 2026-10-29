@@ -1,8 +1,9 @@
+import { oidcBrowser } from './oidc-browser.ts';
 // More than one identity provider at once, domain-mapped external accounts,
 // and a provider that replies with form_post and an Apple-style signed secret.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { copyFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash, createPublicKey, generateKeyPairSync, sign, verify } from 'node:crypto';
@@ -11,8 +12,8 @@ import { serve } from '../src/index.ts';
 import type { Store } from '../../store/src/index.ts';
 import { emailTrusted, type OidcProvider } from '../src/oidc.ts';
 
-const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
-const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtures';
+const fetch = oidcBrowser();
+
 
 const b64 = (v: unknown) => Buffer.from(JSON.stringify(v)).toString('base64url');
 
@@ -72,15 +73,14 @@ const apple = new Idp();
 const appleKey = generateKeyPairSync('ec', { namedCurve: 'P-256' });
 
 before(async () => {
-  if (skip) return;
   await google.listen();
   await apple.listen();
   apple.appleVerify = { publicKey: appleKey.publicKey, teamId: 'TEAM123', clientId: 'tabularius' };
 
   dir = mkdtempSync(join(tmpdir(), 'tabularius-'));
-  copyFileSync(fixture, join(dir, 'Charts.fmp12'));
   const s = await serve({
-    dir, port: 0, log: () => {},
+    // The local HTTP listener stands in for an HTTPS reverse proxy for form_post.
+    dir, port: 0, log: () => {}, publicUrl: 'https://127.0.0.1',
     oidc: [
       { name: 'Google', issuer: google.issuer, clientId: 'tabularius' },
       { name: 'Apple', issuer: apple.issuer, clientId: 'tabularius', formPost: true,
@@ -89,7 +89,9 @@ before(async () => {
   });
   server = s.server;
   base = s.url;
-  store = s.host.get('Charts')!;
+  store = s.host.create('Test');
+  store.applyDesign([{ op: 'createTable', name: 'Items', fields: [{ name: 'Name' }] }]);
+  store.create('Items', { Name: 'Synthetic' });
   // A whole domain maps to one external account (beyond FileMaker).
   store.setExternalAccount('@example.com', store.privilegeSets().find((p) => p.id === 1)!.name);
 });
@@ -101,14 +103,14 @@ after(async () => {
   if (dir) rmSync(dir, { recursive: true });
 });
 
-test('both providers are listed with distinct slugs', { skip }, async () => {
+test('both providers are listed with distinct slugs', async () => {
   const { providers } = await fetch(`${base}/tabularius/auth/v1/providers`).then((r) => r.json());
   assert.deepEqual(providers.map((p: { name: string; slug: string }) => [p.name, p.slug]), [['Google', 'google'], ['Apple', 'apple']]);
   assert.deepEqual(providers.map((p: { start: string }) => p.start), ['/tabularius/auth/v1/oidc/start/google', '/tabularius/auth/v1/oidc/start/apple']);
 });
 
-test('start/<slug> routes to the chosen provider and maps by email domain', { skip }, async () => {
-  const start = await fetch(`${base}/tabularius/auth/v1/oidc/start/google?db=Charts`, { redirect: 'manual' });
+test('start/<slug> routes to the chosen provider and maps by email domain', async () => {
+  const start = await fetch(`${base}/tabularius/auth/v1/oidc/start/google?db=Test`, { redirect: 'manual' });
   assert.equal(start.status, 302);
   const auth = new URL(start.headers.get('location')!);
   assert.equal(auth.origin, google.issuer, 'went to Google, not Apple');
@@ -117,18 +119,18 @@ test('start/<slug> routes to the chosen provider and maps by email domain', { sk
   google.person = { email: 'sam@example.com', email_verified: true }; // no exact account, no group — a verified email's domain carries it
   const back = await fetch(`${base}/tabularius/auth/v1/oidc/callback?code=${code}&state=${auth.searchParams.get('state')}`, { redirect: 'manual' });
   const to = new URLSearchParams(back.headers.get('location')!.slice('/app/#'.length));
-  assert.equal(to.get('db'), 'Charts', back.headers.get('location')!);
-  const r = await fetch(`${base}/fmi/data/vLatest/databases/Charts/layouts`, { headers: { authorization: `Bearer ${to.get('token')}` } }).then((x) => x.json());
+  assert.equal(to.get('db'), 'Test', back.headers.get('location')!);
+  const r = await fetch(`${base}/fmi/data/vLatest/databases/Test/layouts`, { headers: { authorization: `Bearer ${to.get('token')}` } }).then((x) => x.json());
   assert.equal(r.messages[0].code, '0');
 });
 
-test('an unknown provider slug is refused', { skip }, async () => {
-  const r = await fetch(`${base}/tabularius/auth/v1/oidc/start/nope?db=Charts`, { redirect: 'manual' });
+test('an unknown provider slug is refused', async () => {
+  const r = await fetch(`${base}/tabularius/auth/v1/oidc/start/nope?db=Test`, { redirect: 'manual' });
   assert.match(decodeURIComponent(r.headers.get('location')!), /provider/i);
 });
 
-test('a form_post provider signs in over POST with an Apple-style signed secret', { skip }, async () => {
-  const start = await fetch(`${base}/tabularius/auth/v1/oidc/start/apple?db=Charts`, { redirect: 'manual' });
+test('a form_post provider signs in over POST with an Apple-style signed secret', async () => {
+  const start = await fetch(`${base}/tabularius/auth/v1/oidc/start/apple?db=Test`, { redirect: 'manual' });
   const auth = new URL(start.headers.get('location')!);
   assert.equal(auth.origin, apple.issuer);
   assert.equal(auth.searchParams.get('response_mode'), 'form_post');
@@ -142,13 +144,13 @@ test('a form_post provider signs in over POST with an Apple-style signed secret'
     redirect: 'manual',
   });
   const to = new URLSearchParams(back.headers.get('location')!.slice('/app/#'.length));
-  assert.equal(to.get('db'), 'Charts', back.headers.get('location')!);
+  assert.equal(to.get('db'), 'Test', back.headers.get('location')!);
   assert.ok(to.get('token'));
 });
 
 /** Signs in through Google with these ID token claims; the redirect's location. */
 async function viaGoogle(person: Record<string, unknown>): Promise<string> {
-  const start = await fetch(`${base}/tabularius/auth/v1/oidc/start/google?db=Charts`, { redirect: 'manual' });
+  const start = await fetch(`${base}/tabularius/auth/v1/oidc/start/google?db=Test`, { redirect: 'manual' });
   const auth = new URL(start.headers.get('location')!);
   const code = 'g-' + Math.random().toString(36).slice(2);
   google.codes.set(code, { nonce: auth.searchParams.get('nonce')!, challenge: auth.searchParams.get('code_challenge')! });
@@ -157,7 +159,7 @@ async function viaGoogle(person: Record<string, unknown>): Promise<string> {
   return decodeURIComponent(back.headers.get('location') ?? '');
 }
 
-test('an email signs in only when the provider verified it', { skip }, async () => {
+test('an email signs in only when the provider verified it', async () => {
   // Anyone who can put an address into a provider's email claim would otherwise get in.
   const unsaid = await viaGoogle({ email: 'mallory@example.com' });
   assert.ok(!unsaid.includes('token='), unsaid);

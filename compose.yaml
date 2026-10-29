@@ -22,6 +22,7 @@ services:
       TABULARIUS_BACKUP_KEEP: "7"
       # Optional: a fixed MCP token for AI clients on other machines, sent as a Bearer token.
       # Every /mcp request needs a credential.
-      # TABULARIUS_MCP_TOKEN: change-me
+      # Prefer the generated administrator token; tabularius mcp-token /data prints it.
+      # An override must be a randomly generated secret of at least 16 characters.
       # The address people use to reach the server, if it's behind a proxy.
       # TABULARIUS_PUBLIC_URL: https://filemaker.example.com

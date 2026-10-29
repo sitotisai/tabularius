@@ -5772,9 +5772,9 @@ export class Store {
     const step = checkTotp(row.secret, code);
     if (step === undefined || (row.last_step !== null && step <= row.last_step)) return this.failures.record(key, from, false, known);
     this.requireFreeOfOthers();
-    if (!this.failures.record(key, from, true, known)) return false;
-    this.sql.prepare('UPDATE _fm_totp SET last_step = ? WHERE account = ? COLLATE NOCASE').run(step, account);
-    return true;
+    // Consume only the still-current secret and an unused step, even if another connection verified after our read.
+    const used = this.sql.prepare('UPDATE _fm_totp SET last_step = ? WHERE account = ? COLLATE NOCASE AND secret = ? AND confirmed = 1 AND (last_step IS NULL OR last_step < ?)').run(step, account, row.secret, step);
+    return this.failures.record(key, from, used.changes === 1, known);
   }
 
   // --- passkeys (WebAuthn) --------------------------------------------------

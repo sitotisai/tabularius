@@ -749,7 +749,8 @@ export const groups: RestGroup[] = [
       'A person whose waiting sign-in was removed this way sees that it was cancelled because too many sign-ins were started from the address at once, and starts again; a Data API app\'s /oauth/getoauthurl answers a refused start 429 with Retry-After: 60 (anything else it refuses is 400). ' +
       'These limits are not settings: they are fixed in the server, and a table where every address holds one sign-in still refuses a new start. ' +
       'Behind a reverse proxy, set the trusted proxies (--proxy-header with --trusted-proxies, see Client address attribution in the security defaults): without them every visitor is one client address ("unknown"), so a whole organisation shares 20 waiting sign-ins and one start budget, and a 21st person signing in at the same time cancels the first with no attacker at all. ' +
-      'When something goes wrong, the start and callback routes redirect (302) to /app/#error=<message> for the web client to show. ' +
+      'Web and AI-app starts set a per-flow HttpOnly cookie, required before a callback consumes state. It expires after ten minutes, with at most twenty flow cookies retained: SameSite=Lax for redirects, SameSite=None with Secure for form_post, which requires HTTPS. HTTPS cookies use the __Host- prefix. ' +
+      'The web client supplies client_state from sessionStorage and accepts token or error fragments only when the returned state matches that tab; all token and error fragments are removed from the address. Errors without a matching tab state are ignored. ' +
       'With providers set up, any other path under /tabularius/auth/v1/ is 404 {"error":"not found"}. ' +
       'Pending state lives in .openhbam-oidc/pending.sqlite in the hosted folder, inside a private directory, allowing sign-ins to survive restarts and several processes serving that folder to share pending state. Cluster routing already sends every /tabularius/auth/ request, including starts and callbacks, to the leader; the database is not needed to route callbacks across workers. AI-app resume handlers are process-local on the leader and do not survive a restart, so an interrupted AI-app sign-in must be started again. SQLite lock contention returns a temporary-unavailable sign-in error; moving database waits off the request event loop with asynchronous retry remains future work. ' +
       'Data API apps sign in through the same providers with FileMaker Server\'s OAuth routes (/fmws/oauthproviderinfo and /oauth/getoauthurl), then log in to the Data API with the X-FM-Data-OAuth-Request-Id and X-FM-Data-OAuth-Identifier headers. Their pending sign-ins and the identifiers they hand out are kept in the same shared database, so any process serving the folder can finish the login, once.',
@@ -787,6 +788,7 @@ export const groups: RestGroup[] = [
         params: [
           { name: 'provider', in: 'path', type: 'string', description: 'The provider\'s slug from /providers. Left off (/oidc/start), the sole provider is used; with several that is an error ("Choose a sign-in provider"). An unknown slug: "Unknown sign-in provider".' },
           { name: 'db', in: 'query', type: 'string', required: true, description: 'The hosted file to sign in to; unknown: \'No hosted database named "…"\'.' },
+          { name: 'client_state', in: 'query', type: 'string', description: 'The web tab stores 24 random bytes as 48 lowercase hexadecimal characters in sessionStorage before starting sign-in. Returned as state with the session fragment; the tab requires an exact match.' },
         ],
         example: {
           request: 'GET /tabularius/auth/v1/oidc/start/google?db=Invoices',
@@ -794,13 +796,13 @@ export const groups: RestGroup[] = [
           response: '(a redirect to the provider\'s authorization endpoint with response_type=code, client_id, redirect_uri=<server>/tabularius/auth/v1/oidc/callback, scope "openid email profile" plus any extra, state, nonce, code_challenge and code_challenge_method=S256; response_mode=form_post for providers set up with it, such as Apple)',
           skipReason: 'Requires an OIDC provider with a live authorization endpoint.',
         },
-        notes: 'A sign-in must come back within 10 minutes.',
+        notes: 'A sign-in must come back within 10 minutes with its initiating cookie. Form-post sign-in requires an HTTPS public URL.',
       },
       {
         method: 'GET',
         path: '/tabularius/auth/v1/oidc/callback',
         summary: 'Where the provider sends people back: exchanges the code, checks the ID token and opens a web client session.',
-        permissions: 'None: the state from the start route and the provider\'s code are the credential. The ID token\'s signature (the provider\'s published keys), issuer, audience, expiry and nonce are checked, and the email (or a group) must match an external account in the file.',
+        permissions: 'The state from the start route and the provider\'s code are required, plus the initiating browser cookie for web and AI-app flows. The ID token\'s signature (the provider\'s published keys), issuer, audience, expiry and nonce are checked, and the email (or a group) must match an external account in the file.',
         params: [
           { name: 'state', in: 'query', type: 'string', required: true, description: 'From the start route; used once.' },
           { name: 'code', in: 'query', type: 'string', required: true, description: 'The provider\'s authorization code.' },
@@ -809,7 +811,7 @@ export const groups: RestGroup[] = [
         example: {
           request: 'GET /tabularius/auth/v1/oidc/callback?code=4%2F0AVG7fiQ&state=r2D9kq3Vx7mN1pL5sT8wY0zA4bC6eF2h',
           status: 302,
-          response: '(a redirect to /app/#db=Invoices&token=<session token>: the session goes to the web client in the URL fragment)',
+          response: '(a redirect to /app/#db=Invoices&token=<session token>&state=<tab state>: the session goes to the web client in the URL fragment)',
           skipReason: 'Requires the state and authorization code returned by a live identity provider.',
         },
         notes: 'Errors include "The sign-in took too long or was already used; please try again" and "<email> has no external account in <file>".',
@@ -826,7 +828,7 @@ export const groups: RestGroup[] = [
         example: {
           request: 'POST /tabularius/auth/v1/oidc/callback\nContent-Type: application/x-www-form-urlencoded\n\nstate=r2D9kq3Vx7mN1pL5sT8wY0zA4bC6eF2h&code=c1a2b3d4e5f6',
           status: 302,
-          response: '(a redirect to /app/#db=Invoices&token=<session token>)',
+          response: '(a redirect to /app/#db=Invoices&token=<session token>&state=<tab state>)',
           skipReason: 'Requires the state and authorization code returned by a live identity provider.',
         },
         notes: 'The body is limited to 1 MB.',
