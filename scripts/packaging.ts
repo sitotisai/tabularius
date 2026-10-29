@@ -91,7 +91,7 @@ export function renderWinget(r: Release): Record<string, string> {
   return {
     [`${id}.yaml`]: [schema('version'), `PackageIdentifier: ${id}`, `PackageVersion: ${r.version}`, 'DefaultLocale: en-US', 'ManifestType: version', 'ManifestVersion: 1.6.0', ''].join('\n'),
     [`${id}.installer.yaml`]: [
-      schema('installer'), `PackageIdentifier: ${id}`, `PackageVersion: ${r.version}`, 'InstallerType: portable', 'Commands:', '  - Tabularius',
+      schema('installer'), `PackageIdentifier: ${id}`, `PackageVersion: ${r.version}`, 'InstallerType: portable', 'Commands:', '  - tabularius',
       'Installers:', '  - Architecture: x64', `    InstallerUrl: ${url(r, f)}`, `    InstallerSha256: ${f.sha256.toUpperCase()}`,
       'ManifestType: installer', 'ManifestVersion: 1.6.0', '',
     ].join('\n'),
