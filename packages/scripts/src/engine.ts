@@ -1046,6 +1046,10 @@ async function readCapped(res: Response, max = MAX_URL_RESPONSE, limit?: string)
   return chunks.length === 1 ? chunks[0] : new Uint8Array(Buffer.concat(chunks));
 }
 const MAX_DATA_FILES = 25;
+/** Perform Script and Perform Script on Server calls nested in one run. */
+const MAX_SCRIPT_CALL_DEPTH = 256;
+// The exact external-product limit is unverified; bound sparse files and keep offsets exact in JavaScript.
+const MAX_DATA_FILE_POSITION = 1024 * 1024 * 1024;
 /** Save Records as PDF [ Append ] reads the PDF it adds to whole: up to this size. */
 const MAX_APPEND_PDF = 256 * 1024 * 1024;
 /** Insert from Index offers at most this many values. */
@@ -1309,6 +1313,10 @@ export class ScriptEngine {
   /** The window name the trigger checks worked out for a Close Window or Select Window step. */
   private windowChosen?: { params: StepParams; name: string | undefined };
   private steps = 0;
+  /** Shared by server-side descendants so a new session cannot renew the caller's step budget. */
+  private runBudget = { steps: 0, deadline: Infinity };
+  /** Call depth already used by server-side ancestor engines. */
+  private serverDepth = 0;
   /** Time spent in nested steps during the current step, so each step's own time can be told apart (profiling). */
   private childMs = 0;
   /** Time spent waiting in the debugger, so far. */
@@ -1352,6 +1360,7 @@ export class ScriptEngine {
     if (this.heldAt !== undefined) this.waited += Date.now() - this.heldAt;
     this.heldAt = undefined;
     this.deadline = Date.now() + left;
+    if (this.serverDepth === 0) this.runBudget.deadline = this.deadline;
   }
 
   /** Milliseconds spent running so far, not counting waits. */
@@ -1505,6 +1514,7 @@ export class ScriptEngine {
     opts.userStop?.addEventListener('stop', this.onUserStop);
     this.session = opts.session ?? new ScriptSession();
     this.deadline = Date.now() + (opts.timeoutMs ?? TIMEOUT);
+    this.runBudget.deadline = this.deadline;
     if (opts.trace) this.trace = [];
   }
 
@@ -3637,6 +3647,8 @@ export class ScriptEngine {
   // --- running ----------------------------------------------------------------
 
   private async perform(store: Store, script: Script, parameter: Value, win: Window, locals = new Map<string, Value[]>()): Promise<Value> {
+    // The external product's exact nesting limit and error are unverified.
+    if (this.serverDepth + this.stack.length >= MAX_SCRIPT_CALL_DEPTH) throw new ScriptError(ERROR.unavailable, 'Script call depth limit reached');
     this.useSourceFile(store);
     if (this.opts.skip?.(script.name)) {
       this.actions.push({ step: 'Skip Script', script: script.name, reason: 'skipped: never run' });
@@ -3713,8 +3725,9 @@ export class ScriptEngine {
       this.workCleanup = [];
       try {
         this.canceled(script.name);
-        if (++this.steps > (this.opts.maxSteps ?? STEP_LIMIT) || Date.now() > this.deadline) {
-          const what = this.steps > (this.opts.maxSteps ?? STEP_LIMIT) ? 'step limit' : 'time limit';
+        ++this.steps;
+        if (++this.runBudget.steps > (this.opts.maxSteps ?? STEP_LIMIT) || Date.now() > Math.min(this.deadline, this.runBudget.deadline)) {
+          const what = this.runBudget.steps > (this.opts.maxSteps ?? STEP_LIMIT) ? 'step limit' : 'time limit';
           // The same outcome as a limit reached inside a record loop (see limit): the capacity error, pending edits discarded.
           this.budgetHalted = true;
           this.lastError = ERROR.capacity;
@@ -3755,10 +3768,12 @@ export class ScriptEngine {
           // Halted before this step ran: it isn't counted among the steps run.
           if (answer === 'halt') {
             this.steps--;
+            this.runBudget.steps--;
             throw new Halt();
           }
           if (answer && typeof answer === 'object' && Number.isInteger(answer.next) && answer.next >= 0 && answer.next < steps.length) {
             this.steps--;
+            this.runBudget.steps--;
             pc = answer.next;
             continue;
           }
@@ -5199,6 +5214,8 @@ export class ScriptEngine {
       });
       // What it tries to reach counts toward this run's (and a blocked host's limit stops both).
       sub.tally = this.tally;
+      sub.runBudget = this.runBudget;
+      sub.serverDepth = this.serverDepth + this.stack.length;
       sub.sourceFiles = this.sourceFiles;
       sub.executionStore = this.executionStore;
       sub.identityStore = this.identityStore;
@@ -5438,7 +5455,7 @@ export class ScriptEngine {
     }
     this.canceled(f.script.name);
     this.late(f);
-    if (this.steps > (this.opts.maxSteps ?? STEP_LIMIT)) this.limit(f, 'step limit');
+    if (this.runBudget.steps > (this.opts.maxSteps ?? STEP_LIMIT)) this.limit(f, 'step limit');
     if (this.maxRecordOps && records > this.maxRecordOps - this.recordOps) this.limit(f, 'record operation limit');
     this.recordOps += records;
     if (this.batch) this.batch.records += records;
@@ -7449,6 +7466,7 @@ export class ScriptEngine {
         const v = this.sourceValue(f, p);
         let data: Uint8Array = v.type === 'container' && v.data ? v.data : encodeText(asText(v, this.current.store.dateOrder), p.encoding === 'utf-8' ? 'utf-8' : 'utf-16');
         if (p.appendLineFeed) data = concatBytes(data, encodeText('\n', p.encoding === 'utf-8' ? 'utf-8' : 'utf-16'));
+        if (d.position + data.length > MAX_DATA_FILE_POSITION) throw new ScriptError(ERROR.cannotCreateFile, 'Data file write exceeds the position limit');
         writeSync(d.fd, data, 0, data.length, d.position);
         d.position += data.length;
         return;
@@ -7475,7 +7493,9 @@ export class ScriptEngine {
       }
       case 195: { // Set Data File Position
         const [, d] = open();
-        d.position = Math.max(0, Math.trunc(asNumber(this.eval(f, p.calculation ?? '0'))));
+        const position = asNumber(this.eval(f, p.calculation ?? '0'));
+        if (!Number.isSafeInteger(position) || position < 0 || position > MAX_DATA_FILE_POSITION) throw new ScriptError(ERROR.cannotCreateFile, 'Data file position is out of range');
+        d.position = position;
         return;
       }
       case 196: { // Close Data File
@@ -8292,6 +8312,11 @@ export class ScriptEngine {
     });
     const matches = mapping.flatMap((m, i) => m.match && fields[i] ? [i] : []);
     if (action === 'update' && !matches.length) throw new ScriptError(ERROR.noCriteria, 'Update import requires match fields');
+    // Workbook rows are materialized by textRows. Validate mapped date serials before any imported row is written.
+    if (source.excel) for (const row of rows) for (let i = 0; i < fields.length; i++) {
+      const serial = row[i];
+      if ((mapping[i].import || mapping[i].match) && typeof serial === 'number') excelDate(serial, fields[i]?.type);
+    }
     this.commit(win);
     const visible = action === 'add' ? [] : await this.findIdsCooperative(f, info);
     const have = new Set(visible);
@@ -9760,6 +9785,8 @@ function textSeparator(name: string, importFormat: string | undefined, src: stri
 export function excelDate(v: number, type: string | undefined): string | number {
   if (type !== 'date' && type !== 'time' && type !== 'timestamp') return v;
   const ms = Math.round((v - 25569) * 86400000);
+  // The external product's exact error for an invalid serial date is unverified.
+  if (!Number.isFinite(ms) || !Number.isFinite(new Date(ms).getTime())) throw new ScriptError(ERROR.wrongFileType, 'Excel date is out of range');
   const iso = new Date(ms).toISOString();
   if (type === 'date') return iso.slice(0, 10);
   if (type === 'time') return iso.slice(11, 19);
