@@ -66,6 +66,20 @@ including unknown functions, retain `42000` with the engine's message. See the
 - A data read with a `pg_` name in it that is not a catalog table (`pg_has_role(...)`, an alias called `pg_x`) skipped the read log. Only a query that names one of the catalog's tables or views is left out of it now.
 - Found by a second-opinion review of this change and fixed in it: `ORDER BY name LIMIT n` lost the space before `LIMIT`, nested `array_agg` produced broken SQL, and the new rewrites took quadratic time on very long queries (many `array_agg` calls, unclosed comments); they are linear now, and `array_agg` nested more than 20 deep is refused.
 
+## Run with psql 18.6
+
+A real psql 18.6 (and its libpq) was run against a served file with text, integer, decimal, date, timestamp, boolean, json and uuid fields. These worked: `select`, `\dt`, `\d table` and `\d+ table` (psql 18 calls `pg_partition_ancestors`, which answers with no rows, and reads `pg_constraint.conenforced`), `\l`, `\dn`, `\du`, `\df`, `\dT`, `\dp`, `\di`, `\dv`, `\ds`, `\dE`, `\dm`, `\timing`, `\x`, `\pset`, `\crosstabview`, `\watch`, `FETCH_COUNT`, `\bind`, `\parse` and `\bind_named`, `\close_prepared`, pipelines (`\startpipeline`), `sslmode=require` against a server without TLS (refused with psql's own message) and protocol 3.0.
+
+Found by that run and fixed:
+
+- `max_protocol_version=latest` (protocol 3.2) failed with "server requested downgrade to pre-3.0 protocol version": the negotiation message carried the minor number (0), and libpq 18 wants the whole version number (3.0). A client that asks for 3.2 now continues at 3.0.
+- `\dx` was a syntax error (psql 18 reads `pg_available_extensions()` as a table). It lists no extensions.
+- `\dconfig` failed on `pg_settings.boot_val`, and `\df+` on `provolatile`. Both answer with no rows.
+- `\gdesc` failed (`(VALUES ...) s(name, tp, tpm)`, and `format_type` without a `pg_` word beside it on a connection that had not run a catalog query yet). It lists each column and its type; a calculated column is `text`, as in a result.
+- A json or uuid field showed as `???` in `\d`, and as `text` in `information_schema.columns`. They are `jsonb` and `uuid` now, as the protocol already described them.
+
+Still failing, because the server has none of what they read: `\do`, `\drds`, `\dFd`, `\dFp`, `\dFt`, `\dAo`, `\dAp`, `\des`, `\det`, `\deu`, `\dew`, `\ddp`, `\dl` and `\lo_list` answer with an error naming the missing table. `\sv` and `\sf` say the definition is not available. `COPY ... TO STDOUT` is refused as a write; `\copy` through a `SELECT` is not available either.
+
 ## Binary formats
 
 asyncpg, Npgsql, psycopg 3, pgx and pgjdbc in binary mode ask for values in PostgreSQL's binary format instead of text. The server reads and writes it per value, as Bind asks: no format code means text, one code applies to every parameter (or every column), otherwise there is one code per parameter (or column). Code lives in `packages/server/src/pgbinary.ts`; the byte-level tests are `packages/server/test/pgbinary.test.ts` (each type) and `packages/server/test/pgwire-binary.test.ts` (over the protocol, against a file the test makes).
@@ -110,6 +124,5 @@ These are in the `notVerified` list of the data file with the reason for each:
 - Power BI beyond Npgsql's type loading: closed source.
 - SQLAlchemy's reflection (Superset's table and column lists): built at run time, and SQLAlchemy was not run.
 - Which columns DBeaver reads by name from `SELECT c.*`: the classes that read them were not fetched.
-- psql 18's `\d table`: it calls `pg_partition_ancestors`, which now answers with no rows (no table here is partitioned), and may read `pg_constraint.conenforced`, which now exists. No psql 18 was run; the test sends the queries as `describe.c` is remembered to write them.
 - The exact driver and tool versions: sources are from their main branches on the day of the work. Only psql was a real client.
 - Whether Npgsql loads types from the `numeric` columns above: it was not run.

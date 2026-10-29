@@ -144,21 +144,21 @@ test('dashboards: saved and shown over HTTP, worked out as each account', { skip
   assert.equal(made.status, 201, JSON.stringify(made.body));
   const id = made.body.dashboard.id;
   assert.equal(made.body.data[0].value, 7800);
-  // The clerk sees East records only, so the same dashboard adds up to less for them.
-  const seen = await api(clerkSession, 'GET', `/${id}`);
-  assert.equal(seen.status, 200);
-  assert.equal(seen.body.canChange, false);
-  // East is the odd customers: 2 × 50 × (12 + 10 + 8 + 6 + 4 + 2).
-  assert.equal(seen.body.data[0].value, 4200);
-  assert.deepEqual(seen.body.data[1].rows.map((r: unknown[]) => r[0]), ['East']);
-  // Only the account that made it (or [Full Access]) changes or deletes it.
-  assert.equal((await api(clerkSession, 'PUT', `/${id}`, { name: 'Mine now' })).status, 403);
-  assert.equal((await api(clerkSession, 'DELETE', `/${id}`)).status, 403);
+  // A saved definition is private to the account that made it and [Full Access]: the clerk can't read, change or delete this one.
+  assert.equal((await api(clerkSession, 'GET', `/${id}`)).status, 404);
+  assert.equal((await api(clerkSession, 'PUT', `/${id}`, { name: 'Mine now' })).status, 404);
+  assert.equal((await api(clerkSession, 'DELETE', `/${id}`)).status, 404);
   const own = await api(clerkSession, 'POST', '', { name: 'Clerk view', widgets: [TOTAL] });
   assert.equal(own.status, 201);
   assert.equal((await api(clerkSession, 'PUT', `/${own.body.dashboard.id}`, { name: 'My East total' })).body.dashboard.name, 'My East total');
+  // The clerk sees East records only, so the same widgets add up to less for them.
+  const seen = await api(clerkSession, 'GET', `/${own.body.dashboard.id}`);
+  assert.equal(seen.status, 200);
+  assert.equal(seen.body.canChange, true);
+  // East is the odd customers: 2 × 50 × (12 + 10 + 8 + 6 + 4 + 2).
+  assert.equal(seen.body.data[0].value, 4200);
   const list = await api(clerkSession, 'GET');
-  assert.deepEqual(list.body.dashboards.map((d: { name: string; canChange: boolean }) => [d.name, d.canChange]), [['My East total', true], ['Regional', false], ['Sales', false]]);
+  assert.deepEqual(list.body.dashboards.map((d: { name: string; canChange: boolean }) => [d.name, d.canChange]), [['My East total', true]]);
   // Preview works it out without saving; bad input is a 400 with a reason.
   const preview = await api(admin, 'POST', '?preview=1', { name: 'Try', widgets: [{ ...TOTAL, query: [{ Date: 'last year' }] }] });
   assert.equal(preview.body.data[0].value, 100000);

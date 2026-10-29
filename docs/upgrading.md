@@ -206,8 +206,8 @@ These are true today and are not papered over:
   the old version, which then refuses every file. The upgrade's error names the files and gives the exact
   `tabularius restore` command for the backup it took just before (the restore itself is yours to run, since it
   replaces whatever was written since).
-- **Record ids are numbered from the file's own mark.** Restoring a backup, or taking over with a standby that was behind,
-  brings back that copy's record-id mark, so ids given after it can be given again; so can a format-1 id the seed could
+- **Record ids are numbered from the file's own mark.** Taking over with a standby that was behind brings back that copy's
+  record-id mark, so ids given after it can be given again (a restore keeps the higher mark of the file it replaces); so can a format-1 id the seed could
   not see (above). An older build that predates the format number writes new records after the highest one left, as
   before, if it is pointed at a format-2 file.
 - **`tabularius restore` across file formats.** The current credentials are copied into the restored file by column name.

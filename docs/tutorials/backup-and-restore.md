@@ -152,7 +152,7 @@ password from step 7.
 
 ## Where next
 
-- [Backups in the README](../../README.md#hosting-for-a-team) covers scheduled backups, encryption and
+- [Backups in Hosting for a team](../hosting-for-a-team.md) covers scheduled backups, encryption and
   restoring a file to a moment.
 - Keep a copy off this computer too: a backup beside the hosted store cannot survive losing the whole disk.
 - [Add a Data API client in 10 minutes](data-api-client.md) goes further with the API used here.

@@ -7,7 +7,7 @@ The folder files wait in while they arrive in a container upload (the system's t
 | Default | System temporary directory |
 | Accepted values | Directory path |
 | Restart needed | Yes for a running server. |
-| Explained in | [README.md](../../../../README.md) |
+| Explained in | [docs/hosting-and-connecting.md](../../../hosting-and-connecting.md) |
 | Code | [packages/server/src/container-uploads.ts:190](../../../../packages/server/src/container-uploads.ts#L190) |
 
 [All environment variables](../../../environment-variables.md)

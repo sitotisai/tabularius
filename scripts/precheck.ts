@@ -186,7 +186,9 @@ export function runPrecheck(options: { quick?: boolean; updateBaseline?: boolean
 export function testFailures(output: string): string[] {
   const lines = output.split(/\r?\n/);
   const found: string[] = [];
-  for (let i = 0; i < lines.length; i++) if (/^[✖✗]/.test(lines[i]) || /not ok \d+/.test(lines[i])) {
+  // A `todo` test that fails as expected is listed under "failing tests" too, with its reason after the time ("(12ms) # why");
+  // it does not fail the run, so it is not what went wrong.
+  for (let i = 0; i < lines.length; i++) if ((/^[✖✗]/.test(lines[i]) && !/\(\d+(\.\d+)?ms\) # /.test(lines[i])) || /not ok \d+/.test(lines[i])) {
     const tail = lines.slice(i + 1);
     const marker = tail.findIndex((line) => /AssertionError|Error:|error:/.test(line));
     const raw = marker < 0 ? undefined : tail[marker];

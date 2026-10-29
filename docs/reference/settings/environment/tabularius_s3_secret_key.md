@@ -7,7 +7,7 @@ Secret access key for off-site S3-compatible storage.
 | Default | AWS_SECRET_ACCESS_KEY if set |
 | Accepted values | Secret access key |
 | Restart needed | Yes for a running server. |
-| Explained in | [README.md](../../../../README.md) |
+| Explained in | [docs/hosting-for-a-team.md](../../../hosting-for-a-team.md) |
 | Code | [packages/cli/src/main.ts:102](../../../../packages/cli/src/main.ts#L102) |
 
 [All environment variables](../../../environment-variables.md)

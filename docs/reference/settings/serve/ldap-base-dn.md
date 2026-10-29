@@ -8,7 +8,7 @@
 | Accepted values | LDAP distinguished name, template, attribute, or password as named by the variable |
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | [`TABULARIUS_LDAP_BASE_DN`](../environment/tabularius_ldap_base_dn.md) |
-| Explained in | [README.md](../../../../README.md) |
+| Explained in | [docs/hosting-and-connecting.md](../../../hosting-and-connecting.md) |
 | Code | [packages/cli/src/main.ts:1435](../../../../packages/cli/src/main.ts#L1435) |
 
 [All serve flags](../serve-flags.md)

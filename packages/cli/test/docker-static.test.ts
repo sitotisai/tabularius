@@ -289,10 +289,10 @@ test('the pages tell people commands that name real files, the right port and th
     });
   }
   assert.ok(compose_ >= 5, `found ${compose_} compose commands in the pages`);
-  assert.ok(execs >= 2, 'the README shows how to set the console and account passwords in the container');
+  assert.ok(execs >= 2, 'the guides show how to set the console and account passwords in the container');
   // The chown the pages ask for is for the uid the image's user has, and the same text is where the Dockerfile says it.
   assert.match(read('Dockerfile'), /chown 1000:1000 Databases/);
-  assert.match(read('README.md'), /mkdir Databases && sudo chown 1000:1000 Databases/);
+  assert.match(read('docs/hosting-for-a-team.md'), /mkdir Databases && sudo chown 1000:1000 Databases/);
   assert.match(read('compose.yaml'), /sudo chown 1000:1000 Databases/);
 });
 
