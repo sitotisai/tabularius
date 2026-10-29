@@ -1,3 +1,4 @@
+import { enterActivates } from './ime.ts';
 // Draws a FileMaker layout: parts stacked top to bottom, objects placed at
 // their stored coordinates, styled from the layout's theme. Works for one
 // record (form view), a record per body row (list view), or a find request.
@@ -372,7 +373,7 @@ export class LayoutRenderer {
         el.setAttribute('role', 'button');
         if (!el.textContent?.trim()) el.setAttribute('aria-label', tip || o.name || o.action.script || o.action.step);
         el.addEventListener('keydown', (e) => {
-          if ((e.key === 'Enter' || e.key === ' ') && e.target === el) {
+          if ((enterActivates(e, true) || e.key === ' ') && e.target === el) {
             e.preventDefault();
             host.action(o, row);
           }
@@ -842,7 +843,7 @@ export class LayoutRenderer {
     // Enter commits a single-line field, as in FileMaker; Tab moves on.
     if (input instanceof HTMLInputElement) {
       input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') input.blur();
+        if (enterActivates(e, true)) input.blur();
       });
     }
   }
@@ -891,7 +892,7 @@ export class LayoutRenderer {
         open();
       });
       box.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
+        if (enterActivates(e, true) || e.key === ' ') {
           e.preventDefault();
           open();
         }
@@ -1475,7 +1476,7 @@ function otherDialog(current: string, several: boolean): Promise<string | undefi
       dialog.close();
     };
     box.addEventListener('keydown', (e) => {
-      if ((e as KeyboardEvent).key === 'Enter' && !several) {
+      if (enterActivates((e as KeyboardEvent), true) && !several) {
         e.preventDefault();
         ok();
       }
