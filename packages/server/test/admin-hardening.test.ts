@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { lstatSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
@@ -13,6 +13,32 @@ import { createStore } from '../../store/src/index.ts';
 import { makeAuthenticator, forgeRegistration, forgeAssertion } from '../../store/test/forge-webauthn.ts';
 
 // The admin console's open doors (sign-in, passkey sign-in) and what every answer carries.
+
+test('the admin password file is replaced as a whole and a planted link is refused', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-admin-password-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = join(dir, '.openhbam-admin');
+  setAdminPassword(dir, 'first password');
+  const first = readFileSync(file, 'utf8');
+  setAdminPassword(dir, 'second password');
+  const second = readFileSync(file, 'utf8');
+  assert.notEqual(second, first);
+  assert.match(first, /^scrypt\$/);
+  assert.match(second, /^scrypt\$/);
+  assert.ok(second.endsWith('\n'));
+  assert.deepEqual(readdirSync(dir).filter((name) => name.endsWith('.tmp')), []);
+  if (process.platform === 'win32') return;
+  assert.equal(statSync(file).mode & 0o777, 0o600);
+
+  rmSync(file);
+  const victim = join(dir, 'victim');
+  writeFileSync(victim, 'keep');
+  symlinkSync(victim, file);
+  assert.throws(() => setAdminPassword(dir, 'x'), (error: NodeJS.ErrnoException) => error.code === 'ESTALE');
+  assert.equal(readFileSync(victim, 'utf8'), 'keep');
+  assert.ok(lstatSync(file).isSymbolicLink());
+  assert.deepEqual(readdirSync(dir).filter((name) => name.endsWith('.tmp')), []);
+});
 
 async function localProxy(dir: string) {
   const app = await serve({ dir, port: 0, log: () => {}, proxyHeader: 'x-forwarded-for', trustedProxies: ['127.0.0.1', '::1'] });
