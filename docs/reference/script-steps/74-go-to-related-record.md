@@ -17,13 +17,13 @@ Go to Related Record is a records and finds script step. This page describes how
 ## What the engine does
 
 The engine handles this step with the limits described in the support notes.
-Replaces the found set with related IDs. The binary decoder does not read "Match all records in current found set" or "Show only related records" (their bits are unverified), so a step from a converted file goes from the current record alone; the conversion guide counts those steps and a run adds a warning once per script. Written in script text, "Match all records in the found set" works. "Show only related records" turned off is not supported (the step always replaces the found set).
+With "Show only related records" on (the default), replaces the destination table's found set with related IDs. With it off, keeps that table's found set and selects its first related record. "Match all records in current found set" gathers related records from every source record in the found set; otherwise it uses the current source record. Both options can be edited in script text. The binary decoder does not read either option (their bits are unverified), so a step from a converted file uses the current record and defaults to "Show only related records" on; the conversion guide counts those steps and a run adds a warning once per script. Whether the destination record selection and errors exactly match the reference product is unverified.
 
 FileMaker comparisons in this note are inferred unless a Claris help page is linked. See the [full support notes](../../script-steps-support.md) for surrounding conditions.
 
 ## Options
 
-Use the Script Workspace or script text to supply the target and any positional options the step requires. Accepted script-text labels: `From table:`, `Using layout:`, `New window:`.
+Use `Match all records in current found set` to match every source record. `Show only related records` or `Show only related records: Off` controls whether the destination found set is replaced or kept. Accepted script-text labels: `From table:`, `Using layout:`, `New window:`.
 
 ## Privileges
 

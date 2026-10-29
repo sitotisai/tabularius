@@ -8873,7 +8873,14 @@ export class ScriptEngine {
       throw new ScriptError(ERROR.layoutMissing, `Layout "${win.layoutName}" does not show "${p.tableOccurrence.name}" records`);
     }
     win.mode = 'browse';
-    this.setFound(win, ids);
+    if (p.showOnlyRelated === false) {
+      // The target table keeps its own found set. Select the first related record in that set's order.
+      const found = this.foundSet(win);
+      const related = new Set(ids);
+      const index = found.ids.findIndex((id) => related.has(id));
+      if (index < 0) throw new ScriptError(ERROR.recordMissing, `No related records in the found set of "${p.tableOccurrence.name}"`);
+      found.index = index;
+    } else this.setFound(win, ids);
   }
 
   // --- finds -------------------------------------------------------------------

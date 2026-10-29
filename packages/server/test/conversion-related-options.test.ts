@@ -45,7 +45,7 @@ test('conversion guide counts the Go to Related Record steps whose options were 
     assert.equal(item.severity, 'high');
     assert.equal(item.count, 3);
     assert.deepEqual(item.where, ['Script "First", line 1', 'Script "First", line 3', 'Script "Second", line 1']);
-    assert.match(item.what, /current record alone.*Show only related records.*not supported/);
+    assert.match(item.what, /current record alone.*Show only related records.*defaults to on/);
     assert.match(item.instead ?? '', /script editor/);
   });
 });
