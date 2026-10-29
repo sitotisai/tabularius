@@ -1,13 +1,14 @@
-// Installing a plug-in package: a trusted publisher is recorded only once the install worked, the swap leaves no
+import { withFilesystemHook } from '../../store/src/fs-boundary.ts';
+// Installing a plug-in package: trust follows validation and staging, the swap leaves no
 // staging folder behind, the plug-in API range is checked, and a torn config file is named and does not hide the list.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, cpSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stopJavaScript } from '../../store/src/javascript.ts';
 import { apiSatisfied, parseManifest, HOST_API } from '../src/manifest.ts';
-import { generateKey, installPackage, packPlugin, pluginStatus, trustedPublishers } from '../src/index.ts';
+import { generateKey, installPackage, packPlugin, pluginStatus, trustedPublishers, uninstallPlugin } from '../src/index.ts';
 
 const dir = mkdtempSync(join(tmpdir(), 'tabularius-install-robust-'));
 after(async () => {
@@ -94,4 +95,78 @@ test('a plug-in id that is a state file of the plug-ins folder is refused, befor
   const key = generateKey();
   installPackage(data, packPlugin(source(), key.privatePem).bytes, { trust: key.fingerprint });
   assert.equal(readdirSync(join(data, 'plugins')).includes('enabled.json'), true);
+});
+
+test('replacement requires admin consent for rollback, equal versions and wider permissions', () => {
+  const key = generateKey();
+  for (const [version, permissions] of [
+    ['1.0.0', {}], ['2.0.0', {}], ['3.0.0', { network: ['example.com'] }],
+    ['3.0.0', { mail: true }], ['3.0.0', { files: ['documents:write'] }],
+    ['3.0.0', { secrets: ['PASSWORD'] }], ['3.0.0', { timeoutMs: 500 }], ['3.0.0', { memoryMb: 128 }],
+  ] as const) {
+    const data = fresh();
+    installPackage(data, packPlugin(source('2.0.0'), key.privatePem).bytes, { trust: key.fingerprint });
+    const folder = source(version);
+    const path = join(folder, 'plugin.json');
+    writeFileSync(path, JSON.stringify({ ...JSON.parse(readFileSync(path, 'utf8')), permissions }));
+    const bytes = packPlugin(folder, key.privatePem).bytes;
+    assert.throws(() => installPackage(data, bytes), /--replace/);
+    assert.equal(pluginStatus(data).installed[0].version, '2.0.0');
+    assert.equal(installPackage(data, bytes, { replace: true }).manifest.version, version);
+  }
+});
+
+test('startup restores an interrupted replacement and removes completed staging', () => {
+  const data = fresh();
+  installPackage(data, packPlugin(source()).bytes, { allowUnsigned: true });
+  const root = join(data, 'plugins');
+  const dest = join(root, 'org.example.shout');
+  const staging = join(root, '.installing-org.example.shout-Ab1234');
+  cpSync(dest, staging, { recursive: true });
+  renameSync(dest, staging + '.previous');
+  assert.equal(pluginStatus(data).installed[0]?.version, '1.0.0');
+  assert.ok(existsSync(dest));
+  assert.equal(existsSync(staging), false);
+  assert.equal(existsSync(staging + '.previous'), false);
+});
+
+test('duplicate ids are refused on load and uninstall', () => {
+  const data = fresh();
+  installPackage(data, packPlugin(source()).bytes, { allowUnsigned: true });
+  cpSync(join(data, 'plugins', 'org.example.shout'), join(data, 'plugins', 'shout.bak'), { recursive: true });
+  const status = pluginStatus(data);
+  assert.equal(status.installed.length, 0);
+  assert.match(status.problems.join('\n'), /duplicate.*org.example.shout/i);
+  assert.throws(() => uninstallPlugin(data, 'org.example.shout', []), /Duplicate plug-in id/);
+});
+
+test('trust is persisted before the swap and failed aside cleanup does not fail the install', () => {
+  const data = fresh();
+  installPackage(data, packPlugin(source()).bytes, { allowUnsigned: true });
+  const key = generateKey();
+  const bytes = packPlugin(source('2.0.0'), key.privatePem).bytes;
+  let blocked = false;
+  withFilesystemHook((event) => {
+    if (event.operation === 'rename' && (event.path.includes('.installing-') || event.path.endsWith('org.example.shout'))) assert.equal(trustedPublishers(data)[key.fingerprint], 'Example Co');
+    if (event.operation === 'remove' && event.path.endsWith('.previous')) {
+      blocked = true;
+      throw Object.assign(new Error('synthetic cleanup failure'), { code: 'EACCES' });
+    }
+  }, () => assert.equal(installPackage(data, bytes, { replace: true, trust: key.fingerprint }).manifest.version, '2.0.0'));
+  assert.ok(blocked);
+  assert.equal(pluginStatus(data).installed[0].version, '2.0.0');
+  assert.deepEqual(readdirSync(join(data, 'plugins')).filter((f) => f.startsWith('.installing-')), []);
+});
+
+test('recovery refuses ambiguous old copies instead of silently rolling back further', () => {
+  const data = fresh();
+  installPackage(data, packPlugin(source()).bytes, { allowUnsigned: true });
+  const root = join(data, 'plugins'), dest = join(root, 'org.example.shout');
+  const first = join(root, '.installing-org.example.shout-Ab1234.previous');
+  const second = join(root, '.installing-org.example.shout-Cd5678.previous');
+  cpSync(dest, first, { recursive: true });
+  renameSync(dest, second);
+  assert.throws(() => pluginStatus(data), /multiple interrupted installation backups/);
+  assert.ok(existsSync(first) && existsSync(second));
+  assert.equal(existsSync(dest), false);
 });

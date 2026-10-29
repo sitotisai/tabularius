@@ -69,7 +69,8 @@ export const PluginManifest = z.object({
     secrets: z.array(z.string().regex(/^[A-Z][A-Z0-9_]*$/)).default([]),
     /** Requested V8 old-space (including runtime overhead) / wasm linear memory budget; clamped to 64 MB. Not a process RSS cap. */
     memoryMb: z.number().int().min(8).max(1024).default(64),
-    timeoutMs: z.number().int().min(1).max(60000).default(250),
+    // Calls block the host thread; bound each requested budget. Vendor behavior is unverified.
+    timeoutMs: z.number().int().min(1).max(5000).default(250),
   }).default({ files: [], network: [], mail: false, secrets: [], memoryMb: 64, timeoutMs: 250 }),
 }).superRefine((m, ctx) => {
   if (!apiSatisfied(m.api)) ctx.addIssue({ code: 'custom', path: ['api'], message: `needs plug-in API ${m.api}, and this Tabularius offers ${HOST_API}` });
@@ -92,4 +93,12 @@ export function parseManifest(json: unknown): { ok: true; manifest: PluginManife
   const r = PluginManifest.safeParse(json);
   if (r.success) return { ok: true, manifest: r.data };
   return { ok: false, errors: r.error.issues.map((i) => (i.path.length ? `${i.path.join('.')}: ` : '') + i.message) };
+}
+
+/** The complete permission request shown before admin approval. */
+export function permissionSummary(p: PluginManifest['permissions']): string {
+  return [...p.files, ...p.network.map((host) => `web: ${host}`), ...(p.mail ? ['mail'] : []),
+    ...p.secrets.map((name) => `secret: ${name}`), `timeout: ${p.timeoutMs} ms`,
+    `memory: ${p.memoryMb} MB requested (${Math.min(p.memoryMb, 64)} MB effective)`,
+  ].join(', ');
 }

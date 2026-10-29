@@ -16,7 +16,8 @@ interface Installed {
   cacheKey: string;
 }
 
-const NOT_ENABLED: PluginFunction = { min: 0, call: () => text('?') };
+
+const NOT_ENABLED: PluginFunction = { unavailable: true, min: 0, call: () => text('?') };
 
 /**
  * A pack of functions that ships inside Tabularius (it runs in the server itself, so it needs no sandbox). It is on for
@@ -180,8 +181,7 @@ export class PluginRegistry {
 
   private table(file: string): Map<string, PluginFunction> {
     const table = new Map<string, PluginFunction>();
-    // A function of a plug-in the server has but this file hasn't enabled is a plug-in that isn't installed for it:
-    // "?", as in FileMaker.
+    // Disabled placeholders yield to hosted custom functions. Vendor precedence is unverified.
     for (const { manifest } of this.installed.values()) for (const f of manifest.functions) for (const k of keys(f)) table.set(k, NOT_ENABLED);
     for (const m of this.plugins(file)) {
       const calls = this.installed.get(m.id)!.calls;

@@ -1,40 +1,5 @@
 [
   {
-    "file": "packages/server/src/admin.ts",
-    "fn": "Admin/handle",
-    "kind": "uncaught-error-log",
-    "hash": "760a6749035a0473e16c",
-    "reason": "tracked in issue 344"
-  },
-  {
-    "file": "packages/server/src/admin.ts",
-    "fn": "Admin/handle",
-    "kind": "uncaught-error-log",
-    "hash": "760a6749035a0473e16c",
-    "reason": "tracked in issue 344"
-  },
-  {
-    "file": "packages/server/src/admin.ts",
-    "fn": "Admin/handle",
-    "kind": "uncaught-error-log",
-    "hash": "760a6749035a0473e16c",
-    "reason": "tracked in issue 344"
-  },
-  {
-    "file": "packages/server/src/admin.ts",
-    "fn": "Admin/handleConnections",
-    "kind": "uncaught-error-log",
-    "hash": "760a6749035a0473e16c",
-    "reason": "tracked in issue 344"
-  },
-  {
-    "file": "packages/server/src/adminapi.ts",
-    "fn": "AdminApi/handle",
-    "kind": "uncaught-error-log",
-    "hash": "760a6749035a0473e16c",
-    "reason": "tracked in issue 344"
-  },
-  {
     "file": "packages/server/src/agent.ts",
     "fn": "runStep",
     "kind": "uncaught-error-log",
