@@ -522,6 +522,7 @@ export async function serve(opts: ServeOptions): Promise<{ server: Server; host:
     const mcpStreams = new StreamSlots();
     // Basic credentials are not checked before a whole MCP server is built for the request, so each address may send only so many unproven ones.
     const mcpBasicBudget = new AddressBudget();
+    const mcpBearerBudget = new AddressBudget();
     // Past it, a right password is still checked and served, in turns (see CheckGate), so a flood cannot shut a real account out.
     const mcpBasicChecks = new CheckGate();
     disposers.push(() => mcpStreams.closeAll());
@@ -712,6 +713,11 @@ export async function serve(opts: ServeOptions): Promise<{ server: Server; host:
           let who: McpIdentity | undefined;
           let expired = false;
           if (basic) {
+            try { api.refuseIfBlocked(undefined, clientAddress(req)); } catch (e) {
+              if (!(e instanceof ApiError)) throw e;
+              res.writeHead(e.status, { 'content-type': 'application/json' }).end(JSON.stringify({ error: e.message }));
+              return;
+            }
             // An account: its password and privileges are checked in each file it touches.
             const [account, ...rest] = Buffer.from(basic, 'base64').toString('utf8').split(':');
             if (account) {
@@ -766,6 +772,11 @@ export async function serve(opts: ServeOptions): Promise<{ server: Server; host:
             // API session token) must never gain server authority.
           }
           if (!who) {
+            if (bearer && !mcpBearerBudget.take(clientAddress(req))) {
+              busyHeaders(res);
+              res.writeHead(429, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'Too many invalid bearer tokens from this address; try again shortly' }));
+              return;
+            }
             // Apps that sign in with OAuth (claude.ai and Claude Desktop connectors) find the sign-in from the Bearer challenge.
             const challenge = `${oauth.challenge(req, expired ? 'invalid_token' : undefined)}, Basic realm="tabularius"`;
             if (!req.headers.authorization && wantsPage(req)) sendError(req, res, 401, { 'www-authenticate': challenge });
@@ -774,7 +785,10 @@ export async function serve(opts: ServeOptions): Promise<{ server: Server; host:
           }
           // GET may keep an SSE response open, so it does not use a short-request slot.
           if (req.socket.destroyed || res.destroyed || res.writableEnded) return;
-          const identity = 'admin' in who ? 'admin' : JSON.stringify(['account', who.account.toLowerCase()]);
+          // An unverified name cannot reserve an authenticated account's quota. Keep the address/global Basic caps too.
+          const identity = 'admin' in who ? 'admin' : 'password' in who
+            ? JSON.stringify(['basic', who.from, createHash('sha256').update(JSON.stringify([who.account.toLowerCase(), who.password])).digest('hex')])
+            : JSON.stringify(['account', who.account.toLowerCase()]);
           const streamDone = req.method === 'GET' ? mcpStreams.enter(identity, res, 'password' in who ? who.from : undefined) : undefined;
           if (req.method === 'GET' && !streamDone) {
             busyHeaders(res);

@@ -408,11 +408,15 @@ async function start(): Promise<void> {
   const back = new URLSearchParams(location.hash.slice(1));
   if (back.has('token') || back.has('error')) {
     history.replaceState(null, '', location.pathname + location.search);
-    if (back.has('error')) {
-      showLogin(back.get('error')!);
-      return;
+    const expected = sessionStorageGet('tabularius.oidcState');
+    if (expected && back.get('state') === expected) {
+      sessionStorageSet('tabularius.oidcState', undefined);
+      if (back.has('error')) {
+        showLogin(back.get('error')!);
+        return;
+      }
+      sessionStorageSet('tabularius.session', JSON.stringify({ db: back.get('db') ?? '', token: back.get('token') }));
     }
-    sessionStorageSet('tabularius.session', JSON.stringify({ db: back.get('db') ?? '', token: back.get('token') }));
   }
   // Window > New Window: the window it came from, to show the same found set and record.
   let from: WindowSnapshot | undefined;
@@ -560,7 +564,9 @@ async function showLogin(message?: string): Promise<void> {
     const b = h('button', { type: 'button' }, `Sign in with ${p.name}`);
     b.addEventListener('click', () => {
       localStorageSet('openhbam.db', fileName());
-      location.href = `${p.start}?db=${encodeURIComponent(fileName())}`;
+      const state = Array.from(crypto.getRandomValues(new Uint8Array(24)), (n) => n.toString(16).padStart(2, '0')).join('');
+      sessionStorageSet('tabularius.oidcState', state);
+      location.href = `${p.start}?db=${encodeURIComponent(fileName())}&client_state=${state}`;
     });
     return b;
   });
@@ -1594,7 +1600,7 @@ class Session implements Host {
         },
       });
     }
-    this.relayChanges();
+    void this.relayChanges();
     if (this.api.offline) void this.api.countWaiting().then(() => this.sendWaiting(), () => {});
     if (this.api.staleCopy) void this.recoverStaleCopy();
     showOnline();
@@ -1892,16 +1898,23 @@ class Session implements Host {
    * Windows of one session share its token, so the server counts a sibling's edits as this window's own (self) and the
    * live stream skips them. Each window says what it changed over a channel instead, and hears its siblings' the same way.
    */
-  private relayChanges(): void {
+  private async relayChanges(): Promise<void> {
     if (typeof BroadcastChannel === 'undefined' || this.changesChannel || this.api.copyOnly) return;
-    const channel = this.changesChannel = new BroadcastChannel(`tabularius.changes.${this.api.db}`);
+    // A digest scopes sibling windows without sending the bearer credential to other tabs.
+    // Without Web Crypto (an insecure origin), live server updates still work; sibling relays are unavailable.
+    if (!globalThis.crypto?.subtle) return;
+    const token = this.api.token;
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
+    const session = Array.from(new Uint8Array(digest), (n) => n.toString(16).padStart(2, '0')).join('');
+    if (this.sessionLifetime.signal.aborted || token !== this.api.token || this.changesChannel) return;
+    const channel = this.changesChannel = new BroadcastChannel(`tabularius.changes.${this.api.db}.${session}`);
     channel.onmessage = (e) => {
-      const heard = relayedFrom(e.data, this.api.token);
-      if (heard) this.changed(relayedChange(heard));
+      const heard = relayedFrom(e.data, session);
+      if (heard && token === this.api.token) this.changed(relayedChange(heard));
     };
     this.api.wrote = (w) => {
       const home = this.home();
-      if (home) channel.postMessage({ ...w, token: this.api.token, file: home.file, table: home.table } satisfies Relayed);
+      if (home && token === this.api.token) channel.postMessage({ ...w, token: session, file: home.file, table: home.table } satisfies Relayed);
     };
   }
 

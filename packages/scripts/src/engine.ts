@@ -6920,7 +6920,7 @@ export class ScriptEngine {
     const own = account === undefined ? undefined : f.store.accounts().find((a) => a.name.toLowerCase() === account.toLowerCase());
     if (!own || own.external || /^\[guest\]$/i.test(own.name)) throw new ScriptError(ERROR.unavailable, 'Change Password works for accounts with a password in this file');
     if (p.oldPassword === undefined || p.password === undefined) throw new ScriptError(ERROR.unavailable, 'Change Password asks a person for the passwords, and nobody can here');
-    f.store.changePassword(own.name, asText(this.eval(f, p.oldPassword)), asText(this.eval(f, p.password)), 'script');
+    f.store.changePassword(own.name, asText(this.eval(f, p.oldPassword)), asText(this.eval(f, p.password)), this.opts.clientAddress ?? 'script');
   }
 
   /**
@@ -7142,7 +7142,7 @@ export class ScriptEngine {
       if (!answer || answer.button !== 1) throw new ScriptError(1, 'Re-Login was canceled'); // FileMaker's "user canceled action"
       [name = '', password = ''] = answer.inputs ?? [];
     }
-    if (!name || !f.store.verify(name, password, 'script')) throw new ScriptError(ERROR.wrongPassword, 'Account name or password is wrong');
+    if (!name || !f.store.verify(name, password, this.opts.clientAddress ?? 'script')) throw new ScriptError(ERROR.wrongPassword, 'Account name or password is wrong');
     // A password alone can't answer a second factor, and a local-only account needs to be known to come from this computer; neither can be
     // reached around through a script. The run's client address is what the caller said, and none counts as away from the server.
     if (passwordAloneRefused(f.store, name, this.opts.clientAddress ?? 'script')) throw new ScriptError(ERROR.wrongPassword, 'Account name or password is wrong');
