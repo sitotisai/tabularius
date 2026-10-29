@@ -53,6 +53,42 @@ export function containerCastsToName(sql: string, isContainer: (name: string) =>
   });
 }
 
+/** Translate supported temporal CASTs after the other SQL rewrites have handled their operands. */
+export function castsToTypes(sql: string): string {
+  const plain = blanked(sql);
+  const cast = /\bCAST\s*\(/gi;
+  let output = '';
+  let from = 0;
+  for (const match of plain.matchAll(cast)) {
+    const start = match.index;
+    if (start < from) continue;
+    const open = start + match[0].length - 1;
+    const close = closing(plain, open + 1);
+    if (close < 0) continue;
+    const inside = plain.slice(open + 1, close);
+    let depth = 0;
+    let as = -1;
+    for (let i = 0; i < inside.length - 1; i++) {
+      if (inside[i] === '(') depth++;
+      else if (inside[i] === ')') depth--;
+      else if (depth === 0 && inside.slice(i, i + 2).toUpperCase() === 'AS'
+        && (i === 0 || !/\w/.test(inside[i - 1])) && (i + 2 === inside.length || !/\w/.test(inside[i + 2]))) as = i;
+    }
+    if (as < 0) continue;
+    const type = /^(\w+)(?:\s*\(\s*(\d+)(?:\s*,\s*(\d+))?\s*\))?\s*$/i.exec(sql.slice(open + 1 + as + 2, close).trim());
+    if (!type || !['DATE', 'TIME', 'TIMESTAMP'].includes(type[1].toUpperCase())) {
+      output += sql.slice(from, close + 1);
+      from = close + 1;
+      continue;
+    }
+    const operand = sql.slice(open + 1, open + 1 + as);
+    const digits = type.slice(2).filter((digit): digit is string => digit !== undefined);
+    output += sql.slice(from, start) + `fm_cast_${type[1].toLowerCase()}(${castsToTypes(operand)}${digits.map((digit) => `, ${digit}`).join('')})`;
+    from = close + 1;
+  }
+  return output + sql.slice(from);
+}
+
 const unsupported = (what: string) => new CalcError(ERR.calculation, `${what} is not supported`);
 
 /** RIGHT OUTER JOIN and FULL OUTER JOIN: FileMaker's SQL has only INNER and LEFT OUTER, and SQLite would accept these. */

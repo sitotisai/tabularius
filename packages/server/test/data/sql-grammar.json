@@ -3111,6 +3111,56 @@
   "note": "the page gives CAST(container AS VARCHAR), but does not state what CAST(number AS VARCHAR) returns; unverified"
  },
  {
+  "id": "cond-10",
+  "area": "CAST",
+  "construct": "CAST text as DATE",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-dates.html",
+  "sql": "SELECT CAST('2028-01-30' AS DATE) FROM emp WHERE emp_id = 'E1'",
+  "rows": [["2028-01-30"]],
+  "expected": "derived",
+  "note": "The SQL standard defines this cast; the cited page gives no CAST example."
+ },
+ {
+  "id": "cond-11",
+  "area": "CAST",
+  "construct": "CAST a date field as DATE",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-dates.html",
+  "sql": "SELECT CAST(hire_date AS DATE) FROM emp WHERE emp_id = 'E1'",
+  "rows": [["2020-03-15"]],
+  "expected": "derived",
+  "note": "The SQL standard defines this cast; the cited page gives no CAST example."
+ },
+ {
+  "id": "cond-12",
+  "area": "CAST",
+  "construct": "CAST text as TIMESTAMP",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-dates.html",
+  "sql": "SELECT CAST('2028-01-30 14:35:10' AS TIMESTAMP) FROM emp WHERE emp_id = 'E1'",
+  "rows": [["2028-01-30T14:35:10"]],
+  "expected": "derived",
+  "note": "The SQL standard defines this cast; the cited page gives no CAST example."
+ },
+ {
+  "id": "cond-13",
+  "area": "CAST",
+  "construct": "CAST text as TIME",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-dates.html",
+  "sql": "SELECT CAST('09:00:00' AS TIME) FROM emp WHERE emp_id = 'E1'",
+  "rows": [["09:00:00"]],
+  "expected": "derived",
+  "note": "The SQL standard defines this cast; the cited page gives no CAST example."
+ },
+ {
+  "id": "cond-14",
+  "area": "CAST",
+  "construct": "CAST invalid text as DATE fails",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-dates.html",
+  "sql": "SELECT CAST('2028-13-45' AS DATE) FROM emp WHERE emp_id = 'E1'",
+  "error": true,
+  "expected": "derived",
+  "note": "The SQL standard requires a valid date; the cited page gives no CAST example."
+ },
+ {
   "id": "cast-02",
   "area": "CAST",
   "construct": "CAST of an embedded container as VARCHAR returns its filename",

@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createStore, Store } from '../src/index.ts';
 import { fileMakerSqlSyntax } from '../src/sql-dates.ts';
-import { anyAllToIn, containerCastsToName, expandStars, fetchToLimit, refuseUnsupportedJoins } from '../src/sql-grammar.ts';
+import { anyAllToIn, castsToTypes, containerCastsToName, expandStars, fetchToLimit, refuseUnsupportedJoins } from '../src/sql-grammar.ts';
 
 let dir: string;
 let store: Store;
@@ -246,6 +246,43 @@ test('container CAST uses the file name and leaves other CASTs, quoted text, and
     "SELECT (SELECT filename FROM _fm_containers WHERE id = Pic), CAST(Pay AS VARCHAR), 'CAST(Pic AS VARCHAR)' FROM P WHERE First = ?");
   assert.equal(containerCastsToName('SELECT CAST("Pic" AS VARCHAR) -- CAST(Pic AS VARCHAR)', (name) => name === 'Pic'),
     'SELECT (SELECT filename FROM _fm_containers WHERE id = "Pic") -- CAST(Pic AS VARCHAR)');
+});
+
+test('CAST to date, time, and timestamp preserves and validates temporal values', () => {
+  for (const [query, expected] of [
+    ["SELECT CAST('2020-01-02' AS DATE)", [['2020-01-02']]],
+    ["SELECT CAST('3/15/2000' AS DATE)", [['2000-03-15']]],
+    ['SELECT First, CAST(Born AS DATE) FROM P ORDER BY First', [['Ann', '2000-03-15'], ['Bo', '1999-12-31']]],
+    ["SELECT CAST(Born AS TIMESTAMP) FROM P WHERE First = 'Bo'", [['1999-12-31T00:00:00']]],
+    ["SELECT CAST('2020-01-02 03:04:05' AS TIMESTAMP)", [['2020-01-02T03:04:05']]],
+    ["SELECT CAST('2020-01-02T03:04:05' AS TIMESTAMP(3))", [['2020-01-02T03:04:05']]],
+    ["SELECT CAST(TIMESTAMP '2020-01-02 03:04:05' AS DATE)", [['2020-01-02']]],
+    ["SELECT CAST(TIMESTAMP '2020-01-02 03:04:05' AS TIME(3))", [['03:04:05']]],
+    ["SELECT CAST('03:04:05' AS TIME)", [['03:04:05']]],
+    ["SELECT CAST(Born AS DATE) + 1 FROM P WHERE First = 'Ann'", [['2000-03-16']]],
+    ["SELECT CAST(NULL AS DATE)", [[null]]],
+    ["SELECT CAST('' AS DATE)", [[null]]],
+    ["SELECT CAST(CAST('2020-01-02' AS DATE) AS TIMESTAMP)", [['2020-01-02T00:00:00']]],
+    ["SELECT CAST(DATE '2020-01-02' AS TIMESTAMP)", [['2020-01-02T00:00:00']]],
+  ] as const) assert.deepEqual(rows(query), expected, query);
+
+  assert.deepEqual(run('SELECT CAST(? AS TIME(3)), CAST(? AS TIMESTAMP(6))', ['09:00:00', '2020-01-02']).rows,
+    [['09:00:00', '2020-01-02T00:00:00']]);
+  assert.equal(castsToTypes("SELECT 'CAST(1 AS DATE)'"), "SELECT 'CAST(1 AS DATE)'");
+  assert.equal(castsToTypes('SELECT CAST(1 AS INTEGER), CAST(1 AS TEXT), CAST(1 AS BOOLEAN)'),
+    'SELECT CAST(1 AS INTEGER), CAST(1 AS TEXT), CAST(1 AS BOOLEAN)');
+  assert.equal(castsToTypes('SELECT CAST(CAST(? AS DATE) AS TIMESTAMP(3))'),
+    'SELECT fm_cast_timestamp(fm_cast_date(? ) , 3)');
+  assert.equal(castsToTypes('SELECT CAST(? AS TIME(3, 2))'), 'SELECT fm_cast_time(? , 3, 2)');
+
+  for (const query of [
+    "SELECT CAST('2020-13-45' AS DATE)", "SELECT CAST('abc' AS TIME)",
+    "SELECT CAST('25:00:00' AS TIME)", "SELECT CAST('2020-01-02 03:99:05' AS TIMESTAMP)",
+    "SELECT CAST('2020-01-02' AS TIME)", "SELECT CAST('03:04:05' AS DATE)",
+    "SELECT CAST('03:04:05' AS TIMESTAMP)",
+    'SELECT CAST(N AS DATE) FROM W',
+  ]) assert.throws(() => rows(query), /Invalid/, query);
+  assert.deepEqual(rows("SELECT CAST('2020-13-45' AS DATE) FROM W WHERE 0"), []);
 });
 
 test('OFFSET and FETCH FIRST become LIMIT and OFFSET at the top of the query only', () => {
