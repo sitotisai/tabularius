@@ -1572,7 +1572,7 @@ for (const [name, f] of Object.entries(MBS_REGEX)) {
 for (const [name, f] of Object.entries(MBS_JSON)) {
   MBS[name] = (v, env) => {
     const r = f(v.map((x) => ({ text: T(x, env), number: x.type === 'number' })), env.ctx.pluginSession ?? env.ctx);
-    return typeof r === 'number' ? num(r) : text(r);
+    return typeof r === 'number' ? num(r) : typeof r === 'string' ? text(r) : r;
   };
 }
 // The Math and Time functions (mbs-math.ts): dates and timestamps are passed as themselves, the clock is the calculation's.
@@ -1583,7 +1583,7 @@ for (const [name, f] of Object.entries(MBS_MATH)) {
 for (const [name, f] of Object.entries(MBS_XML)) {
   MBS[name] = (v, env) => {
     const r = f(v.map((x) => T(x, env)), env.ctx.pluginSession ?? env.ctx);
-    return typeof r === 'number' ? num(r) : text(r);
+    return typeof r === 'number' ? num(r) : typeof r === 'string' ? text(r) : r;
   };
 }
 // Dictionaries and plug-in variables (mbs-dict.ts) keep values as they are, for the script session.

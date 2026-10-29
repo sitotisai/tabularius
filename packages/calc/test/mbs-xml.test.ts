@@ -4,12 +4,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { evaluateText, type CalcContext } from '../src/index.ts';
 import { MBS_XML } from '../src/mbs-xml.ts';
+import { type ColoredText } from '../src/mbs-colorize.ts';
 import { MbsError } from '../src/mbs-text.ts';
 
 const D = '<?xml version="1.0" encoding="UTF-8"?>\n';
 const session = () => {
   const scope = {};
-  return (name: string, ...args: (string | number)[]) => MBS_XML[name.toLowerCase()](args.map(String), scope);
+  return (name: string, ...args: (string | number | ColoredText)[]) => MBS_XML[name.toLowerCase()](args.map((a) => typeof a === 'object' ? a.value : String(a)), scope);
 };
 
 test('AR-calc-extensions-09 ItemRefs refuses a full batch without consuming handles', () => {
@@ -137,7 +138,7 @@ test('MBS XML through MBS ( … ): references per calculation context, other fun
   const c: CalcContext = {};
   assert.equal(evaluateText('MBS ( "XML.GetPathValue" ; "<test>Hello</test>" ; "test" ; 0 )', c), 'Hello');
   assert.equal(evaluateText('Let ( r = MBS ( "XML.Parse" ; "<a><b>1</b></a>" ) ; MBS ( "XML.GetPathValue" ; r ; "a.b" ) )', c), '1');
-  assert.match(evaluateText('MBS ( "XML.Colorize" ; "<a/>" )', c), /^\[MBS\] ERROR: XML.Colorize is not available/);
+  assert.match(evaluateText('GetAsCSS ( MBS ( "XML.Colorize" ; "<a/>" ) )', c), /color: #[0-9A-F]{6}/);
   assert.match(evaluateText('MBS ( "XML.Format" ; "<a>" )', c), /^\[MBS\] ERROR: Failed to parse XML/);
   assert.equal(evaluateText('MBS ( "IsError" )', c), '1');
 });
