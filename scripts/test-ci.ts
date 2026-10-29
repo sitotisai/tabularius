@@ -8,6 +8,8 @@
 //   --list        print the files that would run instead of running them
 import { spawnSync } from 'node:child_process';
 import { availableParallelism } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { plan, ROOT } from './test-plan.ts';
 
 const args = process.argv.slice(2);
@@ -31,8 +33,10 @@ if (flag('list')) {
 const concurrency = Number(process.env.TEST_CI_CONCURRENCY) || Math.max(2, Math.min(4, availableParallelism()));
 // A file gets ten minutes: docs-run.test.ts runs the hand-written pages'
 // examples (131 s here on a many-core machine, over 300 s on a two-core runner twice running) and asks for 600 s itself.
+// On Windows a delete of a file a test left open fails, where elsewhere it works: the cleanup preload closes those databases and tries again.
+const preload = process.platform === 'win32' ? ['--import', pathToFileURL(join(ROOT, 'scripts', 'test-windows-cleanup.ts')).href] : [];
 const result = spawnSync(process.execPath, [
-  '--test', `--test-concurrency=${concurrency}`, '--test-timeout=600000', '--test-reporter=spec', ...files,
+  ...preload, '--test', `--test-concurrency=${concurrency}`, '--test-timeout=600000', '--test-reporter=spec', ...files,
 ], { cwd: ROOT, stdio: 'inherit' });
 if (result.error) throw result.error;
 process.exitCode = result.status ?? 1;
