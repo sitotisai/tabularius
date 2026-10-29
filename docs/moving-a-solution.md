@@ -30,7 +30,7 @@ You need one of these:
   and adds a `tabularius` command. On macOS and Linux it goes in
   `~/.local/bin`, and the script tells you if that folder isn't on your
   PATH.
-- **Docker.** `docker compose up -d` hosts `./Databases` on port 8080 (the README's Docker steps make the folder writable for the container and set the passwords).
+- **Docker.** `docker compose up -d` hosts `./Databases` on port 8080 ([Hosting for a team](hosting-for-a-team.md) has the Docker steps that make the folder writable for the container and set the passwords).
 
 Check it works:
 

@@ -37,7 +37,7 @@ sent over the internet and no key.
 
 Without `--ai`, a server with an embedding model runs the embedding and RAG steps and nothing else. Steps that ask a model
 (Generate Response from Model, Perform RAG Action's Send Prompt, Perform Find by Natural Language) stop saying the model is off. Add
-`--ai` and an Anthropic key (see the README) to turn them on as well.
+`--ai` and an Anthropic key (see [What Tabularius does](features.md)) to turn them on as well.
 
 ## Finding records by meaning from an AI app
 
