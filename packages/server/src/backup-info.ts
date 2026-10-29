@@ -1,18 +1,22 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { atomicWrite, withStateLock } from '../../store/src/durable.ts';
+import { checkManifestKeys, ManifestKeyError } from './backup-json-keys.ts';
 
 /** Missing is allowed only when building a new manifest or reading legacy metadata. */
 export function readBackupInfo<T extends object = Record<string, unknown>>(setDir: string, allowMissing = false): T {
+  const path = join(setDir, 'backup.json');
   try {
-    const info: unknown = JSON.parse(readFileSync(join(setDir, 'backup.json'), 'utf8'));
+    const raw = readFileSync(path, 'utf8');
+    checkManifestKeys(raw);
+    const info: unknown = JSON.parse(raw);
     if (!info || typeof info !== 'object' || Array.isArray(info)) throw new Error('expected an object');
     return info as T;
   } catch (e) {
     if (allowMissing && (e as NodeJS.ErrnoException).code === 'ENOENT') return {} as T;
     // The cause's own text can hold file contents; say only which kind of problem it was.
-    const why = e instanceof SyntaxError ? 'invalid JSON' : 'manifest could not be read';
-    throw new Error(`unreadable manifest ${join(setDir, 'backup.json')}: ${why}`);
+    const why = e instanceof ManifestKeyError ? e.message : e instanceof SyntaxError ? 'invalid JSON' : 'manifest could not be read';
+    throw new Error(`unreadable manifest ${path}: ${why}`);
   }
 }
 
