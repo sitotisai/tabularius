@@ -63,11 +63,15 @@ export function makeNode(kind: XNodeKind, parent: XNode | null, order: number): 
 // ---- XML
 
 const NAME = /[A-Za-z_:À-￿][\w.\-:·À-￿]*/y;
+// XML 1.0 NameStartChar/NameChar, for callers requiring well-formedness rather than libxml2-style recovery.
+const STRICT_NAME = /[:A-Z_a-z\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u02ff\u0370-\u037d\u037f-\u1fff\u200c-\u200d\u2070-\u218f\u2c00-\u2fef\u3001-\ud7ff\uf900-\ufdcf\ufdf0-\ufffd\u{10000}-\u{effff}][:A-Z_a-z\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u02ff\u0370-\u037d\u037f-\u1fff\u200c-\u200d\u2070-\u218f\u2c00-\u2fef\u3001-\ud7ff\uf900-\ufdcf\ufdf0-\ufffd\u{10000}-\u{effff}.0-9\-\u00b7\u0300-\u036f\u203f-\u2040]*/uy;
 const PREDEFINED: Record<string, string> = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" };
 
 export interface ParseOptions {
   /** Keep processing instructions as nodes (XSLT wants them); by default they are read past. */
   processingInstructions?: boolean;
+  /** Require XML 1.0 well-formedness and bound QNames; refuse all DTDs without processing them. */
+  dtdFree?: boolean;
 }
 
 /** Parses XML (elements, attributes, text, CDATA, comments, processing instructions skipped, entities incl. numeric, xmlns namespace declarations). Throws XPathError on malformed XML. */
@@ -92,10 +96,16 @@ function parseXmlDocumentInner(xml: string, options?: ParseOptions): XNode {
   };
 
   const name = (): string => {
-    NAME.lastIndex = i;
-    const m = NAME.exec(s);
+    const pattern = options?.dtdFree ? STRICT_NAME : NAME;
+    pattern.lastIndex = i;
+    const m = pattern.exec(s);
     if (!m) fail('expected a name');
     i += m![0].length;
+    if (options?.dtdFree && m![0].split(':').some((part) => {
+      STRICT_NAME.lastIndex = 0;
+      return !part || STRICT_NAME.exec(part)?.[0] !== part;
+    })) fail('invalid qualified name');
+    if (options?.dtdFree && m![0].split(':').length > 2) fail('invalid qualified name');
     return m![0];
   };
   const skipWs = (): boolean => {
@@ -125,7 +135,7 @@ function parseXmlDocumentInner(xml: string, options?: ParseOptions): XNode {
           fail(`invalid character reference &${ent};`);
         }
         ch = String.fromCodePoint(cp);
-      } else ch = PREDEFINED[ent];
+      } else ch = Object.hasOwn(PREDEFINED, ent) ? PREDEFINED[ent] : undefined;
       if (ch === undefined) fail(`unknown entity &${ent}; (only &lt; &gt; &amp; &quot; &apos; and numbered references are defined)`);
       out += t.slice(from, amp) + ch;
       from = semi + 1;
@@ -140,8 +150,19 @@ function parseXmlDocumentInner(xml: string, options?: ParseOptions): XNode {
     parent.children.push(c);
   };
   const pi = (parent: XNode): void => {
+    const start = i;
     i += 2;
     const body = skipTo('?>', 'processing instruction');
+    if (options?.dtdFree) {
+      STRICT_NAME.lastIndex = 0;
+      const target = STRICT_NAME.exec(body)?.[0] ?? fail('invalid processing instruction');
+      if (body.length > target.length && !/[ \t\n]/.test(body[target.length])) fail('invalid processing instruction');
+      if (/^xml$/i.test(target)) {
+        if (target !== 'xml' || start !== 0 || !/^xml[ \t\n]+version[ \t\n]*=[ \t\n]*(?:"1\.0"|'1\.0')(?:[ \t\n]+encoding[ \t\n]*=[ \t\n]*(?:"[A-Za-z][A-Za-z0-9._-]*"|'[A-Za-z][A-Za-z0-9._-]*'))?(?:[ \t\n]+standalone[ \t\n]*=[ \t\n]*(?:"(?:yes|no)"|'(?:yes|no)'))?[ \t\n]*$/.test(body)) {
+          fail('invalid or misplaced XML declaration (only XML 1.0 is supported)');
+        }
+      }
+    }
     if (!options?.processingInstructions) return;
     const m = /^([^ \t\r\n]+)[ \t\r\n]*([\s\S]*)$/.exec(body);
     if (!m || /^xml$/i.test(m[1])) return;
@@ -186,6 +207,8 @@ function parseXmlDocumentInner(xml: string, options?: ParseOptions): XNode {
     for (const [an, v] of raw) {
       const decl = an === 'xmlns' ? '' : an.startsWith('xmlns:') ? an.slice(6) : undefined;
       if (decl === undefined) continue;
+      if (options?.dtdFree && (decl === 'xmlns' || v === 'http://www.w3.org/2000/xmlns/' ||
+        (decl === 'xml') !== (v === XML_NS))) fail('invalid reserved namespace declaration');
       if (decl && !v) fail(`empty namespace URI for prefix ${decl}`);
       if (scope === inherited) { workBudget()?.nodes(inherited.size); scope = new Map(inherited); }
       scope.set(decl, v);
@@ -197,6 +220,7 @@ function parseXmlDocumentInner(xml: string, options?: ParseOptions): XNode {
       n.name = qn;
       const uri = prefix === 'xml' ? XML_NS : prefix ? scope.get(prefix) : isElement ? scope.get('') : '';
       if (prefix && !uri) {
+        if (options?.dtdFree) fail(`unbound namespace prefix ${prefix}`);
         // libxml2 reports an unbound prefix but keeps the node, named by its whole QName and in no namespace.
         n.localName = qn;
         return;
@@ -248,6 +272,7 @@ function parseXmlDocumentInner(xml: string, options?: ParseOptions): XNode {
         const lt = s.indexOf('<', i);
         const end = lt < 0 ? s.length : lt;
         const t = makeNode('text', el, order++);
+        if (options?.dtdFree && s.slice(i, end).includes(']]>')) fail('unexpected "]]>" in text');
         t.value = decode(s.slice(i, end));
         i = end;
         el.children.push(t);
@@ -263,6 +288,7 @@ function parseXmlDocumentInner(xml: string, options?: ParseOptions): XNode {
     if (s.startsWith('<?', i)) pi(doc);
     else if (s.startsWith('<!--', i)) comment(doc);
     else if (s.startsWith('<!DOCTYPE', i)) {
+      if (options?.dtdFree) fail('DOCTYPE is not supported; use DTD-free XML');
       // Skip to the closing ">", past quoted strings and an internal subset in brackets.
       let depth = 0;
       for (i += 9; ; i++) {

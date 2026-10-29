@@ -125,7 +125,8 @@ test('MBS XML: Canonical and stylesheets with parameters', () => {
   const doc = '<?xml version="1.0"?><!--c--><r b="2" a="1"><e/></r>';
   assert.equal(x('XML.Canonical', doc), '<r a="1" b="2"><e></e></r>');
   assert.equal(x('XML.Canonical', doc, 2), '<!--c-->\n<r a="1" b="2"><e></e></r>');
-  assert.throws(() => x('XML.Canonical', doc, 0, 1), /Exclusive/);
+  assert.equal(x('XML.Canonical', doc, 0, 1), '<r a="1" b="2"><e></e></r>');
+  assert.throws(() => x('XML.Canonical', '<r xmlns="urn:r"/>', 0, 1), /Exclusive/);
   const style = '<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform"><xsl:output method="text"/><xsl:param name="id" select="0"/><xsl:param name="name"/>'
     + '<xsl:template match="/"><xsl:value-of select="concat($id, \':\', $name, \':\', count(//i))"/></xsl:template></xsl:stylesheet>';
   assert.equal(x('XML.ApplyStylesheet', '<r><i/><i/></r>', style), '0::2');
