@@ -2411,21 +2411,18 @@ export class Store {
     // Sign-in rows that are waiting go first, before this change opens its own transaction or savepoint (it logs its own row).
     this.settleDeferredSecurity();
     const intoHold = this.deferredIntoHold.length;
-    const was = this.schema;
+    let was!: Schema;
     let result;
-    // Renames and deletes must follow through to privilege sets (per-object
-    // access is keyed by name, record-access rules are formulas); carry them in
-    // so applyOps can rewrite them, and remember each set's state to spot which changed.
-    const privBefore = new Map(this.privilegeSets().map((p) => [p.name, JSON.stringify(p)]));
-    try {
-      result = applyOps({ schema: this.schema, designs: this.designs(), privileges: [...privBefore.keys()].map((n) => JSON.parse(privBefore.get(n)!) as PrivilegeDefinition), fileMode: this.fileMode, externalFile: (d) => this.otherFileDesign(d, opts.readOtherFile) }, ops, (id) => this.deletedDesign(id) ?? (opts.recordedRestore ? this.recordedRestore(ops, id) : undefined));
-    } catch (e) {
-      if (e instanceof DesignError) throw new StoreError(e.code, e.message);
-      throw e;
-    }
+    let privBefore!: Map<string, string>;
     const nested = this.sql.isTransaction;
     this.sql.exec(nested ? 'SAVEPOINT security_design' : 'BEGIN IMMEDIATE');
     try {
+      was = this.schema;
+      // Renames and deletes must follow through to privilege sets (per-object
+      // access is keyed by name, record-access rules are formulas); carry them in
+      // so applyOps can rewrite them, and remember each set's state to spot which changed.
+      privBefore = new Map(this.privilegeSets().map((p) => [p.name, JSON.stringify(p)]));
+      result = applyOps({ schema: this.schema, designs: this.designs(), privileges: [...privBefore.keys()].map((n) => JSON.parse(privBefore.get(n)!) as PrivilegeDefinition), fileMode: this.fileMode, externalFile: (d) => this.otherFileDesign(d, opts.readOtherFile) }, ops, (id) => this.deletedDesign(id) ?? (opts.recordedRestore ? this.recordedRestore(ops, id) : undefined));
       // Their triggers name columns, which would block dropping or changing them; finds build them again.
       this.words.dropAll();
       this.designAccount = opts.account ?? null;
@@ -2898,12 +2895,16 @@ export class Store {
     }
     const json = logged && JSON.stringify(logged, (_k, v) => (v instanceof Uint8Array ? `<${v.length} bytes>` : typeof v === 'bigint' ? Number(v) : v));
     const agent = account && this.isAgent(account) ? 1 : 0;
-    const r = this.prepared('INSERT INTO _fm_audit (at, account, kind, tbl, record_id, changes, security, agent, surface, script, copy_of, revert_of) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)')
-      .run(new Date().toISOString(), account, kind, table, recordId ?? null, json ?? null, agent, w?.surface ?? null, w?.script ?? null, copyOf ?? null, w?.revertOf ?? revertOf ?? null);
-    const seq = Number(r.lastInsertRowid);
     const pending = this.heldBy !== undefined && this.heldBy === w?.transaction?.open;
+    const write = () => {
+      const r = this.prepared('INSERT INTO _fm_audit (at, account, kind, tbl, record_id, changes, security, agent, surface, script, copy_of, revert_of) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)')
+        .run(new Date().toISOString(), account, kind, table, recordId ?? null, json ?? null, agent, w?.surface ?? null, w?.script ?? null, copyOf ?? null, w?.revertOf ?? revertOf ?? null);
+      const seq = Number(r.lastInsertRowid);
+      linkRecordEntry(this.sql, seq);
+      return seq;
+    };
+    const seq = kind === 'read' ? this.withWriteTransaction(write) : write();
     if (pending) this.heldAudit.push({ seq, onAudit: w?.onAudit });
-    linkRecordEntry(this.sql, seq);
     // Told once the write is committed: an entry that rolls back with its write must never be announced as one of ours.
     if (!pending && w?.onAudit) {
       if (this.writePublications) { const heard = w.onAudit; this.writePublications.push(() => heard(this, seq)); }
