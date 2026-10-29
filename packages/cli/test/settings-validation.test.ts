@@ -40,7 +40,7 @@ test('invalid stop grace refuses before sending any process signal', (t) => {
   t.after(() => { if (saved === undefined) delete process.env.TABULARIUS_STOP_GRACE_MS; else process.env.TABULARIUS_STOP_GRACE_MS = saved; });
   let calls = 0;
   let grace = 0;
-  const control = { kill: () => { calls++; return true as const; }, exited: (_pid: number, ms: number) => { grace = ms; return true; }, request: () => { calls++; } };
+  const control = { owner: () => 12345, kill: () => { calls++; return true as const; }, exited: (_pid: number, ms: number) => { grace = ms; return true; }, request: () => { calls++; } };
   for (const value of ['', '0', '-1', '1.5', '1e9', 'abc']) {
     process.env.TABULARIUS_STOP_GRACE_MS = value;
     assert.throws(() => stopOwnServer(dir, 'linux', control), /TABULARIUS_STOP_GRACE_MS.*whole number.*decimal digits/);

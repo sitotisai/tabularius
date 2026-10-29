@@ -1,3 +1,4 @@
+import { runningServer } from '../../server/src/backup.ts';
 import { positiveWholeNumber } from '../../server/src/setting-values.ts';
 import { renameFileSync as renameSync, removeFileSync as rmSync } from '../../store/src/file-ops.ts';
 // Running the server as a service, and upgrading it in place.
@@ -582,20 +583,16 @@ export function uninstallService(o: Pick<ServiceOptions, 'platform' | 'home' | '
  * Asks the server hosting `folder` to stop, when it runs as this user: its
  * process id is in the folder (.openhbam.pid). False when there is none to ask.
  */
-export function stopOwnServer(folder: string, platform: NodeJS.Platform = process.platform, control = { kill: process.kill.bind(process), exited: exitsWithin, request: requestStop }): boolean {
+export function stopOwnServer(folder: string, platform: NodeJS.Platform = process.platform, control: { kill: typeof process.kill; exited: typeof exitsWithin; request: typeof requestStop; owner?: typeof runningServer } = { kill: process.kill.bind(process), exited: exitsWithin, request: requestStop }): boolean {
   const graceMs = positiveWholeNumber('TABULARIUS_STOP_GRACE_MS', process.env.TABULARIUS_STOP_GRACE_MS, 30_000);
-  let pid: number;
-  try {
-    pid = Number(readFileSync(join(folder, '.openhbam.pid'), 'utf8'));
-  } catch {
-    return false;
-  }
-  if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid) return false;
+  const owner = control.owner ?? runningServer;
+  const pid = owner(folder);
+  if (pid === undefined || pid === process.pid) return false;
   try {
     if (platform === 'win32') {
       control.kill(pid, 0);
       control.request(folder, pid);
-    } else control.kill(pid, 'SIGTERM'); // finishes saving, then exits on POSIX
+    } else if (owner(folder) === pid) control.kill(pid, 'SIGTERM'); // finishes saving, then exits on POSIX
   } catch (e) {
     if (platform === 'win32' && (e as NodeJS.ErrnoException).code !== 'ESRCH') throw e;
     return false; // gone, or another user's
@@ -606,7 +603,7 @@ export function stopOwnServer(folder: string, platform: NodeJS.Platform = proces
   if (!control.exited(pid, graceMs)) {
     if (platform === 'win32') throw new Error('The Windows server did not stop gracefully; stop it with Ctrl-C and retry. The task was not forcibly ended.');
     try {
-      control.kill(pid, 'SIGKILL');
+      if (owner(folder) === pid) control.kill(pid, 'SIGKILL');
     } catch {
       // It exited just now.
     }
@@ -730,14 +727,7 @@ export function checkHealth(url: string): Promise<{ status: string; uptimeSecond
 
 /** The process id of the server hosting `folder` (.openhbam.pid), when it is running. */
 function livePid(folder: string): number | undefined {
-  try {
-    const pid = Number(readFileSync(join(folder, '.openhbam.pid'), 'utf8'));
-    if (!Number.isInteger(pid) || pid <= 0) return undefined;
-    process.kill(pid, 0);
-    return pid;
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code === 'EPERM' ? Number(readFileSync(join(folder, '.openhbam.pid'), 'utf8')) : undefined;
-  }
+  return runningServer(folder);
 }
 
 /**

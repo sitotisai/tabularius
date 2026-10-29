@@ -19,6 +19,8 @@
 
 import { readBackupInfo, updateBackupInfo } from './backup-info.ts';
 import { DatabaseSync } from 'node:sqlite';
+import { Worker } from 'node:worker_threads';
+import { workerResult } from './worker-result.ts';
 import { createHash } from 'node:crypto';
 import { copyFileSync, createReadStream } from '../../store/src/fs-boundary.ts';
 import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
@@ -180,6 +182,12 @@ export function restoreTestDue(dest: string, every = RESTORE_TEST_EVERY_MS, now 
   return now - newest >= every;
 }
 
+/** Backup checks read the whole database in a worker, leaving requests responsive. */
+export async function integrityAsync(path: string, quick = false): Promise<string> {
+  const worker = new Worker(new URL('./integrity-worker.ts', import.meta.url), { workerData: { path, quick, backup: true } });
+  return workerResult(worker, (value) => typeof value === 'string' ? value : undefined, new AbortController().signal);
+}
+
 /** Runs SQLite's full integrity check on a database file; "ok" or the first problems found. */
 export function integrity(path: string, quick = false): string {
   const leftovers = ['-wal', '-shm'].filter((ext) => !existsSync(path + ext));
@@ -263,10 +271,10 @@ export async function verifySet(setDir: string, passphrase = backupKey(), option
           scratch ??= mkdtempSync(join(tmpdir(), 'tabularius-verify-'));
           const plain = join(scratch, file);
           await decryptFile(path, plain, passphrase);
-          files[file] = integrity(plain);
+          files[file] = await integrityAsync(plain);
           rmSync(plain, { force: true });
         } else {
-          files[file] = integrity(path);
+          files[file] = await integrityAsync(path);
         }
       } catch (e) {
         files[file] = (e as Error).message;

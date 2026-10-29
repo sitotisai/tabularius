@@ -269,9 +269,17 @@ const STORE_TABLES = `
     CREATE TABLE _fm_containers (id INTEGER PRIMARY KEY, filename TEXT, mime TEXT NOT NULL, kind TEXT, data BLOB NOT NULL, external TEXT, external_size INTEGER);
   `;
 
+/** Pre-create before SQLite opens it, so new WAL/SHM files inherit owner-only permissions. */
+function privateStore(path: string): DatabaseSync {
+  try { closeSync(openSync(path, 'wx', 0o600)); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+  }
+  return new DatabaseSync(path);
+}
+
 /** A new, empty solution: no FileMaker file needed. Build it with design mode. */
 export function createStore(outPath: string, options: { mode?: 'native' | 'compat' } = {}): void {
-  const sql = new DatabaseSync(outPath);
+  const sql = privateStore(outPath);
   try {
     sql.exec('PRAGMA journal_mode = WAL');
     sql.exec(STORE_TABLES);
@@ -392,14 +400,14 @@ export function importFmp12(src: string | FmpDatabase, outPath: string, onProgre
   }
   const fileInfo = typeof src === 'string' ? statSync(src) : undefined;
   const source = { size: fileInfo?.size ?? db.file.source.size, mtimeMs: Math.trunc(fileInfo?.mtimeMs ?? 0), blockCount: db.file.blockCount };
-  let sql = new DatabaseSync(outPath);
+  let sql = privateStore(outPath);
   let state = opts.resume ? readState(sql) : undefined;
   if (state && JSON.stringify(state.source) !== JSON.stringify(source)) state = undefined;
   if (!state && existsSync(outPath) && statSync(outPath).size > 0) {
     // Not a conversion of this file to pick up: start again from nothing.
     sql.close();
     for (const f of [outPath, outPath + '-wal', outPath + '-shm', outPath + '-journal']) rmSync(f, { force: true });
-    sql = new DatabaseSync(outPath);
+    sql = privateStore(outPath);
   }
   const tables = db.schema.tables;
   const progress = (table: string, records: number, extra: Partial<ImportProgress> = {}) =>

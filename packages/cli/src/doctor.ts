@@ -63,6 +63,7 @@ export function storageChecks(folder: string, opts: StorageOptions = {}): Check[
     try { path = realpathSync(folder); } catch { /* use the supplied path */ }
   }
   const out: Check[] = [];
+  if (process.env.TABULARIUS_ENCRYPTION_KEY) out.push({ name: 'Encryption coverage', level: 'warn', message: 'New database backups use encryption, but existing backups, external containers, source files, exports and logs can still contain plaintext. The encrypt command does not seal these files.', fix: 'Protect the whole data folder and backup disk with operating-system encryption.' });
   let s: Pick<StatsFs, 'type' | 'bavail' | 'bsize'> | undefined;
   try { s = (opts.statfs ?? statfsSync)(folder); } catch {
     out.push({ name: 'Disk', level: 'warn', message: 'free disk space could not be checked', fix: 'Check free space on the disk holding the data folder.' });
