@@ -1,4 +1,5 @@
 import { checkTextSize, joinText, jsonStringSize } from './text-budget.ts';
+import type { Env } from './evaluate.ts';
 import { ENTRY_BYTES, MAX_PLUGIN_VARIABLES, MAX_RETAINED_BYTES, RetainedMap, retainedBudget, stringBytes, valueBytes, type RetainedBudget } from './retained-budget.ts';
 
 // MBS ( "Dictionary.…" ) and ( "Variable.…" ): MonkeyBread's key/value maps and plug-in variables, following MBS's
@@ -8,8 +9,7 @@ import { ENTRY_BYTES, MAX_PLUGIN_VARIABLES, MAX_RETAINED_BYTES, RetainedMap, ret
 //   them in descending order ("person.456…" before "person.123…", "other" before "Hello"), so Tabularius does that.
 // - MBS's variables are shared by everyone on a server; Tabularius keeps them for the person's session (as $$
 //   variables are), so one person's or AI client's values never reach another's.
-// Not here: Dictionary.ToXML (no description of its elements), AddSQL…, SetVariables, ToMatrix and FM.CF. They
-// give an "isn't available" MBS error.
+// Dictionary.ToXML, AddSQL, SetVariables, ToMatrix and FM.CF use inferred forms; see their comments below.
 
 import { MbsError } from './mbs-text.ts';
 import { compact, parseJson, pretty, type Json } from './mbs-json.ts';
@@ -18,7 +18,7 @@ import { asNumber, num, text, type Value } from './values.ts';
 
 /** What a function is given: each parameter as itself and as FileMaker's text of it. */
 export interface DictArgs { values: Value[]; texts: string[] }
-type MbsDict = (a: DictArgs, scope: object) => Value;
+type MbsDict = (a: DictArgs, scope: object, env?: Env) => Value;
 
 /** `owner` is the session once the dictionary is kept, so its keys count toward the session's total; `sorted` caches its keys in order. */
 interface Dict { map: Map<string, Value>; tag: Value; owner?: Session; sorted?: string[]; bytes: number }
@@ -161,6 +161,46 @@ function deserialize(s: string): Dict {
 
 const listOf = (a: string[]) => text(joinText(a, '\r'));
 
+const oneRef = (a: DictArgs, name: string): string => {
+  if (a.values.length !== 1) fail(`${name} needs one dictionary reference`);
+  return a.texts[0];
+};
+const xmlName = (key: string): string => {
+  const safe = key.replace(/[^\p{L}\p{N}_.-]/gu, '_');
+  return /^[\p{L}_]/u.test(safe) && !/^xml/i.test(safe) ? safe : `_${safe}`;
+};
+const XML_UNSAFE = /[&<>"']|[\u0000-\u0008\u000B\u000C\u000E-\u001F\uD800-\uDFFF\uFFFE\uFFFF]/gu;
+const xmlReplacement = (c: string): string => {
+  switch (c) {
+    case '&': return '&amp;';
+    case '<': return '&lt;';
+    case '>': return '&gt;';
+    case '"': return '&quot;';
+    case "'": return '&apos;';
+    default: return '\uFFFD';
+  }
+};
+const xmlEscape = (s: string): string => s.replace(XML_UNSAFE, xmlReplacement);
+const xmlEscapedSize = (s: string): number => {
+  let size = s.length;
+  for (const match of s.matchAll(XML_UNSAFE)) size += xmlReplacement(match[0]).length - match[0].length;
+  return size;
+};
+function toXml(d: Dict, env?: Env): string {
+  const rows: string[] = [];
+  let size = '<Dictionary></Dictionary>'.length;
+  for (const key of keysOfDict(d)) {
+    env?.checkWorkBudget();
+    const name = xmlName(key);
+    const raw = valueText(d.map.get(key)!);
+    size += name.length * 2 + xmlEscapedSize(raw) + 5;
+    checkTextSize(size);
+    const value = xmlEscape(raw);
+    rows.push(`<${name}>${value}</${name}>`);
+  }
+  return `<Dictionary>${rows.join('')}</Dictionary>`;
+}
+
 export const MBS_DICT: Record<string, MbsDict> = {
   'dictionary.create': (a, scope) => {
     const d = emptyDict();
@@ -179,6 +219,29 @@ export const MBS_DICT: Record<string, MbsDict> = {
   'dictionary.adddictionary': ({ texts: [ref = '', other = ''] }, scope) => {
     const d = dictOf(scope, ref);
     setMany(d, new Map([...dictOf(scope, other).map].map(([k, v]) => [k, copy(v)])));
+    return OK;
+  },
+  // Inferred: AddSQL takes a dictionary, a SELECT and its ? values; each two-column row is a key/value pair.
+  'dictionary.addsql': (a, scope, env) => {
+    if (a.values.length < 2) fail('Dictionary.AddSQL needs a dictionary and a SQL query');
+    const d = dictOf(scope, a.texts[0]);
+    const query = a.texts[1];
+    checkTextSize(query.length);
+    if (!env?.ctx.executeSQL) throw new MbsError('Dictionary.AddSQL is not available here');
+    const rows = env.ctx.executeSQL(query, a.values.slice(2));
+    if (rows.length > MAX_ENTRIES) fail(`A dictionary holds at most ${MAX_ENTRIES} keys`);
+    const changes = new Map<string, Value>();
+    let size = 0;
+    for (const row of rows) {
+      env.checkWorkBudget();
+      if (row.length !== 2) fail('Dictionary.AddSQL needs two columns (key and value)');
+      const key = valueText(row[0]);
+      const value = copy(row[1]);
+      size += key.length + valueText(value).length;
+      checkTextSize(size);
+      changes.set(key, value);
+    }
+    setMany(d, changes);
     return OK;
   },
   'dictionary.clear': ({ texts: [ref = ''] }, scope) => {
@@ -222,6 +285,8 @@ export const MBS_DICT: Record<string, MbsDict> = {
     });
     return text(pretty({ t: 'obj', entries }));
   },
+  // Inferred: one root element and one key-named child per entry; invalid XML name characters become underscores.
+  'dictionary.toxml': (a, scope, env) => text(toXml(dictOf(scope, oneRef(a, 'Dictionary.ToXML')), env)),
   'dictionary.gettag': ({ texts: [ref = ''] }, scope) => copy(dictOf(scope, ref).tag),
   'dictionary.settag': ({ values, texts: [ref = ''] }, scope) => {
     const d = dictOf(scope, ref);
@@ -285,6 +350,37 @@ export const MBS_DICT: Record<string, MbsDict> = {
   'dictionary.setvalueforkey': ({ values, texts: [ref = '', key = ''] }, scope) => {
     set(dictOf(scope, ref), key, copy(values[2] ?? EMPTY));
     return OK;
+  },
+  // Inferred: keys that look like script variable names set those variables, preserving each value's type.
+  'dictionary.setvariables': (a, scope, env) => {
+    const d = dictOf(scope, oneRef(a, 'Dictionary.SetVariables'));
+    if (!env?.ctx.pluginSession || !env.ctx.setVariable) throw new MbsError('Dictionary.SetVariables is only available in a script');
+    let size = 0;
+    for (const key of d.map.keys()) {
+      env.checkWorkBudget();
+      if (!/^\$\$?[\p{L}_][\p{L}\p{N}_]*$/u.test(key)) fail(`"${key}" is not a script variable name`);
+      size += key.length + valueText(d.map.get(key)!).length;
+      checkTextSize(size);
+    }
+    for (const [key, value] of d.map) {
+      env.checkWorkBudget();
+      env.ctx.setVariable(key, 1, copy(value));
+    }
+    return OK;
+  },
+  // Inferred: a matrix is CR-separated rows, each a tab-separated key and value, in Keys order.
+  'dictionary.tomatrix': (a, scope, env) => {
+    const d = dictOf(scope, oneRef(a, 'Dictionary.ToMatrix'));
+    const rows: string[] = [];
+    let size = 0;
+    for (const key of keysOfDict(d)) {
+      env?.checkWorkBudget();
+      const value = valueText(d.map.get(key)!);
+      size += key.length + value.length + 1 + (rows.length ? 1 : 0);
+      checkTextSize(size);
+      rows.push(`${key}\t${value}`);
+    }
+    return text(joinText(rows, '\r'));
   },
   // Rows in Keys order, no delimiter after the last (inferred).
   'dictionary.totext': ({ texts: [ref = '', column, row] }, scope) => {
@@ -378,6 +474,19 @@ export const MBS_DICT: Record<string, MbsDict> = {
     return listOf(keysOf(vars).map((k) => k + sep + valueText(vars.get(k)!)));
   },
   'variable.names': (_, scope) => listOf(keysOf(sessionOf(scope).vars)),
+  // Inferred: FM.CF names a custom function in the open file and passes the remaining values as its arguments.
+  'fm.cf': (a, _scope, env) => {
+    const name = a.texts[0]?.trim();
+    if (!name) fail('FM.CF needs a custom function name');
+    if (!env) throw new MbsError('FM.CF is not available here');
+    let size = name.length;
+    for (const value of a.values.slice(1)) {
+      env.checkWorkBudget();
+      size += valueText(value).length;
+      checkTextSize(size);
+    }
+    return env.callFileCustomFunction(name, a.values.slice(1));
+  },
 };
 
 /** key<delimiter>value lines (a tab by default), split at the first delimiter; a line without one is a key with an empty value (inferred). */

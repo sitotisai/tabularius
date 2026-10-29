@@ -136,7 +136,7 @@ test('MBS Dictionary and Variable through MBS ( … ): values keep their type, s
   assert.equal(evaluateText('Let ( d = MBS ( "Dictionary.Create" ; "when" ; Date ( 1 ; 2 ; 2024 ) ) ; MBS ( "Dictionary.Values" ; d ) )', c), '1/2/2024');
   assert.equal(evaluateText('MBS ( "Variable.Set" ; "v" ; 5 ) & MBS ( "Variable.Get" ; "v" ) * 2', c), 'OK10');
   assert.match(evaluateText('MBS ( "Variable.Get" ; "v" )', {}), /^\[MBS\] ERROR: Variable not found/);
-  assert.match(evaluateText('MBS ( "Dictionary.ToXML" ; 1 )', c), /not available/);
+  assert.match(evaluateText('MBS ( "Dictionary.ToXML" ; 1 )', c), /not a dictionary reference/);
 });
 
 test('MBS Dictionary: Deserialize checks types and values, references never collide, KeyAtIndex is cached', () => {
