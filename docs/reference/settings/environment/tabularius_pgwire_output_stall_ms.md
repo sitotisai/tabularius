@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_PGWIRE_OUTPUT_STALL_MS
+
+Since 0.1.0
 
 How long a SQL client may leave the server's answers unread before the connection is closed, in milliseconds; a client that reads a little just before the time is up can wait nearly twice as long.
 

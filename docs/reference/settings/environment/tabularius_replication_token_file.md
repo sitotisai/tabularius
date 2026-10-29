@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_REPLICATION_TOKEN_FILE
+
+Since 0.1.0
 
 A private regular file holding the replication token; the primary requires at least 16 characters.
 

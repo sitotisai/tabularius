@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # tabularius serve --ldap-user-attribute
+
+Since 0.1.0
 
 `--ldap-user-attribute` is a serve option. The full command usage is in [serve](../../cli/serve.md).
 

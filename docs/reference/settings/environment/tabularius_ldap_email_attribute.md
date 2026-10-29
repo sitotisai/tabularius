@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_LDAP_EMAIL_ATTRIBUTE
+
+Since 0.1.0
 
 The attribute holding the email address.
 

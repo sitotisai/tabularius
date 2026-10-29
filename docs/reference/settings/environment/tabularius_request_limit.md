@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_REQUEST_LIMIT
+
+Since 0.1.0
 
 How many requests each worker runs at once before further ones wait in a queue (32 by default, at least 4). Two of the slots are kept for sign-in and static files. See [Performance](../../../performance.md).
 

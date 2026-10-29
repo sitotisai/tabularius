@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_LDAP_BIND_DN_TEMPLATE
+
+Since 0.1.0
 
 The distinguished name a person signs in as, with the user name filled in.
 

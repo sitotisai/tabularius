@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_HOME
+
+Since 0.1.0
 
 The folder holding per-user settings (`~/.openhbam` by default): the AI key file, and the service definition's files.
 

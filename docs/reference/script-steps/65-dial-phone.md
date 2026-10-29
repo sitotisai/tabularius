@@ -2,12 +2,14 @@
 id: script-step-65
 title: "Dial Phone"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Dial Phone
+
+Since 0.1.0
 
 Dial Phone is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

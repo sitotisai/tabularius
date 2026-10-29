@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_WORKERS
+
+Since 0.1.0
 
 The number of worker processes, or `auto` for one per CPU core.
 

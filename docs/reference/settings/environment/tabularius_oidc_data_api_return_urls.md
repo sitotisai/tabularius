@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_OIDC_DATA_API_RETURN_URLS
+
+Since 0.1.0
 
 Comma-separated addresses the Data API sign-in may return to.
 

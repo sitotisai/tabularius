@@ -2,12 +2,14 @@
 id: script-step-149
 title: "Open Edit Saved Finds"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Open Edit Saved Finds
+
+Since 0.1.0
 
 Open Edit Saved Finds is a records and finds script step. This page describes how the offline Tabularius engine handles it.
 

@@ -2,12 +2,14 @@
 id: script-step-96
 title: "Save a Copy as Add-on Package"
 area: script-steps
-since: unknown
 status: not-yet
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Save a Copy as Add-on Package
+
+Since 0.1.0
 
 Save a Copy as Add-on Package is a fields and values script step. This page describes how the offline Tabularius engine handles it.
 

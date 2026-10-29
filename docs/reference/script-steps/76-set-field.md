@@ -2,12 +2,14 @@
 id: script-step-76
 title: "Set Field"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Set Field
+
+Since 0.1.0
 
 Set Field is a fields and values script step. This page describes how the offline Tabularius engine handles it.
 

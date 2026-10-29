@@ -2,12 +2,14 @@
 id: script-step-109
 title: "Edit User Dictionary"
 area: script-steps
-since: unknown
 status: not-yet
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Edit User Dictionary
+
+Since 0.1.0
 
 Edit User Dictionary is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

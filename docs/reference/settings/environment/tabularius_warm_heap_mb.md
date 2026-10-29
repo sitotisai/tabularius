@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_WARM_HEAP_MB
+
+Since 0.1.0
 
 Memory budget for the background warming worker, in MB.
 

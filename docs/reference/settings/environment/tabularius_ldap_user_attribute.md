@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_LDAP_USER_ATTRIBUTE
+
+Since 0.1.0
 
 The attribute holding the user name.
 

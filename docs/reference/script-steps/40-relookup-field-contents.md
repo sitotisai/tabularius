@@ -2,12 +2,14 @@
 id: script-step-40
 title: "Relookup Field Contents"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Relookup Field Contents
+
+Since 0.1.0
 
 Relookup Field Contents is a fields and values script step. This page describes how the offline Tabularius engine handles it.
 

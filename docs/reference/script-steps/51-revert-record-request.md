@@ -2,12 +2,14 @@
 id: script-step-51
 title: "Revert Record/Request"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Revert Record/Request
+
+Since 0.1.0
 
 Revert Record/Request is a records and finds script step. This page describes how the offline Tabularius engine handles it.
 

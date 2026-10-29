@@ -2,12 +2,14 @@
 id: script-step-7
 title: "New Record/Request"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # New Record/Request
+
+Since 0.1.0
 
 New Record/Request is a records and finds script step. This page describes how the offline Tabularius engine handles it.
 

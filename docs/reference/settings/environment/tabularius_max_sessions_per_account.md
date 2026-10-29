@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_MAX_SESSIONS_PER_ACCOUNT
+
+Since 0.1.0
 
 Maximum active Data API sessions per account.
 

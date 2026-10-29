@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_TRUSTED_PROXIES
+
+Since 0.1.0
 
 Address ranges allowed to supply the configured proxy header.
 

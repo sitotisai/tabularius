@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_BACKUP_S3
+
+Since 0.1.0
 
 A `s3://bucket/prefix` address that backups are also copied to.
 

@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # tabularius serve --stats-interval
+
+Since 0.1.0
 
 `--stats-interval` is a serve option. The full command usage is in [serve](../../cli/serve.md).
 

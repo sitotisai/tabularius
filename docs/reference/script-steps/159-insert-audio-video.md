@@ -2,12 +2,14 @@
 id: script-step-159
 title: "Insert Audio/Video"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Insert Audio/Video
+
+Since 0.1.0
 
 Insert Audio/Video is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

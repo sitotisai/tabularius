@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # tabularius serve --ai-embed-model
+
+Since 0.1.0
 
 `--ai-embed-model` is a serve option. The full command usage is in [serve](../../cli/serve.md).
 

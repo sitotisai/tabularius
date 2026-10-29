@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_SMTP
+
+Since 0.1.0
 
 SMTP account URL used by Send Mail when sending is enabled.
 

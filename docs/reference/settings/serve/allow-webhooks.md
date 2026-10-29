@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # tabularius serve --allow-webhooks
+
+Since 0.1.0
 
 `--allow-webhooks` is a serve option. The full command usage is in [serve](../../cli/serve.md).
 

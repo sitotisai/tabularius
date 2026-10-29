@@ -3,6 +3,8 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 
+import { withSince } from './docs-since.ts';
+
 type Entry = { description?: string; default?: string; accepted?: string; restart?: string; explainedBy?: string; exitCodes?: string; example?: string };
 type Metadata = { intro: string; clientExampleNote: string; environment: Record<string, Entry>; serveFlags: Record<string, Entry>; commands: Record<string, Entry> };
 
@@ -144,7 +146,8 @@ for (const [command, entry] of Object.entries(metadata.commands).sort(([a], [b])
 generated.set(cliIndex, `# Command-line reference\n\nEach command page includes the current help text, options, exit codes, and a tested example.\n\n| Command | Options in help |\n| --- | ---: |\n${cliRows.join('\n')}\n\n[Serve flags](${link(cliIndex, flagIndex)}) · [Environment variables](${link(cliIndex, envIndex)})\n`);
 
 let stale = 0;
-for (const [path, content] of generated) {
+for (const [path, original] of generated) {
+  const content = path === envIndex || path.startsWith('docs/reference/settings/') ? withSince(path, original) : original;
   const target = join(root, path);
   if (existsSync(target) && readFileSync(target, 'utf8') === content) continue;
   if (process.argv.includes('--check')) { console.error(`${path}: out of date`); stale++; }

@@ -2,12 +2,14 @@
 id: script-step-32
 title: "Open Help"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Open Help
+
+Since 0.1.0
 
 Open Help is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

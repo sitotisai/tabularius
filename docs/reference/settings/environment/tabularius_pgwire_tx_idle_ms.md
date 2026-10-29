@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_PGWIRE_TX_IDLE_MS
+
+Since 0.1.0
 
 How long a SQL connection may sit idle inside BEGIN, in milliseconds, before it is rolled back and closed. Only matters with --sql-writes.
 

@@ -2,12 +2,14 @@
 id: script-step-246
 title: "Open PDF"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Open PDF
+
+Since 0.1.0
 
 Open PDF is a files and output script step. This page describes how the offline Tabularius engine handles it.
 

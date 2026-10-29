@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # tabularius serve --https-email
+
+Since 0.1.0
 
 `--https-email` is a serve option. The full command usage is in [serve](../../cli/serve.md).
 

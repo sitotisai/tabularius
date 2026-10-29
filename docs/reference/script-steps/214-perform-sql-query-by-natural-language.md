@@ -2,12 +2,14 @@
 id: script-step-214
 title: "Perform SQL Query by Natural Language"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Perform SQL Query by Natural Language
+
+Since 0.1.0
 
 Perform SQL Query by Natural Language is a ai and models script step. This page describes how the offline Tabularius engine handles it.
 

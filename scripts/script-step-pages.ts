@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { SCRIPT_STEP_NAMES, scriptStepId } from '../packages/fmp12/src/script-steps.ts';
 import { ERROR_3_STEPS, ERROR_3_UNLESS_CONFIGURED } from '../packages/scripts/src/unavailable-steps.ts';
 
+import { withSince } from './docs-since.ts';
+
 const root = join(import.meta.dirname, '..');
 const sourcePath = join(import.meta.dirname, 'script-steps-support-source.md');
 const supportPath = join(root, 'docs/script-steps-support.md');
@@ -225,11 +227,11 @@ export function pageText(p: StepPage): string {
       : 'There is no direct offline replacement for this step.') + '\n' : '';
   const detail = p.note?.replace(/<!--.*?-->/g, '').trim().replace(/\]\((?!https?:|#|\.\.\/)/g, '](../../');
   const note = detail ? `\n${detail}\n\nFileMaker comparisons in this note are inferred unless a Claris help page is linked. See the [full support notes](../../script-steps-support.md) for surrounding conditions.\n` : '';
-  return `---\nid: script-step-${p.id}\ntitle: ${JSON.stringify(p.name)}\narea: script-steps\nsince: unknown\nstatus: ${p.status === 'works' ? 'works' : p.status === 'partly' ? 'partly' : 'not-yet'}\nverified: f200448e0\n---\n\n# ${p.name}\n\n${p.name.startsWith('#') ? `\`${p.name}\`` : p.name} is a ${p.group.toLowerCase()} script step. This page describes how the offline Tabularius engine handles it.\n\n- **Support:** ${p.status}\n- **Registry ID:** ${p.id}\n\n## What the engine does\n\n${explanation}${note}\n## Options\n\n${p.options}\n\n## Privileges\n\n${p.privileges}\n\n## Error codes\n\nKnown codes from the engine and the [script error-code reference](../../error-codes.md): ${p.codes.map((n) => `\`${n}\``).join(', ')}. Other failures can arise from calculations or targets used by the step.\n${replacement}\n## Offline script example\n\n${p.setup} The example uses no mail, network or plug-ins.\n\n\`\`\`script\n${p.example}\n\`\`\`\n\n**Expected end state:** ${p.expected}\n`;
+  return withSince(`docs/reference/script-steps/${p.slug}.md`, `---\nid: script-step-${p.id}\ntitle: ${JSON.stringify(p.name)}\narea: script-steps\nstatus: ${p.status === 'works' ? 'works' : p.status === 'partly' ? 'partly' : 'not-yet'}\nverified: f200448e0\n---\n\n# ${p.name}\n\n${p.name.startsWith('#') ? `\`${p.name}\`` : p.name} is a ${p.group.toLowerCase()} script step. This page describes how the offline Tabularius engine handles it.\n\n- **Support:** ${p.status}\n- **Registry ID:** ${p.id}\n\n## What the engine does\n\n${explanation}${note}\n## Options\n\n${p.options}\n\n## Privileges\n\n${p.privileges}\n\n## Error codes\n\nKnown codes from the engine and the [script error-code reference](../../error-codes.md): ${p.codes.map((n) => `\`${n}\``).join(', ')}. Other failures can arise from calculations or targets used by the step.\n${replacement}\n## Offline script example\n\n${p.setup} The example uses no mail, network or plug-ins.\n\n\`\`\`script\n${p.example}\n\`\`\`\n\n**Expected end state:** ${p.expected}\n`);
 }
 
 export function indexText(pages = stepPages()): string {
-  const lines = ['---', 'id: script-steps-index', 'title: Script steps', 'area: script-steps', 'since: unknown', 'status: partly', 'verified: f200448e0', '---', '', '# Script steps', '',
+  const lines = ['---', 'id: script-steps-index', 'title: Script steps', 'area: script-steps', 'status: partly', 'verified: f200448e0', '---', '', '# Script steps', '',
     `This index groups all ${pages.length} registered script steps by task and shows what the offline engine supports.`, '',
     'A step marked **error 3** is unavailable; **does nothing** means it succeeds without its named action. Read the [support notes](../../script-steps-support.md) for detailed limits.', ''];
   for (const group of [...new Set(pages.map((p) => p.group))].sort()) {
@@ -238,7 +240,7 @@ export function indexText(pages = stepPages()): string {
       lines.push(`| [${p.name}](${p.slug}.md) | ${p.status} |`);
     lines.push('');
   }
-  return lines.join('\n');
+  return withSince('docs/reference/script-steps/index.md', lines.join('\n'));
 }
 
 function generatedFiles(): Map<string, string> {

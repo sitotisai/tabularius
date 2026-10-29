@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # tabularius serve --list-files-publicly
+
+Since 0.1.0
 
 `--list-files-publicly` is a serve option. The full command usage is in [serve](../../cli/serve.md).
 

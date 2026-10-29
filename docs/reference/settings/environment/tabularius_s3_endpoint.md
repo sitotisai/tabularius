@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_S3_ENDPOINT
+
+Since 0.1.0
 
 An S3-compatible service's address, for other providers than Amazon.
 

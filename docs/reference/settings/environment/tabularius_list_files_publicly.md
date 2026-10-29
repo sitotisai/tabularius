@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_LIST_FILES_PUBLICLY
+
+Since 0.1.0
 
 Whether unsigned callers can see hosted file names.
 

@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_OIDC_TRUST_EMAIL
+
+Since 0.1.0
 
 `1`, `true` or `yes` to accept the provider's email address as the account name.
 

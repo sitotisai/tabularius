@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_REQUEST_BUDGET_MS
+
+Since 0.1.0
 
 Time one request may hold the server event loop, in milliseconds.
 

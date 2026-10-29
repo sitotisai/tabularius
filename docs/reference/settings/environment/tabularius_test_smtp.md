@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_TEST_SMTP
+
+Since 0.1.0
 
 The SMTP account (`smtps://user:pass@host:465`) that `--test-outbound --mail-redirect` sends its one copy through.
 

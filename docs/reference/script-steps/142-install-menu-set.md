@@ -2,12 +2,14 @@
 id: script-step-142
 title: "Install Menu Set"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Install Menu Set
+
+Since 0.1.0
 
 Install Menu Set is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

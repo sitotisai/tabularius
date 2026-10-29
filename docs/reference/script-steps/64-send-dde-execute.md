@@ -2,12 +2,14 @@
 id: script-step-64
 title: "Send DDE Execute"
 area: script-steps
-since: unknown
 status: not-yet
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Send DDE Execute
+
+Since 0.1.0
 
 Send DDE Execute is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

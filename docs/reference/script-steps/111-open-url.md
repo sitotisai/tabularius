@@ -2,12 +2,14 @@
 id: script-step-111
 title: "Open URL"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Open URL
+
+Since 0.1.0
 
 Open URL is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_FOLDER
+
+Since 0.1.0
 
 Hosted folder used when tabularius starts with no command.
 

@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_PRIMARY
+
+Since 0.1.0
 
 The primary server a `standby` follows.
 

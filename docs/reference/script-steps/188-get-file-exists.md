@@ -2,12 +2,14 @@
 id: script-step-188
 title: "Get File Exists"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Get File Exists
+
+Since 0.1.0
 
 Get File Exists is a files and output script step. This page describes how the offline Tabularius engine handles it.
 

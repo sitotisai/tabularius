@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_AI_EMBED_KEY
+
+Since 0.1.0
 
 API key sent to the configured embedding endpoint when it requires authentication.
 

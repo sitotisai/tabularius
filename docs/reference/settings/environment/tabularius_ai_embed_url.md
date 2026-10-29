@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_AI_EMBED_URL
+
+Since 0.1.0
 
 Endpoint for text embeddings used by semantic find and related features.
 

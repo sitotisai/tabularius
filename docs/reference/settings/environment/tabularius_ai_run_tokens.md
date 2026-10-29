@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_AI_RUN_TOKENS
+
+Since 0.1.0
 
 A strict cap on tokens one assistant question may use; a model call that could take it past the cap is not made.
 

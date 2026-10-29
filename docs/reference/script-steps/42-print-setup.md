@@ -2,12 +2,14 @@
 id: script-step-42
 title: "Print Setup"
 area: script-steps
-since: unknown
 status: not-yet
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Print Setup
+
+Since 0.1.0
 
 Print Setup is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

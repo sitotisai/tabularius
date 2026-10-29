@@ -2,12 +2,14 @@
 id: script-step-103
 title: "Exit Script"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Exit Script
+
+Since 0.1.0
 
 Exit Script is a script flow script step. This page describes how the offline Tabularius engine handles it.
 

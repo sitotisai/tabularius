@@ -2,12 +2,14 @@
 id: script-step-70
 title: "End If"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # End If
+
+Since 0.1.0
 
 End If is a script flow script step. This page describes how the offline Tabularius engine handles it.
 

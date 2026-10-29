@@ -2,12 +2,14 @@
 id: script-step-206
 title: "Commit Transaction"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Commit Transaction
+
+Since 0.1.0
 
 Commit Transaction is a records and finds script step. This page describes how the offline Tabularius engine handles it.
 

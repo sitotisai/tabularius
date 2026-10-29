@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_OIDC_NAME
+
+Since 0.1.0
 
 The name shown on the sign-in button.
 

@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_OUTBOUND_MAX_TIME_MS
+
+Since 0.1.0
 
 Maximum time a script outbound request can spend, in milliseconds.
 

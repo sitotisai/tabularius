@@ -2,12 +2,14 @@
 id: script-step-22
 title: "Enter Find Mode"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Enter Find Mode
+
+Since 0.1.0
 
 Enter Find Mode is a records and finds script step. This page describes how the offline Tabularius engine handles it.
 

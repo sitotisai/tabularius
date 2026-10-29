@@ -2,12 +2,14 @@
 id: script-step-227
 title: "Configure RAG Account"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Configure RAG Account
+
+Since 0.1.0
 
 Configure RAG Account is a ai and models script step. This page describes how the offline Tabularius engine handles it.
 

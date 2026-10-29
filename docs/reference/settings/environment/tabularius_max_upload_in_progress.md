@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_MAX_UPLOAD_IN_PROGRESS
+
+Since 0.1.0
 
 Combined byte reservation allowed across ongoing uploads and conversions.
 

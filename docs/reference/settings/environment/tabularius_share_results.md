@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_SHARE_RESULTS
+
+Since 0.1.0
 
 Controls in-memory sharing of query results when enabled by the server.
 

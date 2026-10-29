@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_HOST
+
+Since 0.1.0
 
 The address to listen on (`127.0.0.1` by default; `0.0.0.0` with `--https name`).
 

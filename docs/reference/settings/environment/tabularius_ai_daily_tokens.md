@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_AI_DAILY_TOKENS
+
+Since 0.1.0
 
 A cap on tokens per day.
 

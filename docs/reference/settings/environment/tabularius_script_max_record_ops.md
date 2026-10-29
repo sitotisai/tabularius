@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_SCRIPT_MAX_RECORD_OPS
+
+Since 0.1.0
 
 Maximum record operations per script run, shared by its steps and synchronous subscripts. Scans and repeated passes count again. The engine also enforces its 60-second default active-time limit and one-million-step limit inside cooperative batches; callers can set timeoutMs and maxSteps.
 

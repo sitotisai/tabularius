@@ -2,12 +2,14 @@
 id: script-step-118
 title: "Open Hosts"
 area: script-steps
-since: unknown
 status: not-yet
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Open Hosts
+
+Since 0.1.0
 
 Open Hosts is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

@@ -2,12 +2,14 @@
 id: script-step-114
 title: "Open File Options"
 area: script-steps
-since: unknown
 status: not-yet
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Open File Options
+
+Since 0.1.0
 
 Open File Options is a files and output script step. This page describes how the offline Tabularius engine handles it.
 

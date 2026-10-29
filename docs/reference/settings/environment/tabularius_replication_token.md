@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_REPLICATION_TOKEN
+
+Since 0.1.0
 
 The token a standby presents to the primary.
 

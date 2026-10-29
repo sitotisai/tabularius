@@ -2,12 +2,14 @@
 id: script-step-9
 title: "Delete Record/Request"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Delete Record/Request
+
+Since 0.1.0
 
 Delete Record/Request is a records and finds script step. This page describes how the offline Tabularius engine handles it.
 

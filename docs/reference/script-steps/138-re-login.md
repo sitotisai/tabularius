@@ -2,12 +2,14 @@
 id: script-step-138
 title: "Re-Login"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Re-Login
+
+Since 0.1.0
 
 Re-Login is a accounts and security script step. This page describes how the offline Tabularius engine handles it.
 

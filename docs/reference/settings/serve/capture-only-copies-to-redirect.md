@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # tabularius serve --capture-only-copies-to-redirect
+
+Since 0.1.0
 
 `--capture-only-copies-to-redirect` is a serve option. The full command usage is in [serve](../../cli/serve.md).
 

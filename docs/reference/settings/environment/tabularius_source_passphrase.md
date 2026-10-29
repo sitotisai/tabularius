@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_SOURCE_PASSPHRASE
+
+Since 0.1.0
 
 Passphrase used to open an encrypted source file from the CLI.
 

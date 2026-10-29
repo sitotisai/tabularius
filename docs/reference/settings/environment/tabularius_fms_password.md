@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_FMS_PASSWORD
+
+Since 0.1.0
 
 Password supplied to migration or sync commands for the source server.
 

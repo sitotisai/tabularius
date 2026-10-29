@@ -2,12 +2,14 @@
 id: script-step-213
 title: "Fine-Tune Model"
 area: script-steps
-since: unknown
 status: not-yet
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Fine-Tune Model
+
+Since 0.1.0
 
 Fine-Tune Model is a ai and models script step. This page describes how the offline Tabularius engine handles it.
 

@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_DRAIN_SECONDS
+
+Since 0.1.0
 
 How long a stopping server lets requests that are already running finish before it closes them (1 to 86400, 20 by default; see [Upgrading](../../../upgrading.md), "Stopping and restarting").
 

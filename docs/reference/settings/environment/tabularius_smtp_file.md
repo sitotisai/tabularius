@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_SMTP_FILE
+
+Since 0.1.0
 
 A file holding the SMTP account for `--send-mail` (`~/.openhbam/smtp` by default); `TABULARIUS_SMTP` holds it directly.
 

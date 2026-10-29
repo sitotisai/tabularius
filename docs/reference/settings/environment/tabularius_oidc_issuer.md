@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_OIDC_ISSUER
+
+Since 0.1.0
 
 The OpenID Connect provider's issuer address.
 

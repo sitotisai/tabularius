@@ -2,12 +2,14 @@
 id: script-step-94
 title: "Set Use System Formats"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Set Use System Formats
+
+Since 0.1.0
 
 Set Use System Formats is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

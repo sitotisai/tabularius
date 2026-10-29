@@ -2,12 +2,14 @@
 id: script-step-63
 title: "Send Mail"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Send Mail
+
+Since 0.1.0
 
 Send Mail is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

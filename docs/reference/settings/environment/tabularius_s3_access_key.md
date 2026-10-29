@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_S3_ACCESS_KEY
+
+Since 0.1.0
 
 Access key id for off-site S3-compatible storage.
 

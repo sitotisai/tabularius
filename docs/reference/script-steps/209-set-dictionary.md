@@ -2,12 +2,14 @@
 id: script-step-209
 title: "Set Dictionary"
 area: script-steps
-since: unknown
 status: not-yet
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Set Dictionary
+
+Since 0.1.0
 
 Set Dictionary is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

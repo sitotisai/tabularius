@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # tabularius serve --acme-directory
+
+Since 0.1.0
 
 `--acme-directory` is a serve option. The full command usage is in [serve](../../cli/serve.md).
 

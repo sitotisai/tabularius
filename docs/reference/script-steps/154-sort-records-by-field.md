@@ -2,12 +2,14 @@
 id: script-step-154
 title: "Sort Records by Field"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Sort Records by Field
+
+Since 0.1.0
 
 Sort Records by Field is a fields and values script step. This page describes how the offline Tabularius engine handles it.
 

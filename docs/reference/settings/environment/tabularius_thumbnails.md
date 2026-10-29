@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_THUMBNAILS
+
+Since 0.1.0
 
 Selects built-in thumbnail tools instead of available system tools.
 

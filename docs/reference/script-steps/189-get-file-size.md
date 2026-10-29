@@ -2,12 +2,14 @@
 id: script-step-189
 title: "Get File Size"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Get File Size
+
+Since 0.1.0
 
 Get File Size is a files and output script step. This page describes how the offline Tabularius engine handles it.
 

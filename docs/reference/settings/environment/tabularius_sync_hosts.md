@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_SYNC_HOSTS
+
+Since 0.1.0
 
 Allowed source server hosts for the sync console.
 

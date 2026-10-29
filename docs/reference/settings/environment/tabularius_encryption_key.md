@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_ENCRYPTION_KEY
+
+Since 0.1.0
 
 Passphrase used to unlock encrypted hosted files. A set-but-empty or whitespace-only value stops `serve`; unset it to run without encryption, or give a passphrase. Nonblank passphrases are used unchanged.
 

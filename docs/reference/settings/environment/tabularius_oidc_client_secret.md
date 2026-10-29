@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_OIDC_CLIENT_SECRET
+
+Since 0.1.0
 
 Client secret for the configured OpenID Connect provider.
 

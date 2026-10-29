@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_PGWIRE_MAX_PARAM_BYTES
+
+Since 0.1.0
 
 Total bound parameter bytes that one SQL connection's portals may hold.
 

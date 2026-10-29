@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # tabularius serve --backup-s3
+
+Since 0.1.0
 
 `--backup-s3` is a serve option. The full command usage is in [serve](../../cli/serve.md).
 

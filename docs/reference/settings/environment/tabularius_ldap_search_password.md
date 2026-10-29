@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_LDAP_SEARCH_PASSWORD
+
+Since 0.1.0
 
 Password for the configured LDAP search account.
 

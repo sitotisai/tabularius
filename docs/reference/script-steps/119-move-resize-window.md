@@ -2,12 +2,14 @@
 id: script-step-119
 title: "Move/Resize Window"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Move/Resize Window
+
+Since 0.1.0
 
 Move/Resize Window is a layouts and windows script step. This page describes how the offline Tabularius engine handles it.
 

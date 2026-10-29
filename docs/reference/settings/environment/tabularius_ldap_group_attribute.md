@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_LDAP_GROUP_ATTRIBUTE
+
+Since 0.1.0
 
 The attribute listing the person's groups.
 

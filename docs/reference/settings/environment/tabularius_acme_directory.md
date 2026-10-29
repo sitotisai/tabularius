@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_ACME_DIRECTORY
+
+Since 0.1.0
 
 A different certificate authority's directory address, for testing.
 

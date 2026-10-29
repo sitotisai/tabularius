@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_CAPTURE_ONLY
+
+Since 0.1.0
 
 Hosted file name prefixes whose outbound effects stay in capture mode.
 

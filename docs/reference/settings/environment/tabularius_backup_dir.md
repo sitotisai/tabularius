@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_BACKUP_DIR
+
+Since 0.1.0
 
 Where backups go, instead of `<folder>/Backups`.
 

@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_UPLOAD_TMP
+
+Since 0.1.0
 
 The folder files wait in while they arrive in a container upload (the system's temporary folder by default). It needs room for the biggest files being uploaded at once.
 

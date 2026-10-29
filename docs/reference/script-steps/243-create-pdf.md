@@ -2,12 +2,14 @@
 id: script-step-243
 title: "Create PDF"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Create PDF
+
+Since 0.1.0
 
 Create PDF is a files and output script step. This page describes how the offline Tabularius engine handles it.
 

@@ -2,12 +2,14 @@
 id: script-step-175
 title: "Perform JavaScript in Web Viewer"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Perform JavaScript in Web Viewer
+
+Since 0.1.0
 
 Perform JavaScript in Web Viewer is a layouts and windows script step. This page describes how the offline Tabularius engine handles it.
 

@@ -2,12 +2,14 @@
 id: script-step-130
 title: "Set Selection"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Set Selection
+
+Since 0.1.0
 
 Set Selection is a fields and values script step. This page describes how the offline Tabularius engine handles it.
 

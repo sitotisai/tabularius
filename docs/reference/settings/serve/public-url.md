@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # tabularius serve --public-url
+
+Since 0.1.0
 
 `--public-url` is a serve option. The full command usage is in [serve](../../cli/serve.md).
 

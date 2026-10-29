@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_AI_IMAGE_EMBED_MODEL
+
+Since 0.1.0
 
 The model used for Perform Semantic Find by image.
 

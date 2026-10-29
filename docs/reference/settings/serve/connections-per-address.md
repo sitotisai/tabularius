@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # tabularius serve --connections-per-address
+
+Since 0.1.0
 
 `--connections-per-address` is a serve option. The full command usage is in [serve](../../cli/serve.md).
 

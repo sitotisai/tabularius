@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_LDAP_NAME
+
+Since 0.1.0
 
 The name shown for the directory.
 

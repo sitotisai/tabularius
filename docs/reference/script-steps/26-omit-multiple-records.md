@@ -2,12 +2,14 @@
 id: script-step-26
 title: "Omit Multiple Records"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Omit Multiple Records
+
+Since 0.1.0
 
 Omit Multiple Records is a records and finds script step. This page describes how the offline Tabularius engine handles it.
 

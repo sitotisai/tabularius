@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_MAX_SESSION_LOCKS
+
+Since 0.1.0
 
 Maximum record locks held by one session in a file.
 

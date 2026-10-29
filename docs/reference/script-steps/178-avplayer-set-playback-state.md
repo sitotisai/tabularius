@@ -2,12 +2,14 @@
 id: script-step-178
 title: "AVPlayer Set Playback State"
 area: script-steps
-since: unknown
 status: not-yet
 verified: f200448e0
+since: 0.1.0
 ---
 
 # AVPlayer Set Playback State
+
+Since 0.1.0
 
 AVPlayer Set Playback State is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

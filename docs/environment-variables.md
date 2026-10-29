@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # Environment variables
+
+Since 0.1.0
 
 Most `tabularius serve` options can be set in the environment instead of on the
 command line, which suits a service definition or a container. A command-line

@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_BACKUP_EVERY
+
+Since 0.1.0
 
 How often a backup is made (`1d` by default).
 

@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_ALIAS
+
+Since 0.1.0
 
 Internal launcher compatibility switch for the legacy executable name.
 

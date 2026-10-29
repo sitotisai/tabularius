@@ -17,7 +17,7 @@ for (const a of args) if (a.startsWith('--') && !['--out', '--version', '--commi
 const git = (a: string[]): string | undefined => {
   try { return execFileSync('git', ['-C', root, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || undefined; } catch { return undefined; }
 };
-const { version, commit } = stamp(root, git);
+const { version, commit } = stamp(root, (args) => value('--commit') ?? git(args));
 const out = resolve(value('--out') ?? join(root, 'dist', 'docs-site'));
 rmSync(out, { recursive: true, force: true });
 const result = buildSite({ root, out, version: value('--version') ?? version, commit: value('--commit') ?? commit });

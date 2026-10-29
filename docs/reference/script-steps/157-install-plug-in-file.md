@@ -2,12 +2,14 @@
 id: script-step-157
 title: "Install Plug-In File"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Install Plug-In File
+
+Since 0.1.0
 
 Install Plug-In File is a files and output script step. This page describes how the offline Tabularius engine handles it.
 

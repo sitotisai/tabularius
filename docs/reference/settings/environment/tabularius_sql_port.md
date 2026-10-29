@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_SQL_PORT
+
+Since 0.1.0
 
 The port for the PostgreSQL-compatible SQL connection.
 

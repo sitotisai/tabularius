@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_OIDC_CLIENT_ID
+
+Since 0.1.0
 
 The client id registered with the provider.
 

@@ -2,12 +2,14 @@
 id: script-step-123
 title: "Select Window"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Select Window
+
+Since 0.1.0
 
 Select Window is a layouts and windows script step. This page describes how the offline Tabularius engine handles it.
 

@@ -2,12 +2,14 @@
 id: script-steps-index
 title: Script steps
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Script steps
+
+Since 0.1.0
 
 This index groups all 216 registered script steps by task and shows what the offline engine supports.
 

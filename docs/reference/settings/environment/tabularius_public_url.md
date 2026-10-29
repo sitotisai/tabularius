@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_PUBLIC_URL
+
+Since 0.1.0
 
 Externally reachable base URL advertised by the server.
 

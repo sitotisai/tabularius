@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_REQUEST_QUEUE
+
+Since 0.1.0
 
 How many requests may wait for a free slot in each worker (64 by default, 0 for none). A request that cannot wait is answered 503 with `Retry-After: 1`. See [Performance](../../../performance.md).
 

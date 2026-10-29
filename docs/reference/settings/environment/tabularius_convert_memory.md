@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_CONVERT_MEMORY
+
+Since 0.1.0
 
 Memory budget for an uploaded file conversion worker, in MB. The memory cap cannot be turned off: zero, empty or a value that is not digits only stops `serve`.
 

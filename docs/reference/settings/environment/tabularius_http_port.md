@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_HTTP_PORT
+
+Since 0.1.0
 
 The port that answers the certificate challenge and redirects to https (80 by default).
 
