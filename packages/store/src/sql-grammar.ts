@@ -437,8 +437,9 @@ function quantified(sql: string, budget: { left: number; depth: number }, column
 /**
  * OFFSET n ROWS and FETCH FIRST [n] ROWS ONLY as SQLite's LIMIT and OFFSET. FETCH FIRST without a count is one row,
  * a count under 1 and WITH TIES without an ORDER BY are errors (the Claris page), and neither can stand in a
- * subquery. WITH TIES counts the rows that rank at or before the last row wanted (see withTiesLimit). PERCENT is valid
- * FileMaker SQL that this does not do yet, and says so.
+ * subquery. WITH TIES counts the rows that rank at or before the last row wanted (see withTiesLimit). PERCENT counts
+ * the complete result in a scalar subquery, then fetches the requested fraction after OFFSET. Fractional rounding,
+ * zero percent and the OFFSET basis are unverified against FileMaker.
  */
 export function fetchToLimit(sql: string): string {
   if (!/\b(?:OFFSET|FETCH)\b/i.test(sql)) return sql;
@@ -447,10 +448,12 @@ export function fetchToLimit(sql: string): string {
   let top = blanked(sql, true);
   const topFetch = fetchRe.exec(top);
   fetchRe.lastIndex = 0;
-  if (topFetch && /^WITH/i.test(topFetch[3])) {
+  if (topFetch && (/^WITH/i.test(topFetch[3]) || topFetch[2])) {
     sql = numberPlainParameters(sql);
     top = blanked(sql, true);
   }
+  const badPercent = /\bFETCH\s+(?:FIRST|NEXT)\s+([+-]?[\d.]+(?:e[+-]?\d+)?)\s+PERCENT\b/i.exec(top);
+  const missingPercent = /\bFETCH\s+(?:FIRST|NEXT)\s+PERCENT\b/i.test(top);
   const plain = blanked(sql);
   const offset = offsetRe.exec(top);
   const first = fetchRe.exec(top);
@@ -459,21 +462,33 @@ export function fetchToLimit(sql: string): string {
   fetchRe.lastIndex = 0;
   const all = [...plain.matchAll(offsetRe), ...plain.matchAll(fetchRe)];
   if (all.length > (offset ? 1 : 0) + (first ? 1 : 0)) throw unsupported('OFFSET and FETCH FIRST in a subquery');
+  if (missingPercent || (badPercent && (!/^\d+$/.test(badPercent[1]) || Number(badPercent[1]) > 100))) {
+    throw new CalcError(ERR.calculation, 'FETCH FIRST n PERCENT needs a whole number from 0 to 100');
+  }
   if (!offset && !first) return sql;
   let ties: string | undefined;
   if (first) {
-    if (first[2]) throw unsupported('FETCH FIRST n PERCENT');
     if (/^WITH/i.test(first[3])) {
       if (!/\bORDER\s+BY\b/i.test(top)) throw new CalcError(ERR.calculation, 'FETCH FIRST ... WITH TIES needs an ORDER BY clause');
+      if (first[2]) throw unsupported('FETCH FIRST n PERCENT ... WITH TIES');
       ties = withTiesLimit(sql, top, Number(first[1] ?? 1), Number(offset?.[1] ?? 0), Math.min(first.index, offset?.index ?? Infinity));
     }
-    if (first[1] !== undefined && Number(first[1]) < 1) throw new CalcError(ERR.calculation, 'FETCH FIRST needs a count of at least 1');
+    if (first[2] && Number(first[1]) > 100) throw new CalcError(ERR.calculation, 'FETCH FIRST n PERCENT needs a whole number from 0 to 100');
+    if (!first[2] && first[1] !== undefined && Number(first[1]) < 1) throw new CalcError(ERR.calculation, 'FETCH FIRST needs a count of at least 1');
   }
   // The limit goes after the last thing in the query, not after a trailing comment or semicolon.
   let end = plain.trimEnd().length;
   while (end > 0 && plain[end - 1] === ';') end = plain.slice(0, end - 1).trimEnd().length;
-  let out = `${sql.slice(0, end)} LIMIT ${ties ?? (first ? (first[1] ?? '1') : -1)} OFFSET ${offset ? offset[1] : 0}${sql.slice(end)}`;
-  for (const m of [offset, first].filter((x): x is RegExpExecArray => !!x).sort((x, y) => y.index - x.index)) out = out.slice(0, m.index) + ' ' + out.slice(m.index + m[0].length);
+  const clauses = [offset, first].filter((x): x is RegExpExecArray => !!x).sort((x, y) => y.index - x.index);
+  let percent: string | undefined;
+  if (first?.[2]) {
+    let counted = sql.slice(0, end);
+    for (const m of clauses) counted = counted.slice(0, m.index) + ' ' + counted.slice(m.index + m[0].length);
+    const count = `(SELECT MAX(0, COUNT(*) - ${offset?.[1] ?? 0}) FROM (${counted}))`;
+    percent = first[1] === '0' ? '0' : `((${count} * ${first[1]} + 99) / 100)`;
+  }
+  let out = `${sql.slice(0, end)} LIMIT ${percent ?? ties ?? (first ? (first[1] ?? '1') : -1)} OFFSET ${offset ? offset[1] : 0}${sql.slice(end)}`;
+  for (const m of clauses) out = out.slice(0, m.index) + ' ' + out.slice(m.index + m[0].length);
   return out;
 }
 

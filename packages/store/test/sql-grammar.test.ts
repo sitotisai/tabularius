@@ -381,7 +381,11 @@ test('OFFSET and FETCH FIRST become LIMIT and OFFSET at the top of the query onl
   assert.throws(() => fetchToLimit('SELECT a FROM t UNION SELECT b FROM u ORDER BY a FETCH FIRST 2 ROWS WITH TIES'), /not supported/);
   assert.throws(() => fetchToLimit('SELECT a FROM t ORDER BY 3 FETCH FIRST 2 ROWS WITH TIES'), /ORDER BY 3 is not a column/);
   assert.throws(() => fetchToLimit('SELECT a FROM t ORDER BY a FETCH FIRST 0 ROWS WITH TIES'), /at least 1/);
-  assert.throws(() => fetchToLimit('SELECT a FROM t ORDER BY a FETCH FIRST 2 PERCENT ROWS ONLY'), /PERCENT is not supported/);
+  for (const value of ['101', '150', '2.5', '-1', '1e1', '']) {
+    assert.throws(() => fetchToLimit(`SELECT a FROM t ORDER BY a FETCH FIRST ${value} PERCENT ROWS ONLY`), /PERCENT/, value);
+  }
+  assert.throws(() => fetchToLimit('SELECT a FROM t ORDER BY a FETCH FIRST 50 PERCENT ROWS WITH TIES'), /PERCENT.*WITH TIES/);
+  assert.throws(() => fetchToLimit('SELECT a FROM t WHERE a IN (SELECT a FROM t FETCH FIRST 50 PERCENT ROWS ONLY)'), /subquery/);
   assert.throws(() => fetchToLimit('SELECT a FROM t WHERE a IN (SELECT a FROM t FETCH FIRST 2 ROWS ONLY)'), /in a subquery is not supported/);
   assert.throws(() => fetchToLimit('SELECT a FROM t WHERE a IN (SELECT a FROM t OFFSET 1 ROW)'), /in a subquery is not supported/);
   assert.throws(() => fetchToLimit('SELECT * FROM (SELECT a FROM t OFFSET 1 ROWS) x FETCH FIRST 2 ROWS ONLY'), /subquery/);
@@ -416,6 +420,36 @@ test('WITH TIES reuses parameter numbers in its ranking query', () => {
 test('FETCH FIRST returns the rows asked for', () => {
   assert.deepEqual(rows('SELECT First FROM P ORDER BY First OFFSET 1 ROW FETCH FIRST ROW ONLY'), [['Bo']]);
   assert.deepEqual(rows("SELECT First FROM P WHERE First = 'FETCH FIRST 1 ROW ONLY'"), []);
+});
+
+test('FETCH FIRST PERCENT rounds up after OFFSET and counts the complete result', () => {
+  assert.deepEqual(rows('SELECT N FROM W ORDER BY N FETCH FIRST 40 PERCENT ROWS ONLY'), [[1], [2]]);
+  assert.deepEqual(rows('SELECT N FROM W ORDER BY N FETCH FIRST 41 PERCENT ROWS ONLY'), [[1], [2], [2]]);
+  assert.deepEqual(rows('SELECT N FROM W ORDER BY N FETCH FIRST 1 PERCENT ROWS ONLY'), [[1]]);
+  assert.deepEqual(rows('SELECT N FROM W ORDER BY N FETCH FIRST 0 PERCENT ROWS ONLY'), []);
+  assert.deepEqual(rows('SELECT N FROM W ORDER BY N FETCH FIRST 100 PERCENT ROWS ONLY'), [[1], [2], [2], [2], [3]]);
+  assert.deepEqual(rows('SELECT Name, N FROM W ORDER BY N DESC, Name FETCH FIRST 60 PERCENT ROWS ONLY'), [['e', 3], ['b', 2], ['c', 2]]);
+  assert.deepEqual(rows('SELECT N FROM W ORDER BY N FETCH FIRST 60 PERCENT ROWS ONLY'), [[1], [2], [2]]);
+  assert.deepEqual(rows('SELECT Name FROM W ORDER BY N, Name OFFSET 1 ROW FETCH FIRST 50 PERCENT ROWS ONLY'), [['b'], ['c']]);
+  assert.deepEqual(rows('SELECT DISTINCT N FROM W ORDER BY N FETCH FIRST 50 PERCENT ROWS ONLY'), [[1], [2]]);
+  const emptyDir = mkdtempSync(join(tmpdir(), 'tabularius-sql-percent-'));
+  try {
+    const path = join(emptyDir, 't.sqlite');
+    createStore(path);
+    const empty = new Store(path, 'T');
+    try {
+      empty.applyDesign([{ op: 'createTable', name: 'EmptyPercent', fields: [{ name: 'N', type: 'number' }] }]);
+      assert.deepEqual(run('SELECT N FROM EmptyPercent FETCH FIRST 50 PERCENT ROWS ONLY', [], empty).rows, []);
+    } finally { empty.close(); }
+  } finally { rmSync(emptyDir, { recursive: true, force: true }); }
+});
+
+test('FETCH FIRST PERCENT reuses parameter numbers in the counting query', () => {
+  const sql = 'SELECT ? AS Marker, Name FROM W WHERE N >= ? ORDER BY N, Name FETCH FIRST 50 PERCENT ROWS ONLY';
+  assert.deepEqual(run(sql, [9, 2]).rows, [[9, 'b'], [9, 'c']]);
+  const translated = fetchToLimit(sql);
+  assert.match(translated, /\?1 AS Marker/);
+  assert.match(translated, /N >= \?2/);
 });
 
 test('RIGHT and FULL OUTER JOIN are refused; the words in a string or a name are not', () => {

@@ -6,7 +6,7 @@ The grammar is in [`packages/server/test/data/sql-grammar.json`](../packages/ser
 
 ## What was checked
 
-245 entries, 240 with an expectation and 5 recorded as not verified (below). Each entry with an expectation runs on the applicable paths.
+248 entries, 243 with an expectation and 5 recorded as not verified (below). Each entry with an expectation runs on the applicable paths.
 
 | Area | Constructs |
 | --- | --- |
@@ -16,7 +16,7 @@ The grammar is in [`packages/server/test/data/sql-grammar.json`](../packages/ser
 | GROUP BY, HAVING | 8 |
 | Aggregates (`SUM`, `AVG`, `COUNT`, `MAX`, `MIN`, `DISTINCT`, aggregate in a function) | 11 |
 | UNION, ORDER BY (names, ordinals, `ASC`/`DESC`, binary order) | 13 |
-| OFFSET, FETCH FIRST (`ROW`/`ROWS`, count omitted, `WITH TIES`, `PERCENT`, subqueries, count under 1) | 23 |
+| OFFSET, FETCH FIRST (`ROW`/`ROWS`, count omitted, `WITH TIES`, `PERCENT`, subqueries, count under 1) | 26 |
 | Constants and operators (strings, scientific notation, `DATE`/`TIME`/`TIMESTAMP`, `{D '...'}`, `^`, `**`, precedence, string `+` and `-`, date arithmetic) | 26 |
 | Functions: string, numeric, date, `CASE`, `COALESCE`, `NULLIF`, `CAST`, container `GetAs` | 84 |
 | `FOR UPDATE` cursor clause | 1 |
@@ -24,7 +24,7 @@ The grammar is in [`packages/server/test/data/sql-grammar.json`](../packages/ser
 | Statements that write (`INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`, `ALTER TABLE`, `CREATE`/`DROP INDEX`, `TRUNCATE`) | 8 |
 | `?` parameters (one, multiple in order, a value containing a quote) | 3 |
 
-99 results are ones the Claris page states, with the example it gives. 141 are worked out from a stated rule or the SQL standard (marked `derived` in the file); the character, date and time, and DECIMAL CAST cases follow the standard because the cited pages do not state their results. The Claris pages read give no example of `DECIMAL(p,s)` or `NUMERIC(p,s)` casts, so their precision, scale and overflow expectations come from the SQL standard; the vendor result is unverified. <!-- known-difference: SQL grammar ;; vendor results for parameterized DECIMAL and NUMERIC casts are unspecified in the cited pages ;; the conformance test uses the SQL standard for these derived expectations ;; compare the casts with FileMaker and record the observed result --> Five entries are marked `unverified` because the vendor result is not stated. Every entry names its page. The `?` cases follow [Claris's ExecuteSQL help](https://help.claris.com/en/pro-help/content/executesql.html), which specifies argument binding order; the quoted-name cases follow its `"Last Name"` example and the [reserved keyword rule](https://help.claris.com/en/sql-reference/content/reserved-sql-keywords.html). <!-- known-difference-ok: describes evidence categories rather than a product behavior difference -->
+98 results are ones the Claris page states, with the example it gives. 145 are worked out from a stated rule or the SQL standard (marked `derived` in the file); the character, date and time, and DECIMAL CAST cases follow the standard because the cited pages do not state their results. The Claris pages read give no example of `DECIMAL(p,s)` or `NUMERIC(p,s)` casts, so their precision, scale and overflow expectations come from the SQL standard; the vendor result is unverified. <!-- known-difference: SQL grammar ;; vendor results for parameterized DECIMAL and NUMERIC casts are unspecified in the cited pages ;; the conformance test uses the SQL standard for these derived expectations ;; compare the casts with FileMaker and record the observed result --> Five entries are marked `unverified` because the vendor result is not stated. Every entry names its page. The `?` cases follow [Claris's ExecuteSQL help](https://help.claris.com/en/pro-help/content/executesql.html), which specifies argument binding order; the quoted-name cases follow its `"Last Name"` example and the [reserved keyword rule](https://help.claris.com/en/sql-reference/content/reserved-sql-keywords.html). <!-- known-difference-ok: describes evidence categories rather than a product behavior difference -->
 
 ## What the check found and what changed
 
@@ -42,6 +42,7 @@ The first run disagreed with the pages on 42 entries. Some were mistakes in the 
 | `x = ANY (subquery)`, `x <> ALL (subquery)` | A syntax error | Run as `IN` and `NOT IN` |
 | `x > ALL (subquery)`, `x < ANY (subquery)` and the other quantified comparisons | A syntax error | Run as `NOT EXISTS` / `EXISTS` over the subquery (below) |
 | `FETCH FIRST n ROWS WITH TIES` | "Not supported" | The first n rows and every row that sorts equal to the last one (below) |
+| `FETCH FIRST n PERCENT ROWS ONLY` | "Not supported" | Rounds the number of rows up after `OFFSET` (below) |
 | `2 ^ 3`, `2 ** 3` | A syntax error | Exponent, with the unary minus above it (`-2 ^ 2` is 4) |
 | `ROUND(123.456, -2)` | 123 | 100; rounds half away from zero, in decimal (`ROUND(1.005, 2)` is 1.01) |
 | `CAST(x AS DECIMAL(p,s))` | The value unchanged | Rounded to s places (half away from zero), with an error when it does not fit in p digits; forms without brackets remain SQLite casts |
@@ -81,7 +82,6 @@ Each of these is an entry in the file with `known` set to the reason, and the te
 | Id | Construct | Why it is not fixed |
 | --- | --- | --- |
 | agg-09 | An aggregate inside another function (`ROUND(SUM(x))`) | An error in FileMaker (8309, FQL0005); works here. Left lenient for the same reason. |
-| fetch-07 | `FETCH FIRST n PERCENT ROWS ONLY` | Valid FileMaker SQL, refused with a plain "not supported" error; the page does not say how a fraction of a row rounds. |
 | expr-06 | `{D '...'}` braces in `ExecuteSQL` | The page says `ExecuteSQL` refuses them; here they work, because one translation serves the SQL connection, which accepts them. |
 
 ## Not verified
@@ -99,7 +99,7 @@ Other choices that the pages do not settle, and what was done:
 - `+` or `-` on strings with an empty operand: an empty field here is `NULL`, and a `NULL` operand gives `NULL`. The page does not say what an empty operand gives.
 - Date arithmetic is for dates only. A timestamp or time plus a number is not rewritten.
 - The column names of `FileMaker_BaseTables` and `FileMaker_BaseTableFields` (`BaseTableName`, `BaseFileName`, `FieldName`, `FieldType`, `FieldId`, `FieldClass`, `FieldReps`, `ModCount`) follow the `FileMaker_Tables` and `FileMaker_Fields` tables; only `BaseTableName` and `FieldName` are exercised by the grammar file.
-- `PERCENT` with a count that does not divide the rows.
+- `FETCH FIRST n PERCENT ROWS ONLY` rounds up the percentage of rows remaining after `OFFSET`. The query runs twice: once to count its complete result, including `DISTINCT`, groups and filters, and once to fetch the rows. Zero percent returns no rows. The cited page does not state the zero-percent result or whether `OFFSET` precedes the percentage count; those FileMaker outcomes are unverified. <!-- known-difference: SQL grammar ;; zero-percent result and OFFSET basis for PERCENT are not stated by the cited page ;; Tabularius returns no rows for zero percent and counts the rows after OFFSET ;; compare both cases with FileMaker and record the observed results -->
 
 ## Errors
 
