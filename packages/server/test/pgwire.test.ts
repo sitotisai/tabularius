@@ -1408,8 +1408,58 @@ test('psql connects and queries', { skip: skip || (psql ? false : 'psql is not i
   assert.match((await run('\\l')).stdout, /^Charts\|Ann\|UTF8/);
 });
 
+// psql 18's \d asks which partitioned tables a table descends from; no table here is partitioned, so the answer is no rows.
+test('pg_partition_ancestors answers with no rows, called as a table and as a function', { skip }, async () => {
+  const c = await Client.open({ user: 'Ann', password: 'pw', database: 'Charts' });
+  try {
+    const [[oid]] = (await c.query(`SELECT oid FROM pg_catalog.pg_class WHERE relname = 'Grades'`)).rows;
+    const rows = async (sql: string) => {
+      const r = await c.query(sql.replaceAll('<oid>', oid!));
+      assert.equal(r.error, undefined, sql);
+      return r.rows;
+    };
+    assert.deepEqual(await rows(`SELECT relid FROM pg_catalog.pg_partition_ancestors('<oid>')`), []);
+    assert.deepEqual(await rows(`SELECT a.relid FROM pg_catalog.pg_partition_ancestors('<oid>'::pg_catalog.regclass) AS a`), []);
+    assert.deepEqual(await rows(`SELECT t.r FROM pg_catalog.pg_partition_ancestors('<oid>') t(r)`), []);
+    assert.deepEqual(await rows(`SELECT pubname FROM pg_catalog.pg_publication p WHERE p.oid IN (SELECT relid FROM pg_catalog.pg_partition_ancestors('<oid>'))`), []);
+    assert.deepEqual(await rows(`SELECT p.pubname FROM pg_catalog.pg_publication p, pg_catalog.pg_partition_ancestors('<oid>') AS a WHERE p.oid = a.relid`), []);
+    assert.deepEqual(await rows(`SELECT pubname FROM pg_catalog.pg_publication p JOIN pg_catalog.pg_publication_rel pr ON p.oid = pr.prpubid
+      JOIN pg_catalog.pg_partition_ancestors('<oid>') anc ON pr.prrelid = anc.relid ORDER BY 1`), []);
+    // The first part of psql 18's list of publications for \d, then the rest of the query after it.
+    assert.deepEqual(await rows(`SELECT pubname, NULL, NULL FROM pg_catalog.pg_publication p JOIN pg_catalog.pg_publication_rel pr ON p.oid = pr.prpubid
+      WHERE pr.prrelid IN (SELECT relid FROM pg_catalog.pg_partition_ancestors('<oid>'))
+      UNION SELECT pubname, NULL, NULL FROM pg_catalog.pg_publication p WHERE p.puballtables AND pg_catalog.pg_relation_is_publishable('<oid>') ORDER BY 1`), []);
+    // The two foreign-key queries of \\d, as describe.c has them (the ones psql 18 sends for every table): the table in a comma list, and the function in a condition with a VALUES row after it.
+    assert.deepEqual(await rows(`SELECT conrelid = '<oid>'::pg_catalog.regclass AS sametable, conname,
+      pg_catalog.pg_get_constraintdef(oid, true) AS condef, conrelid::pg_catalog.regclass AS ontable
+      FROM pg_catalog.pg_constraint, pg_catalog.pg_partition_ancestors('<oid>')
+      WHERE conrelid = relid AND contype = 'f' AND conparentid = 0
+      ORDER BY sametable DESC, conname`), []);
+    assert.deepEqual(await rows(`SELECT conname, conrelid::pg_catalog.regclass AS ontable,
+      pg_catalog.pg_get_constraintdef(oid, true) AS condef
+      FROM pg_catalog.pg_constraint c
+      WHERE confrelid IN (SELECT pg_catalog.pg_partition_ancestors('<oid>')
+                          UNION ALL VALUES ('<oid>'::pg_catalog.regclass))
+      AND contype = 'f' AND conparentid = 0
+      ORDER BY conname`), []);
+    // PostgreSQL 18 added the column that says whether a constraint is enforced; \\d of a table with a CHECK or foreign key may read it.
+    assert.deepEqual(await rows(`SELECT r.conname, pg_catalog.pg_get_constraintdef(r.oid, true), r.conenforced FROM pg_catalog.pg_constraint r WHERE r.conrelid = '<oid>' AND r.contype = 'c' ORDER BY 1`), []);
+    // As the function psql 18 reports missing, in a condition: one NULL matches no publication.
+    assert.deepEqual(await rows(`SELECT pubname FROM pg_catalog.pg_publication p JOIN pg_catalog.pg_publication_rel pr ON p.oid = pr.prpubid WHERE pr.prrelid IN (SELECT pg_catalog.pg_partition_ancestors('<oid>'))`), []);
+    assert.deepEqual(await rows(`SELECT pubname FROM pg_catalog.pg_publication p JOIN pg_catalog.pg_publication_rel pr ON p.oid = pr.prpubid WHERE pr.prrelid = ANY (pg_catalog.pg_partition_ancestors('<oid>'))`), []);
+    // A string that says it is not a call.
+    assert.deepEqual(await rows(`SELECT 'FROM pg_partition_ancestors(1)'`), [['FROM pg_partition_ancestors(1)']]);
+    // Written as a function in a list of columns it is one NULL: a plain function cannot return none.
+    assert.deepEqual(await rows(`SELECT pg_catalog.pg_partition_ancestors('<oid>')`), [[null]]);
+    assert.deepEqual((await c.query(`SELECT 1`)).rows, [['1']]);
+  } finally { c.close(); }
+});
+
 test('PostgreSQL syntax as SQLite reads it', () => {
   const pg = (sql: string) => pgSyntax(sql).replace(/\s+/g, ' ').trim();
+  assert.equal(pg(`SELECT relid FROM pg_catalog.pg_partition_ancestors('16384') a, pg_class WHERE x = 1`), `SELECT relid FROM (SELECT NULL AS relid WHERE 0) AS a, pg_class WHERE x = 1`);
+  assert.equal(pg(`SELECT a.r FROM pg_class c, pg_partition_ancestors(c.oid) AS a(r) ORDER BY 1`), `SELECT a.r FROM pg_class c, (SELECT NULL AS r WHERE 0) AS a ORDER BY 1`);
+  assert.equal(pg(`SELECT pg_partition_ancestors(c.oid), c.oid FROM pg_class c WHERE c.oid IN (SELECT pg_partition_ancestors(c.oid))`), `SELECT pg_partition_ancestors(c.oid), c.oid FROM pg_class c WHERE c.oid IN (SELECT pg_partition_ancestors(c.oid))`);
   assert.equal(pg(`SELECT c.oid::pg_catalog.regclass, 'a::b' FROM pg_catalog.pg_class c WHERE c.relname OPERATOR(pg_catalog.~) '^(x)$' COLLATE pg_catalog.default`),
     `SELECT c.oid, 'a::b' FROM pg_class c WHERE c.relname REGEXP '^(x)$'`);
   assert.equal(pg(`SELECT "public"."T"."a" FROM public."T", pg_class WHERE n !~ '^pg_' AND k = ANY (ARRAY['r','p']) AND x ILIKE 'a%'`),

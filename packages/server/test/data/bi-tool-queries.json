@@ -1381,6 +1381,11 @@
    "why": "written from the documented behaviour, psycopg2's source was not fetched"
   },
   {
+   "tool": "psql 18",
+   "what": "the queries of \\d table, which call pg_partition_ancestors (the foreign-key and referenced-by lists) and may read pg_constraint.conenforced",
+   "why": "no psql 18 was run here; pgwire.test.ts runs those queries as describe.c is remembered to write them, with no rows from pg_partition_ancestors, and the list above is psql 16.15 only"
+  },
+  {
    "tool": "all",
    "what": "the exact version of each tool that sends these queries",
    "why": "the sources were read from their main branches on the day of the work; psql was a real psql 16.15 client, the rest were not run"
