@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process';
+import { readSettings } from './fms-migrate.ts';
 import { checkPathLength } from '../../store/src/portable-path.ts';
 import { renameCheckedSync as renameSync, removeFileSync as rmSync } from '../../store/src/file-ops.ts';
 // Backups of a hosted folder, safe while the server runs.
@@ -37,7 +39,7 @@ import { recordPrunedSets } from './pruned-sets.ts';
 import { approveRestoredFiles, verifiedHostedRecord } from './hosted-record.ts';
 import type { Host } from './host.ts';
 import { decryptFile, encryptFile, ENCRYPTED_EXT } from './encrypt.ts';
-import { checksum, copyVerifiedDatabase, integrity, describeCheck, describeRestore, verifySet, recordChecksum, restoreTestDue, testRestore, verifyAfterBackup } from './backup-verify.ts';
+import { checksum, copyVerifiedDatabase, integrity, integrityAsync, describeCheck, describeRestore, verifySet, recordChecksum, restoreTestDue, testRestore, verifyAfterBackup } from './backup-verify.ts';
 import type { SetCheck } from './backup-verify.ts';
 import { backupExternal, blockReuse, externalFiles, externalManifest, stageExternal, verifyExternal, EXTERNAL_DIRS } from './backup-external.ts';
 import type { ExternalManifest } from './backup-external.ts';
@@ -51,11 +53,12 @@ import { isEncryptedSet, openAmenderSync, readVerified, signManifest, signedByOl
 import type { Amender } from './backup-auth.ts';
 import { EMPTY_CHAIN, LOGS, OLD_LOG, chainOf, extendChain, verifyLogs } from './backup-log-chain.ts';
 import type { LogChain } from './backup-log-chain.ts';
-import { sweepStateTempsSync, writeDurable } from '../../store/src/durable.ts';
+import { atomicWrite, sweepStateTempsSync, writeDurable } from '../../store/src/durable.ts';
 import { commitRestore, recoverRestore } from './restore-files.ts';
 
 const SET = /^\d{4}-\d{2}-\d{2}_\d{6}$/;
 const PID_FILE = '.openhbam.pid';
+const PID_OWNER = '.openhbam-pid-owner.json';
 // Temporary pid file name while claiming; a template so the sweep pattern below derives from it.
 const pidTmpName = (id: string): string => `.openhbam-pid-${id}.tmp`;
 const PID_TMP_RE = new RegExp(`^${pidTmpName('[a-f0-9-]{36}').replaceAll('.', '\\.')}$`);
@@ -92,6 +95,11 @@ export function defaultBackupDir(folder: string): string {
   return join(folder, 'Backups');
 }
 
+/** The same precedence as serve, including paths saved by the console. */
+export function configuredBackupDir(folder: string, override?: string): string {
+  return override ?? process.env.TABULARIUS_BACKUP_DIR ?? readSettings(folder).backupDir ?? defaultBackupDir(folder);
+}
+
 /** Backup sets in a backup folder, oldest first. */
 export function backupSets(dest: string): string[] {
   if (!existsSync(dest)) return [];
@@ -100,7 +108,7 @@ export function backupSets(dest: string): string[] {
 
 /** The passphrase backups are encrypted with, if one is set (set but empty is an error, not "no passphrase"). */
 export function backupKey(): string | undefined {
-  return secret('TABULARIUS_BACKUP_KEY');
+  return secret('TABULARIUS_BACKUP_KEY') ?? secret('TABULARIUS_ENCRYPTION_KEY');
 }
 
 /** A backup file's name without the encrypted ending. */
@@ -273,15 +281,8 @@ async function backupOnceHeld(folder: string, dest: string, keep: number, passph
       }
       crashPoint('backup:after-copy');
       recordFinished(partial, f, Date.now());
-      const copy = new DatabaseSync(join(partial, f), { readOnly: true });
-      try {
-        const quick = copy.prepare('PRAGMA quick_check').get() as Record<string, string>;
-        if (Object.values(quick)[0] !== 'ok') throw new Error(`backup of ${f} failed its check: ${Object.values(quick)[0]}`);
-      } finally {
-        copy.close();
-        // Opening it to check leaves empty log files; the copy is complete without them.
-        for (const ext of ['-wal', '-shm']) rmSync(join(partial, f + ext), { force: true });
-      }
+      const quick = await integrityAsync(join(partial, f), true);
+      if (quick !== 'ok') throw new Error(`backup of ${f} failed its check: ${quick}`);
       crashPoint('backup:after-verify');
       if (passphrase) await seal(join(partial, f), passphrase);
       // What later checks compare the copy against.
@@ -464,6 +465,8 @@ export function claimFolder(folder: string, purpose: 'server' | 'restore' = 'ser
       }
     };
   }
+  const identity = processIdentity(process.pid);
+  if (!identity) throw new Error('could not identify this process; the folder was not claimed');
   const file = join(folder, PID_FILE);
   const pending = join(folder, pidTmpName(randomUUID()));
   let ino: number;
@@ -522,6 +525,7 @@ export function claimFolder(folder: string, purpose: 'server' | 'restore' = 'ser
         // Rename replaces the stale file in one step, so readers never see the folder unclaimed.
         renameSync(pending, file);
       }
+      atomicWrite(join(folder, PID_OWNER), JSON.stringify({ pid: process.pid, started: identity.started, command: identity.command, ino }));
       lock.exec('COMMIT');
       crashPoint('claim:committed');
     } catch (claimError) {
@@ -565,18 +569,49 @@ function releasePidFile(folder: string, ino: number): void {
   rmSync(file, { force: true });
 }
 
-/** The process id of a server hosting the folder, if one is running. */
+/** Read the OS birth identity, not elapsed time; a recycled PID has a different identity.
+ * Windows CIM and POSIX ps formats are platform-specific; cross-platform behaviour is unverified here.
+ */
+export function processIdentity(pid: number): { started: string; command: string } | undefined {
+  if (process.platform === 'win32') {
+    const output = execFileSync(join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), ['-NoProfile', '-NonInteractive', '-Command',
+      `Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" | Select-Object CreationDate,CommandLine | ConvertTo-Json -Compress`], { encoding: 'utf8', timeout: 5000 });
+    if (!output.trim()) return undefined;
+    const value = JSON.parse(output) as { CreationDate?: string; CommandLine?: string };
+    if (!value.CreationDate) throw new Error('could not read the process creation time');
+    return { started: value.CreationDate, command: value.CommandLine ?? '' };
+  }
+  // An absolute system utility avoids PATH-dependent identity checks.
+  const output = execFileSync('/bin/ps', ['-p', String(pid), '-o', 'lstart=', '-o', 'command='], { encoding: 'utf8', timeout: 5000, env: { ...process.env, LC_ALL: 'C' } }).trim();
+  const match = /^(\S+\s+\S+\s+\d+\s+\d+:\d+:\d+\s+\d+)\s+([\s\S]*)$/.exec(output);
+  if (!match) throw new Error('could not read the process creation time');
+  return { started: match[1].replace(/\s+/g, ' '), command: match[2] };
+}
+
+/** The verified process id of a server hosting the folder, if one is running. */
 export function runningServer(folder: string): number | undefined {
-  const file = join(folderKey(folder), PID_FILE);
+  const key = folderKey(folder);
+  const file = join(key, PID_FILE);
   if (!existsSync(file)) return undefined;
   const pid = Number(readFileSync(file, 'utf8'));
   if (!Number.isInteger(pid) || pid <= 0) return undefined;
-  try {
-    process.kill(pid, 0);
-    return pid;
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code === 'EPERM' ? pid : undefined;
+  try { process.kill(pid, 0); } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ESRCH') return undefined;
+    throw new Error('cannot verify the process owning the hosted folder', { cause: e });
   }
+  const identity = processIdentity(pid);
+  if (!identity) return undefined;
+  try {
+    const owner = JSON.parse(readFileSync(join(key, PID_OWNER), 'utf8')) as { pid: number; started: string; command?: string; ino: number };
+    return owner.pid === pid && owner.ino === statSync(file).ino && owner.started === identity.started && owner.command === identity.command ? pid : undefined;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  // Older numeric pid files have no birth identity. Accept only a recognizable server command for this folder.
+  // Relative-folder legacy launches cannot be confirmed: stop them before upgrading.
+  const command = identity.command;
+  return /(?:^|[ /\\])(?:tabularius|openhbam|main\.ts|launch\.cjs)(?:[ "']|$)/.test(command)
+    && command.includes(key) ? pid : undefined;
 }
 
 /** Crash remnants are expendable only after a day and while no other server owns the folder. */

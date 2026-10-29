@@ -8,6 +8,6 @@ Endpoint for text embeddings used by semantic find and related features.
 | Accepted values | ollama, lmstudio, or an embedding endpoint URL |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/local-embeddings.md](../../../local-embeddings.md) |
-| Code | [packages/cli/src/doctor.ts:243](../../../../packages/cli/src/doctor.ts#L243) |
+| Code | [packages/cli/src/doctor.ts:244](../../../../packages/cli/src/doctor.ts#L244) |
 
 [All environment variables](../../../environment-variables.md)

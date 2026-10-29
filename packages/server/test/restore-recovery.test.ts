@@ -1,3 +1,5 @@
+import './a09-command-guard.ts';
+import { writePidOwner } from './pid-fixture.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -175,7 +177,7 @@ for (let after = 0; after <= 8; after++) {
     const journal = JSON.parse(readFileSync(join(folder, journalName), 'utf8'));
     assert.equal(journal.files.length, targets.length);
     assert.equal(journal.phase, 'pending');
-    writeFileSync(join(folder, '.openhbam.pid'), String(process.ppid));
+    writePidOwner(folder, process.ppid);
     assert.deepEqual(sweepCrashLeftovers(folder), []);
     assert.ok(existsSync(join(folder, journalName)), 'another server prevents recovery');
     rmSync(join(folder, '.openhbam.pid'));

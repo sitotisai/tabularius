@@ -22,7 +22,7 @@ import { doctorText, runDoctor } from './doctor.ts';
 import { runExposure } from './exposure.ts';
 import { startDemo } from './demo.ts';
 import { validateServeOptions, verifyServiceStarted, checkPort, defaults, installed, installService, serviceFile, uninstallService, servicePlainRefusal, defaultServiceHost, upgrade, validateServicePublicUrl, type Platform, type ServiceOptions } from './service.ts';
-import { claimFolder } from '../../server/src/backup.ts';
+import { claimFolder, configuredBackupDir, backupKey } from '../../server/src/backup.ts';
 import { FmpDatabase, fileSource, encryptionInfo, readLayoutDesigns, segmentOf, inspectText, type Schema } from '../../fmp12/src/index.ts';
 import { BUILT_IN_EXTENDED_PRIVILEGES, addCensus, styleCensus, styleCensusText, calcFidelity, censusText, exportSql, exportSqlSummary, planImportTables, importTables, importTablesSummary, notionMarkdownSheet, MAX_IMPORT_ROWS, type SheetInput, type ColumnOverrides, type ColumnKind, findStaleCalcs, layoutCensus, type LayoutCensus, createStore, designReport, importFmp12, PASSWORD_POLICY, DEFAULT_MIN_PASSWORD_LENGTH, reconvert, reconvertCheck, verifySecurityAudit, verifyRecordAudit, anchorHead, checkAnchor, Store, syncPlan, openForPlanning, applySync, readSyncLog, releaseHeldTables, type ConflictPolicy, writeBackKit, designText, writeDesignText, diffDesigns, planDesignApply, readDesignFolder, type DesignOp, type ReconvertPreview, csvField, exitBundle, discardExitBundle } from '../../store/src/index.ts';
 import { xlsxSheetNames } from '../../scripts/src/xlsx.ts';
@@ -1025,7 +1025,7 @@ function serviceCommand(cmd: string, args: string[]): number {
       ...(from ? { from } : {}),
       backup: backup ? async (folder, extra) => {
         const i = extra.indexOf('--backup-dir');
-        return (await backupFolder(folder, i >= 0 ? resolve(folder, extra[i + 1]) : process.env.TABULARIUS_BACKUP_DIR ?? readSettings(folder).backupDir ?? defaultBackupDir(folder), 0)).dir;
+        return (await backupFolder(folder, configuredBackupDir(folder, i >= 0 ? resolve(folder, extra[i + 1]) : undefined), 0)).dir;
       } : undefined,
     }).catch(fail);
     return 0;
@@ -1105,7 +1105,7 @@ async function firstRun(): Promise<void> {
   encryptionKeyFromEnv();
   const portFrom = positiveWholeNumber('PORT', process.env.PORT, 8080, { min: 0, max: 65535 });
   const folder = process.env.TABULARIUS_FOLDER ?? join(homedir(), 'tabularius');
-  mkdirSync(folder, { recursive: true });
+  mkdirSync(folder, { recursive: true, mode: 0o700 });
   const port = await freePort(portFrom);
   console.log(`tabularius: hosting ${folder} on this computer. Drop .fmp12 files on the page that opens, or into that folder. Ctrl-C stops it.`);
   process.exitCode = main(['serve', folder, '--port', String(port), '--open']);
@@ -1510,7 +1510,7 @@ function main(argv: string[]): number {
           console.log(`Web client: ${url}/app/   Admin: ${url}/admin/   Data API: ${url}/fmi/data/vLatest   MCP: ${url}/mcp`);
           if (!mcpToken) console.log(`  AI apps need a token at /mcp: run  tabularius mcp-token ${path}  to print the administrator's, or make one for an account in the admin console (Connect an AI app)`);
           if (ai) console.log(`AI assistant on (${ai.model ?? DEFAULT_MODEL}): questions and what it reads go to Anthropic; one question may use up to ${(ai.runTokens ?? DEFAULT_RUN_TOKENS).toLocaleString('en-US')} tokens`);
-          console.log(backups ? `backups every ${every} to ${dest ?? defaultBackupDir(path)}, keeping ${keep}${process.env.TABULARIUS_BACKUP_KEY ? ', encrypted' : ''}` : 'backups off');
+          console.log(backups ? `backups every ${every} to ${dest ?? defaultBackupDir(path)}, keeping ${keep}${backupKey() ? ', encrypted' : ''}` : 'backups off');
         }, (e) => {
           process.stderr.write(`error: ${plainError(e)}\n`);
           process.exit(1);
@@ -1563,12 +1563,12 @@ function main(argv: string[]): number {
         console.log(`Web client: ${url}/app/   Admin: ${url}/admin/   Data API: ${url}/fmi/data/vLatest   MCP: ${url}/mcp`);
         if (!mcpToken) console.log(`  AI apps need a token at /mcp: run  tabularius mcp-token ${path}  to print the administrator's, or make one for an account in the admin console (Connect an AI app)`);
         if (ai) console.log(`AI assistant on (${ai.model ?? DEFAULT_MODEL}): questions and what it reads go to Anthropic; one question may use up to ${(ai.runTokens ?? DEFAULT_RUN_TOKENS).toLocaleString('en-US')} tokens`);
-        console.log(backups ? `backups every ${every} to ${dest ?? defaultBackupDir(path)}, keeping ${keep}${process.env.TABULARIUS_BACKUP_KEY ? ', encrypted' : ''}` : 'backups off');
+        console.log(backups ? `backups every ${every} to ${dest ?? defaultBackupDir(path)}, keeping ${keep}${backupKey() ? ', encrypted' : ''}` : 'backups off');
         if (openPage) openBrowser(`${url}/admin/#welcome`);
-        if (offsite) console.log(`backups copied off-site to ${offsite.url}${process.env.TABULARIUS_BACKUP_KEY ? ' (encrypted)' : ''}`);
+        if (offsite) console.log(`backups copied off-site to ${offsite.url}${backupKey() ? ' (encrypted)' : ''}`);
         if (replicationToken) console.log(`standby servers can follow this one: tabularius standby <folder> --primary ${url} ${replicationTokenFile ? `--token-file ${replicationTokenFile}` : '--token ...'}`);
         if (progressive) console.log(`changes saved every ${progressiveEvery}: restore to any of those moments with tabularius restore --at`);
-        if (encryptionKey) console.log('encryption at rest on: stores are re-encrypted on a clean shutdown (Ctrl-C), not left as plaintext');
+        if (encryptionKey) console.log('encryption at rest on: stores are re-encrypted on a clean shutdown (Ctrl-C). Existing backups, external containers, source files, exports and logs can still contain plaintext; protect the whole folder and backup disk');
       }, (e) => {
         process.stderr.write(`error: ${plainError(e)}\n`);
         process.exit(1);
@@ -1783,6 +1783,7 @@ function main(argv: string[]): number {
       if (!existsSync(path)) throw new Error(`${cmd}: ${path} does not exist`);
       const release = claimFolder(path, 'restore');
       try {
+        if (cmd === 'encrypt') console.warn('Encryption covers the hosted stores only: existing backups, external containers, source files, exports and logs can still contain plaintext. Protect the whole folder and backup disk.');
         let n = 0;
         if (cmd === 'encrypt') {
           for (const f of readdirSync(path)) {
@@ -1851,10 +1852,10 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'backup': {
-      const dest = flag(args, '--to') ?? process.env.TABULARIUS_BACKUP_DIR ?? readSettings(path).backupDir ?? defaultBackupDir(path);
+      const dest = configuredBackupDir(path, flag(args, '--to'));
       const keep = Number(flag(args, '--keep') ?? 0);
       backupFolder(path, dest, keep).then((r) => {
-        console.log(`backed up ${r.files.length} files to ${r.dir}${process.env.TABULARIUS_BACKUP_KEY ? ', encrypted' : ''}`);
+        console.log(`backed up ${r.files.length} files to ${r.dir}${backupKey() ? ', encrypted' : ''}`);
         for (const old of r.removed) console.log(`removed old backup ${old}`);
       }, (e) => {
         process.stderr.write(`error: ${plainError(e)}\n`);
@@ -1863,7 +1864,7 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'verify-backup': {
-      const dest = flag(args, '--from') ?? defaultBackupDir(path);
+      const dest = configuredBackupDir(path, flag(args, '--from'));
       const sign = bool(args, '--sign');
       const sets = args[0] ? [args[0]] : backupSets(dest);
       if (!sets.length) throw new Error(`verify-backup: no backup sets in ${dest}`);
@@ -1901,7 +1902,7 @@ function main(argv: string[]): number {
         for (const n of options.newerThanBackup) process.stderr.write(`note: ${n.file.replace(STORE_EXT, '')} had changes after this backup was taken (last written ${new Date(n.changedAt).toLocaleString()}, backup from ${new Date(n.backupAt).toLocaleString()}); they are not in the restored file\n`);
         if (options.differences.length) console.log(`Accounts that are not as they were before this restore (check them with: tabularius privileges ${path}):\n${listChanges(options.differences)}`); };
       // Off-site backups: brought down into the folder's backups first.
-      const local = from?.startsWith('s3://') ? defaultBackupDir(path) : from ?? defaultBackupDir(path);
+      const local = configuredBackupDir(path, from?.startsWith('s3://') ? undefined : from);
       const fetched = from?.startsWith('s3://')
         ? mirrorDown(new S3(s3FromEnv(from, endpoint, region)), local).then((n) => console.log(`downloaded ${n} files from ${from}`))
         : Promise.resolve();
@@ -2918,7 +2919,7 @@ function main(argv: string[]): number {
       }
       if (args.includes('--no-sample') && !starter) throw new Error('new: --no-sample goes with --starter');
       if (existsSync(path) && !statSync(path).isDirectory()) throw new Error(`new: ${path} is a file; give the folder to put the new database in`);
-      try { mkdirSync(path, { recursive: true }); } catch (e) { throw new Error(`new: ${path} can't be made (${(e as NodeJS.ErrnoException).code ?? (e as Error).message}); choose a folder this user can write to`); }
+      try { mkdirSync(path, { recursive: true, mode: 0o700 }); } catch (e) { throw new Error(`new: ${path} can't be made (${(e as NodeJS.ErrnoException).code ?? (e as Error).message}); choose a folder this user can write to`); }
       createStore(out, args.includes('--native') ? { mode: 'native' } : undefined);
       if (starter) {
         const store = new Store(out, database);
@@ -2973,7 +2974,7 @@ function main(argv: string[]): number {
       later((async () => {
         const release = claimFolder(path, 'restore');
         try {
-          const result = await upgradeNativeFile(safe, async () => (await backupFolder(path, defaultBackupDir(path), 0)).dir);
+          const result = await upgradeNativeFile(safe, async () => (await backupFolder(path, configuredBackupDir(path), 0)).dir);
           console.log(`${database}: upgraded to native; ${result.dateValues} stored date/timestamp values checked; backup: ${result.backup}`);
         } finally { release(); }
       })());

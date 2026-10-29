@@ -1,4 +1,6 @@
 import { permissionSummary } from '../../plugins/src/manifest.ts';
+import { readBackupInfo } from './backup-info.ts';
+import type { SetCheck, RestoreTest } from './backup-verify.ts';
 import { clientAddress } from './client-address.ts';
 import { auditCsvField } from '../../store/src/audit-output.ts';
 // The admin console, like FileMaker Server's: who is connected, records
@@ -169,7 +171,7 @@ import { ENCRYPTED_EXT } from './encrypt.ts';
 import { isLocalAdmin } from './local-admin.ts';
 import { tokenExpiry } from './token-expiry.ts';
 import { localAuthority } from './local-tls.ts';
-import { describeCheck, describeRestore, lastCheck, lastRestore, testRestore, verifyAfterBackup, verifySet } from './backup-verify.ts';
+import { describeCheck, describeRestore, testRestore, verifyAfterBackup, verifySet } from './backup-verify.ts';
 import { LOGS, type LogName, type LogType, type ServerLogs } from './server-logs.ts';
 import { hostedName } from './uploads.ts';
 import { ApiError, lenient, readBoundedJson as readJson, webauthnEnv } from './dataapi.ts';
@@ -375,10 +377,54 @@ function size(path: string): number {
   }
 }
 
-function dirSize(path: string): number {
-  let n = 0;
-  for (const f of readdirSync(path, { withFileTypes: true })) n += f.isDirectory() ? dirSize(join(path, f.name)) : size(join(path, f.name));
-  return n;
+type BackupSummary = { name: string; bytes: number; check?: SetCheck; restored?: RestoreTest };
+
+/** One cache per console; pruning or changing destination drops obsolete entries. */
+class BackupStatusCache {
+  private dest = '';
+  private entries = new Map<string, { version: string; files: Map<string, number>; check?: SetCheck; restored?: RestoreTest }>();
+  private result: BackupSummary[] = [];
+  read(dest: string): BackupSummary[] {
+    if (dest !== this.dest) { this.dest = dest; this.entries.clear(); }
+    const names = backupSets(dest).reverse();
+    let changed = this.result.length !== names.length;
+    for (const name of this.entries.keys()) if (!names.includes(name)) { this.entries.delete(name); changed = true; }
+    for (const name of names) {
+      const path = join(dest, name);
+      let version = 'missing';
+      try {
+        const st = statSync(join(path, 'backup.json'));
+        version = `${st.dev}:${st.ino}:${st.size}:${st.mtimeMs}:${st.ctimeMs}`;
+      } catch { /* legacy sets can lack a manifest */ }
+      if (this.entries.get(name)?.version === version) continue;
+      changed = true;
+      const files = new Map<string, number>();
+      const walk = (dir: string) => {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          const file = join(dir, entry.name);
+          if (entry.isDirectory()) walk(file);
+          else if (entry.isFile()) {
+            const st = statSync(file);
+            files.set(`${st.dev}:${st.ino}`, st.size);
+          }
+        }
+      };
+      walk(path);
+      let info: { verified?: SetCheck; restored?: RestoreTest } = {};
+      try { info = readBackupInfo(path); } catch { /* unreadable metadata has no trusted check */ }
+      this.entries.set(name, { version, files, check: info.verified, restored: info.restored });
+    }
+    if (changed) {
+      const seen = new Set<string>();
+      this.result = names.map((name) => {
+        const entry = this.entries.get(name)!;
+        let bytes = 0;
+        for (const [inode, size] of entry.files) if (!seen.has(inode)) { seen.add(inode); bytes += size; }
+        return { name, bytes, check: entry.check, restored: entry.restored };
+      });
+    }
+    return this.result;
+  }
 }
 
 /** One CSV field, quoted per RFC 4180 when it holds a comma, quote or newline. A leading =, +, - or @ is prefixed with ' so a spreadsheet won't run it as a formula. */
@@ -491,6 +537,7 @@ export class Admin {
   offsite?: OffsiteSchedule;
   /** Sets kept by "back up now" without a schedule: 0 keeps them all. */
   backupKeep = 0;
+  private readonly backupStatus = new BackupStatusCache();
   /** The server was started with a backup folder of its own (--backup-dir), which the console can't move. */
   backupDirFixed = false;
   /** The folder in use when backups follow no schedule here: the one point-in-time backups and the off-site copy were started on (the console may have saved another since). */
@@ -2840,7 +2887,7 @@ export class Admin {
       owners.set(v.owner, id);
       return { file: name, table: v.table, recordId: v.recordId, account: v.account, client: id };
     }));
-    const sets = backupSets(dest).reverse().map((s) => ({ name: s, bytes: dirSize(join(dest, s)), check: lastCheck(join(dest, s)), restored: lastRestore(join(dest, s)) }));
+    const sets = this.backupStatus.read(dest);
     return {
       server: {
         version: SERVER_VERSION, ...(serverCommit() ? { commit: serverCommit() } : {}), started: new Date(this.started).toISOString(), folder: this.host.dir, scriptNetwork: this.host.scriptNetwork, outbound: this.outboundStatus(), mail: this.host.mail && !this.host.outbound ? { from: this.host.mailFrom, ...(this.host.mailConnection ? { connection: this.host.mailConnection } : {}) } : null, passwordSet: !!this.passwordHash(),

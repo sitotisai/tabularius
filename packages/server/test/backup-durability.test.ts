@@ -1,3 +1,5 @@
+import './a09-command-guard.ts';
+import { writePidOwner } from './pid-fixture.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
@@ -36,7 +38,7 @@ test('X1.4: startup sweeps only old crash remnants and respects another running 
   writeFileSync(live, 'live'); utimesSync(live, old, old);
   const outside = join(dir, 'unrelated'); mkdirSync(outside); utimesSync(outside, old, old);
   const link = join(dir, 'C.openhbam.sqlite.restoring'); symlinkSync(outside, link);
-  writeFileSync(join(dir, '.openhbam.pid'), String(process.ppid));
+  writePidOwner(dir, process.ppid);
   assert.deepEqual(sweepCrashLeftovers(dir), []);
   paths.forEach((path) => assert.ok(existsSync(path)));
   rmSync(join(dir, '.openhbam.pid'));
