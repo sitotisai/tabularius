@@ -19,6 +19,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ContainerFile } from '../../store/src/index.ts';
 import { monotonicClock } from '../../store/src/monotonic.ts';
+import { uploadIdleMs } from './setting-values.ts';
 
 /** The most a container file may be, over any route that takes one in. */
 export const MAX_CONTAINER_FILE = 1024 * 1024 * 1024;
@@ -32,7 +33,6 @@ export const MAX_REQUEST_SPOOLS_PER_ACCOUNT = 4;
 /** What a client is told to wait, in seconds, when a single-request spool is refused for now. */
 const REQUEST_SPOOL_RETRY_SECONDS = 5;
 /** An upload that has received nothing for this long is abandoned (TABULARIUS_UPLOAD_IDLE_HOURS, default 24; 0 keeps them). */
-const IDLE_MS = Math.max(0, Number(process.env.TABULARIUS_UPLOAD_IDLE_HOURS ?? 24) || 0) * 60 * 60 * 1000;
 
 const UPLOAD_PREFIX = 'tabularius-container-uploads-';
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -241,7 +241,7 @@ export class ContainerUploads {
   constructor(opts: { tmp?: string; now?: () => number; idleMs?: number } = {}) {
     this.tmp = opts.tmp ?? (process.env.TABULARIUS_UPLOAD_TMP || tmpdir());
     this.now = opts.now ?? (() => monotonicClock.now());
-    this.idleMs = opts.idleMs ?? IDLE_MS;
+    this.idleMs = opts.idleMs ?? uploadIdleMs();
   }
 
   private spool(id: string): string {
