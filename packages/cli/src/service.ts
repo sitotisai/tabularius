@@ -231,6 +231,9 @@ WantedBy=${o.system ? 'multi-user.target' : 'default.target'}
 `,
     };
   }
+  // Task Scheduler's RestartOnFailure does not start the server again after it was killed or exited with an error (shown on
+  // Windows Server 2025 by scripts/service-e2e.ts), so a trigger every minute does it: with IgnoreNew it starts the server
+  // only when none is running.
   const [node, ...args] = command(o);
   return {
     path: servicePath(o),
@@ -239,6 +242,7 @@ WantedBy=${o.system ? 'multi-user.target' : 'default.target'}
   <RegistrationInfo><Description>tabularius server: hosts ${xml(o.folder)}</Description></RegistrationInfo>
   <Triggers>
     ${o.system ? '<BootTrigger><Enabled>true</Enabled></BootTrigger>' : `<LogonTrigger><Enabled>true</Enabled><UserId>${xml(o.user)}</UserId></LogonTrigger>`}
+    <TimeTrigger><Repetition><Interval>PT1M</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition><StartBoundary>2020-01-01T00:00:00</StartBoundary><Enabled>true</Enabled></TimeTrigger>
   </Triggers>
   <Principals>
     <Principal id="Author">

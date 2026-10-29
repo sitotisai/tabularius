@@ -83,8 +83,8 @@ try {
   const killedAt = Date.now();
   if (process.platform === 'win32') sh('taskkill', ['/F', '/T', '/PID', String(victim)]);
   else process.kill(victim, 'SIGKILL');
-  // Task Scheduler waits a full minute before it restarts a failed task.
-  assert.ok(await waitForRestart(url, killedAt, 240_000), 'the service is started again after the server is killed');
+  // Task Scheduler starts it again from a trigger that fires every minute.
+  assert.ok(await waitForRestart(url, killedAt, 180_000), 'the service is started again after the server is killed');
   assert.notEqual(Number(readFileSync(pidFile, 'utf8')), victim, 'a new server process');
   assert.deepEqual(await databases(), ['Kept']);
 
