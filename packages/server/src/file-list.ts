@@ -43,11 +43,11 @@ export async function unhostedPasswordFailure(host: Host, req: IncomingMessage, 
   const from = clientAddress(req);
   const failures = host.unhostedSignIns.table(db);
   const key = failures.accountKey(account, from, db);
-  const wasLocked = failures.lockedOut(key, from) !== undefined;
+  // In a hosted file's order: the check is spent while the caller is not locked out, and the failure counted after it, so a burst of
+  // requests all pay for the check as they would there.
+  if (failures.lockedOut(key, from) === undefined) await spendPasswordCheck(basicPassword(req) ?? '');
   failures.record(key, from, false);
-  const until = failures.lockedOut(key, from);
-  if (!wasLocked) await spendPasswordCheck(basicPassword(req) ?? '');
-  return publicPasswordLockout(until, from);
+  return publicPasswordLockout(failures.lockedOut(key, from), from);
 }
 
 /**
