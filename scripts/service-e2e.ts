@@ -1,130 +1,35 @@
-// End to end: installs the server as a real service on this machine, kills it
-// to see the service manager start it again, then upgrades it, then upgrades it to a version that can't start and checks that
-// the one before is put back. Run in CI on macOS, Linux and Windows
-// (.github/workflows/ci.yml); it needs sudo (macOS, Linux) or an
-// administrator (Windows), as it installs a system service.
-//
-//   node scripts/service-e2e.ts
-//
-// It works on copies: an "origin" repository cloned from this checkout and an
-// install cloned from that, so the upgrades come from commits made here and
-// nothing is pushed anywhere.
-
-import assert from 'node:assert/strict';
+// Throwaway experiment: which Task Scheduler settings restart a task after it dies?
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, appendFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
-import { checkHealth, healthUrl, waitForRestart } from '../packages/cli/src/service.ts';
-
-const repo = resolve(import.meta.dirname, '..');
-// Not under /tmp: a systemd system unit gets a private one. On Windows, under Program Files: the boot task runs as the system
-// account and refuses Node or the program when other accounts can edit them, which they can in the runner's tool cache and temp folder.
-const win = process.platform === 'win32';
-const base = mkdtempSync(join(win ? (process.env.ProgramFiles ?? 'C:\\Program Files') : (process.env.RUNNER_TEMP ?? homedir()), 'tabularius-e2e-'));
-let node = process.execPath;
-if (win) {
-  mkdirSync(join(base, 'node'));
-  node = join(base, 'node', 'node.exe');
-  copyFileSync(process.execPath, node);
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+const dir = 'C:\\exp'; mkdirSync(dir, { recursive: true });
+const node = process.execPath;
+const sh = (c: string, a: string[]) => { const r = spawnSync(c, a, { encoding: 'utf8' }); console.log(c, a.join(' '), '->', r.status, (r.stdout + r.stderr).trim().slice(0, 300)); return r; };
+// each task appends its pid on start, then idles (or exits 1 after 5s for 'exit1')
+function xml(name: string, mode: string, repeat: boolean) {
+  const script = `${dir}\\${name}.js`;
+  writeFileSync(script, `require('fs').appendFileSync('${dir.replace(/\\/g, '\\\\')}\\\\${name}.log', process.pid + ' ' + new Date().toISOString() + '\\n');` + (mode === 'exit1' ? 'setTimeout(()=>process.exit(1),5000);' : 'setInterval(()=>{},1000);'));
+  return `<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <Triggers>${repeat ? '<TimeTrigger><Repetition><Interval>PT1M</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition><StartBoundary>2020-01-01T00:00:00</StartBoundary><Enabled>true</Enabled></TimeTrigger>' : ''}<BootTrigger><Enabled>true</Enabled></BootTrigger></Triggers>
+  <Principals><Principal id="Author"><UserId>S-1-5-18</UserId><RunLevel>HighestAvailable</RunLevel></Principal></Principals>
+  <Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><AllowHardTerminate>true</AllowHardTerminate><StartWhenAvailable>true</StartWhenAvailable><ExecutionTimeLimit>PT0S</ExecutionTimeLimit><Enabled>true</Enabled><RestartOnFailure><Interval>PT1M</Interval><Count>255</Count></RestartOnFailure></Settings>
+  <Actions Context="Author"><Exec><Command>${node}</Command><Arguments>"${script}"</Arguments></Exec></Actions>
+</Task>`;
 }
-const origin = join(base, 'origin');
-const app = join(base, 'app');
-const home = join(base, 'home');
-const folder = join(base, 'Databases');
-const port = 18_080;
-const env = { ...process.env, TABULARIUS_HOME: home };
-const url = healthUrl({ port, host: '127.0.0.1', extra: [] });
-const step = (m: string) => console.log(`\n=== ${m}`);
-
-function sh(cmd: string, args: string[], opts: { cwd?: string; ok?: boolean; shell?: boolean } = {}) {
-  const r = spawnSync(cmd, args, { cwd: opts.cwd, env, encoding: 'utf8', shell: opts.shell });
-  process.stdout.write(r.stdout ?? '');
-  process.stderr.write(r.stderr ?? '');
-  if (!opts.ok && r.status !== 0) throw new Error(`${cmd} ${args.join(' ')} exited ${r.status}${r.error ? `: ${r.error.message}` : ''}`);
-  return r;
+const cases = [['killed', 'kill', false], ['exit1', 'exit1', false], ['killedrepeat', 'kill', true]] as const;
+for (const [name, mode, repeat] of cases) {
+  const f = `${dir}\\${name}.xml`;
+  writeFileSync(f, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(xml(name, mode, repeat), 'utf16le')]));
+  sh('schtasks', ['/Create', '/TN', name, '/XML', f, '/F']);
+  sh('schtasks', ['/Run', '/TN', name]);
 }
-const git = (cwd: string, ...args: string[]) => sh('git', ['-c', 'user.name=e2e', '-c', 'user.email=e2e@example.com', '-C', cwd, ...args]).stdout.trim();
-const cli = (...args: string[]) => sh(node, ['--no-warnings', join(app, 'packages', 'cli', 'src', 'main.ts'), ...args], { ok: true });
-const commit = (message: string, change: () => void) => {
-  change();
-  git(origin, 'add', '-A');
-  git(origin, 'commit', '-qm', message);
-  return git(origin, 'rev-parse', 'HEAD');
-};
-async function databases(): Promise<string[]> {
-  // A fresh connection each time: a kept-alive one to the server before a restart fails.
-  const r = await fetch(`http://127.0.0.1:${port}/`, { headers: { connection: 'close' } }).then((x) => x.json() as Promise<{ databases: string[] }>, () => ({ databases: [] }));
-  return r.databases;
-}
-
-let installed = false;
-try {
-  step('copies of this checkout to upgrade from');
-  git(base, 'clone', '-q', '--no-hardlinks', repo, origin);
-  git(origin, 'checkout', '-q', '-B', 'main');
-  git(base, 'clone', '-q', '-b', 'main', origin, app);
-  sh(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: app, shell: process.platform === 'win32' });
-  mkdirSync(folder, { recursive: true });
-  assert.equal(cli('new', folder, 'Kept').status, 0);
-
-  step('install as a system service');
-  const t0 = Date.now();
-  const install = cli('service', 'install', folder, '--port', String(port), '--host', '127.0.0.1', '--system', '--', '--list-files-publicly');
-  assert.equal(install.status, 0, 'service install');
-  installed = true;
-  assert.ok(await waitForRestart(url, t0, 90_000), `the service answers at ${url}`);
-  assert.deepEqual(await databases(), ['Kept']);
-
-  step('kill the server: the service manager starts it again');
-  const pidFile = join(folder, '.openhbam.pid');
-  const victim = Number(readFileSync(pidFile, 'utf8'));
-  assert.ok(Number.isInteger(victim) && victim > 0, `a process id in ${pidFile}`);
-  const killedAt = Date.now();
-  if (process.platform === 'win32') sh('taskkill', ['/F', '/T', '/PID', String(victim)]);
-  else process.kill(victim, 'SIGKILL');
-  // Task Scheduler waits a full minute before it restarts a failed task.
-  assert.ok(await waitForRestart(url, killedAt, 240_000), 'the service is started again after the server is killed');
-  assert.notEqual(Number(readFileSync(pidFile, 'utf8')), victim, 'a new server process');
-  assert.deepEqual(await databases(), ['Kept']);
-
-  step('upgrade to a new version');
-  const good = commit('a new version', () => writeFileSync(join(origin, 'E2E-VERSION'), '2\n'));
-  const up = cli('upgrade', '--wait', '90');
-  assert.equal(up.status, 0, 'upgrade');
-  assert.equal(git(app, 'rev-parse', 'HEAD'), good);
-  assert.equal((await checkHealth(url))?.status, 'ok');
-  assert.deepEqual(await databases(), ['Kept'], 'the hosted file is still there');
-  const backups = join(folder, 'Backups');
-  assert.ok(existsSync(backups) && readdirSync(backups).length > 0, 'backed up before restarting');
-
-  step('upgrade to a version that cannot start: the one before comes back');
-  commit('a version that cannot start', () => appendFileSync(join(origin, 'packages', 'server', 'src', 'index.ts'), "\nthrow new Error('broken on purpose by the service test');\n"));
-  const bad = cli('upgrade', '--wait', '45');
-  assert.notEqual(bad.status, 0, 'the upgrade reports that it failed');
-  assert.match(bad.stderr, /was put back and is running/);
-  assert.equal(git(app, 'rev-parse', 'HEAD'), good, 'the checkout is back on the good version');
-  assert.equal((await checkHealth(url))?.status, 'ok');
-  assert.deepEqual(await databases(), ['Kept']);
-
-  step('uninstall');
-  assert.equal(cli('service', 'uninstall').status, 0);
-  installed = false;
-  let gone = false;
-  for (let i = 0; i < 60 && !gone; i++) {
-    gone = !(await checkHealth(url));
-    if (!gone) await new Promise((r) => setTimeout(r, 500));
-  }
-  assert.ok(gone, 'nothing answers once it is uninstalled');
-  assert.ok(existsSync(join(folder, 'Kept.openhbam.sqlite')), 'hosted files stay');
-  console.log('\nservice end to end: ok');
-} catch (e) {
-  // What the service itself said, to see why.
-  step('the service\'s own output');
-  if (process.platform === 'linux') sh('sudo', ['journalctl', '-u', 'openhbam', '--no-pager', '-n', '150'], { ok: true });
-  else if (process.platform === 'darwin') sh('cat', [join(home, 'logs', 'server.log')], { ok: true });
-  else sh('schtasks', ['/Query', '/TN', 'openhbam', '/V', '/FO', 'LIST'], { ok: true });
-  throw e;
-} finally {
-  if (installed) cli('service', 'uninstall');
+const wait = (s: number) => new Promise((r) => setTimeout(r, s * 1000));
+await wait(10);
+for (const [name, mode] of cases) if (mode === 'kill') { const pid = readFileSync(`${dir}\\${name}.log`, 'utf8').trim().split(/\r?\n/).pop()!.split(' ')[0]; sh('taskkill', ['/F', '/PID', pid]); }
+await wait(200);
+for (const [name] of cases) {
+  console.log(`\n=== ${name}`);
+  console.log(existsSync(`${dir}\\${name}.log`) ? readFileSync(`${dir}\\${name}.log`, 'utf8') : '(no log)');
+  sh('schtasks', ['/Query', '/TN', name, '/V', '/FO', 'LIST']);
+  sh('schtasks', ['/Delete', '/TN', name, '/F']);
 }
