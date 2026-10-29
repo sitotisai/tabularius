@@ -137,3 +137,294 @@ test('an account that must change its password is sent to the classic client, no
   assert.match(mustChangeText(), /must change its password/);
   assert.match(mustChangeText(), /\/app\//);
 });
+
+// Wiring regressions for #158 and #159 are still checked against the source text: their behaviour needs a page with a web viewer, which the e2e file covers only for the bridge. #145 and #151 are behaviour tests in e2e/next.e2e.ts.
+const mainSource = (await import('node:fs')).readFileSync(new URL('../next/main.ts', import.meta.url), 'utf8');
+
+test('#160 short years and precise numeric strings keep their stored meaning', () => {
+  const d = new Date(2000, 0, 1); d.setFullYear(50);
+  assert.equal(show('01/01/0050', { type: 'date' }), d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }));
+  assert.equal(show('12345678901234567', { type: 'number' }), '12345678901234567');
+  assert.equal(show('0.12345678901234567', { type: 'number' }), '0.12345678901234567');
+});
+test('#158 pages carry allowed viewer hosts from their layout', () => {
+  const m = meta('Map', 'Places', []);
+  m.webViewerHosts = ['https://example.com'];
+  m.design = { objects: [{ id: 1, kind: 'web-viewer' }] } as LayoutMeta['design'];
+  assert.deepEqual((pages([{ meta: m, hidden: false }])[0] as unknown as { hosts: string[] }).hosts, m.webViewerHosts);
+  assert.match(mainSource, /webViewer\(address, p.bridge, p.hosts\)/);
+});
+test('#159 unsupported bridge methods explain the client limitation', () => {
+  assert.match(mainSource, /not supported in \/next\/; use \/app\//);
+});
+
+test('route decoding tolerates malformed escapes and decodes valid names', async () => {
+  const { decodeRoute } = await import('../next/edits.ts');
+  for (const hash of ['#/%', '#/%E0%A4%A']) assert.deepEqual(decodeRoute(hash), []);
+  assert.deepEqual(decodeRoute('#/Town%20Hall/1'), ['#', 'Town Hall', '1']);
+});
+
+test('an in-flight save cannot redraw another sheet or a reopened record', async () => {
+  const { sameSheet, saveAndRefresh } = await import('../next/edits.ts');
+  const collection = {}, a = { recordId: '1' }, b = { recordId: '2' };
+  let current: object | undefined = a;
+  let release!: () => void;
+  const wait = new Promise<void>((resolve) => { release = resolve; });
+  const saving = saveAndRefresh(() => wait, async () => {});
+  current = b;
+  release();
+  await saving;
+  assert.equal(sameSheet(collection, a, collection, current), false);
+  assert.equal(sameSheet(collection, a, collection, { ...a }), false);
+  assert.equal(sameSheet(collection, a, {}, a), false);
+  assert.equal(sameSheet(collection, a, collection, undefined), false);
+  assert.equal(sameSheet(collection, a, collection, a), true);
+});
+
+test('a failed write can retry its draft; a failed read is already saved', async () => {
+  const { saveAndRefresh } = await import('../next/edits.ts');
+  const draft = 'Long text that must survive validation';
+  const failure = new Error('Rejected');
+  let writes = 0, reads = 0;
+  const write = async () => { if (++writes === 1) throw failure; assert.equal(draft, 'Long text that must survive validation'); };
+  const read = async () => { reads++; throw failure; };
+  assert.deepEqual(await saveAndRefresh(write, read), { saved: false, error: failure });
+  assert.equal(reads, 0);
+  assert.deepEqual(await saveAndRefresh(write, read), { saved: true, error: failure });
+  assert.equal(writes, 2);
+  assert.equal(reads, 1);
+});
+
+test('session and list errors distinguish expiry, hidden files, and outages', async () => {
+  const { sessionFailure, listProblem } = await import('../next/signin.ts');
+  const { ApiError } = await import('../src/api.ts');
+  for (const e of [new TypeError('Failed to fetch'), new TypeError('NetworkError when attempting to fetch resource.'), new TypeError('Load failed'), new ApiError(-1, 'unavailable', undefined, 503), new ApiError(-1, 'bad gateway', undefined, 502)]) {
+    assert.equal(sessionFailure(e).clear, false);
+    assert.equal(sessionFailure(e).retry, true);
+    assert.match(sessionFailure(e).text, /Could not reach the server/);
+    assert.match(listProblem(e), /retry/);
+  }
+  // A bug in the page is not an outage.
+  const bug = sessionFailure(new TypeError('x.map is not a function'));
+  assert.doesNotMatch(bug.text, /reach the server/);
+  assert.match(bug.text, /x\.map is not a function/);
+  assert.equal(bug.retry, true);
+  assert.equal(sessionFailure(new ApiError(952, 'expired')).clear, true);
+  assert.equal(sessionFailure(new ApiError(952, 'expired')).retry, false);
+  assert.equal(listProblem(new ApiError(3, 'hidden', undefined, 404)), '');
+  assert.equal(listProblem(undefined), '');
+});
+
+test('#162 a refusal that is not an outage says what happened and offers a Retry, not "could not reach the server"', async () => {
+  const { sessionFailure } = await import('../next/signin.ts');
+  const { ApiError } = await import('../src/api.ts');
+  const says = (e: unknown) => sessionFailure(e);
+  const busy = says(new ApiError(-1, 'Slow down', undefined, 429));
+  assert.match(busy.text, /Too many requests/);
+  const told = new ApiError(-1, 'Slow down', undefined, 429);
+  told.retryAfter = 7;
+  assert.match(says(told).text, /7 seconds/);
+  assert.equal(says(told).wait, 7);
+  const absurd = new ApiError(-1, 'Slow down', undefined, 429);
+  absurd.retryAfter = 1e308;
+  assert.match(says(absurd).text, /60 seconds/);
+  assert.doesNotMatch(says(absurd).text, /e\+/);
+  assert.equal(says(absurd).wait, 60);
+  assert.equal(says(new ApiError(-1, 'x', undefined, 503)).wait, undefined);
+  assert.doesNotMatch(busy.text, /reach the server/);
+  assert.equal(busy.retry, true);
+  assert.equal(busy.clear, false);
+  const gone = says(new ApiError(802, 'Unable to open file', undefined, 404));
+  assert.match(gone.text, /could not be opened/);
+  assert.match(gone.text, /Unable to open file/);
+  assert.doesNotMatch(gone.text, /reach the server/);
+  assert.equal(gone.retry, true);
+  const bad = says(new ApiError(-1, 'Malformed request', undefined, 400));
+  assert.doesNotMatch(bad.text, /reach the server/);
+  assert.match(bad.text, /Malformed request/);
+  assert.equal(bad.retry, true);
+  for (const status of [401]) assert.equal(says(new ApiError(-1, 'no', undefined, status)).clear, true);
+});
+
+test('#162 a saved session that cannot be read is dropped; one that can is kept', async () => {
+  const { parseSession } = await import('../next/signin.ts');
+  assert.deepEqual(parseSession(JSON.stringify({ db: 'Shop', token: 't1' })), { db: 'Shop', token: 't1' });
+  for (const bad of ['{bad', 'null', '"x"', '[]', '{}', JSON.stringify({ db: 'Shop' }), JSON.stringify({ db: 1, token: 't' }), JSON.stringify({ db: '', token: 't' }), JSON.stringify({ db: 'Shop', token: '' })]) {
+    assert.equal(parseSession(bad), undefined, bad);
+  }
+});
+
+test('#147 a write or an add that may have reached the server is told from one that did not', async () => {
+  const { outcomeUnknown } = await import('../next/edits.ts');
+  const { ApiError } = await import('../src/api.ts');
+  for (const e of [new TypeError('Failed to fetch'), new Error('aborted'), new ApiError(-1, 'bad gateway', undefined, 502), new ApiError(-1, 'busy', undefined, 503), new ApiError(-1, 'no status')]) assert.equal(outcomeUnknown(e), true);
+  for (const e of [new ApiError(500, 'Validation', undefined, 400), new ApiError(306, 'Modified', undefined, 409), new ApiError(401, 'No', undefined, 401), new ApiError(101, 'Missing', undefined, 404)]) assert.equal(outcomeUnknown(e), false);
+});
+
+test('#147 a related row that failed is not sent again when the list shows any new row, however the values read', async () => {
+  const { attemptAdd } = await import('../next/edits.ts');
+  const { ApiError } = await import('../src/api.ts');
+  const types = { 'Orders::Item': 'text', 'Orders::Due': 'date', 'Orders::At': 'time', 'Orders::Qty': 'number' };
+  const row = (recordId: string, fields: Record<string, string | number>) => ({ recordId, modId: '0', ...fields });
+  const record = (rows: ReturnType<typeof row>[]) => ({ recordId: '9', modId: '5', fieldData: {}, portalData: { Orders: rows }, portalDataInfo: [{ portalObjectName: 'Orders', foundCount: rows.length }] });
+  const start = () => ({ ids: new Set(['1', '2']), count: 2 });
+  const base = () => [row('1', { 'Orders::Item': 'Tea' }), row('2', { 'Orders::Item': 'Cake' })];
+  // Each case: what was typed, and what the file made of it (padded dates, times with seconds, a changed text, a number).
+  const cases: [string, Record<string, string>, Record<string, string | number>, boolean][] = [
+    ['a date the file pads', { 'Orders::Item': 'Jam', 'Orders::Due': '3/5/2026' }, { 'Orders::Item': 'Jam', 'Orders::Due': '03/05/2026' }, true],
+    ['a time the file gives seconds', { 'Orders::Item': 'Jam', 'Orders::At': '10:00' }, { 'Orders::Item': 'Jam', 'Orders::At': '10:00:00' }, true],
+    ['a text the file changes on the way in', { 'Orders::Item': 'jam' }, { 'Orders::Item': 'JAM' }, false],
+    ['a number typed with a trailing zero', { 'Orders::Item': 'Jam', 'Orders::Qty': '3.0' }, { 'Orders::Item': 'Jam', 'Orders::Qty': 3 }, true],
+  ];
+  for (const [what, data, made, reads_alike] of cases) {
+    const server = base();
+    let sends = 0, reads = 0;
+    const io = {
+      send: async () => { sends++; server.push(row('11', made)); throw new TypeError('Failed to fetch'); },
+      reread: async () => { reads++; return record(server); },
+    };
+    const state = { maybeAdded: false };
+    const snapshot = start();
+    assert.equal((await attemptAdd(state, io, snapshot, 'Orders', data, types, false)).result, 'failed', what);
+    assert.equal(state.maybeAdded, true, what);
+    const second = await attemptAdd(state, io, snapshot, 'Orders', data, types, false);
+    assert.equal(second.result, 'maybe', what);
+    assert.equal((second as { matched: boolean }).matched, reads_alike, `${what}: whether the values read as the same, only for the message`);
+    assert.equal(sends, 1, `${what}: nothing was sent again`);
+    assert.equal(reads, 1, what);
+    // Only on purpose.
+    assert.equal((await attemptAdd(state, io, snapshot, 'Orders', data, types, true)).result, 'failed', what);
+    assert.equal(sends, 2, `${what}: Add anyway sends`);
+  }
+  // A new row that does not look like the typed one still blocks (the file may have worked the values out).
+  {
+    const server = [...base(), row('12', { 'Orders::Item': 'Something else' })];
+    let sends = 0;
+    const io = { send: async () => { sends++; }, reread: async () => record(server) };
+    const state = { maybeAdded: true };
+    const out = await attemptAdd(state, io, start(), 'Orders', { 'Orders::Item': 'Jam' }, types, false);
+    assert.equal(out.result, 'maybe');
+    assert.equal((out as { matched: boolean }).matched, false);
+    assert.equal(sends, 0);
+  }
+  // A portal longer than what comes back: the count of related records tells that one more exists.
+  {
+    const io = { send: async () => {}, reread: async () => ({ ...record(base()), portalDataInfo: [{ portalObjectName: 'Orders', foundCount: 3 }] }) };
+    let sends = 0;
+    const out = await attemptAdd({ maybeAdded: true }, { ...io, send: async () => { sends++; } }, start(), 'Orders', { 'Orders::Item': 'Jam' }, types, false);
+    assert.equal(out.result, 'maybe');
+    assert.equal(sends, 0);
+  }
+  // No new row yet: the server may still finish the request (a gateway gave up, a connection dropped), so nothing is
+  // sent either; only Add anyway sends.
+  {
+    let sends = 0;
+    const io = { send: async () => { sends++; }, reread: async () => record(base()) };
+    const state = { maybeAdded: true };
+    const out = await attemptAdd(state, io, start(), 'Orders', { 'Orders::Item': 'Jam' }, types, false);
+    assert.equal(out.result, 'maybe');
+    assert.match((out as { error: Error }).error.message, /still|late/);
+    assert.equal(sends, 0);
+    assert.equal(state.maybeAdded, true);
+    assert.equal((await attemptAdd(state, io, start(), 'Orders', { 'Orders::Item': 'Jam' }, types, true)).result, 'added');
+    assert.equal(sends, 1);
+    assert.equal(state.maybeAdded, false);
+  }
+  // A refusal needs no look at the list, and is sent again on Retry.
+  {
+    let refuse = true, reads = 0;
+    const io = { send: async () => { if (refuse) throw new ApiError(500, 'Required', undefined, 400); }, reread: async () => { reads++; return record(base()); } };
+    const state = { maybeAdded: false };
+    assert.equal((await attemptAdd(state, io, start(), 'Orders', { 'Orders::Item': 'Jam' }, types, false)).result, 'failed');
+    assert.equal(state.maybeAdded, false);
+    refuse = false;
+    assert.equal((await attemptAdd(state, io, start(), 'Orders', { 'Orders::Item': 'Jam' }, types, false)).result, 'added');
+    assert.equal(reads, 0);
+  }
+  // The list cannot be read after a lost answer: nothing is sent until Add anyway.
+  {
+    let sends = 0, down = true;
+    const io = { send: async () => { sends++; if (sends === 1) throw new TypeError('Failed to fetch'); }, reread: async () => { if (down) throw new TypeError('offline'); return record(base()); } };
+    const state = { maybeAdded: false };
+    await attemptAdd(state, io, start(), 'Orders', { 'Orders::Item': 'Jam' }, types, false);
+    const blind = await attemptAdd(state, io, start(), 'Orders', { 'Orders::Item': 'Jam' }, types, false);
+    assert.equal(blind.result, 'maybe');
+    assert.match((blind as { error: Error }).error.message, /may already be there/);
+    assert.equal(sends, 1);
+    down = false;
+    assert.equal((await attemptAdd(state, io, start(), 'Orders', { 'Orders::Item': 'Jam' }, types, true)).result, 'added');
+    assert.equal(sends, 2);
+  }
+});
+
+test('#147 values read as the same when the file only pads, completes or re-cases what was typed', async () => {
+  const { sameStored } = await import('../next/edits.ts');
+  assert.equal(sameStored('03/05/2026', '3/5/2026', 'date'), true);
+  assert.equal(sameStored('03/05/2026', '2026-03-05', 'date'), true);
+  assert.equal(sameStored('03/05/2026', '3/6/2026', 'date'), false);
+  assert.equal(sameStored('10:00:00', '10:00', 'time'), true);
+  assert.equal(sameStored('13:05:00', '1:05 PM', 'time'), true);
+  assert.equal(sameStored('10:00:00', '10:01', 'time'), false);
+  assert.equal(sameStored('03/05/2026 10:00:00', '3/5/2026 10:00', 'timestamp'), true);
+  assert.equal(sameStored(3, '3.0', 'number'), true);
+  assert.equal(sameStored('abc', 'ABC', 'text'), false);
+  assert.equal(sameStored(null, '', 'text'), true);
+  assert.equal(sameStored('', '3/5/2026', 'date'), false);
+  // Text, and numbers too long for a double, are never compared as numbers.
+  for (const [held, draft, type] of [['1234', '01234', 'text'], ['1.0', '1', 'text'], ['1e3', '1000', 'text'], ['0x10', '16', 'text'], ['05', '5', undefined],
+    ['12345678901234567890', '12345678901234567891', 'number'], ['0x10', '16', 'number'], ['1e3', '1001', 'number']] as const) {
+    assert.equal(sameStored(held, draft, type), false, `${held} ${draft} ${type}`);
+  }
+  assert.equal(sameStored('12345678901234567890', '012345678901234567890.0', 'number'), true, 'long numbers by their digits');
+  assert.equal(sameStored('1e3', '1000', 'number'), true);
+  assert.equal(sameStored('-0', '0', 'number'), true);
+  // Beyond what a double holds, a number is not its rounded value.
+  assert.equal(sameStored('1e400', '1e401', 'number'), false);
+  assert.equal(sameStored('1e-400', '0', 'number'), false);
+  assert.equal(sameStored('1e400', '1e400', 'number'), true);
+  assert.equal(sameStored('0.0', '0e5', 'number'), true);
+  // A fraction of a second is part of a time.
+  assert.equal(sameStored('10:00:00', '10:00:00.9', 'time'), false);
+  assert.equal(sameStored('10:00:00', '10:00:00.0', 'time'), true);
+  assert.equal(sameStored('10:00:00.5', '10:00:00.50', 'time'), true);
+});
+
+test('#147 a draft is stale when the record moved on to a value that is neither what it was nor the draft', async () => {
+  const { changedUnderDraft } = await import('../next/edits.ts');
+  assert.equal(changedUnderDraft('Rex', 'Rex', 'Mine', 'text'), false, 'unchanged');
+  assert.equal(changedUnderDraft('Theirs', 'Rex', 'Mine', 'text'), true, 'someone else wrote it');
+  assert.equal(changedUnderDraft('Mine', 'Rex', 'Mine', 'text'), false, 'it already holds the draft');
+  assert.equal(changedUnderDraft('04/07/2026', '01/02/2026', '4/7/2026', 'date'), false);
+});
+
+test('#147 a field write whose answer was lost is reconciled from the record, never into a silent overwrite', async () => {
+  const { settleWrite } = await import('../next/edits.ts');
+  const { ApiError } = await import('../src/api.ts');
+  const lost = new TypeError('Failed to fetch');
+  const record = (City: string) => ({ recordId: '1', modId: '7', fieldData: { City }, portalData: {} });
+  // The write landed: the draft is what the file holds.
+  assert.equal((await settleWrite(lost, 'City', 'Paris', 'Leeds', 'text', async () => record('Paris'))).saved, true);
+  // It did not, and the field is as it was: the draft is kept against the modId the file has now.
+  const kept = await settleWrite(lost, 'City', 'Paris', 'Leeds', 'text', async () => record('Leeds'));
+  assert.deepEqual([kept.saved, kept.adopt, kept.conflict, kept.fresh?.modId], [false, true, false, '7']);
+  // Someone else wrote another value meanwhile: that is a conflict, and their record is not taken as the base.
+  const theirs = await settleWrite(lost, 'City', 'Paris', 'Leeds', 'text', async () => record('York'));
+  assert.deepEqual([theirs.saved, theirs.adopt, theirs.conflict, theirs.fresh?.fieldData.City], [false, false, true, 'York']);
+  // The record cannot be read either: kept as it was.
+  const blind = await settleWrite(lost, 'City', 'Paris', 'Leeds', 'text', async () => { throw lost; });
+  assert.deepEqual([blind.saved, blind.fresh, blind.adopt, blind.conflict], [false, undefined, false, false]);
+  // A real conflict (306) keeps the draft and does not adopt, unless the file already holds the draft.
+  const conflict = new ApiError(306, 'Modified', undefined, 409);
+  const clash = await settleWrite(conflict, 'City', 'Paris', 'Leeds', 'text', async () => record('York'));
+  assert.deepEqual([clash.saved, clash.adopt, clash.conflict], [false, false, true]);
+  assert.equal((await settleWrite(conflict, 'City', 'Paris', 'Leeds', 'text', async () => record('Paris'))).saved, true);
+  // Dates: the file pads what the draft does not, in a lost answer and in a 306.
+  const dated = (Due: string) => ({ recordId: '1', modId: '7', fieldData: { Due }, portalData: {} });
+  assert.equal((await settleWrite(lost, 'Due', '4/7/2026', '01/02/2026', 'date', async () => dated('04/07/2026'))).saved, true);
+  assert.equal((await settleWrite(conflict, 'Due', '4/7/2026', '01/02/2026', 'date', async () => dated('04/07/2026'))).saved, true);
+  // A refusal says nothing about the file: not read.
+  let reads = 0;
+  const refused = await settleWrite(new ApiError(500, 'Required', undefined, 400), 'City', 'Paris', 'Leeds', 'text', async () => { reads++; return record('Paris'); });
+  assert.equal(refused.saved, false);
+  assert.equal(reads, 0);
+});
