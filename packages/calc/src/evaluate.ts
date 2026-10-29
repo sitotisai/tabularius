@@ -824,16 +824,24 @@ export class Env {
     }
   }
 
-  private customFunction(name: string, cf: CustomFunctionDef, args: Node[]): Value {
+  /** Run a file-defined custom function from a plug-in call under this evaluation's ordinary limits. */
+  callFileCustomFunction(name: string, values: Value[]): Value {
+    const cf = this.ctx.customFunction?.(name);
+    if (!cf) throw new CalcError(ERR.unknownFunction, `The custom function "${name}" cannot be found`);
+    this.checkWorkBudget();
+    return this.customFunction(name, cf, [], values);
+  }
+
+  private customFunction(name: string, cf: CustomFunctionDef, args: Node[], values?: Value[]): Value {
     if (cf.call) {
-      if (args.length !== cf.parameters.length) {
-        throw new CalcError(args.length < cf.parameters.length ? ERR.tooFewParameters : ERR.tooManyParameters, `Wrong number of parameters in ${name}`);
+      if ((values ?? args).length !== cf.parameters.length) {
+        throw new CalcError((values ?? args).length < cf.parameters.length ? ERR.tooFewParameters : ERR.tooManyParameters, `Wrong number of parameters in ${name}`);
       }
-      return cf.call(args.map((a) => this.v(a)));
+      return cf.call(values ?? args.map((a) => this.v(a)));
     }
     const limit = Math.min(MAX_DEPTH, this.recursionLimit ?? MAX_DEPTH);
     const start = this.depth;
-    let scope = this.bindParameters(name, cf, args);
+    let scope = values ? this.bindValues(name, cf, values, []) : this.bindParameters(name, cf, args);
     if (++this.depth > limit) throw new CalcError(ERR.recursion, `${name} recursed too deeply`);
     try {
       let current = { name, cf };
