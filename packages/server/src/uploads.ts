@@ -18,7 +18,7 @@ import { positiveWholeNumber } from './setting-values.ts';
 import { eachChunk } from './dataapi.ts';
 import type { IncomingMessage } from 'node:http';
 import { randomBytes } from 'node:crypto';
-import { closeSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, lstatSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, readdirSync, statSync, lstatSync } from 'node:fs';
 import { cleanupPath, openSync, writeSync } from '../../store/src/fs-boundary.ts';
 import { join } from 'node:path';
 import type { ImportProgress } from '../../store/src/index.ts';
@@ -163,6 +163,9 @@ export class Uploads {
       let stat: ReturnType<typeof lstatSync>;
       try { stat = lstatSync(path); } catch { continue; }
       if (!stat.isFile()) continue;
+      // The entry judged below is the only one removed, so a file put in its place meanwhile is left alone.
+      let remove: ReturnType<typeof cleanupPath>;
+      try { remove = cleanupPath(path, { force: true }); } catch { continue; }
       // A part whose owner is another process that is confirmed gone (ESRCH) cannot be resumed by anyone and is removed
       // at once, so a server that keeps crashing does not pile up partial files. Everything else waits: this PID under
       // another token (a restart as the same PID, or another container), a PID that is alive, and one that cannot be checked.
@@ -176,7 +179,8 @@ export class Uploads {
         if (age <= CRASH_GRACE_MS) continue;
         if (pid !== process.pid && age <= 7 * CRASH_GRACE_MS) continue;
       }
-      try { rmSync(path, { force: true }); } catch { continue; }
+      try { remove({ throwOnError: true }); } catch { continue; }
+      try { lstatSync(path); continue; } catch { /* gone, as asked */ }
       if (++removed >= 100) break;
     }
   }

@@ -1,13 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import type { IncomingMessage } from 'node:http';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { ContainerUploads, sweepOrphanUploadFolders, MAX_CONTAINER_FILE, MAX_REQUEST_SPOOLS_PER_ACCOUNT } from '../src/container-uploads.ts';
+import { ContainerUploads, requestUploadSpool, sweepOrphanUploadFolders, MAX_CONTAINER_FILE, MAX_REQUEST_SPOOLS_PER_ACCOUNT } from '../src/container-uploads.ts';
+import { withFilesystemHook } from '../../store/src/fs-boundary.ts';
 import { ApiError, multipartUploadStream } from '../src/dataapi.ts';
 import { Host } from '../src/host.ts';
 import { Uploads } from '../src/uploads.ts';
@@ -75,6 +76,56 @@ test('#25 a part whose owner is confirmed dead is removed at once; same-PID and 
   assert.equal(existsSync(dead), false, 'a crash-looping server must not pile up the parts of owners that are gone');
   assert.equal(existsSync(same), true);
   assert.equal(existsSync(live), true);
+});
+
+test('a crash leftover swapped after it was judged is not removed', { skip: process.platform === 'win32' }, (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-part-swap-test-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const folder = join(dir, '.openhbam-uploads');
+  mkdirSync(folder);
+  const file = join(folder, `99999999-${'a'.repeat(18)}-${'b'.repeat(12)}.part`);
+  writeFileSync(file, 'old');
+  let n = 0;
+  const up = withFilesystemHook((e) => {
+    if (e.operation === 'remove' && e.phase === 'checked' && e.path === file && n++ === 0) {
+      writeFileSync(file + '.new', 'new');
+      renameSync(file + '.new', file);
+    }
+  }, () => new Uploads({ dir } as never));
+  up.stop();
+  assert.ok(n > 0);
+  assert.ok(existsSync(file));
+  assert.equal(readFileSync(file, 'utf8'), 'new');
+  const again = new Uploads({ dir } as never);
+  again.stop();
+  assert.equal(existsSync(file), false);
+});
+
+test('a request spool folder swapped before release keeps the swapped folder', { skip: process.platform === 'win32' }, (t) => {
+  const tmp = mkdtempSync(join(tmpdir(), 'tabularius-request-spool-swap-test-'));
+  const spool = requestUploadSpool(10, { db: 'Db', account: 'A' }, tmp);
+  t.after(() => { spool.release(); rmSync(tmp, { recursive: true, force: true }); });
+  const dir = dirname(spool.path);
+  let n = 0;
+  withFilesystemHook((e) => {
+    if (e.operation === 'remove' && e.phase === 'checked' && e.path === dir && n++ === 0) {
+      renameSync(dir, dir + '-aside');
+      mkdirSync(dir);
+      writeFileSync(join(dir, 'sentinel'), 'safe');
+    }
+  }, () => spool.release());
+  assert.ok(n > 0);
+  assert.ok(existsSync(join(dir, 'sentinel')));
+});
+
+test('an unswapped request spool folder is removed on release', (t) => {
+  const tmp = mkdtempSync(join(tmpdir(), 'tabularius-request-spool-release-test-'));
+  const spool = requestUploadSpool(10, { db: 'Db', account: 'A' }, tmp);
+  t.after(() => { spool.release(); rmSync(tmp, { recursive: true, force: true }); });
+  const dir = dirname(spool.path);
+  assert.ok(existsSync(dir));
+  spool.release();
+  assert.equal(existsSync(dir), false);
 });
 
 test('#28 a folder with this PID but another run is foreign: a live PID keeps it, only this run is reclaimed after the day', (t) => {

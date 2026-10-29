@@ -8,11 +8,12 @@
 //   POST /tabularius/agent/v1/databases/{db}/step         {plan, step, state?, run?} one approved step, for real
 //   POST /tabularius/agent/v1/databases/{db}/runs/{id}/undo                          the whole run back
 
-import { mkdtempSync, rmSync, statSync } from 'node:fs';
+import { mkdtempSync, statSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { atomicWritesAsync, Store, StoreError, writer, NOT_LOGGED, type FindRequest, type Privileges } from '../../store/src/index.ts';
+import { cleanupPath } from '../../store/src/fs-boundary.ts';
 import type { SqlValue } from '../../store/src/find.ts';
 import { recordChanges, runScript, type RecordChanges } from '../../scripts/src/index.ts';
 import { appendToBatch, cleanupBatchById, CleanupError, journalBatch, snapshotRows, undoCleanup, type UndoOp } from './cleanup.ts';
@@ -183,6 +184,7 @@ async function runStep(store: Store, step: AgentStep, state: RunState, who: { ac
         }
         case 'script': {
           const dir = mkdtempSync(join(tmpdir(), 'tabularius-agent-'));
+          const removeDir = cleanupPath(dir, { recursive: true, force: true });
           try {
             // Offline: no network, no mail, no plug-ins, whatever the server allows its own scripts.
             const r = await runScript(store, step.script, {
@@ -197,7 +199,7 @@ async function runStep(store: Store, step: AgentStep, state: RunState, who: { ac
               message = `The script ended with error ${r.error}`;
             }
           } finally {
-            rmSync(dir, { recursive: true, force: true });
+            removeDir();
           }
           break;
         }
@@ -306,6 +308,7 @@ export async function dryRunPlan(store: Store, plan: AgentPlan, who: { account: 
   if (size > maxBytes) return { results: [], skipped: `The file is larger than ${Math.round(maxBytes / 1024 / 1024)} MB, too large to copy for a dry run` };
   who.signal?.throwIfAborted();
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-agent-dry-'));
+  const removeDir = cleanupPath(dir, { recursive: true, force: true });
   let copy: Store | undefined;
   try {
     await store.backup(join(dir, 'copy.sqlite'));
@@ -325,7 +328,7 @@ export async function dryRunPlan(store: Store, plan: AgentPlan, who: { account: 
     return { results };
   } finally {
     copy?.close();
-    rmSync(dir, { recursive: true, force: true });
+    removeDir();
   }
 }
 

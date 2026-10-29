@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, utimesSync, lutimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, lutimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ContainerUploads, sweepOrphanUploadFolders } from '../src/container-uploads.ts';
+import { withFilesystemHook } from '../../store/src/fs-boundary.ts';
 import { serve } from '../src/index.ts';
 
 const day = 24 * 60 * 60 * 1000;
@@ -43,6 +44,48 @@ test('sweep applies age, owner, name, symlink, cap and failure rules', (t) => {
   assert.equal(lstatSync(linkFolder).isSymbolicLink(), true);
   assert.equal(existsSync(file), true);
   assert.equal(existsSync(young), true);
+});
+
+test('a spool folder swapped after it was judged is left alone, and not reported removed', { skip: process.platform === 'win32' }, (t) => {
+  const tmp = root(); t.after(() => rmSync(tmp, { recursive: true, force: true }));
+  const name = 'tabularius-container-uploads-abc123';
+  const path = folder(tmp, 'abc123');
+  owner(path, 99999999);
+  date(path, Date.now() - 3 * day);
+  let n = 0;
+  const result = withFilesystemHook((e) => {
+    if (e.operation === 'remove' && e.phase === 'checked' && e.path === path && n++ === 0) {
+      renameSync(path, path + '-aside');
+      mkdirSync(path);
+      writeFileSync(join(path, 'sentinel'), 'safe');
+    }
+  }, () => sweepOrphanUploadFolders({ tmp, alive: () => false }));
+  assert.ok(n > 0);
+  assert.ok(existsSync(join(path, 'sentinel')));
+  assert.equal(result.removed.includes(name), false);
+  assert.equal(result.kept, 1);
+  assert.equal(result.failed, 0);
+});
+
+test('a legacy request file swapped after it was judged is left alone, and not reported removed', { skip: process.platform === 'win32' }, (t) => {
+  const tmp = root(); t.after(() => rmSync(tmp, { recursive: true, force: true }));
+  const name = 'tabularius-upload-' + 'a'.repeat(24);
+  const path = join(tmp, name);
+  writeFileSync(path, 'old');
+  const old = new Date(Date.now() - 9 * day);
+  utimesSync(path, old, old);
+  let n = 0;
+  const result = withFilesystemHook((e) => {
+    if (e.operation === 'remove' && e.phase === 'checked' && e.path === path && n++ === 0) {
+      writeFileSync(path + '.new', 'new');
+      renameSync(path + '.new', path);
+    }
+  }, () => sweepOrphanUploadFolders({ tmp, alive: () => false }));
+  assert.ok(n > 0);
+  assert.equal(readFileSync(path, 'utf8'), 'new');
+  assert.equal(result.removed.includes(name), false);
+  assert.equal(result.kept, 1);
+  assert.equal(result.failed, 0);
 });
 
 test('sweep removes no more than 100 folders per call', (t) => {
