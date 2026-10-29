@@ -111,4 +111,5 @@ To read these pages offline with search, build the site: `npm run docs:build` wr
 - [UUIDv7 record identity](research/n3-uuid-record-ids.md) — Explore the design note for giving native-file records a durable, portable id beside the file-local record number.
 - [Secret taint tracking](research/secret-taint-tracking.md) — Explore a defense-in-depth design for preventing AI tools from returning values derived from secret fields.
 - [Script step privileges](research/r17b-01-script-step-privileges.md) — Review which script steps check privileges like their non-script paths, and the deliberate exceptions.
+- [Progressive backups and replication with workers](research/progressive-with-workers.md) — Review the worker ownership and WAL coordination needed to combine these modes safely.
 - [Hosted file lifecycle tests](file-lifecycle-concurrency.md) — See what the file open, close and replace races are tested against, and how to run those tests.
