@@ -408,7 +408,7 @@ export class CwpXmlEndpoint {
     if (!db) throw new CwpError(955, 'Database name is missing: give -db');
     const store = this.host.get(db);
     if (!store) {
-      await refuseUnknownFile(this.host, req);
+      await refuseUnknownFile(this.host, req, db);
       throw new CwpError(802, `Unable to open file "${db}"`);
     }
     const { privileges: p } = await signIn(req, store, this.api, this.verified, 'fmxml', 'XML publishing');
