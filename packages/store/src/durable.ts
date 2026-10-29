@@ -37,17 +37,21 @@ export function writeDurable(staged: string, target: string, fs: DurableFs = dis
 
 /** Same-directory, exclusive temporary file: readers see either complete version. */
 export function atomicWrite(path: string, data: string): void {
-  const tmp = `${path}.${randomUUID()}.tmp`;
-  const fd = openSync(tmp, 'wx', 0o600);
-  const cleanup = cleanupPath(tmp);
+  const tmp = join(dirname(path), `.${basename(path)}.${process.pid}.${randomUUID()}.tmp`);
+  const tempKey = lockKey(tmp);
+  activeStateTemps.add(tempKey);
+  let cleanup: ReturnType<typeof cleanupPath> = () => {};
   let failed = false;
   try {
+    const fd = openSync(tmp, 'wx', 0o600);
+    cleanup = cleanupPath(tmp);
     try { writeFileSync(fd, data); } finally { closeSync(fd); }
     writeDurable(tmp, path);
   } catch (error) {
     failed = true;
     throw error;
   } finally {
+    activeStateTemps.delete(tempKey);
     cleanup({ throwOnError: !failed });
   }
 }

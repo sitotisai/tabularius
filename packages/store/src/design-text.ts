@@ -13,6 +13,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
+import { createHash } from 'node:crypto';
 import type { LayoutDesign, Schema, Field, OrderedItem } from '../../fmp12/src/index.ts';
 import { scriptText } from '../../fmp12/src/index.ts';
 
@@ -39,11 +40,18 @@ export function stableJson(v: unknown, indent = ''): string {
 }
 
 /** A name made safe as a file name on macOS, Windows and Linux. */
-function safeName(name: string): string {
+function safeName(name: string, maxBytes = 120): string {
   let s = name.replace(/[\u0000-\u001f\u007f/\\:*?"<>|]/g, '_').replace(/[. ]+$/, '').trim();
   if (!s || s === '.' || s === '..') s = '_';
   if (/^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i.test(s)) s = '_' + s;
-  return s.slice(0, 120);
+  if (Buffer.byteLength(s) <= maxBytes) return s;
+  const suffix = `~${createHash('sha256').update(s).digest('hex').slice(0, 12)}`;
+  let stem = '';
+  for (const point of s) {
+    if (Buffer.byteLength(stem + point) > maxBytes - Buffer.byteLength(suffix)) break;
+    stem += point;
+  }
+  return stem.replace(/[. ]+$/, '') + suffix;
 }
 
 /** Paths for named objects, unique even where names differ only in case (macOS and Windows) or clash once made safe. */
@@ -61,7 +69,7 @@ function pathsFor<T extends { id: number; name: string }>(items: T[], folder: st
     let p = `${dir}/${base}${ext}`;
     for (let n = 0; used.has(p.toLowerCase()) || directories.has(p.toLowerCase()); n++) {
       const suffix = n ? ` (id ${it.id}-${n + 1})` : ` (id ${it.id})`;
-      p = `${dir}/${base.slice(0, 120 - suffix.length).replace(/[. ]+$/, '')}${suffix}${ext}`;
+      p = `${dir}/${safeName(it.name, 120 - Buffer.byteLength(suffix))}${suffix}${ext}`;
     }
     used.add(p.toLowerCase());
     out.set(it, p);
