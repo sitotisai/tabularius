@@ -7,9 +7,10 @@
 // exactly; reads see every worker's writes. A file left by an older server (.openhbam-ai-usage.json) is read
 // once into the new one.
 
-import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { openSync as openChecked } from '../../store/src/fs-boundary.ts';
 
 export const USAGE_DB = '.openhbam-ai-usage.sqlite';
 const OLD_USAGE_FILE = '.openhbam-ai-usage.json';
@@ -133,11 +134,11 @@ export class AiUsage implements UsageCounts {
     const file = join(dir, USAGE_DB);
     // Account and file names are in it: readable by the server's user only, like the files themselves. SQLite gives
     // its -wal and -shm files the same permissions.
-    if (!existsSync(file)) writeFileSync(file, '', { mode: 0o600, flag: 'a' });
     try {
-      chmodSync(file, 0o600);
-    } catch {
+      closeSync(openChecked(file, 'a', 0o600));
+    } catch (error) {
       // Another user's file on a shared folder: left as it is.
+      if ((error as NodeJS.ErrnoException).code !== 'EPERM') throw error;
     }
     this.db = new DatabaseSync(file);
     this.db.exec('PRAGMA busy_timeout = 5000');

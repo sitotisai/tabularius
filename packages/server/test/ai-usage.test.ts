@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AiUsage, MemoryUsage } from '../src/ai-usage.ts';
@@ -13,6 +13,30 @@ import { serve } from '../src/index.ts';
 import type { Host } from '../src/host.ts';
 
 const usageModule = join(import.meta.dirname, '..', 'src', 'ai-usage.ts');
+
+test('the usage database name is not followed when it is a link, and an older, wider file is made private', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-usage-state-'));
+  try {
+    const file = join(dir, '.openhbam-ai-usage.sqlite');
+    if (process.platform !== 'win32') {
+      const victim = join(dir, 'victim');
+      writeFileSync(victim, 'keep', { mode: 0o644 });
+      const mode = lstatSync(victim).mode;
+      symlinkSync(victim, file);
+      assert.throws(() => new AiUsage(dir), (e: NodeJS.ErrnoException) => e.code === 'ESTALE');
+      assert.equal(readFileSync(victim, 'utf8'), 'keep');
+      assert.equal(lstatSync(victim).mode, mode);
+      assert.equal(lstatSync(file).isSymbolicLink(), true);
+      rmSync(file);
+    }
+    writeFileSync(file, '', { mode: 0o644 });
+    new AiUsage(dir).close();
+    assert.equal(lstatSync(file).isFile(), true);
+    if (process.platform !== 'win32') assert.equal(lstatSync(file).mode & 0o777, 0o600);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 /** A process that adds `times` calls of 10 tokens and $0.001 each, and one question per 40 calls. */
 function worker(dir: string, n: number, times: number): Promise<void> {

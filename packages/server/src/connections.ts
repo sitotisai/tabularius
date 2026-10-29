@@ -27,10 +27,11 @@
 import { secret } from '../../store/src/settings.ts';
 import { encryptionKeyFromEnv } from './setting-values.ts';
 import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { isIP } from 'node:net';
 import { join } from 'node:path';
 import { readJsonStateSync, updateJsonStateSync, withStateLock } from '../../store/src/durable.ts';
+import { writeFileSync } from '../../store/src/fs-boundary.ts';
 import { captureOnly, type ConnectionRequest, type ScriptConnections } from '../../scripts/src/index.ts';
 import { OutboundRefused, guardedFetch as guardedRequest, isInternalHost, mappedIPv4 } from '../../scripts/src/net-guard.ts';
 import { S3 } from './s3.ts';
@@ -817,8 +818,15 @@ class Vault {
       } else {
         const key = randomBytes(32);
         mkdirSync(this.dir, { recursive: true });
-        writeFileSync(this.keyFile, key.toString('hex') + '\n', { mode: 0o600 });
-        chmodSync(this.keyFile, 0o600);
+        try {
+          writeFileSync(this.keyFile, key.toString('hex') + '\n', { mode: 0o600, flag: 'wx' });
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          if (code === 'ESTALE' || code === 'EEXIST') {
+            throw new ConnectionError(`${KEY_FILE} is not a plain file or appeared while the key was being made, so no key was made; remove it and try again`);
+          }
+          throw error;
+        }
         this.key = key;
       }
     }
