@@ -215,7 +215,7 @@ test('plug-in staging is private and unique; a full disk leaves the installed ve
     hit = true;
     assert.equal(fs.statSync(dirname(e.path)).mode & 0o777, 0o700);
     throw Object.assign(new Error('injected full disk'), { code: 'ENOSPC' });
-  }, () => installPackage(dir, bytes, { allowUnsigned: true })));
+  }, () => installPackage(dir, bytes, { allowUnsigned: true, replace: true })));
   assert.ok(hit);
   assert.equal(readPlugin(join(dir, 'plugins', 'org.example.races')).manifest.version, '1.0.0');
   assert.deepEqual(fs.readdirSync(join(dir, 'plugins')).filter((n) => n.startsWith('.')), []);
