@@ -44,6 +44,10 @@
     "reason": "Checks documentation links avoid line anchors"
   },
   {
+    "file": "packages/store/test/fs-boundary-doc.test.ts",
+    "reason": "Checks the threat model's list of fs-boundary users against the imports"
+  },
+  {
     "file": "packages/web/test/boot-guard.test.ts",
     "reason": "Checks browser boot guard source without opening a browser"
   }
