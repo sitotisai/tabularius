@@ -1,3 +1,5 @@
+import { enterActivates } from '../src/ime.ts';
+import { keptSet, keptRemove, forgetPrefs, prefStorageKey, readPref, purgeExpiredKept } from '../src/device-data.ts';
 // The alternative client (/next/): a calm, data-first way to work in a hosted file. Instead of drawing the
 // file's layouts, it shows each table as a collection (a list, and a record beside it) worked out from the
 // layouts the account can open, and puts every command behind one bar (⌘K). It reads and writes through the
@@ -34,6 +36,7 @@ function store(key: string, value: string | undefined, area: 'session' | 'local'
 // ---------------------------------------------------------------------------------------------- sign in
 
 async function boot(): Promise<void> {
+  purgeExpiredKept();
   const saved = stored(SESSION);
   if (saved) {
     // What cannot be read is not a session: forget it, or every reload would report an outage.
@@ -247,7 +250,7 @@ class Workspace {
     this.api = api;
     this.model = model;
     this.palette = new Palette(() => this.commands(), (q) => this.askCommand(q));
-    api.onExpired = () => { store(SESSION, undefined); signIn('Your session ended. Sign in again to carry on.'); };
+    api.onExpired = () => { forgetPrefs(api.db, model.account ?? ''); store(SESSION, undefined); signIn('Your session ended. Sign in again to carry on.'); };
   }
 
   private readonly onKey = (e: KeyboardEvent): void => this.key(e);
@@ -391,12 +394,12 @@ class Workspace {
 
   private views: SavedView[] = [];
   private get viewsKey(): string {
-    return `tabularius.next.views:${this.api.db}:${this.model.account ?? ''}`;
+    return prefStorageKey('next.views', this.api.db, this.model.account ?? '');
   }
 
   private loadViews(): void {
     try {
-      const got = JSON.parse(stored(this.viewsKey, 'local') ?? '[]');
+      const got = JSON.parse(readPref('next.views', this.api.db, this.model.account ?? '') ?? '[]');
       this.views = Array.isArray(got) ? got.filter((x) => x && typeof x.name === 'string' && typeof x.table === 'string' && x.search) : [];
     } catch {
       this.views = [];
@@ -404,7 +407,8 @@ class Workspace {
   }
 
   private keepViews(): void {
-    store(this.viewsKey, this.views.length ? JSON.stringify(this.views) : undefined, 'local');
+    if (this.views.length) keptSet(this.viewsKey, JSON.stringify(this.views));
+    else keptRemove(this.viewsKey);
     this.drawRail();
   }
 
@@ -452,7 +456,7 @@ class Workspace {
       this.say(`Saved “${name}” under ${v.collection.label}`);
     };
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+      if (enterActivates(e, true)) { e.preventDefault(); finish(true); }
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
     });
     input.addEventListener('blur', () => finish(true));
@@ -617,8 +621,8 @@ class Workspace {
       if (e.key === 'ArrowDown') { e.preventDefault(); this.move(1); }
       // Enter while the list is still catching up with the typing finishes the search (so a chip forms) rather
       // than opening a row from the list as it was a moment ago; Enter again opens the first row.
-      if (e.key === 'Enter' && timer) { e.preventDefault(); clearTimeout(timer); apply(); return; }
-      if (e.key === 'Enter' && v.active < 0 && v.records.length && !v.loading) { e.preventDefault(); this.go(c, v.records[0].recordId); }
+      if (enterActivates(e, true) && timer) { e.preventDefault(); clearTimeout(timer); apply(); return; }
+      if (enterActivates(e, true) && v.active < 0 && v.records.length && !v.loading) { e.preventDefault(); this.go(c, v.records[0].recordId); }
       if (e.key === 'Backspace' && !input.value && v.search.filters.length) { v.search.filters.pop(); this.drawChips(); void this.query(); }
     });
     this.searchInput = input;
@@ -956,7 +960,7 @@ class Workspace {
         input = col.choices && col.choices.display !== 'checkbox'
           ? h('select', { class: 'editor', 'aria-label': 'Value' }, h('option', { value: '' }, '—'), ...col.choices.values.map((x, i) => h('option', { value: x }, col.choices!.labels?.[i] ?? x)))
           : h('input', { class: 'editor', 'aria-label': 'Value', placeholder: 'New value (empty clears it)', type: col.type === 'date' ? 'date' : 'text' });
-        input.addEventListener('keydown', (e) => { if ((e as KeyboardEvent).key === 'Enter') { e.preventDefault(); set(); } });
+        input.addEventListener('keydown', (e) => { if (enterActivates((e as KeyboardEvent), true)) { e.preventDefault(); set(); } });
         valueBox.replaceChildren(input);
       };
       const set = () => {
@@ -1200,7 +1204,7 @@ class Workspace {
       }
     };
     row.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); void finish(true); }
+      if (enterActivates(e, true)) { e.preventDefault(); void finish(true); }
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); void finish(false); }
     });
     row.addEventListener('focusout', (e) => { if (phase === 'editing' && !this.redrawing && !row.contains((e as FocusEvent).relatedTarget as Node)) void finish(true); });
@@ -1522,14 +1526,14 @@ class Workspace {
       input.addEventListener('keydown', (e) => {
         const k = e as KeyboardEvent;
         if (k.key === 'Escape') { k.preventDefault(); k.stopPropagation(); finish(false); }
-        if (k.key === 'Enter' && (!long || mod(k))) { k.preventDefault(); finish(true); }
+        if (enterActivates(k, true) && (!long || mod(k))) { k.preventDefault(); finish(true); }
       });
       wrap.replaceChildren(input, list ?? '');
       input.focus();
       if (input instanceof HTMLInputElement && input.type === 'text') input.select();
     };
     wrap.addEventListener('click', (e) => { if ((e.target as HTMLElement).classList.contains('value')) edit(); });
-    wrap.addEventListener('keydown', (e) => { if ((e.target as HTMLElement).classList.contains('value') && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); edit(); } });
+    wrap.addEventListener('keydown', (e) => { if ((e.target as HTMLElement).classList.contains('value') && (enterActivates(e, true) || e.key === ' ')) { e.preventDefault(); edit(); } });
     return wrap;
   }
 
@@ -1649,6 +1653,7 @@ class Workspace {
 
   private async signOut(): Promise<void> {
     await this.api.logout();
+    forgetPrefs(this.api.db, this.model.account ?? '');
     store(SESSION, undefined);
     location.hash = '';
     signIn();

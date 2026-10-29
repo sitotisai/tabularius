@@ -2,7 +2,7 @@
 // the tab's session state), and when it is removed: at sign-out, when a session ends, and after 30 days.
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { forgetOnSignOut, keptSet, prefStorageKey, purgeExpiredKept } from '../src/device-data.ts';
+import { forgetOnSignOut, keptSet, readPref, PREF_KEY, prefStorageKey, purgeExpiredKept } from '../src/device-data.ts';
 
 function stores(t: TestContext) {
   const made: Record<string, Map<string, string>> = {};
@@ -29,8 +29,8 @@ const DAY = 86_400_000;
 const watchKey = (db: string, account: string) => `tabularius.dataviewer.watch.account.${JSON.stringify([db, account])}`;
 
 test('pref keys name the file and the account', () => {
-  assert.equal(prefStorageKey('finds', 'Shop', 'Admin'), 'tabularius.finds.Shop.Admin');
-  assert.equal(prefStorageKey('recent', 'Shop', 'Ann'), 'tabularius.recent.Shop.Ann');
+  assert.equal(prefStorageKey('finds', 'Shop', 'Admin'), 'tabularius.finds.["Shop","Admin"]');
+  assert.equal(prefStorageKey('recent', 'Shop', 'Ann'), 'tabularius.recent.["Shop","Ann"]');
 });
 
 test('signing out removes the account\'s saved finds, sorts, recent records and watch lists, and the tab\'s session state', (t) => {
@@ -116,4 +116,41 @@ test('what an earlier version kept, with no time written, gets its 30 days from 
   purgeExpiredKept();
   assert.equal(local.has(legacy), false);
   assert.equal(local.has('tabularius.table.Shop.Items'), true);
+});
+
+test('#152 dotted file and account names have distinct preference keys', () => {
+  assert.notEqual(prefStorageKey('finds', 'Sales', 'v2.john'), prefStorageKey('finds', 'Sales.v2', 'john'));
+});
+
+test('#161 next views are cleared and pruned, including legacy keys', (t) => {
+  const { local } = stores(t);
+  const now = Date.now();
+  const clock = t.mock.method(Date, 'now', () => now);
+  const legacy = 'tabularius.next.views:Shop:Admin';
+  keptSet(legacy, '[]');
+  forgetOnSignOut('Shop', 'Admin');
+  assert.equal(local.has(legacy), false);
+  keptSet(legacy, '[]');
+  purgeExpiredKept();
+  clock.mock.mockImplementation(() => now + 31 * DAY);
+  purgeExpiredKept();
+  assert.equal(local.has(legacy), false);
+});
+
+
+test('legacy preferences migrate once, ambiguous owners are dropped, and next keys cannot collide', (t) => {
+  const { local } = stores(t);
+  for (const name of ['finds', 'sorts', 'recent', 'next.views']) {
+    const old = name === 'next.views' ? 'tabularius.next.views:Shop:Admin' : `tabularius.${name}.Shop.Admin`;
+    local.set(old, '["synthetic"]');
+    assert.equal(readPref(name, 'Shop', 'Admin'), '["synthetic"]');
+    assert.equal(local.has(old), false);
+    assert.equal(PREF_KEY.test(prefStorageKey(name, 'Shop', 'Admin')), true);
+    local.delete(prefStorageKey(name, 'Shop', 'Admin'));
+    assert.equal(readPref(name, 'Shop', 'Admin'), null);
+  }
+  local.set('tabularius.finds.Sales.v2.john', '["private"]');
+  assert.equal(readPref('finds', 'Sales', 'v2.john'), null);
+  assert.equal(readPref('finds', 'Sales.v2', 'john'), null);
+  assert.notEqual(prefStorageKey('next.views', 'A:B', 'C'), prefStorageKey('next.views', 'A', 'B:C'));
 });

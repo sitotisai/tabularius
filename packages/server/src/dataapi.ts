@@ -1167,7 +1167,7 @@ export class DataApi {
   }
 
   /** The session for a request's token (Bearer or X-FM-Data-Access-Token); throws when missing or expired. */
-  authorize(req: IncomingMessage, db: string, allowPasswordChange = false): Session {
+  authorize(req: IncomingMessage, db: string, allowPasswordChange = false, activity = true): Session {
     const auth = req.headers.authorization ?? '';
     const token = /^Bearer\s+(.+)$/i.exec(auth)?.[1] ?? (req.headers['x-fm-data-access-token'] as string | undefined);
     const isApi = token?.startsWith('ohbt_');
@@ -1195,7 +1195,7 @@ export class DataApi {
     if (!allowPasswordChange && (s.mustChangePassword || this.store(db).mustChangePassword(s.account))) {
       throw new ApiError(212, 'This account must change its password before continuing; change it, then sign in again', 403);
     }
-    s.lastUsed = performance.now();
+    if (activity) s.lastUsed = performance.now();
     // Insertion order is the session LRU, including scoped-token sessions.
     this.sessions.delete(s.token);
     this.sessions.set(s.token, s);

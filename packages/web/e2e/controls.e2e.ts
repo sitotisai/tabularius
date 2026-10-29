@@ -190,3 +190,38 @@ test('Duplicate Record (⌘D) copies the record, and Replace Field Contents (⌘
     await close(page);
   }
 });
+
+test('#156 IME Enter keeps the layout field focused until composition ends', { skip }, async () => {
+  const page = await open();
+  const input = field(page, NOTE);
+  await input.fill('composition candidate');
+  for (const properties of [{ isComposing: true }, { keyCode: 229 }]) {
+    await input.dispatchEvent('keydown', { key: 'Enter', bubbles: true, ...properties });
+    assert.equal(await input.evaluate((el) => el === document.activeElement), true);
+    assert.notEqual(job(1).Note, 'composition candidate');
+  }
+  await input.press('Enter');
+  await until(async () => job(1).Note, (value) => value === 'composition candidate');
+  await close(page);
+});
+
+test('#150 lifecycle events flush a focused field with keepalive and warn while pending', { skip }, async () => {
+  const page = await open();
+  for (const event of ['beforeunload', 'pagehide']) {
+    const value = `typed before ${event}`;
+    await field(page, NOTE).fill(value);
+    const result = await page.evaluate((name) => {
+      const original = globalThis.fetch;
+      let keepalive = false;
+      globalThis.fetch = (input, init) => { keepalive ||= init?.method === 'PATCH' && init.keepalive === true; return original(input, init); };
+      const event = new Event(name, { cancelable: true });
+      globalThis.dispatchEvent(event);
+      globalThis.fetch = original;
+      return { keepalive, prevented: event.defaultPrevented };
+    }, event);
+    assert.equal(result.keepalive, true);
+    assert.equal(result.prevented, event === 'beforeunload');
+    await until(async () => job(1).Note, (saved) => saved === value);
+  }
+  await close(page);
+});
