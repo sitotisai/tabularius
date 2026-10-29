@@ -42,7 +42,7 @@ export async function unhostedPasswordFailure(host: Host, req: IncomingMessage, 
   if (!account) return undefined;
   const from = clientAddress(req);
   const failures = host.unhostedSignIns.table(db);
-  const key = failures.accountKey(account, from);
+  const key = failures.accountKey(account, from, db);
   const wasLocked = failures.lockedOut(key, from) !== undefined;
   failures.record(key, from, false);
   const until = failures.lockedOut(key, from);
