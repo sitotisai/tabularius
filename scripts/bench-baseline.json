@@ -7,156 +7,156 @@
     "runs": 3
   },
   "tolerance": 0.4,
-  "wide": {
-    "records": 270000,
-    "tables": 85,
-    "maxMs": 12000
-  },
   "operations": [
     {
       "group": "Open",
       "operation": "Open the file and read the first 50 records",
-      "ratio": 0.25017663885127633
+      "ratio": 0.10081852525729289
     },
     {
       "group": "Find",
       "operation": "Text, one word (first run builds the word index)",
-      "ratio": 0.7481188587342535
+      "ratio": 0.4718884594161459
     },
     {
       "group": "Find",
       "operation": "Text, one customer's name (three words)",
-      "ratio": 0.01538974165211666
+      "ratio": 0.01835847720107158
     },
     {
       "group": "Find",
       "operation": "Number range (Amount 900...1000)",
-      "ratio": 0.09862584140880618
+      "ratio": 0.08345856755878889
     },
     {
       "group": "Find",
       "operation": "Date range (one month)",
-      "ratio": 0.19609974005781278
+      "ratio": 0.09464077278851012
     },
     {
       "group": "Find",
       "operation": "Two fields (Region and Status)",
-      "ratio": 0.7077600187434767
+      "ratio": 0.5301710102809734
     },
     {
       "group": "Find",
       "operation": "Two requests, with an omit",
-      "ratio": 0.9591397398010714
+      "ratio": 0.5403066789897584
     },
     {
       "group": "Find",
       "operation": "Unstored calculation (Tax 100...200)",
-      "ratio": 15.99920773602412
+      "ratio": 6.088330541404244
     },
     {
       "group": "Sort",
       "operation": "All records by Customer",
-      "ratio": 0.00902033254315108
+      "ratio": 0.010340368832273688
     },
     {
       "group": "Sort",
       "operation": "All records by Amount, descending",
-      "ratio": 0.009537531726195448
+      "ratio": 0.009896554118806945
     },
     {
       "group": "Sort",
       "operation": "All records by Region, then Date",
-      "ratio": 0.01066867475347557
+      "ratio": 0.012297059681383723
     },
     {
       "group": "Sort",
       "operation": "All records by an unstored calculation (Tax)",
-      "ratio": 17.675371055701376
+      "ratio": 6.293429992083192
     },
     {
       "group": "Sort",
       "operation": "A found set (Status Open) by Customer",
-      "ratio": 0.4677479322673963
+      "ratio": 0.42175989944304315
     },
     {
       "group": "Summary fields",
       "operation": "All records, after a change",
-      "ratio": 2.662274063947239
+      "ratio": 2.0030330143474124
     },
     {
       "group": "Summary fields",
       "operation": "All records, unchanged",
-      "ratio": 0.014488312468639969
+      "ratio": 0.016695927694837215
     },
     {
       "group": "Summary fields",
       "operation": "A found set (Region North), after a change",
-      "ratio": 1.5036051110041782
+      "ratio": 1.3007993166571692
     },
     {
       "group": "Summary fields",
       "operation": "A found set (Region North), unchanged",
-      "ratio": 0.5817846560191907
+      "ratio": 0.4129697027647504
     },
     {
       "group": "ExecuteSQL",
       "operation": "SUM with a WHERE, after a change",
-      "ratio": 0.13422796393221922
+      "ratio": 0.07571170432922876
     },
     {
       "group": "ExecuteSQL",
       "operation": "SUM with a WHERE, unchanged",
-      "ratio": 0.0007028008276577826
+      "ratio": 0.0015393824914181132
     },
     {
       "group": "ExecuteSQL",
       "operation": "COUNT with GROUP BY, after a change",
-      "ratio": 0.20832225865170706
+      "ratio": 0.15868449561799677
     },
     {
       "group": "ExecuteSQL",
       "operation": "COUNT with GROUP BY, unchanged",
-      "ratio": 0.0008385433670565356
+      "ratio": 0.003240781121961812
     },
     {
       "group": "ExecuteSQL",
       "operation": "JOIN to Customers, GROUP BY city, after a change",
-      "ratio": 0.48836259540103055
+      "ratio": 0.38347407602882655
     },
     {
       "group": "ExecuteSQL",
       "operation": "JOIN to Customers, GROUP BY city, unchanged",
-      "ratio": 0.0007695015383110108
+      "ratio": 0.002680616431342117
     },
     {
       "group": "ExecuteSQL",
       "operation": "ORDER BY with FETCH FIRST 10, after a change",
-      "ratio": 0.08785056064970978
+      "ratio": 0.060151293767968475
     },
     {
       "group": "ExecuteSQL",
       "operation": "ORDER BY with FETCH FIRST 10, unchanged",
-      "ratio": 0.0006948748736534732
+      "ratio": 0.0015283684495668594
     },
     {
       "group": "Import",
       "operation": "Plan and import 5,000 rows of four fields",
-      "ratio": 59.007820152374286
+      "ratio": 11.952728510118135
     },
     {
       "group": "Export",
       "operation": "Every invoice (50,000) as comma-separated text, built in memory",
-      "ratio": 17.547666534615736
+      "ratio": 13.697558543757987
     },
     {
       "group": "Backup",
       "operation": "Back up the file to a new set",
-      "ratio": 6.001847565260323
+      "ratio": 3.280240780424437
     },
     {
       "group": "Restore",
       "operation": "Restore the set into an empty folder",
-      "ratio": 4.825550895053784
+      "ratio": 2.0474057580141385
     }
-  ]
+  ],
+  "wide": {
+    "records": 270000,
+    "tables": 85,
+    "maxMs": 12000
+  }
 }
