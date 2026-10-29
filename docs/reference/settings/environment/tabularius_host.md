@@ -8,6 +8,6 @@ The address to listen on (`127.0.0.1` by default; `0.0.0.0` with `--https name`)
 | Accepted values | IP address or hostname |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/security-defaults.md](../../../security-defaults.md) |
-| Code | [packages/cli/src/main.ts:1321](../../../../packages/cli/src/main.ts#L1321) |
+| Code | [packages/cli/src/main.ts:1329](../../../../packages/cli/src/main.ts#L1329) |
 
 [All environment variables](../../../environment-variables.md)

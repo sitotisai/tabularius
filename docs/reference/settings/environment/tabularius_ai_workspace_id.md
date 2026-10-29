@@ -8,6 +8,6 @@ The workspace id for a key not made inside a workspace.
 | Accepted values | Workspace id |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1449](../../../../packages/cli/src/main.ts#L1449) |
+| Code | [packages/cli/src/main.ts:1457](../../../../packages/cli/src/main.ts#L1457) |
 
 [All environment variables](../../../environment-variables.md)

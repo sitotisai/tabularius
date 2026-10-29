@@ -8,6 +8,6 @@ Passphrase used to encrypt backup sets.
 | Accepted values | Nonempty passphrase; an empty value stops `serve` |
 | Restart needed | Yes for a running server. |
 | Explained in | [README.md](../../../../README.md) |
-| Code | [packages/cli/src/main.ts:1498](../../../../packages/cli/src/main.ts#L1498) |
+| Code | [packages/cli/src/main.ts:1506](../../../../packages/cli/src/main.ts#L1506) |
 
 [All environment variables](../../../environment-variables.md)
