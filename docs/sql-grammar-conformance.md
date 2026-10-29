@@ -6,7 +6,7 @@ The grammar is in [`packages/server/test/data/sql-grammar.json`](../packages/ser
 
 ## What was checked
 
-227 entries, 221 with an expectation and 6 recorded as not verified (below). Each entry with an expectation runs on the applicable paths.
+232 entries, 226 with an expectation and 6 recorded as not verified (below). Each entry with an expectation runs on the applicable paths.
 
 | Area | Constructs |
 | --- | --- |
@@ -18,13 +18,13 @@ The grammar is in [`packages/server/test/data/sql-grammar.json`](../packages/ser
 | UNION, ORDER BY (names, ordinals, `ASC`/`DESC`, binary order) | 13 |
 | OFFSET, FETCH FIRST (`ROW`/`ROWS`, count omitted, `WITH TIES`, `PERCENT`, subqueries, count under 1) | 23 |
 | Constants and operators (strings, scientific notation, `DATE`/`TIME`/`TIMESTAMP`, `{D '...'}`, `^`, `**`, precedence, string `+` and `-`, date arithmetic) | 26 |
-| Functions: string, numeric, date, `CASE`, `COALESCE`, `NULLIF`, `CAST`, container `GetAs` | 66 |
+| Functions: string, numeric, date, `CASE`, `COALESCE`, `NULLIF`, `CAST`, container `GetAs` | 71 |
 | `FOR UPDATE` cursor clause | 1 |
 | System tables and columns (`FileMaker_Tables`, `FileMaker_Fields`, `FileMaker_BaseTables`, `ROWID`, `ROWMODID`) | 6 |
 | Statements that write (`INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`, `ALTER TABLE`, `CREATE`/`DROP INDEX`, `TRUNCATE`) | 8 |
 | `?` parameters (one, multiple in order, a value containing a quote) | 3 |
 
-99 results are ones the Claris page states, with the example it gives. 122 are worked out from the rule the page states (marked `derived` in the file), for example the result of a function the page names but gives no example for. Six entries are marked `unverified` because the vendor result is not stated. Every entry names its page. The `?` cases follow [Claris's ExecuteSQL help](https://help.claris.com/en/pro-help/content/executesql.html), which specifies argument binding order; the quoted-name cases follow its `"Last Name"` example and the [reserved keyword rule](https://help.claris.com/en/sql-reference/content/reserved-sql-keywords.html). <!-- known-difference-ok: describes evidence categories rather than a product behavior difference -->
+99 results are ones the Claris page states, with the example it gives. 127 are worked out from the rule the page states or the SQL standard (marked `derived` in the file), for example the result of a function the page names but gives no example for. Six entries are marked `unverified` because the vendor result is not stated. Every entry names its page. The `?` cases follow [Claris's ExecuteSQL help](https://help.claris.com/en/pro-help/content/executesql.html), which specifies argument binding order; the quoted-name cases follow its `"Last Name"` example and the [reserved keyword rule](https://help.claris.com/en/sql-reference/content/reserved-sql-keywords.html). <!-- known-difference-ok: describes evidence categories rather than a product behavior difference -->
 
 ## What the check found and what changed
 
@@ -53,6 +53,7 @@ The first run disagreed with the pages on 42 entries. Some were mistakes in the 
 | `STRVAL(4 = 5)` | `0` | `False` (and `True`), as the page's example gives |
 | `FileMaker_BaseTables`, `FileMaker_BaseTableFields` | No such table | Provided, one row per base table, scoped by the account's privileges as `FileMaker_Tables` is |
 | `CAST(container AS VARCHAR)` for an embedded file | Returned the internal container ID | Returns its filename, as the [container example](https://help.claris.com/en/sql-reference/content/for-update-clause.html) says; a query under record or field scoped privileges retains the ordinary CAST to avoid reading the container catalog through a derived alias |
+| `CAST(x AS DATE)`, `TIME`, `TIMESTAMP` | The first number in the text | The date or time, or an error for a value that is not one; the cited Claris pages give no example of these casts, so these derived entries follow the SQL standard. Vendor behavior remains unverified. | <!-- known-difference: SQL temporal CAST ;; vendor behavior for DATE, TIME and TIMESTAMP casts is unverified in the cited pages ;; Tabularius follows the SQL standard and errors on invalid values ;; run these casts through FileMaker and compare results -->
 
 The two rewrites with the widest reach are the string and date operators and the star.
 

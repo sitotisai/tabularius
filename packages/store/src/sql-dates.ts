@@ -440,7 +440,7 @@ function untilSteady(sql: string, step: (sql: string) => string): string {
 }
 
 const STRING_FUNCTIONS = new Set(['CHR', 'SPACE', 'RTRIM', 'LTRIM', 'TRIM', 'UPPER', 'LOWER', 'LEFT', 'RIGHT', 'SUBSTR', 'SUBSTRING', 'STRVAL', 'DAYNAME', 'MONTHNAME', 'FM_CAT', 'FM_CATB']);
-const DATE_FUNCTIONS = new Set(['DATEVAL', 'CURDATE', 'TODAY', 'FM_DATEADD']);
+const DATE_FUNCTIONS = new Set(['DATEVAL', 'CURDATE', 'TODAY', 'FM_DATEADD', 'FM_CAST_DATE']);
 
 type Kind = 'string' | 'text' | 'date';
 
@@ -456,6 +456,10 @@ function kindOf(operand: string, columnKind?: (name: string) => 'string' | 'date
   const call = /^([A-Za-z_]\w*)\s*\(/.exec(t);
   if (call) {
     const name = call[1].toUpperCase();
+    if (name === 'CAST' && /^CAST\s*\(/i.test(t)) {
+      const end = closing(t, call[0].length);
+      if (end === t.length - 1 && /\bAS\s+DATE\s*$/i.test(t.slice(call[0].length, end))) return 'date';
+    }
     return STRING_FUNCTIONS.has(name) ? 'string' : DATE_FUNCTIONS.has(name) ? 'date' : undefined;
   }
   const field = t[0] === '"' && t.endsWith('"') && t.length > 1 ? t.slice(1, -1).replace(/""/g, '"') : /^[\w.]+$/.test(t) ? t.slice(t.lastIndexOf('.') + 1) : undefined;
@@ -697,6 +701,27 @@ function withoutTrailingSpaces(text: string): string {
   return end === text.length ? text : text.slice(0, end);
 }
 
+function validCastTime(time: string): boolean {
+  const [hour, minute, second] = time.split(':').map(Number);
+  return hour < 24 && minute < 60 && second < 60;
+}
+
+function castTemporal(kind: 'date' | 'time' | 'timestamp', value: SQLOutputValue): string | null {
+  if (value === null || value === '') return null;
+  if (typeof value === 'string') {
+    const date = isoDate(value);
+    const rawTime = isoTime(value);
+    const time = rawTime && validCastTime(rawTime) ? rawTime : undefined;
+    const rawTimestamp = isoTimestamp(value);
+    const timestamp = rawTimestamp && validCastTime(rawTimestamp.slice(11)) ? rawTimestamp : undefined;
+    const result = kind === 'date' ? date ?? timestamp?.slice(0, 10)
+      : kind === 'time' ? time ?? timestamp?.slice(11)
+        : timestamp ?? (date ? `${date}T00:00:00` : undefined);
+    if (result !== undefined) return result;
+  }
+  throw new CalcError(ERR.calculation, `Invalid ${kind} value '${String(value)}'`);
+}
+
 /** The date, time, string and number functions of FileMaker SQL (and ODBC), for SQLite functions of the same names. */
 export const sqlDateFunctions = (now: () => Date = () => new Date()): Record<string, (...args: SQLOutputValue[]) => SQLInputValue> => ({
   YEAR: field('y'), MONTH: field('m'), DAY: field('d'), HOUR: field('h'), MINUTE: field('mi'), SECOND: field('s'),
@@ -720,6 +745,10 @@ export const sqlDateFunctions = (now: () => Date = () => new Date()): Record<str
   DATEVAL: (v) => (typeof v === 'string' ? isoDate(v) ?? null : null),
   TIMEVAL: (v) => (typeof v === 'string' ? isoTime(v) ?? null : null),
   TIMESTAMPVAL: (v) => (typeof v === 'string' ? isoTimestamp(v) ?? null : null),
+  // SQLite passes optional type digits too; the ISO text format here does not vary with precision.
+  fm_cast_date: (v) => castTemporal('date', v),
+  fm_cast_time: (v) => castTemporal('time', v),
+  fm_cast_timestamp: (v) => castTemporal('timestamp', v),
   fm_invalid: (kind, text) => { throw new CalcError(ERR.calculation, `Invalid ${String(kind)} constant '${String(text)}'`); },
   fm_date_add: (v, n, unit, sign) => addInterval(v, Number(n) * Number(sign), String(unit)),
   LEFT: (v, n) => (v === null || n === null ? null : [...String(v)].slice(0, Math.max(0, Math.trunc(Number(n)))).join('')),
