@@ -113,3 +113,12 @@ test('number operators and functions agree with a seeded scaled-integer oracle',
   assert.equal(evaluate('Average ( 100000000000000000007 ; 100000000000000000008 )'), '100000000000000000000');
   assert.deepEqual(Object.fromEntries(disagreements), {}, `differential disagreements: ${JSON.stringify(Object.fromEntries(disagreements))}`);
 });
+
+test('a decimal literal shows without trailing zeros, as a number does', () => {
+  assert.equal(evaluate('1.50'), '1.5');
+  assert.equal(evaluate('2.0'), '2');
+  assert.equal(evaluate('.5'), '0.5');
+  assert.equal(evaluate('1.20 & "x"'), '1.2x');
+  assert.equal(evaluate('GetAsText ( 100.00 )'), '100');
+  assert.equal(evaluate('Let ( x = 1.50 ; x )'), '1.5');
+});
