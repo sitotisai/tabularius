@@ -211,13 +211,13 @@ export function publishConversion(temp: string, store: string): boolean {
     }
   }
   crashPoint('host-conversion:after-reserve');
+  // The empty file is the reservation, not the open handle: close it first, because Windows refuses to rename over a file that is open.
+  fs.closeSync(fd);
   try {
     fs.renameSync(temp, store);
     return true;
   } catch (e) {
     fs.rmSync(store, { force: true });
     throw e;
-  } finally {
-    fs.closeSync(fd);
   }
 }
