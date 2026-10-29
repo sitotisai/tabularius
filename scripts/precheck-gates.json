@@ -62,5 +62,9 @@
   {
     "file": "packages/server/test/unhosted-sign-in-parity.test.ts",
     "reason": "Holds a missing file name to the same lockout, answer and hashing as a hosted one"
+  },
+  {
+    "file": "packages/cli/test/docs-headers.test.ts",
+    "reason": "Checks that every custom header in the code is named in the documentation and the other way round"
   }
 ]
