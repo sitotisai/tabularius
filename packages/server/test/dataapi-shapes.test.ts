@@ -160,6 +160,22 @@ test('sessions: log in, the token header, log out', async () => {
   failed(await call('/databases/Shapes/layouts', { auth: `Bearer ${token}` }), 401, '952');
 });
 
+test('v1, v2 and vLatest return the same JSON envelope and content type', async () => {
+  const replies = await Promise.all(['v1', 'v2', 'vLatest'].map(async (version) => {
+    const response = await fetch(`${base}/fmi/data/${version}/productInfo`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type'), 'application/json; charset=utf-8');
+    return response.json();
+  }));
+  assert.deepEqual(replies[1], replies[0]);
+  assert.deepEqual(replies[2], replies[0]);
+  const failedResponse = await fetch(`${base}/fmi/data/vLatest/databases/NoSuchFile/layouts`);
+  assert.equal(failedResponse.headers.get('content-type'), 'application/json; charset=utf-8');
+  const error = await failedResponse.json() as Reply['body'];
+  assert.deepEqual(error.response, {});
+  assert.equal(typeof error.messages[0].code, 'string');
+});
+
 test('validateSession: answers for a live token, and doesn\'t keep it alive', async () => {
   const auth = await login();
   assert.equal(typeof ok(await call('/validateSession', { auth }), ['isSessionInUse']).isSessionInUse, 'boolean');
@@ -183,6 +199,23 @@ test('productInfo and databases', async () => {
   for (const v of Object.values(info)) assert.equal(typeof v, 'string');
   const { databases } = ok(await call('/databases'), ['databases']);
   assert.deepEqual(databases, [{ name: 'Shapes' }]);
+});
+
+test('databases list is unavailable by default and available when explicitly public', async () => {
+  const privateDir = mkdtempSync(join(tmpdir(), 'tabularius-private-list-'));
+  createStore(join(privateDir, 'Private' + STORE_EXT));
+  let privateServer: Server | undefined;
+  try {
+    const app = await serve({ dir: privateDir, port: 0, watch: false, log: () => {} });
+    privateServer = app.server;
+    const response = await fetch(`${app.url}/fmi/data/vLatest/databases`);
+    assert.equal(response.status, 404);
+    assert.equal((await response.json()).messages[0].code, '3');
+    assert.deepEqual((await call('/databases')).body.response.databases, [{ name: 'Shapes' }]);
+  } finally {
+    await new Promise<void>((resolve) => privateServer ? privateServer.close(() => resolve()) : resolve());
+    rmSync(privateDir, { recursive: true, force: true });
+  }
 });
 
 test('layouts and scripts: names, in folders', async () => {
@@ -259,6 +292,10 @@ test('records: a range, one record, and portal rows with portalDataInfo', async 
 
   const one = foundSet(await call(`/databases/Shapes/layouts/Contacts/records/${first.recordId}`, { auth }), 'Contacts', 1, 1);
   assert.equal(one[0].recordId, first.recordId);
+  for (const dateformats of [0, 1]) {
+    const dated = foundSet(await call(`/databases/Shapes/layouts/Contacts/records/${first.recordId}?dateformats=${dateformats}`, { auth }), 'Contacts', 1, 1);
+    assert.equal(dated[0].fieldData.Met, '01/01/2026');
+  }
   // dateformats=2: ISO 8601 dates.
   const iso = foundSet(await call(`/databases/Shapes/layouts/Contacts/records/${first.recordId}?dateformats=2`, { auth }), 'Contacts', 1, 1);
   assert.equal(iso[0].fieldData.Met, '2026-01-01');
