@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore, LOCKOUT, Store } from '../../store/src/index.ts';
 import { backupFolder, serve, type Host } from '../../server/src/index.ts';
+import { pathToFileURL } from 'node:url';
 
 const root = join(import.meta.dirname, '..', '..', '..');
 const main = join(root, 'packages', 'cli', 'src', 'main.ts');
@@ -536,7 +537,7 @@ test('a file never finishes converting', async () => {
   writeFileSync(arm, `import { armCrashPointForTest } from ${JSON.stringify(new URL('../../store/src/crash-point.ts', import.meta.url).href)};\narmCrashPointForTest('host-conversion:after-convert');\n`);
   const port = await freePort();
   // The server is cut off after the conversion has done its work and before it is published.
-  const first = startStep(where, 'tabularius serve <folder>', { folder }, { execArgv: ['--import', new URL(`file://${arm}`).href], swap: {}, env: { PORT: String(port) } });
+  const first = startStep(where, 'tabularius serve <folder>', { folder }, { execArgv: ['--import', pathToFileURL(arm).href], swap: {}, env: { PORT: String(port) } });
   assert.equal(await first.exited, 73, 'cut off at the chosen point');
   assert.match(first.out(), /converting Charts\.fmp12/);
   assert.doesNotMatch(first.out(), /converted Charts\.fmp12/);
