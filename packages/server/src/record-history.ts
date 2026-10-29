@@ -7,7 +7,7 @@
 // keeps none of this. Read-only; secret-looking values are hidden.
 
 import type { Field, Table } from '../../fmp12/src/index.ts';
-import { inLife, NOT_LOGGED, type AuditEntry, type Store } from '../../store/src/index.ts';
+import { inLife, NOT_LOGGED, type AuditEntry, type Privileges, type Store } from '../../store/src/index.ts';
 import { automationRuns, listAutomations } from './automations.ts';
 import { cleanupBatchById, cleanupHistory } from './cleanup.ts';
 import { secretName } from './ai-output.ts';
@@ -90,9 +90,9 @@ function how(f: Field | undefined, changedTogether: Set<string>, table: Table, h
 
 /**
  * A record's history, newest event first. `hideField` leaves out fields the reader may not see, `hideTable` tables. The record may
- * be deleted: its history stays.
+ * be deleted: its history stays. `who` limits the cleanup batches named in "by" to the ones that reader may see (see cleanupHistory).
  */
-export function recordHistory(store: Store, table: string, recordId: number, opts: { limit?: number; hideField?: (field: string) => boolean; hideTable?: (table: string) => boolean } = {}): RecordHistory {
+export function recordHistory(store: Store, table: string, recordId: number, opts: { limit?: number; hideField?: (field: string) => boolean; hideTable?: (table: string) => boolean; who?: { account?: string; privileges?: Privileges } } = {}): RecordHistory {
   const t = store.schema.tables.find((x) => x.name.toLowerCase() === table.toLowerCase());
   if (!t) throw new Error(`No table named "${table}"`);
   const limit = Math.max(1, Math.min(opts.limit ?? 200, 2000));
@@ -107,7 +107,7 @@ export function recordHistory(store: Store, table: string, recordId: number, opt
   const runs = listAutomations(store).flatMap((a) => automationRuns(store, a.id, 50)
     .filter((r) => r.recordId === recordId && a.layout && tableOfLayout(store, a.layout) === t.name)
     .map((r) => ({ at: ms(r.at), label: `the automation "${a.name}" (script "${a.script}")` })));
-  const cleanups = cleanupHistory(store).flatMap((b) => {
+  const cleanups = cleanupHistory(store, opts.who).flatMap((b) => {
     const full = cleanupBatch(store, b.id);
     const touches = full?.undo.some((u) => (u.op === 'set' && u.table === t.name && u.recordId === recordId) ||
       (u.op === 'restore' && u.table === t.name && Number(u.row._fm_record_id) === recordId) ||
