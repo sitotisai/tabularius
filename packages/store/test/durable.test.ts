@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readJsonStateSync, syncPath, type DurableFs, updateJsonStateSync, writeDurable, writeJsonStateSync, writeStateFileSync, withStateLock } from '../src/durable.ts';
 import { createRequire, syncBuiltinESMExports } from 'node:module';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -69,6 +69,18 @@ test('a real file and its folder are flushed and published on this system', () =
     writeFileSync(staged, 'x');
     writeDurable(staged, join(dir, 'live'));
     assert.equal(readFileSync(join(dir, 'live'), 'utf8'), 'x');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a file with a second link, as a published conversion has, is flushed as Windows opens it', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'durable-linked-'));
+  try {
+    const store = join(dir, 'store');
+    writeFileSync(store, 'x');
+    linkSync(store, join(dir, 'temp'));
+    syncPath(store, undefined, 'win32');
+    assert.equal(readFileSync(store, 'utf8'), 'x');
+    assert.equal(statSync(store).mode & 0o777, statSync(join(dir, 'temp')).mode & 0o777, 'flushing leaves the mode alone');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
