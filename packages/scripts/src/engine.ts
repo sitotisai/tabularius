@@ -5,6 +5,8 @@ import { documentNamePart, checkPathLength } from '../../store/src/portable-path
 // URLs to open) are skipped like FileMaker Server skips them, and reported as
 // client actions so a web client can carry them out.
 
+import { sortProgress } from '../../store/src/cooperative.ts';
+import { wholeNumber } from '../../store/src/settings.ts';
 import { cancellationScope, untilCanceled } from './cancellation.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import { closeSync, constants as fsConstants, cpSync, existsSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readSync, realpathSync, statfsSync, rmSync, statSync, unlinkSync } from 'node:fs';
@@ -741,6 +743,8 @@ export interface RunResult {
   closed?: string[];
   /** Steps that ran. */
   steps: number;
+  /** Record operations charged to this run (including scans and repeated passes). */
+  recordOps?: number;
   actions: ClientAction[];
   trace?: TraceLine[];
   /** In outbound test mode: the outside services the run tried to reach, and the emails it wrote. */
@@ -1470,6 +1474,7 @@ export class ScriptEngine {
   };
 
   constructor(opts: RunOptions = {}) {
+    this.maxRecordOps = wholeNumber('TABULARIUS_SCRIPT_MAX_RECORD_OPS') ?? 50_000_000;
     this.initiatingPrivileges = opts.privileges;
     this.opts = opts.beforeFile ? { ...opts, beforeFile: (file) => {
       this.enforceExecution(file, () => opts.beforeFile!(file));
@@ -1605,8 +1610,8 @@ export class ScriptEngine {
       active = end.focusMoved ? this.activeState(end) : undefined;
       // Edits that still can't be committed when the script ends are lost, as when FileMaker closes the window.
       for (const w of this.windows) {
-        // A person's own stop commits like Halt Script; only an external cancellation discards edits.
-        if (halted && this.stopSignal?.aborted) this.revert(w);
+        // A person's own stop commits like Halt Script; external cancellation and budget halts discard pending edits.
+        if (halted && (this.stopSignal?.aborted || this.budgetHalted)) this.revert(w);
         else this.commitOrDrop(w);
       }
     } catch (e) {
@@ -1631,6 +1636,7 @@ export class ScriptEngine {
       ...(this.current.id ? { window: this.endWindow(this.current) } : {}),
       ...(this.closed.length ? { closed: this.closed } : {}),
       steps: this.steps,
+      recordOps: this.recordOps,
       ...(this.recordInUse ? { recordInUse: this.recordInUse } : {}),
       actions: this.actions,
       ...(this.warnings.length ? { warnings: this.warnings } : {}),
@@ -2375,7 +2381,7 @@ export class ScriptEngine {
       throw new ScriptError(ERROR.fieldMissing, `Perform Semantic Find's target field ${p.field.tableOccurrence.name}::${p.field.field.name} is not related to the current layout's table`);
     }
     // Related records the account can't see don't count (record-level access).
-    const visible = related ? new Set(target.owner.findIds(target, this.reading)) : undefined;
+    const visible = related ? new Set(await this.findIdsCooperative(f, target)) : undefined;
     const query = ai.queryBy === 'vector data'
       ? embeddingOf(this.eval(f, ai.vector ?? '""'))
       : ai.queryBy === 'image' ? await this.embedQueryImage(f, p)
@@ -2396,7 +2402,7 @@ export class ScriptEngine {
         default: return x <= threshold;
       }
     };
-    const ids = ai.recordSet === 'current found set' ? this.foundSet(win).ids : info.owner.findIds(info, this.reading);
+    const ids = ai.recordSet === 'current found set' ? this.foundSet(win).ids : await this.findIdsCooperative(f, info);
     const scored: [number, number][] = [];
     // Each related record is scored once, however many records share it.
     const scores = new Map<number, number | undefined>();
@@ -2409,16 +2415,18 @@ export class ScriptEngine {
       return scores.get(sid);
     };
     for (const id of ids) {
+      await this.checkpoint(f);
       const sources = related ? this.relatedIds(win, target.occurrence, { occurrence: info.occurrence, ids: [id] }).filter((sid) => visible!.has(sid)) : [id];
       let best: number | undefined;
       for (const sid of sources) {
+        if (related) await this.checkpoint(f);
         const similarity = score(sid);
         if (similarity !== undefined && (best === undefined || similarity > best)) best = similarity;
       }
       if (best !== undefined) scored.push([id, best]);
     }
-    scored.sort((x, y) => y[1] - x[1]);
-    const limited = scored.slice(0, count).map(([id]) => id);
+    const ordered = await this.sorted(f, scored, (x, y) => y[1] - x[1]);
+    const limited = ordered.slice(0, count).map(([id]) => id);
     // Inferred for zero/negative/empty counts: FileMaker's behavior is undocumented;
     // keep the same error and found set as a semantic search with no matches.
     if (!limited.length) throw new ScriptError(ERROR.noRecords, 'No records match the request');
@@ -3061,6 +3069,7 @@ export class ScriptEngine {
     const model = () => asText(this.eval(f, a.model ?? '""'));
     try {
       for (let start = 0; start < fs.ids.length; start += batch) {
+        await this.checkpoint(f, Math.min(batch, fs.ids.length - start));
         const at = [...Array(Math.min(batch, fs.ids.length - start)).keys()].map((i) => start + i);
         // Records with no text keep their target as it is (Claris: "nothing is sent to the model").
         const todo = at.filter((i) => readAt(i, source).trim() !== '' && (replace || readAt(i, target) === ''));
@@ -3080,13 +3089,13 @@ export class ScriptEngine {
           if (a.continueOnError && e instanceof ScriptError) continue;
           throw e;
         }
-        todo.forEach((i, n) => {
+        for (const [n, i] of todo.entries()) {
           fs.index = i;
-          this.poll(f);
+          await this.checkpoint(f, 0);
           this.readCache.clear();
           this.setField(f, p, this.embeddingValue(f, p, vectors[n]));
           this.commit(win);
-        });
+        }
       }
     } finally {
       fs.index = keep;
@@ -3196,6 +3205,7 @@ export class ScriptEngine {
         if (offset === 1) expected = Number(page?.response.dataInfo?.foundCount ?? 0);
         const rows = Array.isArray(page?.response.data) ? page.response.data : [];
         for (const row of rows) {
+          await this.checkpoint(f);
           const part = JSON.stringify(row);
           dataBytes += Buffer.byteLength(part) + (dataParts.length ? 1 : 0);
           const metadata = {
@@ -3225,7 +3235,7 @@ export class ScriptEngine {
       if (p.field || p.variable) this.storeResult(f, p, text(result));
       return;
     }
-    this.performFind(f, {}, 28, requests);
+    await this.performFind(f, {}, 28, requests);
     if (sort.length) {
       const found = this.foundSet(win);
       this.setFound(win, found.ids, sort.map((x) => ({ fieldName: x.fieldName, sortOrder: x.sortOrder })));
@@ -3322,32 +3332,66 @@ export class ScriptEngine {
   }
 
   /** Sorts record ids; a related field (TO::field) sorts by the first related record's value. */
+  private async sorted<T>(f: Frame, items: T[], compare: (a: T, b: T) => number): Promise<T[]> {
+    const work = sortProgress(items, compare);
+    for (;;) {
+      const next = work.next();
+      if (next.done) return next.value;
+      await this.checkpoint(f, 0);
+    }
+  }
+
+  private async setFoundCooperative(f: Frame, win: Window, ids: number[], sort?: SortSpec[]): Promise<void> {
+    this.commit(win);
+    const sorted = sort ? await this.sortIdsCooperative(win, this.layoutOf(win), ids, sort, f) : ids;
+    this.setFound(win, sorted);
+    if (sort) this.foundSet(win).sort = sort;
+  }
+
+  private async findIdsCooperative(f: Frame, info: LayoutInfo, opts: Parameters<Store['findIds']>[1] = this.reading): Promise<number[]> {
+    const work = info.owner.findIdsProgress(info, opts);
+    try {
+      for (;;) {
+        const next = work.next();
+        if (next.done) return next.value;
+        await this.checkpoint(f, next.value);
+      }
+    } finally { work.return([]); }
+  }
+
   private async sortIdsCooperative(win: Window, info: LayoutInfo, ids: number[], sort: SortSpec[], f: Frame): Promise<number[]> {
     const pv = this.privileges?.in(info.owner);
     const complex = sort.some((x) => x.fieldName.includes('::') || (!!pv && pv.field(info.table, x.fieldName.replace(/\(\d+\)$/, '')) === 'none'));
-    if (complex) return this.sortIds(win, info, ids, sort, f);
     this.opts.beforeFile?.(info.owner);
-    const work = info.owner.sortIdsProgress(info, ids, sort, {
+    const work = complex ? this.sortIdsProgress(win, info, ids, sort, f) : info.owner.sortIdsProgress(info, ids, sort, {
       privileges: this.privileges, valueLists: { store: win.store, recordId: this.currentId(win) },
     });
+    let completed = 0;
     try {
       for (let step = work.next();; step = work.next()) {
+        const count = step.done ? step.value.length : step.value;
+        await this.checkpoint(f, Math.max(0, count - completed));
+        completed = count;
         if (step.done) return step.value;
-        this.bulkProgress('Sort Records', step.value, ids.length);
-        await this.checkpoint(f);
+        this.bulkProgress('Sort Records', count, ids.length);
       }
     } finally { work.return([]); }
   }
 
   /** Sorts record ids; a related field (TO::field) sorts by the first related record's value. */
   private sortIds(win: Window, info: LayoutInfo, ids: number[], sort: SortSpec[], f?: Frame): number[] {
+    const work = this.sortIdsProgress(win, info, ids, sort, f);
+    for (;;) { const next = work.next(); if (next.done) return next.value; }
+  }
+
+  private *sortIdsProgress(win: Window, info: LayoutInfo, ids: number[], sort: SortSpec[], f?: Frame): Generator<number, number[]> {
     this.opts.beforeFile?.(info.owner);
     // The store sorts on the stored values, so a field the account can't read (hidden or masked) is sorted here, where it reads as empty.
     const pv = this.privileges?.in(info.owner);
     const unreadable = (x: SortSpec) => !!pv && !x.fieldName.includes('::') && pv.field(info.table, x.fieldName.replace(/\(\d+\)$/, '')) === 'none';
     const custom = (x: SortSpec) => !['ascend', 'ascending', 'descend', 'descending'].includes((x.sortOrder ?? 'ascend').toLowerCase());
     const recordId = this.currentId(win);
-    if (!sort.some((x) => x.fieldName.includes('::') || unreadable(x))) return info.owner.sortIds(info, ids, sort, {
+    if (!sort.some((x) => x.fieldName.includes('::') || unreadable(x))) return yield* info.owner.sortIdsProgress(info, ids, sort, {
       privileges: this.privileges, valueLists: { store: win.store, recordId },
     });
     const orders = sort.map((x) => {
@@ -3380,10 +3424,13 @@ export class ScriptEngine {
       const first = field && this.relatedIds(win, other.occurrence, { occurrence: info.occurrence, ids: [id] })[0];
       return field && first !== undefined ? this.valueOf(other, field, first, 1) : text('');
     };
-    const keys = new Map(ids.map((id) => {
+    const keys = new Map<number, Value[]>();
+    for (const id of ids) {
+      yield keys.size;
       if (f) this.poll(f);
-      return [id, sort.map((x) => keyOf(id, x.fieldName))];
-    }));
+      keys.set(id, sort.map((x) => keyOf(id, x.fieldName)));
+    }
+    yield keys.size;
     const compare = (a: Value, b: Value, language: string): number => {
       const ta = asText(a);
       const tb = asText(b);
@@ -3394,7 +3441,7 @@ export class ScriptEngine {
       const kb = language === 'unicode' ? tb : recordSortKey(tb, language);
       return Buffer.compare(Buffer.from(ka), Buffer.from(kb));
     };
-    return [...ids].sort((x, y) => {
+    const work = sortProgress(ids, (x, y) => {
       const kx = keys.get(x)!;
       const ky = keys.get(y)!;
       for (let i = 0; i < sort.length; i++) {
@@ -3409,6 +3456,11 @@ export class ScriptEngine {
       }
       return x - y;
     });
+    for (;;) {
+      const next = work.next();
+      if (next.done) return next.value;
+      yield ids.length;
+    }
   }
 
   private commitOrDrop(win: Window): void {
@@ -3623,6 +3675,8 @@ export class ScriptEngine {
         pc++;
         continue;
       }
+      const parentBatch = this.batch;
+      this.batch = { operation: step.name, records: 0 };
       const parentWork = this.work;
       const parentCleanup = this.workCleanup;
       this.work = undefined;
@@ -3631,6 +3685,9 @@ export class ScriptEngine {
         this.canceled(script.name);
         if (++this.steps > (this.opts.maxSteps ?? STEP_LIMIT) || Date.now() > this.deadline) {
           const what = this.steps > (this.opts.maxSteps ?? STEP_LIMIT) ? 'step limit' : 'time limit';
+          // The same outcome as a limit reached inside a record loop (see limit): the capacity error, pending edits discarded.
+          this.budgetHalted = true;
+          this.lastError = ERROR.capacity;
           this.actions.push({ step: 'Halt Script', script: script.name, reason: `${what} reached${this.whereNow()}${this.inLoop(frame, b, pc)}` });
           throw new Halt();
         }
@@ -3641,7 +3698,11 @@ export class ScriptEngine {
           throw new Halt();
         }
         // Let other requests run during long scripts.
-        if (this.steps % 2000 === 0) await new Promise((r) => setImmediate(r));
+        if (this.steps % 2000 === 0 || performance.now() - this.yieldedAt >= 25) {
+          await new Promise<void>((resolve) => setImmediate(resolve));
+          this.yieldedAt = performance.now();
+          this.canceled(script.name);
+        }
         if (this.opts.debug) {
           this.stack[this.stack.length - 1].pc = pc;
           // No time limit while the script waits (the Data Viewer can evaluate meanwhile).
@@ -3728,6 +3789,7 @@ export class ScriptEngine {
               if (this.current.store !== frame.store) this.opts.beforeFile?.(this.current.store);
             }
             this.modified = MODIFY_STEPS.has(step.stepId) ? [] : undefined;
+            if ([7, 8, 9, 76, 147].includes(step.stepId) && this.current.mode !== 'find') await this.checkpoint(frame);
             const quick: number | 'exit' | undefined | typeof SLOW = QUICK_STEPS.has(step.stepId) && !this.mayEmbed(frame, step) ? this.quickStepNoEmbedding(frame, step, pc, b) : SLOW;
             return quick !== SLOW ? quick : await this.stepWithEmbeddings(frame, step, pc, b);
           });
@@ -3798,6 +3860,7 @@ export class ScriptEngine {
         pc = next;
       } finally {
         this.disposeWork();
+        this.batch = parentBatch;
         this.work = parentWork;
         this.workCleanup = parentCleanup;
       }
@@ -4138,13 +4201,14 @@ export class ScriptEngine {
       case 23: { // Show All Records
         win.mode = 'browse';
         const info = this.layoutOf(win);
-        this.setFound(win, info.owner.findIds(info, this.reading));
+        this.setFound(win, await this.findIdsCooperative(f, info));
         return undefined;
       }
       case 21: { // Unsort Records
         const fs = this.foundSet(win);
         const id = fs.ids[fs.index];
-        fs.ids = [...fs.ids].sort((x, y) => x - y);
+        await this.checkpoint(f, fs.ids.length);
+        fs.ids = await this.sorted(f, fs.ids, (x, y) => x - y);
         fs.sort = undefined;
         fs.index = Math.max(0, fs.ids.indexOf(id!));
         return undefined;
@@ -4195,7 +4259,8 @@ export class ScriptEngine {
             // Unsort: the found set goes back to creation order.
             const fs = this.foundSet(win);
             const id = fs.ids[fs.index];
-            fs.ids = [...fs.ids].sort((a, b) => a - b);
+            await this.checkpoint(f, fs.ids.length);
+            fs.ids = await this.sorted(f, fs.ids, (a, b) => a - b);
             fs.sort = undefined;
             fs.index = Math.max(0, fs.ids.indexOf(id!));
             return undefined;
@@ -4209,7 +4274,7 @@ export class ScriptEngine {
         const fs = this.foundSet(win);
         const id = fs.ids[fs.index];
         this.bulkProgress('Sort Records', 0, fs.ids.length);
-        await this.checkpoint(f);
+        await this.checkpoint(f, 0);
         fs.ids = await this.sortIdsCooperative(win, info, fs.ids, sort, f);
         this.bulkProgress('Sort Records', fs.ids.length, fs.ids.length);
         fs.semi = undefined;
@@ -4237,7 +4302,7 @@ export class ScriptEngine {
         this.commit(win);
         const info = this.layoutOf(win);
         const shown = new Set(this.foundSet(win).ids);
-        this.setFound(win, info.owner.findIds(info, this.reading).filter((id) => !shown.has(id)));
+        this.setFound(win, (await this.findIdsCooperative(f, info)).filter((id) => !shown.has(id)));
         return undefined;
       }
       case 22: // Enter Find Mode
@@ -4279,11 +4344,11 @@ export class ScriptEngine {
         this.snapshotLink(f, p);
         return undefined;
       case 28: case 126: case 127: // Perform Find, Constrain Found Set, Extend Found Set
-        this.performFind(f, p, s.stepId);
+        await this.performFind(f, p, s.stepId);
         return undefined;
       case 150: // Perform Quick Find
         win.quickFindText = asText(calc(p.calculation));
-        this.quickFind(win, win.quickFindText);
+        await this.quickFind(f, win, win.quickFindText);
         return undefined;
 
       // --- windows ---
@@ -4333,7 +4398,7 @@ export class ScriptEngine {
         if (!p.field && !p.variable && !active) {
           // No field: Copy takes the whole record, as Copy Record/Request does.
           if (s.stepId === 46) throw new ScriptError(ERROR.fieldMissing, 'Cut needs a field: no field is active');
-          this.copied(f, s, text(this.copyRecords(win, false)));
+          this.copied(f, s, text(await this.copyRecords(f, win, false)));
           return undefined;
         }
         const from = active ? { field: active } : p;
@@ -4345,7 +4410,7 @@ export class ScriptEngine {
         return undefined;
       }
       case 101: case 98: // Copy Record/Request, Copy All Records/Requests
-        this.copied(f, s, text(this.copyRecords(win, s.stepId === 98)));
+        this.copied(f, s, text(await this.copyRecords(f, win, s.stepId === 98)));
         return undefined;
       case 48: { // Paste: what Copy or Cut put on this run's clipboard, else what is on the person's own
         if (!p.field && !p.variable && !win.activeField) throw new ScriptError(ERROR.fieldMissing, 'Paste needs a field: no field is active');
@@ -4616,7 +4681,7 @@ export class ScriptEngine {
         this.tab(win, s.stepId === 5);
         return undefined;
       case 40: // Relookup Field Contents
-        this.relookup(f, p);
+        await this.relookup(f, p);
         return undefined;
       case 24: // Modify Last Find: Find mode with the last find's requests
         this.commit(win);
@@ -4629,7 +4694,7 @@ export class ScriptEngine {
         await this.findReplace(f, p);
         return undefined;
       case 155: // Find Matching Records
-        this.findMatching(f, p);
+        await this.findMatching(f, p);
         return undefined;
       case 203: { // Execute FileMaker Data API: against this file, with the script's privileges, in a session of its own
         this.opts.beforeFile?.(f.store);
@@ -4667,7 +4732,7 @@ export class ScriptEngine {
         await this.exportRecords(f, { ...p, exportFormat: 'XLXE' });
         return undefined;
       case 225: // Save Records as JSONL
-        this.saveJsonl(f, p);
+        await this.saveJsonl(f, p);
         return undefined;
       case 238: { // Configure Persistent Data: needs full access; deleting an entry that isn't there is error 10
         this.opts.beforeFile?.(f.store);
@@ -4709,7 +4774,7 @@ export class ScriptEngine {
         this.openPdf = undefined;
         return undefined;
       case 228: // Go to List of Records
-        this.goToList(f, p);
+        await this.goToList(f, p);
         return undefined;
       case 218: // Perform Semantic Find
         await this.semanticFind(f, p);
@@ -5327,11 +5392,44 @@ export class ScriptEngine {
    */
   /** Yield between batches so a socket/admin cancellation can actually reach record loops. */
   private checkpoints = 0;
-  private async checkpoint(f: Frame): Promise<void> {
+  private yieldedAt = 0;
+  private recordOps = 0;
+  private budgetHalted = false;
+  private readonly maxRecordOps: number;
+  private batch?: { operation: string; records: number };
+  private async checkpoint(f: Frame, records = 1): Promise<void> {
     this.canceled(f.script.name);
-    if ((this.checkpoints++ & 255) === 0) await new Promise<void>((resolve) => setImmediate(resolve));
+    // Time as well as count: a batch of 256 expensive records can take seconds.
+    if ((this.checkpoints++ & 255) === 0 || performance.now() - this.yieldedAt >= 25) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      this.yieldedAt = performance.now();
+      // The yield is a turn in which an account can be disabled: the next write must not run on its authority.
+      this.enforceExecution(f.store);
+    }
     this.canceled(f.script.name);
+    this.late(f);
+    if (this.steps > (this.opts.maxSteps ?? STEP_LIMIT)) this.limit(f, 'step limit');
+    if (this.maxRecordOps && records > this.maxRecordOps - this.recordOps) this.limit(f, 'record operation limit');
+    this.recordOps += records;
+    if (this.batch) this.batch.records += records;
     this.poll(f);
+  }
+
+  /** Outside Open Transaction, refuse a whole bulk write before it can commit only a prefix. */
+  private requireRecordCapacity(f: Frame, records: number): void {
+    if (!writer.getStore()?.transaction?.open && this.maxRecordOps && records > this.maxRecordOps - this.recordOps) {
+      this.limit(f, 'record operation limit');
+    }
+  }
+
+  private limit(f: Frame, what: string): never {
+    this.budgetHalted = true;
+    // A step that has not touched a record yet (a long calculation, say) is named as a step; one that has says how far it got.
+    const where = this.batch && this.batch.records > 0 ? ` in ${this.batch.operation} after ${this.batch.records} records` : ` during a step${this.batch ? ` (${this.batch.operation})` : ''}`;
+    const count = what === 'record operation limit' ? ` (${this.recordOps} of ${this.maxRecordOps} record operations used)` : '';
+    this.lastError = ERROR.capacity;
+    this.actions.push({ step: 'Halt Script', script: f.script.name, reason: `${what} reached${where}${count}` });
+    throw new Halt();
   }
 
   private bulkProgress(operation: string, completed: number, total: number): void {
@@ -5380,8 +5478,7 @@ export class ScriptEngine {
   private late(f: Frame): void {
     this.canceled(f.script.name);
     if (Date.now() <= this.deadline) return;
-    this.actions.push({ step: 'Halt Script', script: f.script.name, reason: 'time limit reached during a step' });
-    throw new Halt();
+    this.limit(f, 'time limit');
   }
 
   /** The page being printed or saved as PDF (1-based), 0 when not printing. */
@@ -6414,6 +6511,7 @@ export class ScriptEngine {
     this.commit(win);
     const fs = this.foundSet(win);
     const keep = fs.index;
+    this.requireRecordCapacity(f, fs.ids.length);
     // A formula that may call GetEmbedding is worked out on every record first, writing nothing, to embed the texts
     // it needs at once; a step run again after records were written would write them twice.
     if (p.calculation !== undefined && p.replaceWith !== 'current' && p.replaceWith !== 'serial' && (EMBEDS.test(p.calculation) || functionsEmbed(f.store) || functionsEmbed(win.store))) {
@@ -6440,6 +6538,7 @@ export class ScriptEngine {
       if (asks.length) throw new NeedEmbedding(asks);
     }
     try {
+      this.requireRecordCapacity(f, fs.ids.length);
       this.bulkProgress('Replace Field Contents', 0, fs.ids.length);
       for (let i = 0; i < fs.ids.length; i++) {
         fs.index = i;
@@ -6470,7 +6569,7 @@ export class ScriptEngine {
    * that match on the field copy their values again (as when the match field
    * is set to the value it has).
    */
-  private relookup(f: Frame, p: StepParams): void {
+  private async relookup(f: Frame, p: StepParams): Promise<void> {
     const win = this.current;
     const active = this.activeTarget(win);
     const target = p.field ?? active;
@@ -6481,10 +6580,11 @@ export class ScriptEngine {
     this.commit(win);
     const fs = this.foundSet(win);
     const keep = fs.index;
+    this.requireRecordCapacity(f, fs.ids.length);
     try {
       for (let i = 0; i < fs.ids.length; i++) {
         fs.index = i;
-        this.poll(f);
+        await this.checkpoint(f);
         const id = fs.ids[i];
         const value = this.via(info).get(info, id, 'iso', undefined, this.privileges, { fields: [field.name] }).fieldData[field.name];
         this.via(info).update(info, id, { [field.name]: value ?? '' }, undefined, this.write);
@@ -6547,7 +6647,7 @@ export class ScriptEngine {
       const m = pattern.exec(value);
       return m && m.index === s && m[0].length === e - s ? [s, e] : undefined;
     };
-    const findNext = () => {
+    const findNext = async () => {
       const n = o.currentRecord ? 1 : fs.ids.length;
       const start = fs.index;
       const after = at(win.activeField);
@@ -6560,6 +6660,7 @@ export class ScriptEngine {
       let hit: { k: number; i: number; m: RegExpExecArray } | undefined;
       try {
         for (let k = 0; k <= n && !hit; k++) {
+          await this.checkpoint(f);
           // Across the current record only: back round to this one, not on to the next.
           const other = !o.currentRecord && k > 0 && k < n;
           fs.index = o.currentRecord ? start : (start + k) % Math.max(1, fs.ids.length);
@@ -6603,13 +6704,14 @@ export class ScriptEngine {
         this.readCache.clear();
         win.selection = [sel[0], sel[0] + replace.length];
       }
-      if (o.operation === 'Replace & Find') findNext();
+      if (o.operation === 'Replace & Find') await findNext();
       return;
     }
     // Replace All.
     this.commit(win);
     const keep = fs.index;
     const total = o.currentRecord ? 1 : fs.ids.length;
+    this.requireRecordCapacity(f, total);
     try {
       this.bulkProgress('Replace All', 0, total);
       for (let i = 0; i < total; i++) {
@@ -6702,7 +6804,7 @@ export class ScriptEngine {
    * text, separated by tabs, repetitions by the group separator, and records
    * (or requests) by returns. Containers give their file name.
    */
-  private copyRecords(win: Window, all: boolean): string {
+  private async copyRecords(f: Frame, win: Window, all: boolean): Promise<string> {
     const info = this.layoutOf(win);
     const sep = '\u001d';
     if (win.mode === 'find') {
@@ -6716,9 +6818,11 @@ export class ScriptEngine {
     const fields = this.tableFields(info);
     const keep = fs.index;
     try {
-      return ids.map((id) => {
-        fs.index = fs.ids.indexOf(id);
-        return info.fields.map((x) => {
+      const lines: string[] = [];
+      for (let i = 0; i < ids.length; i++) {
+        await this.checkpoint(f);
+        fs.index = all ? i : keep;
+        lines.push(info.fields.map((x) => {
           const reps = fields.find((y) => y.name === x.name)?.options?.repetitions ?? 1;
           const values: string[] = [];
           for (let r = 1; r <= reps; r++) {
@@ -6727,8 +6831,9 @@ export class ScriptEngine {
           }
           while (values.length > 1 && values[values.length - 1] === '') values.pop();
           return values.join(sep);
-        }).join('\t');
-      }).join('\r');
+        }).join('\t'));
+      }
+      return lines.join('\r');
     } finally {
       fs.index = keep;
     }
@@ -6739,7 +6844,7 @@ export class ScriptEngine {
    * value exactly (an empty value finds empty fields). Replace finds in the
    * whole table, Constrain within the found set, Extend adds to it.
    */
-  private findMatching(f: Frame, p: StepParams): void {
+  private async findMatching(f: Frame, p: StepParams): Promise<void> {
     const win = this.current;
     const target = p.field ?? this.activeTarget(win);
     if (!target) throw new ScriptError(ERROR.fieldMissing, 'Find Matching Records names no field and no field is active');
@@ -6752,7 +6857,7 @@ export class ScriptEngine {
     // "==" matches the whole field, the rest of the text as it is.
     const criteria = value === '' ? '=' : `==${value}`;
     const mode = p.findMode ?? 'replace';
-    this.performFind(f, { restore: false }, mode === 'constrain' ? 126 : mode === 'extend' ? 127 : 28, [{ criteria: { [name]: criteria }, omit: false }]);
+    await this.performFind(f, { restore: false }, mode === 'constrain' ? 126 : mode === 'extend' ? 127 : 28, [{ criteria: { [name]: criteria }, omit: false }]);
   }
 
   /**
@@ -6825,7 +6930,7 @@ export class ScriptEngine {
    * assistant's answer and the user's message lists the other fields as
    * Field=value. Records with an empty completion are left out.
    */
-  private saveJsonl(f: Frame, p: StepParams): void {
+  private async saveJsonl(f: Frame, p: StepParams): Promise<void> {
     const win = this.current;
     this.opts.beforeFile?.(win.store);
     if (win.mode !== 'browse') throw new ScriptError(ERROR.unavailable, 'Save Records as JSONL works in Browse mode');
@@ -6851,7 +6956,7 @@ export class ScriptEngine {
     try {
       for (let i = 0; i < fs.ids.length; i++) {
         fs.index = i;
-        this.poll(f);
+        await this.checkpoint(f);
         const messages: { role: string; content: string }[] = [];
         if (p.jsonl?.fineTuning) {
           const system = p.jsonl.system !== undefined ? asText(this.eval(f, p.jsonl.system), win.store.dateOrder) : '';
@@ -6879,7 +6984,7 @@ export class ScriptEngine {
    * 21-23"), a JSON array of numbers or strings, or of objects with recordId.
    * IDs that aren't there are skipped; none found is error 401.
    */
-  private goToList(f: Frame, p: StepParams): void {
+  private async goToList(f: Frame, p: StepParams): Promise<void> {
     const raw = asText(this.eval(f, p.calculation ?? '""')).trim();
     const items: string[] = [];
     let json: unknown;
@@ -6906,7 +7011,7 @@ export class ScriptEngine {
       else this.goToLayout(win, p.layout!.name);
     }
     const info = this.layoutOf(win);
-    const have = new Set(info.owner.findIds(info, this.reading));
+    const have = new Set(await this.findIdsCooperative(f, info));
     const seen = new Set<number>();
     const found = ids.filter((x) => have.has(x) && !seen.has(x) && seen.add(x));
     win.mode = 'browse';
@@ -8137,7 +8242,7 @@ export class ScriptEngine {
     pv?.checkImport(info.table, action, p.addRemaining);
     const source: { rows: Iterable<(string | number)[]>; excel: boolean; files?: Map<string, { filename: string; data: Uint8Array }> } = p.importFolder ? this.folderRows(f, p, folder)
       : p.importFormat === 'FMPR' ? { rows: this.fileMakerRows(f, p, hosted), excel: false } : this.textRows(f, p, file);
-    const rows = source.rows;
+    let rows = source.rows;
     this.commit(win);
     const table = info.owner.schema.tables.find((t) => t.name === info.table);
     const mapping: NonNullable<StepParams['fieldMapping']> = p.fieldMapping ?? info.fields.filter((x) => !x.calculated && !x.summary).map((x) => ({
@@ -8158,7 +8263,7 @@ export class ScriptEngine {
     const matches = mapping.flatMap((m, i) => m.match && fields[i] ? [i] : []);
     if (action === 'update' && !matches.length) throw new ScriptError(ERROR.noCriteria, 'Update import requires match fields');
     this.commit(win);
-    const visible = action === 'add' ? [] : info.owner.findIds(info, this.reading);
+    const visible = action === 'add' ? [] : await this.findIdsCooperative(f, info);
     const have = new Set(visible);
     const targets = action === 'add' ? [] : (win.foundSets.get(info.occurrence)?.ids ?? visible).filter((id) => have.has(id));
     // Only workbook numbers are Excel serial dates; hosted FileMaker numbers are already field values.
@@ -8185,6 +8290,20 @@ export class ScriptEngine {
         byKey.set(k, [...(byKey.get(k) ?? []), id]);
       }
     }
+    if (this.maxRecordOps && !writer.getStore()?.transaction?.open) {
+      const prepared: (string | number)[][] = [];
+      let required = 0;
+      for (const row of rows) {
+        await this.checkpoint(f, 0);
+        const values = matches.map((i) => value(row, i));
+        const existing = action === 'update' ? byKey.get(key(values)) ?? [] : action === 'replace' ? targets.slice(prepared.length, prepared.length + 1) : [];
+        // A row with no key to match is skipped below and is not charged (nor is it here).
+        if (!(action === 'update' && values.every((v) => v === ''))) required += 1 + existing.length;
+        this.requireRecordCapacity(f, required);
+        prepared.push(row);
+      }
+      rows = prepared;
+    }
     const ids = new Set<number>();
     let failure: StoreError | PrivilegeError | undefined;
     // Skip auto-enter options on the open transaction overrides the import's own Perform auto-enter options.
@@ -8194,10 +8313,11 @@ export class ScriptEngine {
     this.bulkProgress('Import Records', 0, total);
     for (const row of rows) {
       const rowPosition = position++;
-      await this.checkpoint(f);
-      this.bulkProgress('Import Records', position, total);
       const values = matches.map((i) => value(row, i));
-      if (action === 'update' && values.every((v) => v === '')) continue;
+      const noKey = action === 'update' && values.every((v) => v === '');
+      await this.checkpoint(f, noKey ? 0 : 1);
+      this.bulkProgress('Import Records', position, total);
+      if (noKey) continue;
       const existing = action === 'update' ? byKey.get(key(values)) ?? [] : action === 'replace' ? targets.slice(rowPosition, rowPosition + 1) : [];
       const adding = !existing.length && (action === 'add' || p.addRemaining);
       if (!existing.length && !adding) continue;
@@ -8269,7 +8389,10 @@ export class ScriptEngine {
         }
       };
       if (adding) save();
-      else existing.forEach((id) => save(id));
+      else for (const id of existing) {
+        await this.checkpoint(f);
+        save(id);
+      }
     }
     // The imported records become the found set, when the window shows their table.
     const shown = this.layoutOf(win);
@@ -8487,6 +8610,7 @@ export class ScriptEngine {
     this.commit(win);
     const info = this.layoutOf(win);
     const ids = [...this.foundSet(win).ids];
+    this.requireRecordCapacity(f, ids.length);
     const gone: number[] = [];
     try {
       this.bulkProgress('Delete All Records', 0, ids.length);
@@ -8712,7 +8836,7 @@ export class ScriptEngine {
     return requests.some((r) => Object.values(r.criteria).some((v) => v !== ''));
   }
 
-  private performFind(f: Frame, p: StepParams, stepId: number, given?: Window['requests']): void {
+  private async performFind(f: Frame, p: StepParams, stepId: number, given?: Window['requests']): Promise<void> {
     const win = this.current;
     const requests = given ?? (p.restore && p.requests?.length ? this.storedRequests(f, p) : win.requests);
     win.lastFind = requests.map((r) => ({ criteria: { ...r.criteria }, omit: r.omit }));
@@ -8735,7 +8859,7 @@ export class ScriptEngine {
         : unread ? ' (the stored find request has parts Tabularius cannot read yet: a Tabularius gap)' : ' (no field was set in find mode)'}`);
     }
     const related = query.some((r) => Object.keys(r).some((k) => k.includes('::')));
-    let ids = related ? this.findRelated(win, info, query) : info.owner.findIds(info, { query, ...this.reading });
+    let ids = related ? await this.findRelated(f, win, info, query) : await this.findIdsCooperative(f, info, { query, ...this.reading });
     const current = this.foundSet(win);
     if (stepId === 126) { // Constrain
       const keep = new Set(ids);
@@ -8744,7 +8868,7 @@ export class ScriptEngine {
       const have = new Set(current.ids);
       ids = [...current.ids, ...ids.filter((x) => !have.has(x))];
     }
-    this.setFound(win, ids, current.sort);
+    await this.setFoundCooperative(f, win, ids, current.sort);
     if (!ids.length) {
       const asked = [...new Set(query.flatMap((r) => Object.keys(r).filter((k) => k !== 'omit')))];
       const of = stepId === 126 ? `, within ${current.ids.length} found` : '';
@@ -8759,8 +8883,8 @@ export class ScriptEngine {
   }
 
   /** Requests with related criteria: a record matches when any related record does. */
-  private findRelated(win: Window, info: LayoutInfo, query: FindRequest[]): number[] {
-    const all = info.owner.findIds(info, this.reading);
+  private async findRelated(f: Frame, win: Window, info: LayoutInfo, query: FindRequest[]): Promise<number[]> {
+    const all = await this.findIdsCooperative(f, info);
     const found = new Set<number>(query[0]?.omit === true || query[0]?.omit === 'true' ? all : []);
     for (const { omit, ...criteria } of query) {
       const own: FindRequest = {};
@@ -8770,10 +8894,10 @@ export class ScriptEngine {
         if (at < 0) own[k] = v;
         else byOccurrence.set(k.slice(0, at), { ...byOccurrence.get(k.slice(0, at)), [k.slice(at + 2)]: v });
       }
-      let hits = Object.keys(own).length ? info.owner.findIds(info, { query: [own], ...this.reading }) : all;
+      let hits = Object.keys(own).length ? await this.findIdsCooperative(f, info, { query: [own], ...this.reading }) : all;
       for (const [occurrence, c] of byOccurrence) {
         const other = win.store.occurrence(occurrence);
-        const back = new Set(this.relatedIds(win, info.occurrence, { occurrence: other.occurrence, ids: other.owner.findIds(other, { query: [c], ...this.reading }) }));
+        const back = new Set(this.relatedIds(win, info.occurrence, { occurrence: other.occurrence, ids: await this.findIdsCooperative(f, other, { query: [c], ...this.reading }) }));
         hits = hits.filter((x) => back.has(x));
       }
       const omitting = omit === 'true' || omit === true;
@@ -8785,7 +8909,7 @@ export class ScriptEngine {
     return all.filter((x) => found.has(x));
   }
 
-  private quickFind(win: Window, phrase: string): void {
+  private async quickFind(f: Frame, win: Window, phrase: string): Promise<void> {
     if (phrase.includes('\0')) throw new ScriptError(ERROR.findCriteria, 'Quick Find text contains a NUL character');
     this.commit(win);
     const info = this.layoutOf(win);
@@ -8797,15 +8921,15 @@ export class ScriptEngine {
       // unclosed phrase, so it is plain text: use a one-character wildcard to get candidates, then check the literal text.
       const quoted = unbalancedQuote(w);
       const matching = quoted ? fields.filter((x) => x.type === 'text') : fields;
-      const candidates = info.owner.findIds(info, { query: matching.map((x) => ({ [x.name]: quoted ? w.replaceAll('"', '@') : w })), ...this.reading });
+      const candidates = await this.findIdsCooperative(f, info, { query: matching.map((x) => ({ [x.name]: quoted ? w.replaceAll('"', '@') : w })), ...this.reading });
       const hits = new Set(quoted ? candidates.filter((id) => {
         const data = info.owner.get(info, id, 'iso', undefined, this.reading.privileges, { fields: matching.map((x) => x.name) }).fieldData;
         return matching.some((x) => String(data[x.name] ?? '').toLowerCase().includes(w.toLowerCase()));
       }) : candidates);
-      ids = (ids ?? info.owner.findIds(info, this.reading)).filter((x) => hits.has(x));
+      ids = (ids ?? await this.findIdsCooperative(f, info)).filter((x) => hits.has(x));
     }
     win.mode = 'browse';
-    this.setFound(win, ids ?? info.owner.findIds(info, this.reading));
+    this.setFound(win, ids ?? await this.findIdsCooperative(f, info));
     if (!ids?.length && words.length) throw new ScriptError(ERROR.noRecords, 'No records match the request');
   }
 

@@ -135,7 +135,7 @@ a code that no row of this page mentions.
 | 715 | Excel worksheet or named range is missing | Import Records from a workbook without the sheet named. |
 | 718 | XML parse error | Import Records of XML that does not parse, or an XSLT style sheet that does not. |
 | 719 | XSL transform error | Import Records through an XSLT style sheet that fails. |
-| 812 | Host capacity exceeded | The RAG steps' file and chunk limits; a Data API call whose JSON response cannot be assembled. |
+| 812 | Host capacity exceeded | The RAG steps' file and chunk limits; a Data API call whose JSON response cannot be assembled; a script run's time limit, step limit or record-operation budget (`TABULARIUS_SCRIPT_MAX_RECORD_OPS`), which halts the run: its open transaction is rolled back, and outside a transaction its pending edits are discarded (before, a run halted by the time limit committed them). |
 | 829 | No PDF file is open to add to | Append PDF, or Save Records as PDF set to add to the open PDF, with no PDF open. |
 | 830 | Invalid PDF file | Open PDF or Append PDF of a file that is missing, not a PDF, or cannot be joined to the open one. |
 | 831 | Invalid PDF password | Open PDF of an encrypted file with no password. |
