@@ -11,6 +11,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { containerFixture, type ContainerFixture } from './container-fixture.ts';
 import { createStore, Store, type DesignOp } from '../../store/src/index.ts';
 import { STORE_EXT } from '../src/host.ts';
+import { notOnWindows } from '../../store/test/windows.ts';
 
 const STAMP = (seconds: number) => `Pause/Resume Script [ Duration (seconds): ${seconds} ]\nNew Record/Request\nSet Field [ Contacts::Name ; "finished after the stop was asked" ]\nCommit Records/Requests [ With dialog: Off ]\nExit Script [ Text Result: "done" ]`;
 
@@ -232,7 +233,7 @@ async function cli(env: Record<string, string> = {}) {
   return { child, exited, port, output: () => output, dir, done: () => { child.kill('SIGKILL'); rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }); } };
 }
 
-test('a stop signal ends an idle server cleanly and at once, with exit code 0', { timeout: 60_000 }, async () => {
+test('a stop signal ends an idle server cleanly and at once, with exit code 0', { timeout: 60_000, skip: notOnWindows('a stop signal ends a Windows process at once, without its clean exit') }, async () => {
   const s = await cli();
   try {
     s.child.kill('SIGTERM');
@@ -245,7 +246,7 @@ test('a stop signal ends an idle server cleanly and at once, with exit code 0', 
   }
 });
 
-test('a stop signal sent as soon as the first line appears still ends the server cleanly', { timeout: 60_000 }, async () => {
+test('a stop signal sent as soon as the first line appears still ends the server cleanly', { timeout: 60_000, skip: notOnWindows('a stop signal ends a Windows process at once, without its clean exit') }, async () => {
   // Whoever sees the server's first line may signal at once (a script that starts it and stops it). The stop has to be
   // ready by then, not a moment after the line is printed.
   const ends = await Promise.all(Array.from({ length: 6 }, async () => {
@@ -273,7 +274,7 @@ test('a stop signal sent as soon as the first line appears still ends the server
   for (const { end, output } of ends) assert.deepEqual(end, { code: 0, signal: null }, output);
 });
 
-test('a second signal stops a server that is waiting for a running request, with exit code 1', { timeout: 60_000 }, async () => {
+test('a second signal stops a server that is waiting for a running request, with exit code 1', { timeout: 60_000, skip: notOnWindows('a stop signal ends a Windows process at once, without its clean exit') }, async () => {
   const s = await cli({ TABULARIUS_DRAIN_SECONDS: '30' });
   try {
     // A request that never ends: headers promise a body that does not arrive (the transport's own timers are far longer).
