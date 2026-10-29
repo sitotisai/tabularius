@@ -1,0 +1,682 @@
+[
+  {
+    "name": "Container.Getbase64",
+    "signature": "Container.Getbase64 ( Value )",
+    "summary": "Provides the Container.Getbase64 calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Container.GetBase64\" ; Base64Decode ( \"aGVsbG8=\" ; \"hello.txt\" ) )",
+        "result": "aGVsbG8="
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Container.Getdataurl",
+    "signature": "Container.Getdataurl ( Value )",
+    "summary": "Provides the Container.Getdataurl calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Container.GetDataURL\" ; Base64Decode ( \"aGVsbG8=\" ; \"hello.txt\" ) )",
+        "result": "data:text/plain;base64,aGVsbG8="
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Container.Gettotalsize",
+    "signature": "Container.Gettotalsize ( Value )",
+    "summary": "Provides the Container.Gettotalsize calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Container.GetTotalSize\" ; Base64Decode ( \"aGVsbG8=\" ; \"hello.txt\" ) )",
+        "result": "5"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Container.Gettypes",
+    "signature": "Container.Gettypes ( Value )",
+    "summary": "Provides the Container.Gettypes calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Container.GetTypes\" ; Base64Decode ( \"aGVsbG8=\" ; \"hello.txt\" ) )",
+        "result": "TXT"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Files.Fileextension",
+    "signature": "Files.Fileextension ( Value )",
+    "summary": "Provides the Files.Fileextension calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Folders.Systemtemporary",
+    "signature": "Folders.Systemtemporary ( Value )",
+    "summary": "Returns the host system temporary directory.",
+    "details": "The result depends on the host environment or session; details of compatibility are unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "The result depends on the host environment or session; details of compatibility are unverified."
+  },
+  {
+    "name": "Hash.Crc16",
+    "signature": "Hash.Crc16 ( InputType ; InputData { ; InputEncoding ; StartValue ; Poly ; FinalXOR ; ReflectInput ; ReflectOutput } )",
+    "summary": "Provides the Hash.Crc16 calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Hash.CRC16\" ; \"Text\" ; \"123456789\" )",
+        "result": "10673"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Hash.Crc32",
+    "signature": "Hash.Crc32 ( InputType ; InputData { ; InputEncoding ; StartValue } )",
+    "summary": "Provides the Hash.Crc32 calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Hash.CRC32\" ; \"Text\" ; \"123456789\" )",
+        "result": "3421780262"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Hash.Digest",
+    "signature": "Hash.Digest ( Algorithm ; InputType ; InputData ; InputEncoding ; OutputType { ; OutputInfo } )",
+    "summary": "Provides the Hash.Digest calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Hash.Digest\" ; \"MD5\" ; \"Text\" ; \"Hello\" ; \"UTF-8\" ; \"Hex\" )",
+        "result": "8B1A9953C4611296A827ABF8C47804D7"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Hash.MD5",
+    "signature": "Hash.MD5 ( Text { ; Flags } )",
+    "summary": "Provides the Hash.Md5 calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Hash.MD5\" ; \"Hello\" )",
+        "result": "8B1A9953C4611296A827ABF8C47804D7"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Hash.MD5.HMAC",
+    "signature": "Hash.MD5.HMAC ( Key ; Data { ; Flags } )",
+    "summary": "Provides the Hash.Md5.Hmac calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Hash.MD5.HMAC\" ; \"key\" ; \"data\" )",
+        "result": "9D5C73EF85594D34EC4438B7C97E51D8"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Hash.SHA1",
+    "signature": "Hash.SHA1 ( Text { ; Flags } )",
+    "summary": "Provides the Hash.Sha1 calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Hash.SHA1\" ; \"Hello\" )",
+        "result": "F7FF9E8B7BB2E09B70935A5D785E0CC5D9D0ABF0"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Hash.SHA1.HMAC",
+    "signature": "Hash.SHA1.HMAC ( Key ; Data { ; Flags } )",
+    "summary": "Provides the Hash.Sha1.Hmac calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Hash.SHA1.HMAC\" ; \"key\" ; \"data\" )",
+        "result": "104152C5BFDCA07BC633EEBD46199F0255C9F49D"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Hash.SHA256",
+    "signature": "Hash.SHA256 ( Text { ; Flags } )",
+    "summary": "Provides the Hash.Sha256 calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Hash.SHA256\" ; \"Hello\" )",
+        "result": "185F8DB32271FE25F561A6FC938B2E264306EC304EDA518007D1764826381969"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Hash.SHA256.HMAC",
+    "signature": "Hash.SHA256.HMAC ( Key ; Data { ; Flags } )",
+    "summary": "Provides the Hash.Sha256.Hmac calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Hash.SHA256.HMAC\" ; \"key\" ; \"data\" )",
+        "result": "5031FE3D989C6D1537A013FA6E739DA23463FDAEC3B70137D828E36ACE221BD0"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Hash.SHA512",
+    "signature": "Hash.SHA512 ( Text { ; Flags } )",
+    "summary": "Provides the Hash.Sha512 calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Hash.SHA512\" ; \"Hello\" )",
+        "result": "3615F80C9D293ED7402687F94B22D58E529B8CC7916F8FAC7FDDF7FBD5AF4CF777D3D795A7A00A16BF7E7F3FB9561EE9BAAE480DA9FE7A18769E71886B03F315"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Hash.SHA512.HMAC",
+    "signature": "Hash.SHA512.HMAC ( Key ; Data { ; Flags } )",
+    "summary": "Provides the Hash.Sha512.Hmac calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Js.Evaluate",
+    "signature": "Js.Evaluate ( Value )",
+    "summary": "Uses a JavaScript context associated with an active script session.",
+    "details": "The result depends on the host environment or session; details of compatibility are unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "The result depends on the host environment or session; details of compatibility are unverified."
+  },
+  {
+    "name": "Js.EvaluateToString",
+    "signature": "Js.EvaluateToString ( Value )",
+    "summary": "Uses a JavaScript context associated with an active script session.",
+    "details": "The result depends on the host environment or session; details of compatibility are unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "The result depends on the host environment or session; details of compatibility are unverified."
+  },
+  {
+    "name": "Js.Free",
+    "signature": "Js.Free ( Value )",
+    "summary": "Uses a JavaScript context associated with an active script session.",
+    "details": "The result depends on the host environment or session; details of compatibility are unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "The result depends on the host environment or session; details of compatibility are unverified."
+  },
+  {
+    "name": "Js.GetGlobalProperty",
+    "signature": "Js.GetGlobalProperty ( Value )",
+    "summary": "Uses a JavaScript context associated with an active script session.",
+    "details": "The result depends on the host environment or session; details of compatibility are unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "The result depends on the host environment or session; details of compatibility are unverified."
+  },
+  {
+    "name": "Js.GetGlobalPropertyValue",
+    "signature": "Js.GetGlobalPropertyValue ( Value )",
+    "summary": "Uses a JavaScript context associated with an active script session.",
+    "details": "The result depends on the host environment or session; details of compatibility are unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "The result depends on the host environment or session; details of compatibility are unverified."
+  },
+  {
+    "name": "Js.New",
+    "signature": "Js.New ( Value )",
+    "summary": "Uses a JavaScript context associated with an active script session.",
+    "details": "The result depends on the host environment or session; details of compatibility are unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "The result depends on the host environment or session; details of compatibility are unverified."
+  },
+  {
+    "name": "Js.Release",
+    "signature": "Js.Release ( Value )",
+    "summary": "Uses a JavaScript context associated with an active script session.",
+    "details": "The result depends on the host environment or session; details of compatibility are unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "The result depends on the host environment or session; details of compatibility are unverified."
+  },
+  {
+    "name": "Js.SetGlobalProperty",
+    "signature": "Js.SetGlobalProperty ( Value )",
+    "summary": "Uses a JavaScript context associated with an active script session.",
+    "details": "The result depends on the host environment or session; details of compatibility are unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "The result depends on the host environment or session; details of compatibility are unverified."
+  },
+  {
+    "name": "Js.SetGlobalPropertyValue",
+    "signature": "Js.SetGlobalPropertyValue ( Value )",
+    "summary": "Uses a JavaScript context associated with an active script session.",
+    "details": "The result depends on the host environment or session; details of compatibility are unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "The result depends on the host environment or session; details of compatibility are unverified."
+  },
+  {
+    "name": "Path.Addpathcomponent",
+    "signature": "Path.Addpathcomponent ( Path ; Component )",
+    "summary": "Provides the Path.Addpathcomponent calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Path.AddPathComponent\" ; \"/tmp/base/\" ; \"child\" )",
+        "result": "/tmp/base/child"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Path.Filemakerpathtonativepath",
+    "signature": "Path.Filemakerpathtonativepath ( Value )",
+    "summary": "Provides the Path.Filemakerpathtonativepath calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Path.FileMakerPathToNativePath\" ; \"filemac:/tmp/a\" )",
+        "result": "/tmp/a"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Path.Lastpathcomponent",
+    "signature": "Path.Lastpathcomponent ( Value )",
+    "summary": "Provides the Path.Lastpathcomponent calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Path.LastPathComponent\" ; \"/tmp/a.txt\" )",
+        "result": "a.txt"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Progressdialog.Getcancel",
+    "signature": "Progressdialog.Getcancel ( Value )",
+    "summary": "Controls or queries a host progress dialog; availability depends on the host UI.",
+    "details": "The result depends on the host environment or session; details of compatibility are unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "The result depends on the host environment or session; details of compatibility are unverified."
+  },
+  {
+    "name": "Progressdialog.Hide",
+    "signature": "Progressdialog.Hide ( Value )",
+    "summary": "Controls or queries a host progress dialog; availability depends on the host UI.",
+    "details": "The result depends on the host environment or session; details of compatibility are unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "The result depends on the host environment or session; details of compatibility are unverified."
+  },
+  {
+    "name": "Progressdialog.Reset",
+    "signature": "Progressdialog.Reset ( Value )",
+    "summary": "Controls or queries a host progress dialog; availability depends on the host UI.",
+    "details": "The result depends on the host environment or session; details of compatibility are unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "The result depends on the host environment or session; details of compatibility are unverified."
+  },
+  {
+    "name": "Progressdialog.Setbottomtext",
+    "signature": "Progressdialog.Setbottomtext ( Value )",
+    "summary": "Controls or queries a host progress dialog; availability depends on the host UI.",
+    "details": "The result depends on the host environment or session; details of compatibility are unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "The result depends on the host environment or session; details of compatibility are unverified."
+  },
+  {
+    "name": "Progressdialog.Setbuttoncaption",
+    "signature": "Progressdialog.Setbuttoncaption ( Value )",
+    "summary": "Controls or queries a host progress dialog; availability depends on the host UI.",
+    "details": "The result depends on the host environment or session; details of compatibility are unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "The result depends on the host environment or session; details of compatibility are unverified."
+  },
+  {
+    "name": "Progressdialog.Setprogress",
+    "signature": "Progressdialog.Setprogress ( Value )",
+    "summary": "Controls or queries a host progress dialog; availability depends on the host UI.",
+    "details": "The result depends on the host environment or session; details of compatibility are unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "The result depends on the host environment or session; details of compatibility are unverified."
+  },
+  {
+    "name": "Progressdialog.Settitle",
+    "signature": "Progressdialog.Settitle ( Value )",
+    "summary": "Controls or queries a host progress dialog; availability depends on the host UI.",
+    "details": "The result depends on the host environment or session; details of compatibility are unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "The result depends on the host environment or session; details of compatibility are unverified."
+  },
+  {
+    "name": "Progressdialog.Settoptext",
+    "signature": "Progressdialog.Settoptext ( Value )",
+    "summary": "Controls or queries a host progress dialog; availability depends on the host UI.",
+    "details": "The result depends on the host environment or session; details of compatibility are unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "The result depends on the host environment or session; details of compatibility are unverified."
+  },
+  {
+    "name": "Progressdialog.Show",
+    "signature": "Progressdialog.Show ( Value )",
+    "summary": "Controls or queries a host progress dialog; availability depends on the host UI.",
+    "details": "The result depends on the host environment or session; details of compatibility are unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "The result depends on the host environment or session; details of compatibility are unverified."
+  },
+  {
+    "name": "Time.Format",
+    "signature": "Time.Format ( Timestamp ; Format { ; Locale } )",
+    "summary": "Provides the Time.Format calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [],
+    "status": "partly",
+    "differences": "A fixed timestamp with a conventional strftime format returned ? during example verification; support for this format is unverified."
+  },
+  {
+    "name": "Time.Parse",
+    "signature": "Time.Parse ( Text ; Format { ; Locale } )",
+    "summary": "Provides the Time.Parse calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "GetAsText ( MBS ( \"Time.Parse\" ; \"2024-01-02\" ; \"%Y-%m-%d\" ) )",
+        "result": "1/2/2024 0:00:00"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Time.TimestampToUTC",
+    "signature": "Time.TimestampToUTC ( Value )",
+    "summary": "Provides the Time.Timestamptoutc calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [],
+    "status": "partly",
+    "differences": "A fixed epoch timestamp with text output enabled returned ? during example verification; behavior is unverified."
+  },
+  {
+    "name": "Time.TimezoneOffset",
+    "signature": "Time.TimezoneOffset ( Value )",
+    "summary": "Returns a value based on the host clock or timezone.",
+    "details": "The result depends on the host environment or session; details of compatibility are unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "The result depends on the host environment or session; details of compatibility are unverified."
+  },
+  {
+    "name": "Time.UnixTimestamp",
+    "signature": "Time.UnixTimestamp ( Value )",
+    "summary": "Returns a value based on the host clock or timezone.",
+    "details": "The result depends on the host environment or session; details of compatibility are unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "The result depends on the host environment or session; details of compatibility are unverified."
+  },
+  {
+    "name": "Time.UnixTimestampToFileMaker",
+    "signature": "Time.UnixTimestampToFileMaker ( Value )",
+    "summary": "Provides the Time.Unixtimestamptofilemaker calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "GetAsText ( MBS ( \"Time.UnixTimestampToFileMaker\" ; \"0\" ; 1 ) )",
+        "result": "1/1/1970 0:00:00"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Variable.Add",
+    "signature": "Variable.Add ( Value )",
+    "summary": "Provides the Variable.Add calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Variable.Add\" ; \"n\" ; 2 ) & MBS ( \"Variable.Add\" ; \"n\" ; 3 )",
+        "result": "25"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Variable.Append",
+    "signature": "Variable.Append ( Value )",
+    "summary": "Provides the Variable.Append calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Variable.Set\" ; \"x\" ; \"a\" ) & MBS ( \"Variable.Append\" ; \"x\" ; \"b\" )",
+        "result": "OKab"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Variable.Appendjson",
+    "signature": "Variable.Appendjson ( Value )",
+    "summary": "Provides the Variable.Appendjson calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Variable.AppendJSON\" ; \"x\" ; \"1\" )",
+        "result": "[1]"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Variable.Appendvalue",
+    "signature": "Variable.Appendvalue ( Value )",
+    "summary": "Provides the Variable.Appendvalue calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Variable.Set\" ; \"x\" ; \"a\" ) & MBS ( \"Variable.AppendValue\" ; \"x\" ; \"b\" )",
+        "result": "OKa\rb"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Variable.Clear",
+    "signature": "Variable.Clear ( Value )",
+    "summary": "Provides the Variable.Clear calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Variable.Clearall",
+    "signature": "Variable.Clearall ( Value )",
+    "summary": "Provides the Variable.Clearall calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Variable.Exists",
+    "signature": "Variable.Exists ( Value )",
+    "summary": "Provides the Variable.Exists calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Variable.Set\" ; \"x\" ; 1 ) & MBS ( \"Variable.Exists\" ; \"x\" )",
+        "result": "OK1"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Variable.Get",
+    "signature": "Variable.Get ( Value )",
+    "summary": "Provides the Variable.Get calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Variable.Set\" ; \"x\" ; \"ok\" ) & MBS ( \"Variable.Get\" ; \"x\" )",
+        "result": "OKok"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Variable.List",
+    "signature": "Variable.List ( Value )",
+    "summary": "Provides the Variable.List calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Variable.Lookup",
+    "signature": "Variable.Lookup ( Value )",
+    "summary": "Provides the Variable.Lookup calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Variable.Lookup\" ; \"missing\" ; \"fallback\" )",
+        "result": "fallback"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Variable.Names",
+    "signature": "Variable.Names ( Value )",
+    "summary": "Provides the Variable.Names calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Variable.Popjson",
+    "signature": "Variable.Popjson ( Value )",
+    "summary": "Provides the Variable.Popjson calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Variable.Popvalue",
+    "signature": "Variable.Popvalue ( Value )",
+    "summary": "Provides the Variable.Popvalue calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Variable.Set\" ; \"x\" ; \"a\u00b6b\" ) & MBS ( \"Variable.PopValue\" ; \"x\" )",
+        "result": "OKb"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Variable.Reset",
+    "signature": "Variable.Reset ( Value )",
+    "summary": "Provides the Variable.Reset calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Variable.Set",
+    "signature": "Variable.Set ( Value )",
+    "summary": "Provides the Variable.Set calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [
+      {
+        "formula": "MBS ( \"Variable.Set\" ; \"x\" ; \"ok\" ) & MBS ( \"Variable.Get\" ; \"x\" )",
+        "result": "OKok"
+      }
+    ],
+    "status": "works",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  },
+  {
+    "name": "Variable.Valuecount",
+    "signature": "Variable.Valuecount ( Value )",
+    "summary": "Provides the Variable.Valuecount calculation operation.",
+    "details": "Behavior beyond the implementation described here is unverified.",
+    "examples": [],
+    "status": "works-differently",
+    "differences": "Behavior beyond the implementation described here is unverified."
+  }
+]
