@@ -8,7 +8,7 @@ import type { DesignOp, Privileges, SnippetPick, Store } from '../../store/src/i
 import { checkStoreFormula, speedPlan, lintLayout, lintScript, fixLayout, storeStats, type LintIssue, isLayoutSnippet, layoutObjectsFromSnippet, snippetChanges } from '../../store/src/index.ts';
 import type { LayoutObject } from '../../fmp12/src/index.ts';
 import { designOf, formulaContext, layoutTheme, styleNames } from './design.ts';
-import { auditForModel, redactSecrets, redactStep } from './ai-output.ts';
+import { auditForModel, redactSecretCopies, redactSecrets, redactStep, storedSecretValues } from './ai-output.ts';
 import { recordHistory } from './record-history.ts';
 import { dryRunChanges } from './dry-run.ts';
 import { applySecurityChanges, securityOf } from './security.ts';
@@ -140,7 +140,7 @@ export function registerDesignTools(server: McpServer, host: Host, guard: (s: St
     },
     annotations: { readOnlyHint: true },
   }, async ({ database, sections, scripts }) => withStore(database, (s) => {
-    const all = designOf(s, host.names()) as Record<string, unknown>;
+    const all = redactStep(designOf(s, host.names())) as Record<string, unknown>;
     // Scripts as text (secrets hidden); steps with their options only for the scripts asked for by name.
     const wanted = scripts?.length ? new Set(scripts.map((x) => x.toLowerCase())) : undefined;
     all.scripts = (all.scripts as { id: number; name: string; steps: unknown[]; text: string }[])
@@ -490,7 +490,7 @@ export function registerDesignTools(server: McpServer, host: Host, guard: (s: St
     description: 'Design changes made to a database in Tabularius (by people, scripts or AI), oldest first.',
     inputSchema: { database: db, limit: z.number().int().min(1).max(1000).default(100) },
     annotations: { readOnlyHint: true },
-  }, async ({ database, limit }) => withStore(database, (s) => s.designHistory(limit)));
+  }, async ({ database, limit }) => withStore(database, (s) => redactStep(s.designHistory(limit))));
 
   server.registerTool('audit_log', {
     description: 'Who created, changed and deleted which records of a database, and when, oldest first. ' +
@@ -526,7 +526,7 @@ export function registerDesignTools(server: McpServer, host: Host, guard: (s: St
   }, async ({ database, table, layout, recordId, limit }) => withStore(database, (s) => {
     const t = table ?? (layout ? s.layout(layout).table : undefined);
     if (!t) throw new Error('Name the table or a layout on it');
-    return recordHistory(s, t, recordId, { limit });
+    return redactSecretCopies(recordHistory(s, t, recordId, { limit }), storedSecretValues(s));
   }));
 
   server.registerTool('suggest_indexes', {
