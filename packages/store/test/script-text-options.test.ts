@@ -17,6 +17,21 @@ store.applyDesign([{ op: 'createTable', name: 'P', fields: [{ name: 'Name' }, { 
 
 const parse = (text: string) => parseScriptText(text, store.schema);
 
+test('Go to Related Record keeps both parameterised options through script text', () => {
+  store.applyDesign([{ op: 'createTable', name: 'Q', fields: [{ name: 'Name' }] }] as never);
+  for (const options of [
+    'Show only related records ; Match all records in current found set',
+    'Show only related records: On ; Match all records in the found set',
+    'Show only related records: Off ; Match all records in current found set',
+    'Show only related records: Off',
+  ]) {
+    const line = `Go to Related Record [ ${options} ; From table: “Q” ; Using layout: “Q” ]`;
+    const step = parse(line)[0];
+    const printed = stepLine('Go to Related Record', step.params);
+    assert.deepEqual(parse(printed)[0].params, step.params, line);
+  }
+});
+
 test('a step rejects options it cannot carry through script text', () => {
   for (const line of [
     'Write to Data File [ Select ]',

@@ -55,6 +55,7 @@ const partial = table('Partly supported');
 
 const OPTION_NOTES: Record<string, string> = {
   'Go to Record/Request/Page': 'First, Last, Previous, Next or a calculated record number; Next and Previous can exit after the last record.',
+  'Go to Related Record': 'Use `Match all records in current found set` to match every source record. `Show only related records` or `Show only related records: Off` controls whether the destination found set is replaced or kept.',
   'Go to Layout': 'Choose a named layout, the original layout, or a layout name calculated at runtime.',
   'Set Field': 'Choose a field and a calculation for its new value.',
   'Set Variable': 'Choose a $ variable, a value calculation and, optionally, a repetition.',
