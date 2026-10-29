@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 
 /** Shared static assertions; no shell, downloads or PowerShell execution. */
 export function checkWindowsInstallerChecksum(ps: string): void {
-  assert.match(ps, /function Die\([^\n]+Write-Error[^\n]+exit 1/);
-  const start = ps.indexOf('  $file = "node-v$NodeVersion-win-$arch.zip"');
+  assert.match(ps, /function Die\([^\n]+throw \$Messages\[\$key\]/);
+  assert.match(ps, /trap \{[^\n]+\[Console\]::Error.WriteLine[^\n]+exit 1/);
+  const start = ps.indexOf('  $file = Get-NodeArchive $NodeVersion $arch');
   const end = ps.indexOf('  Expand-Archive -Path $zip');
   assert.ok(start >= 0 && end > start);
   const check = ps.slice(start, end);
@@ -17,7 +18,8 @@ export function checkWindowsInstallerChecksum(ps: string): void {
   assert.ok(check.includes('$line.TrimEnd("`r") -cmatch \'\\A([0-9a-fA-F]{64}) {1,2}\\*?(.*)\\z\' -and $Matches[2] -ceq $file'));
   assert.match(check, /\$expected = \$Matches\[1\]\s+break/);
   assert.match(check, /\$actual = \(Get-FileHash -Algorithm SHA256 -Path \$zip\)\.Hash/);
-  assert.match(check, /if \(\$expected -eq '<missing>' -or \$actual -ne \$expected\) \{\s+Die "SHA256 mismatch for \$\{file\}: expected \$expected, actual \$actual"\s+\}/);
+  assert.match(check, /if \(-not \(Test-Checksum \$expected \$actual\)\) \{\s+Die 'Checksum'\s+\}/);
+  assert.ok(ps.includes("return ($expected -match '\\A[0-9a-fA-F]{64}\\z' -and $actual -eq $expected)"));
   // Download, hashing and extraction all stay inside try; cleanup targets only the temp folder.
   assert.match(ps, /New-Item[^\n]+-Path \$tmp[^\n]+\n  try \{/);
   const tryStart = ps.indexOf('  try {', ps.indexOf('$tmp = Join-Path'));
@@ -26,5 +28,5 @@ export function checkWindowsInstallerChecksum(ps: string): void {
   assert.ok(ps.indexOf("Move-Item -LiteralPath (Join-Path $OhHome 'node') -Destination $previousNode") > end);
   assert.ok(ps.indexOf('Move-Item -LiteralPath $previousNode -Destination', end) > end);
   assert.doesNotMatch(ps, /Remove-Item[^\n]+\(Join-Path \$OhHome 'node'\)/);
-  assert.match(ps.slice(finallyStart), /^  \} finally \{\s+Remove-Item -LiteralPath \$tmp -Recurse -Force\s+\}\s+\$Node = \$own/);
+  assert.match(ps.slice(finallyStart), /^  \} finally \{\s+#[^\n]+\s+try \{ Remove-Item -LiteralPath \$tmp -Recurse -Force \}\s+catch \{ Say '[^']+' \}\s+\}\s+\$Node = \$own/);
 }
