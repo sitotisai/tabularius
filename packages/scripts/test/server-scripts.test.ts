@@ -56,6 +56,55 @@ after(() => {
 const first = () => store.findIds('Things')[0];
 const name = () => String(store.get('Things', first()).fieldData.Name);
 
+test('nested server scripts share the caller step budget', async () => {
+  const local = mkdtempSync(join(tmpdir(), 'tabularius-psos-budget-'));
+  createStore(join(local, 'Jobs.sqlite'));
+  const target = new Store(join(local, 'Jobs.sqlite'), 'Jobs');
+  try {
+    target.applyDesign([{ op: 'createTable', name: 'Things', fields: [{ name: 'Name' }] }]);
+    target.create('Things', { Name: 'before' });
+    target.applyDesign([
+      { op: 'createScript', name: 'Budget leaf', text: 'Set Field [ Things::Name ; "budget leaf ran" ]' },
+      { op: 'createScript', name: 'Budget middle', text: 'Perform Script on Server [ “Budget leaf” ; Wait for completion: On ]' },
+      { op: 'createScript', name: 'Budget root', text: 'Perform Script on Server [ “Budget middle” ; Wait for completion: On ]' },
+    ]);
+    await runScript(target, 'Budget root', { layout: 'Things', maxSteps: 2 });
+    assert.equal(target.get('Things', target.findIds('Things')[0]).fieldData.Name, 'before');
+  } finally { target.close(); rmSync(local, { recursive: true }); }
+});
+
+test('plain Perform Script recursion stops at a bounded depth', async () => {
+  const local = mkdtempSync(join(tmpdir(), 'tabularius-script-depth-'));
+  createStore(join(local, 'Jobs.sqlite'));
+  const target = new Store(join(local, 'Jobs.sqlite'), 'Jobs');
+  try {
+    target.applyDesign([{ op: 'createTable', name: 'Things', fields: [{ name: 'Name' }] }]);
+    target.create('Things', { Name: 'before' });
+    const depth = 70;
+    target.applyDesign(Array.from({ length: depth }, (_, index) => depth - index - 1).map((i) => ({ op: 'createScript' as const, name: `Depth ${i}`, text: i + 1 < depth
+      ? `Perform Script [ “Depth ${i + 1}” ]`
+      : 'Set Field [ Things::Name ; "depth leaf ran" ]' })));
+    await runScript(target, 'Depth 0', { layout: 'Things', maxSteps: 500 });
+    assert.equal(target.get('Things', target.findIds('Things')[0]).fieldData.Name, 'before');
+  } finally { target.close(); rmSync(local, { recursive: true }); }
+});
+
+test('nested server scripts count toward the same call depth', async () => {
+  const local = mkdtempSync(join(tmpdir(), 'tabularius-server-depth-'));
+  createStore(join(local, 'Jobs.sqlite'));
+  const target = new Store(join(local, 'Jobs.sqlite'), 'Jobs');
+  try {
+    target.applyDesign([{ op: 'createTable', name: 'Things', fields: [{ name: 'Name' }] }]);
+    target.create('Things', { Name: 'before' });
+    const depth = 70;
+    target.applyDesign(Array.from({ length: depth }, (_, index) => depth - index - 1).map((i) => ({ op: 'createScript' as const, name: `Server depth ${i}`, text: i + 1 < depth
+      ? `Perform Script on Server [ “Server depth ${i + 1}” ; Wait for completion: On ]`
+      : 'Set Field [ Things::Name ; "depth leaf ran" ]' })));
+    await runScript(target, 'Server depth 0', { layout: 'Things', maxSteps: 500 });
+    assert.equal(target.get('Things', target.findIds('Things')[0]).fieldData.Name, 'before');
+  } finally { target.close(); rmSync(local, { recursive: true }); }
+});
+
 test('the server script starts fresh, as the same account, and its result comes back', async () => {
   const r = await runScript(store, 'Ask', { account: 'Ann', layout: 'Things', foundSet: [first()] });
   // Its parameter, none of the caller's globals or found set, the caller's account.
