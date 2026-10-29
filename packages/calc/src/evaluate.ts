@@ -306,6 +306,13 @@ const calculationTime = (): number => {
 };
 
 /** Evaluation state: the context, Let scopes and recursion depth. */
+/** A written decimal keeps its digits but not trailing zeros, as FileMaker shows it: 1.50 is 1.5 and 2.0 is 2. */
+function decimalLiteral(raw: string, value: number): Value {
+  if (!/^\d*\.\d*$/.test(raw)) return num(value);
+  const text = raw.replace(/0+$/, '').replace(/\.$/, '').replace(/^\./, '0.');
+  return text.includes('.') ? { type: 'number', value, decimal: text } : num(value);
+}
+
 export class Env {
   readonly ctx: CalcContext;
   readonly names: NameTable;
@@ -419,7 +426,7 @@ export class Env {
       : Decimal.parse(n.raw ?? String(n.value), this.decimalPlaces)).value()
       : n.raw !== undefined && isOverlongWholeText(n.raw) ? num(NaN)
         : n.exact !== undefined ? { type: 'number', value: n.value, exact: n.exact }
-        : n.raw?.includes('.') ? { type: 'number', value: n.value, decimal: n.raw } : num(n.value);
+        : n.raw?.includes('.') ? decimalLiteral(n.raw, n.value) : num(n.value);
   }
 
   private node(n: Node): Value {
