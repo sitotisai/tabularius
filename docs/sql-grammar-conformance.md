@@ -6,7 +6,7 @@ The grammar is in [`packages/server/test/data/sql-grammar.json`](../packages/ser
 
 ## What was checked
 
-227 entries, 221 with an expectation and 6 recorded as not verified (below). Each entry with an expectation runs on the applicable paths.
+231 entries, 225 with an expectation and 6 recorded as not verified (below). Each entry with an expectation runs on the applicable paths.
 
 | Area | Constructs |
 | --- | --- |
@@ -18,13 +18,13 @@ The grammar is in [`packages/server/test/data/sql-grammar.json`](../packages/ser
 | UNION, ORDER BY (names, ordinals, `ASC`/`DESC`, binary order) | 13 |
 | OFFSET, FETCH FIRST (`ROW`/`ROWS`, count omitted, `WITH TIES`, `PERCENT`, subqueries, count under 1) | 23 |
 | Constants and operators (strings, scientific notation, `DATE`/`TIME`/`TIMESTAMP`, `{D '...'}`, `^`, `**`, precedence, string `+` and `-`, date arithmetic) | 26 |
-| Functions: string, numeric, date, `CASE`, `COALESCE`, `NULLIF`, `CAST`, container `GetAs` | 66 |
+| Functions: string, numeric, date, `CASE`, `COALESCE`, `NULLIF`, `CAST`, container `GetAs` | 70 |
 | `FOR UPDATE` cursor clause | 1 |
 | System tables and columns (`FileMaker_Tables`, `FileMaker_Fields`, `FileMaker_BaseTables`, `ROWID`, `ROWMODID`) | 6 |
 | Statements that write (`INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`, `ALTER TABLE`, `CREATE`/`DROP INDEX`, `TRUNCATE`) | 8 |
 | `?` parameters (one, multiple in order, a value containing a quote) | 3 |
 
-99 results are ones the Claris page states, with the example it gives. 122 are worked out from the rule the page states (marked `derived` in the file), for example the result of a function the page names but gives no example for. Six entries are marked `unverified` because the vendor result is not stated. Every entry names its page. The `?` cases follow [Claris's ExecuteSQL help](https://help.claris.com/en/pro-help/content/executesql.html), which specifies argument binding order; the quoted-name cases follow its `"Last Name"` example and the [reserved keyword rule](https://help.claris.com/en/sql-reference/content/reserved-sql-keywords.html). <!-- known-difference-ok: describes evidence categories rather than a product behavior difference -->
+99 results are ones the Claris page states, with the example it gives. 126 are derived from a stated rule or the SQL standard (marked `derived` in the file). The Claris pages read give no example of `DECIMAL(p,s)` or `NUMERIC(p,s)` casts, so their precision, scale, and overflow expectations come from the SQL standard; the vendor result is unverified. Six other entries are marked `unverified` because their vendor result is not stated. Every entry names its page. The `?` cases follow [Claris's ExecuteSQL help](https://help.claris.com/en/pro-help/content/executesql.html), which specifies argument binding order; the quoted-name cases follow its `"Last Name"` example and the [reserved keyword rule](https://help.claris.com/en/sql-reference/content/reserved-sql-keywords.html). <!-- known-difference: SQL grammar ;; vendor results for parameterized DECIMAL and NUMERIC casts are unspecified in the cited pages ;; the conformance test uses the SQL standard for these four derived expectations ;; compare the casts with FileMaker and record the observed result -->
 
 ## What the check found and what changed
 
@@ -44,6 +44,7 @@ The first run disagreed with the pages on 42 entries. Some were mistakes in the 
 | `FETCH FIRST n ROWS WITH TIES` | "Not supported" | The first n rows and every row that sorts equal to the last one (below) |
 | `2 ^ 3`, `2 ** 3` | A syntax error | Exponent, with the unary minus above it (`-2 ^ 2` is 4) |
 | `ROUND(123.456, -2)` | 123 | 100; rounds half away from zero, in decimal (`ROUND(1.005, 2)` is 1.01) |
+| `CAST(x AS DECIMAL(p,s))` | The value unchanged | Rounded to s places (half away from zero), with an error when it does not fit in p digits; forms without brackets remain SQLite casts |
 | `NUMVAL('abc')` | NULL | An error; the page says the function fails |
 | `DATE '2020-13-45'` and the other constants | Kept as the text it was given | An error when the query runs |
 | `'a' + 'b'`, `first + ' ' + last`, `'a' - 'b'` | `0` (SQLite adds the numbers) | Joined; `-` moves the first string's trailing blanks to the end |

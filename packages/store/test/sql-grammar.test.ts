@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createStore, Store } from '../src/index.ts';
 import { fileMakerSqlSyntax } from '../src/sql-dates.ts';
-import { anyAllToIn, containerCastsToName, expandStars, fetchToLimit, refuseUnsupportedJoins } from '../src/sql-grammar.ts';
+import { anyAllToIn, castsToTypes, containerCastsToName, expandStars, fetchToLimit, refuseUnsupportedJoins } from '../src/sql-grammar.ts';
 
 let dir: string;
 let store: Store;
@@ -405,6 +405,44 @@ test('ROUND rounds half away from zero, in decimal, and accepts negative digits'
   assert.equal(one('SELECT ROUND(2.5) FROM P'), 3);
   assert.equal(one('SELECT ROUND(NULL, 2) FROM P'), null);
   assert.equal(one("SELECT 'ROUND(' FROM P"), 'ROUND(');
+});
+
+test('parameterized DECIMAL and NUMERIC casts round, validate, and preserve other casts', () => {
+  const untouched = 'SELECT CAST(N AS DECIMAL), CAST(N AS INT) FROM W';
+  assert.equal(castsToTypes(untouched), untouched);
+  assert.equal(castsToTypes("SELECT 'CAST(2 AS DECIMAL(2))', CAST(? AS NUMERIC(5, 2)) -- CAST(3 AS DECIMAL(3))"),
+    "SELECT 'CAST(2 AS DECIMAL(2))', fm_cast_decimal(? , 5, 2) -- CAST(3 AS DECIMAL(3))");
+  assert.equal(castsToTypes('SELECT CAST(CAST(? AS DECIMAL(5,2)) AS NUMERIC(5,1))'),
+    'SELECT fm_cast_decimal(fm_cast_decimal(? , 5, 2) , 5, 1)');
+  assert.deepEqual(run('SELECT CAST(? AS DECIMAL(5,2))', ['2.567']).rows, [[2.57]]);
+  for (const [expression, expected] of [
+    ['CAST(2.567 AS DECIMAL(5,2))', 2.57],
+    ['CAST(2.5 AS DECIMAL(5,0))', 3],
+    ['CAST(2.5 AS DECIMAL(5))', 3],
+    ['CAST(-2.5 AS NUMERIC(5,0))', -3],
+    ['CAST(-2.5 AS NUMERIC(5))', -3],
+    ['CAST(1.005 AS DECIMAL(5,2))', 1.01],
+    ["CAST('2.567' AS DECIMAL(5,2))", 2.57],
+    ["CAST(' 7 ' AS DECIMAL(3))", 7],
+    ["CAST('1e1' AS NUMERIC(3,1))", 10],
+    ['CAST(99.99 AS DECIMAL(4,2))', 99.99],
+    ['CAST(2.5 AS INT)', 2],
+    ['CAST(-2.5 AS INT)', -2],
+    ['CAST(CAST(2.567 AS DECIMAL(5,2)) AS DECIMAL(5,1))', 2.6],
+  ] as const) assert.deepEqual(rows(`SELECT ${expression}`), [[expected]], expression);
+  assert.deepEqual(rows("SELECT CAST(N AS DECIMAL(4,1)) FROM W WHERE Name = 'e'"), [[3]]);
+  for (const expression of ['CAST(NULL AS DECIMAL(5,2))', "CAST('' AS DECIMAL(5,2))"]) {
+    assert.deepEqual(rows(`SELECT ${expression}`), [[null]], expression);
+  }
+  for (const [expression, message] of [
+    ['CAST(99.995 AS DECIMAL(4,2))', /out of range/],
+    ['CAST(12.5 AS DECIMAL(3,2))', /out of range/],
+    ["CAST('abc' AS DECIMAL(5,2))", /Invalid number/],
+    ['CAST(1 AS DECIMAL(0))', /precision/],
+    ['CAST(1 AS DECIMAL(39))', /precision/],
+    ['CAST(1 AS DECIMAL(2,3))', /precision/],
+  ] as const) assert.throws(() => rows(`SELECT ${expression}`), message, expression);
+  assert.deepEqual(rows('SELECT CAST(12.5 AS DECIMAL(3,2)) FROM W WHERE 0'), []);
 });
 
 test('+ and - join strings (and - moves the blanks to the end)', () => {
