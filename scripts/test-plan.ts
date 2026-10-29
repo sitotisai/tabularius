@@ -14,6 +14,8 @@ const SCANNING_SLOW_GATES = [
   'packages/cli/test/no-private-names.test.ts',
   'packages/cli/test/docs-drift.test.ts',
 ];
+/** Tests under scripts/ that need a browser: like the other browser tests they are not part of test:ci. */
+export const BROWSER_SCRIPT_TESTS = new Set(['walkthrough.test.ts']);
 const WEIGHTS_FILE = 'scripts/test-weights.json';
 
 const readJson = <T>(file: string): T => JSON.parse(readFileSync(join(ROOT, file), 'utf8')) as T;
@@ -23,7 +25,7 @@ export function allTests(root = ROOT): string[] {
   return readdirSync(packages).flatMap((name) => {
     const dir = join(packages, name, 'test');
     return existsSync(dir) ? readdirSync(dir).filter((file) => file.endsWith('.test.ts')).map((file) => `packages/${name}/test/${file}`) : [];
-  }).concat(readdirSync(join(root, 'scripts')).filter((file) => file.endsWith('.test.ts')).map((file) => `scripts/${file}`)).sort();
+  }).concat(readdirSync(join(root, 'scripts')).filter((file) => file.endsWith('.test.ts') && !BROWSER_SCRIPT_TESTS.has(file)).map((file) => `scripts/${file}`)).sort();
 }
 
 export function gateTests(): string[] {
