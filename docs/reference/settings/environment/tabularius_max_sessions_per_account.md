@@ -8,6 +8,6 @@ Maximum active Data API sessions per account.
 | Accepted values | Nonnegative whole number; 0 removes the cap |
 | Restart needed | Yes; restart the server after changing its environment. |
 | Explained in | [docs/data-api-compatibility.md](../../../data-api-compatibility.md) |
-| Code | [packages/server/src/dataapi.ts:903](../../../../packages/server/src/dataapi.ts#L903) |
+| Code | [packages/server/src/dataapi.ts:901](../../../../packages/server/src/dataapi.ts#L901) |
 
 [All environment variables](../../../environment-variables.md)
