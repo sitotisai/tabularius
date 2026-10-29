@@ -8,6 +8,6 @@ Passphrase used to unlock encrypted hosted files. A set-but-empty or whitespace-
 | Accepted values | Nonblank passphrase for encrypted hosted files; an empty value stops `serve` |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/hosting-for-a-team.md](../../../hosting-for-a-team.md) |
-| Code | [packages/cli/src/doctor.ts:163](../../../../packages/cli/src/doctor.ts#L163) |
+| Code | [packages/cli/src/doctor.ts:66](../../../../packages/cli/src/doctor.ts#L66) |
 
 [All environment variables](../../../environment-variables.md)

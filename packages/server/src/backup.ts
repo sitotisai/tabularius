@@ -570,7 +570,7 @@ function releasePidFile(folder: string, ino: number): void {
 }
 
 /** Read the OS birth identity, not elapsed time; a recycled PID has a different identity.
- * Windows CIM and POSIX ps formats are platform-specific; cross-platform behaviour is unverified here.
+ * Linux reads /proc; Windows CIM and macOS ps formats are platform-specific, and their behaviour is unverified here.
  */
 export function processIdentity(pid: number): { started: string; command: string } | undefined {
   if (process.platform === 'win32') {
@@ -580,6 +580,20 @@ export function processIdentity(pid: number): { started: string; command: string
     const value = JSON.parse(output) as { CreationDate?: string; CommandLine?: string };
     if (!value.CreationDate) throw new Error('could not read the process creation time');
     return { started: value.CreationDate, command: value.CommandLine ?? '' };
+  }
+  if (process.platform === 'linux') {
+    // The kernel's own record: the slim container image has no ps, and a process's start time here is in clock ticks since boot.
+    try {
+      const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
+      // The name field is in parentheses and may hold spaces or brackets, so count fields from the last closing one.
+      const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+      const started = fields[19];
+      if (!started) throw new Error('could not read the process creation time');
+      return { started, command: readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0').join(' ').trim() };
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+      throw e;
+    }
   }
   // An absolute system utility avoids PATH-dependent identity checks.
   const output = execFileSync('/bin/ps', ['-p', String(pid), '-o', 'lstart=', '-o', 'command='], { encoding: 'utf8', timeout: 5000, env: { ...process.env, LC_ALL: 'C' } }).trim();
