@@ -36,6 +36,10 @@
     "reason": "Scans every source file for a secret compared without sameSecret"
   },
   {
+    "file": "packages/server/test/fs-boundary-imports.test.ts",
+    "reason": "Checks that file-writing modules import the filesystem boundary, apart from a shrinking allow-list"
+  },
+  {
     "file": "packages/store/test/docs-no-line-anchors.test.ts",
     "reason": "Checks documentation links avoid line anchors"
   },

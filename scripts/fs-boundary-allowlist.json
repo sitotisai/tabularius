@@ -1,0 +1,130 @@
+[
+  {
+    "file": "packages/cli/src/corpus-scan.ts",
+    "reason": "does not write a key, token or approval record: aggregate-count corpus report files"
+  },
+  {
+    "file": "packages/cli/src/diagnostics.ts",
+    "reason": "does not write a key, token or approval record: the redacted diagnostics bundle and a read-only open"
+  },
+  {
+    "file": "packages/cli/src/main.ts",
+    "reason": "writes a credential, key, token or approval record; to move onto fs-boundary"
+  },
+  {
+    "file": "packages/cli/src/stop-request.ts",
+    "reason": "does not write a key, token or approval record: a pid marker file"
+  },
+  {
+    "file": "packages/server/src/acme.ts",
+    "reason": "writes a credential, key, token or approval record; to move onto fs-boundary"
+  },
+  {
+    "file": "packages/server/src/admin.ts",
+    "reason": "writes a credential, key, token or approval record; to move onto fs-boundary"
+  },
+  {
+    "file": "packages/server/src/ai-usage.ts",
+    "reason": "does not write a key, token or approval record: an empty SQLite file created before opening it"
+  },
+  {
+    "file": "packages/server/src/backup-folder.ts",
+    "reason": "does not write a key, token or approval record: an empty probe file to test folder writability"
+  },
+  {
+    "file": "packages/server/src/cert-import.ts",
+    "reason": "writes a credential, key, token or approval record; to move onto fs-boundary"
+  },
+  {
+    "file": "packages/server/src/component-library.ts",
+    "reason": "does not write a key, token or approval record: copies, links or moves solution files"
+  },
+  {
+    "file": "packages/server/src/connections.ts",
+    "reason": "writes a credential, key, token or approval record; to move onto fs-boundary"
+  },
+  {
+    "file": "packages/server/src/conversion-files.ts",
+    "reason": "does not write a key, token or approval record: copies, links or moves solution files"
+  },
+  {
+    "file": "packages/server/src/dataapi.ts",
+    "reason": "does not write a key, token or approval record: only reads through openSync"
+  },
+  {
+    "file": "packages/server/src/fms-migrate.ts",
+    "reason": "writes a credential, key, token or approval record; to move onto fs-boundary"
+  },
+  {
+    "file": "packages/server/src/host.ts",
+    "reason": "does not write a key, token or approval record: moves partial downloads and files into place"
+  },
+  {
+    "file": "packages/server/src/hosted-record.ts",
+    "reason": "writes a credential, key, token or approval record; to move onto fs-boundary"
+  },
+  {
+    "file": "packages/server/src/inbound-hooks.ts",
+    "reason": "does not write a key, token or approval record: appends JSON lines to a log"
+  },
+  {
+    "file": "packages/server/src/local-admin.ts",
+    "reason": "writes a credential, key, token or approval record; to move onto fs-boundary"
+  },
+  {
+    "file": "packages/server/src/local-tls.ts",
+    "reason": "writes a credential, key, token or approval record; to move onto fs-boundary"
+  },
+  {
+    "file": "packages/server/src/logs.ts",
+    "reason": "does not write a key, token or approval record: the sealed or plain log file"
+  },
+  {
+    "file": "packages/server/src/mcp-local-token.ts",
+    "reason": "writes a credential, key, token or approval record; to move onto fs-boundary"
+  },
+  {
+    "file": "packages/server/src/migration-files.ts",
+    "reason": "does not write a key, token or approval record: copies, links or moves solution files"
+  },
+  {
+    "file": "packages/server/src/oauth.ts",
+    "reason": "does not write a key, token or approval record: an empty SQLite file created before opening it"
+  },
+  {
+    "file": "packages/server/src/oidc.ts",
+    "reason": "does not write a key, token or approval record: an empty private file created with exclusive open"
+  },
+  {
+    "file": "packages/server/src/outbox.ts",
+    "reason": "does not write a key, token or approval record: appends JSON lines to a log"
+  },
+  {
+    "file": "packages/server/src/s3.ts",
+    "reason": "does not write a key, token or approval record: streams a download to a partial file, then renames it"
+  },
+  {
+    "file": "packages/server/src/standby.ts",
+    "reason": "does not write a key, token or approval record: streams a download to a partial file, then renames it"
+  },
+  {
+    "file": "packages/server/src/sync-console.ts",
+    "reason": "does not write a key, token or approval record: renames an unreadable setup aside"
+  },
+  {
+    "file": "packages/store/src/design-text.ts",
+    "reason": "does not write a key, token or approval record: design text export files"
+  },
+  {
+    "file": "packages/store/src/exit-bundle.ts",
+    "reason": "writes a credential, key, token or approval record; to move onto fs-boundary"
+  },
+  {
+    "file": "packages/store/src/import.ts",
+    "reason": "does not write a key, token or approval record: only reads through openSync"
+  },
+  {
+    "file": "packages/store/src/results.ts",
+    "reason": "does not write a key, token or approval record: an empty SQLite file created before opening it"
+  }
+]
