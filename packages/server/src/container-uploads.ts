@@ -13,7 +13,7 @@
 // (before a byte is taken in) and again when it finishes, with the account's privileges at that moment.
 
 import { createHash, randomBytes, type Hash } from 'node:crypto';
-import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readSync, rmSync } from 'node:fs';
+import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readSync } from 'node:fs';
 import { cleanupPath, openSync, writeFileSync, writeSync } from '../../store/src/fs-boundary.ts';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -57,6 +57,8 @@ function processAlive(pid: number): boolean {
   }
 }
 
+const stillThere = (path: string): boolean => { try { lstatSync(path); return true; } catch { return false; } };
+
 /** Removes stale upload spools left by an interrupted server, without following links outside the temp folder. */
 export function sweepOrphanUploadFolders(opts: UploadSweepOptions): { removed: string[]; kept: number; failed: number } {
   const result = { removed: [] as string[], kept: 0, failed: 0 };
@@ -76,9 +78,11 @@ export function sweepOrphanUploadFolders(opts: UploadSweepOptions): { removed: s
     const path = join(opts.tmp, name);
     try {
       const before = lstatSync(path);
+      const remove = cleanupPath(path, { recursive: true, force: true });
       if (legacyRequest) {
         if (!before.isFile() || (typeof process.getuid === 'function' && before.uid !== process.getuid()) || now - before.mtimeMs <= Math.max(olderThanMs, WEEK_MS)) { result.kept++; continue; }
-        rmSync(path, { force: true });
+        remove({ throwOnError: true });
+        if (stillThere(path)) { result.kept++; continue; }
         result.removed.push(name);
         if (result.removed.length >= 100) break;
         continue;
@@ -116,7 +120,8 @@ export function sweepOrphanUploadFolders(opts: UploadSweepOptions): { removed: s
       if (!ownRun && typeof marker?.pid === 'number' && Number.isSafeInteger(marker.pid) && marker.pid > 0 && dirAge < WEEK_MS && alive(marker.pid)) { result.kept++; continue; }
       const again = lstatSync(path);
       if (!again.isDirectory() || again.dev !== before.dev || again.ino !== before.ino) { result.kept++; continue; }
-      rmSync(path, { recursive: true, force: true });
+      remove({ throwOnError: true });
+      if (stillThere(path)) { result.kept++; continue; }
       result.removed.push(name);
       if (result.removed.length >= 100) break;
     } catch (error) {
@@ -200,6 +205,7 @@ export function requestUploadSpool(bytes: number, who: { db: string; account: st
   requestSpoolBytes += bytes;
   requestSpoolsByAccount.set(key, mine + 1);
   let dir: string | undefined;
+  let removeDir: ReturnType<typeof cleanupPath> | undefined;
   let released = false;
   const release = () => {
     if (released) return;
@@ -209,12 +215,13 @@ export function requestUploadSpool(bytes: number, who: { db: string; account: st
     if (left > 0) requestSpoolsByAccount.set(key, left); else requestSpoolsByAccount.delete(key);
     if (dir) {
       folders.delete(dir);
-      rmSync(dir, { recursive: true, force: true });
+      removeDir?.();
     }
   };
   try {
     mkdirSync(tmp, { recursive: true });
     dir = mkdtempSync(join(tmp, UPLOAD_PREFIX));
+    removeDir = cleanupPath(dir, { recursive: true, force: true });
     folders.set(dir, release);
     writeFileSync(join(dir, 'owner.json'), JSON.stringify({ pid: process.pid, run: RUN_ID, started: Date.now(), version: 1 }), { flag: 'wx', mode: 0o600 });
     return { path: join(dir, 'request.part'), release };
