@@ -70,7 +70,7 @@ export class SqlEndpoint {
       const db = decodeURIComponent(m[1]);
       const store = this.host.get(db);
       if (!store) {
-        await refuseUnknownFile(this.host, req);
+        await refuseUnknownFile(this.host, req, db);
         throw new ApiError(802, `Unable to open file "${db}"`, 404);
       }
       const p = await this.signIn(req, store);
