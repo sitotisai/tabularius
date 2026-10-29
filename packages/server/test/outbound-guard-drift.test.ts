@@ -88,7 +88,7 @@ function rawUses(): Map<string, string[]> {
       for (const [what, re] of RAW) {
         lines.forEach((line, i) => { if (re.test(line) && !declaration(line)) hits.push(`${what} at line ${i + 1}`); });
       }
-      if (hits.length) found.set(relative(root, file), hits);
+      if (hits.length) found.set(relative(root, file).replaceAll('\\', '/'), hits);
     }
   }
   return found;
