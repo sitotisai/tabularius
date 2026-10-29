@@ -19,7 +19,8 @@ export function syncPath(path: string, fs: DurableFs = disk, platform: NodeJS.Pl
   const directory = fs.statSync(path).isDirectory();
   if (directory && platform === 'win32') return;
   try {
-    const fd = fs.openSync(directory && fs === disk ? realpathSync(path) : path, 'r');
+    // Windows refuses to flush a handle that was opened read-only.
+    const fd = fs.openSync(directory && fs === disk ? realpathSync(path) : path, !directory && platform === 'win32' ? 'r+' : 'r');
     try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
   } catch (error) {
     if (!directory || !['EPERM', 'EISDIR', 'EINVAL'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error;
