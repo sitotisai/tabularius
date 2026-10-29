@@ -15,9 +15,15 @@ function unwrap(n: ts.Expression): ts.Expression {
   while (ts.isParenthesizedExpression(n) || ts.isAsExpression(n) || ts.isTypeAssertionExpression(n) || ts.isNonNullExpression(n)) n = n.expression;
   return n;
 }
+function isCoalesce(n: ts.BinaryExpression): boolean {
+  switch (n.operatorToken.kind) {
+    case ts.SyntaxKind.QuestionQuestionToken: return true;
+    default: return false;
+  }
+}
 function readName(n: ts.Expression): string | undefined {
   n = unwrap(n);
-  if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) n = unwrap(n.left);
+  if (ts.isBinaryExpression(n) && isCoalesce(n)) n = unwrap(n.left);
   if (ts.isPropertyAccessExpression(n) && ts.isPropertyAccessExpression(n.expression) && ts.isIdentifier(n.expression.expression) && n.expression.expression.text === 'process' && n.expression.name.text === 'env') return n.name.text;
   if (ts.isElementAccessExpression(n) && n.argumentExpression && ts.isStringLiteral(n.argumentExpression) && ts.isPropertyAccessExpression(n.expression) && ts.isIdentifier(n.expression.expression) && n.expression.expression.text === 'process' && n.expression.name.text === 'env') return n.argumentExpression.text;
   return undefined;
