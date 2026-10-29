@@ -1,3 +1,4 @@
+import { enterActivates, confirmsComposition } from './ime.ts';
 // The app shell: pick a database, log in, then browse its layouts with a
 // status toolbar like FileMaker's (records, find, sort, form/list/table view).
 
@@ -24,7 +25,7 @@ import { LayoutRenderer, containerKind, callWebViewer, answerPageCalls, tellPage
 import { editRuns, formatAt, restyleRange, type TextFormat } from './styled.ts';
 import { LockedError, Locks, Presence, currentLocks, currentViewers, listen, type Change } from './live.ts';
 import { relayedChange, relayedFrom, type Relayed } from './change-relay.ts';
-import { forgetPrefs, forgetTabState, keptRemove, keptSet, prefStorageKey, purgeExpiredKept } from './device-data.ts';
+import { forgetPrefs, forgetTabState, keptRemove, keptSet, readPref, prefStorageKey, purgeExpiredKept } from './device-data.ts';
 import { recentRecords, mergePrefs } from './prefs-merge.ts';
 import { showExplanation } from './explain.ts';
 import { showRecordHistory } from './record-history.ts';
@@ -186,12 +187,12 @@ function viewIndex(values: string[]): Promise<string | undefined> {
     };
     filter.addEventListener('input', fill);
     filter.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); paste(); }
+      if (enterActivates(e, true)) { e.preventDefault(); paste(); }
       if (e.key === 'ArrowDown' && list.options.length) { e.preventDefault(); list.focus(); }
     });
     list.addEventListener('dblclick', paste);
     list.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); paste(); }
+      if (enterActivates(e, true)) { e.preventDefault(); paste(); }
     });
     dialog.append(
       h('h2', {}, 'View Index'),
@@ -448,8 +449,9 @@ async function start(): Promise<void> {
       await session.open(from);
       showBrowserFeatureNotice();
       return;
-    } catch {
-      sessionStorageSet('tabularius.session', undefined);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) sessionStorageSet('tabularius.session', undefined);
+      else toast('Could not restore the session. Reload to retry; your saved session is kept.');
     }
   }
   await showLogin();
@@ -1041,7 +1043,7 @@ class Session implements Host {
   private windowChannel?: BroadcastChannel;
   private readonly sessionLifetime = new SessionLifetime();
   private disposed = false;
-  private readonly pageHandler: { show: () => void };
+  private readonly pageHandler: { show: () => void; flush: () => boolean };
   /** This file's windows in this browser (Window > Show Window), kept up to date over a BroadcastChannel. */
   private windows = new Map<string, { title: string }>();
   private windowsChannel?: BroadcastChannel;
@@ -1079,7 +1081,7 @@ class Session implements Host {
     // Closing the tab says so at once, rather than leaving others seeing this window until it times out.
     // One session at a time: signing in again replaces the last one's handlers.
     livePresences.add(this.presence);
-    this.pageHandler = { show: () => this.renderToolbar() };
+    this.pageHandler = { show: () => this.renderToolbar(), flush: () => this.flushLeaving() };
     pageHandlers = this.pageHandler;
     this.stopPageCalls = answerPageCalls((id, method, args) => this.pageCall(id, method, args));
     api.onExpired = () => {
@@ -1258,6 +1260,7 @@ class Session implements Host {
       toast(`${e.message}. Try again when they're done.`);
       // Put the stored values back; the typing is not saved.
       (document.activeElement as HTMLElement | null)?.blur();
+      this.refused.delete(rec.recordId);
       this.render();
     });
   }
@@ -2430,7 +2433,7 @@ class Session implements Host {
         e.preventDefault();
         if (shown.length) at = (at + (e.key === 'ArrowDown' ? 1 : -1) + shown.length) % shown.length;
         show();
-      } else if (e.key === 'Enter') {
+      } else if (enterActivates(e, true)) {
         e.preventDefault();
         choose(at);
       } else if (e.key === 'Escape') {
@@ -2779,7 +2782,7 @@ class Session implements Host {
       void this.recordCommand('Save Records as PDF', { name: name.value, records: records.value }).catch((e) => toast(errorText(e)));
     };
     name.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); run(); }
+      if (enterActivates(e, true)) { e.preventDefault(); run(); }
     });
     dialog.append(
       h('h2', {}, 'Save Records as PDF'),
@@ -2904,7 +2907,7 @@ class Session implements Host {
       void this.recordCommand('Replace Field Contents', options).catch((e) => toast(errorText(e)));
     };
     value.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); replace(); }
+      if (enterActivates(e, true)) { e.preventDefault(); replace(); }
     });
     dialog.append(
       h('h2', {}, 'Replace Field Contents'),
@@ -3183,7 +3186,7 @@ class Session implements Host {
       void Promise.resolve(fn()).catch((e) => toast(errorText(e)));
     };
     find.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); act(() => this.findNext())(); }
+      if (enterActivates(e, true)) { e.preventDefault(); act(() => this.findNext())(); }
     });
     dialog.append(
       h('h2', {}, 'Find/Replace'),
@@ -3453,16 +3456,16 @@ class Session implements Host {
   private async loadPrefs(): Promise<void> {
     const local = <T>(key: string): T | undefined => {
       try {
-        const v = localStorageGet(key);
+        const v = readPref(key, this.api.db, this.accountName);
         return v ? JSON.parse(v) as T : undefined;
       } catch {
         return undefined;
       }
     };
-    const recent = local(this.prefKey('recent'));
+    const recent = local('recent');
     this.prefs = {
-      finds: local(this.findsKey()),
-      sorts: local(this.prefKey('sorts')),
+      finds: local('finds'),
+      sorts: local('sorts'),
       ...(recent !== undefined ? { recent: recentRecords(recent) } : {}),
     };
     let migrateRecent = recent !== undefined && JSON.stringify(recent) !== JSON.stringify(this.prefs.recent);
@@ -3744,7 +3747,7 @@ class Session implements Host {
         };
         li.addEventListener('click', go);
         li.addEventListener('keydown', (k) => {
-          if (k.key === 'Enter' || k.key === ' ') {
+          if (enterActivates(k, true) || k.key === ' ') {
             k.preventDefault();
             go();
           }
@@ -4367,6 +4370,23 @@ class Session implements Host {
   }
 
   private saving: Promise<void> = Promise.resolve();
+  private leaving = false;
+  private leavingWrites = 0;
+  private pendingSaves = 0;
+  private leavingFailed = new Set<string>();
+
+  /** Dispatch change while focus still identifies the record. Warn until the write is acknowledged. */
+  private flushLeaving(): boolean {
+    this.leaving = true;
+    try {
+      const active = document.activeElement;
+      if ((active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) && this.content.contains(active)
+        && active.dataset.shown !== undefined && active.value !== active.dataset.shown) active.dispatchEvent(new Event('change', { bubbles: true }));
+    } finally {
+      this.leaving = false;
+    }
+    return this.leavingWrites > 0 || this.pendingSaves > 0 || this.unsaved.size > 0 || this.leavingFailed.size > 0;
+  }
 
   save(key: string, value: string, row?: RowContext): void {
     if (this.reverting) return;
@@ -4377,7 +4397,25 @@ class Session implements Host {
     const occurrence = this.meta.layout.occurrence;
     const pending = `${rec.recordId}\0${key}`;
     const handed = value;
+    const leavingKey = JSON.stringify([rec.recordId, row?.portal, row?.row.recordId, key]);
     if (!row) this.unsaved.set(pending, handed);
+    if (this.leaving && !this.api.offline && (!row || row.row.recordId)) {
+      this.leavingWrites++;
+      const portalData = row ? { [row.portal]: [{ recordId: row.row.recordId, [key]: value }] } : undefined;
+      void this.api.flushUpdate(layout, rec.recordId, row ? {} : { [key]: value }, rec.modId, portalData).then((modId) => {
+        rec.modId = modId;
+        if (row) row.row[key] = value; else rec.fieldData[key] = value;
+        if (!row && this.unsaved.get(pending) === handed) this.unsaved.delete(pending);
+        this.leavingWrites--;
+        this.leavingFailed.delete(leavingKey);
+      }, () => {
+        this.leavingWrites--;
+        this.leavingFailed.add(leavingKey);
+        // Keep the warning if a quota, conflict or network failure prevented the unload write.
+        toast('Changes were not saved. Stay on this page and retry the edit.');
+      });
+      return;
+    }
     const run = async () => {
       // Set when the person combined their typing with another user's change: the field shows what was saved.
       let combined = false;
@@ -4409,7 +4447,7 @@ class Session implements Host {
             rowEl.dataset.row = made.recordId;
           }
           if (!this.scripting) announce('Portal row added.');
-          if (!this.scripting) this.uncommitted = rec.recordId;
+        if (!this.scripting) this.uncommitted = rec.recordId;
           freshen(rec, await this.api.record(layout, rec.recordId));
           this.states.delete(rec.recordId);
           await this.loadStates();
@@ -4438,6 +4476,7 @@ class Session implements Host {
           rec.fieldData[key] = value;
           if (!this.scripting) announce('Changes saved.');
         }
+        this.leavingFailed.delete(leavingKey);
         if (!this.scripting) this.uncommitted = rec.recordId;
         // A Set Field acts on the current record: typing on another row of a list goes to that record first.
         if (row) this.note({ kind: 'skipped', what: `typing into ${key} in a portal row` });
@@ -4484,7 +4523,9 @@ class Session implements Host {
         else if (row && !row.row.recordId) this.renderKeepingFocus();
       }
     };
+    this.pendingSaves++;
     this.saving = this.saving.then(run).finally(() => {
+      this.pendingSaves--;
       if (!row && this.unsaved.get(pending) === handed) this.unsaved.delete(pending);
     });
   }
@@ -4568,7 +4609,7 @@ class Session implements Host {
       };
       li.addEventListener('click', go);
       li.addEventListener('keydown', (k) => {
-        if (k.key === 'Enter' || k.key === ' ') {
+        if (enterActivates(k, true) || k.key === ' ') {
           k.preventDefault();
           go();
         }
@@ -6845,7 +6886,7 @@ class Session implements Host {
       const next = all[(all.indexOf(el) + (e.shiftKey ? -1 : 1) + all.length) % all.length];
       next?.focus();
       if (next instanceof HTMLInputElement || next instanceof HTMLTextAreaElement) next.select();
-    } else if (e.key === 'Enter' && el instanceof HTMLTextAreaElement) {
+    } else if (enterActivates(e, true) && el instanceof HTMLTextAreaElement) {
       if (!document.execCommand('insertText', false, '\n')) el.setRangeText('\n', el.selectionStart, el.selectionEnd, 'end');
     } else if (e.key.startsWith('Arrow')) {
       moveCaret(el, e.key, e.shiftKey);
@@ -7493,7 +7534,7 @@ class Session implements Host {
       });
       th.addEventListener('keydown', (e) => {
         if (e.target !== th || e.metaKey || e.ctrlKey) return;
-        if ((e.key === 'Enter' || e.key === ' ') && !e.altKey && !e.shiftKey) {
+        if ((enterActivates(e, true) || e.key === ' ') && !e.altKey && !e.shiftKey) {
           e.preventDefault();
           void this.sortBy(c.key, sorted === 'ascend' ? 'descend' : 'ascend');
           return;
@@ -7578,16 +7619,16 @@ class Session implements Host {
           const input = h('input', { value: value.replace(/[\r\n]+/g, ' '), 'aria-label': `${c.key}, record ${i + 1}` });
           input.readOnly = !!(t?.calculated || t?.summary || t?.readOnly || !t);
           input.dir = 'auto';
-          let last = input.value;
+          let last = input.dataset.shown = input.value;
           input.addEventListener('change', () => {
             if (input.value === last) return;
-            last = input.value;
+            last = input.dataset.shown = input.value;
             this.editing = rec;
             this.save(c.key, input.value);
             this.editing = undefined;
           });
           input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') input.blur();
+            if (enterActivates(e, true)) input.blur();
             // Up and down move to the same column in the next record, like a spreadsheet.
             else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !e.metaKey && !e.ctrlKey) {
               e.preventDefault();
@@ -7689,14 +7730,14 @@ class Session implements Host {
       }
       if (e.key === 'Tab' && !e.altKey && this.tabNext(e.shiftKey)) e.preventDefault();
       // In Find mode, Return in a field (a tall, multi-line box too: no text is typed there) or Enter performs the find, as in FileMaker.
-      if (e.key === 'Enter' && this.mode === 'find' && !e.shiftKey && !e.altKey && this.content.contains(e.target as Node) && !(e.target as HTMLElement).matches('select, button')) {
+      if (enterActivates(e, true) && this.mode === 'find' && !e.shiftKey && !e.altKey && this.content.contains(e.target as Node) && !(e.target as HTMLElement).matches('select, button')) {
         e.preventDefault();
         void this.performFind();
         return;
       }
-      if (e.key === 'Enter' && !e.altKey && this.exitKey(e) && this.tabNext(e.shiftKey)) e.preventDefault();
+      if (enterActivates(e, true) && !e.altKey && this.exitKey(e) && this.tabNext(e.shiftKey)) e.preventDefault();
       // The keypad's Enter commits the record (Return types a new line), as in FileMaker.
-      if (e.code === 'NumpadEnter' && this.mode === 'browse') {
+      if (e.code === 'NumpadEnter' && !confirmsComposition(e) && this.mode === 'browse') {
         e.preventDefault();
         (document.activeElement as HTMLElement | null)?.blur();
         void this.commit(false);
@@ -7776,7 +7817,7 @@ class Session implements Host {
       arrowdown: () => (this.mode === 'find' ? this.showRequest(this.request + 1) : void this.goTo(this.index + 1)),
       arrowup: () => (this.mode === 'find' ? this.showRequest(this.request - 1) : void this.goTo(this.index - 1)),
     };
-    if (e.key === 'Enter' && this.mode === 'find') {
+    if (enterActivates(e, true) && this.mode === 'find') {
       e.preventDefault();
       void this.performFind();
       return;
@@ -8028,7 +8069,7 @@ class Session implements Host {
         if (text && this.assistant) void this.assistant.findInWords(text);
       };
       words.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
+        if (enterActivates(e, true)) {
           // Enter here asks the assistant, not Perform Find on the (empty) requests.
           e.preventDefault();
           e.stopPropagation();
@@ -8095,7 +8136,7 @@ class Session implements Host {
       ...(found ? [h('small', { class: 'of-total' }, `${this.totalCount} Total`)] : []));
     const quick = h('input', { type: 'search', class: 'quick-find', placeholder: 'Search', 'aria-label': 'Quick find' });
     quick.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') void this.quickFind(quick.value);
+      if (enterActivates(e, true)) void this.quickFind(quick.value);
     });
     const editor = this.lockedByOther(this.record);
     row.append(
@@ -8612,10 +8653,14 @@ const FORMAT_SIZES = [9, 10, 12, 14, 18, 24, 36, 48, 72];
 const FORMAT_COLORS: [string, string][] = [['Black', '#000000'], ['Gray', '#808080'], ['Red', '#CC0000'], ['Orange', '#E07000'], ['Green', '#008000'], ['Blue', '#0050C8'], ['Purple', '#7030A0']];
 
 /** The signed-in session's page lifecycle handlers: leaving says so to others, coming back from the cache says so again. */
-let pageHandlers: { show: () => void } | undefined;
+let pageHandlers: { show: () => void; flush: () => boolean } | undefined;
 /** Every session's presence in this page (a session replaced by signing in again may still be telling the server). */
 const livePresences = new Set<Presence>();
+addEventListener('beforeunload', (e) => {
+  if (pageHandlers?.flush()) { e.preventDefault(); e.returnValue = ''; }
+});
 addEventListener('pagehide', () => {
+  pageHandlers?.flush();
   for (const p of livePresences) p.stop();
 });
 addEventListener('pageshow', (e) => {
