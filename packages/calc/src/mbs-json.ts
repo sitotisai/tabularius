@@ -3,7 +3,7 @@
 // A JSON parameter is JSON text or a reference number from JSON.Parse, CreateObjectRef or CreateArrayRef; adding
 // to or deleting from a reference changes it in place and gives the reference back.
 // Not here: JSON.ReplaceEvaluate, Colorize's styled text, the record
-// and import functions, conversions (CSV, HTML, XML, TOON), and the functions whose pages haven't been checked.
+// and import functions, and the functions whose pages haven't been checked.
 // They give an "isn't available" MBS error.
 
 import { MbsError } from './mbs-text.ts';
@@ -11,7 +11,7 @@ import { jmesSearch } from './jmespath.ts';
 import { jsonPathMatches, replaceAt } from './jsonpath.ts';
 import { withRegexBudget } from './regex-guard.ts';
 import { ENTRY_BYTES, retainedBudget, type RetainedBudget } from './retained-budget.ts';
-import { MAX_TEXT_RESULT } from './text-budget.ts';
+import { MAX_TEXT_RESULT, checkTextSize } from './text-budget.ts';
 
 export type Json =
   | { t: 'null' }
@@ -578,6 +578,164 @@ const addToArray = (make: (a: Arg, scope: object) => Json, skipEmpty = true): Mb
   return output(scope, inp, arr);
 };
 
+/** Output is charged as it is assembled, before joining the parts. */
+function writer() {
+  const parts: string[] = [];
+  let size = 0;
+  return {
+    add(s: string) { size += s.length; checkTextSize(size); parts.push(s); },
+    mapped(s: string, length: number, convert: (s: string) => string) {
+      checkTextSize(size + length);
+      this.add(convert(s));
+    },
+    done() { return parts.join(''); },
+  };
+}
+const cellText = (j: Json): string => j.t === 'str' ? j.v : j.t === 'null' ? '' : compact(j);
+const columnsOf = (rows: Json[]): string[] => {
+  const names = new Set<string>();
+  for (const row of rows) for (const [key] of needObject(row).entries) names.add(key);
+  return [...names];
+};
+const csvCell = (s: string) => /[",\r\n]/.test(s) ? '"' + s.replaceAll('"', '""') + '"' : s;
+const htmlEscape = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+const xmlEscape = (s: string) => s.replace(/[&<>"'\u0000-\u0008\u000b\u000c\u000e-\u001f\uD800-\uDFFF]/gu,
+  (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[c] ?? '\ufffd');
+const escapedSize = (s: string, escape: (s: string) => string) => {
+  let size = 0;
+  for (const c of s) size += escape(c).length;
+  return size;
+};
+const csvSize = (s: string) => {
+  let quotes = 0;
+  let needsQuotes = false;
+  for (const c of s) {
+    if (c === '"') quotes++;
+    if (c === '"' || c === ',' || c === '\r' || c === '\n') needsQuotes = true;
+  }
+  return s.length + (needsQuotes ? quotes + 2 : 0);
+};
+// Encode every unsafe UTF-16 unit. The prefix is reserved so a literal _xHHHH_ cannot alias an escaped name.
+const xmlName = (s: string) => {
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    const valid = i === 0 ? /[A-Za-z_]/.test(c) : /[A-Za-z0-9_.-]/.test(c);
+    out += valid && !(c === '_' && /^_x[0-9a-fA-F]{4}_/.test(s.slice(i))) ? c : `_x${s.charCodeAt(i).toString(16).padStart(4, '0')}_`;
+  }
+  return out || '_x0000_';
+};
+const toonAtom = (j: Json): string => {
+  if (j.t !== 'str') return compact(j);
+  const s = j.v;
+  return s === '' || /^\s|\s$/.test(s) || /[,:\[\]{}"\\\r\n\t]/.test(s)
+    || /^(?:null|true|false|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)$/i.test(s) ? quote(s) : s;
+};
+
+// Inferred: a flat object array becomes RFC 4180 rows, with first-seen union columns and nested JSON as text.
+const toCsv: MbsJson = ([j], scope) => {
+  const doc = input(scope, j?.text ?? '').j;
+  checkSize(doc);
+  const rows = needArray(doc).items;
+  const names = columnsOf(rows);
+  const w = writer();
+  const writeRow = (cells: string[]) => {
+    cells.forEach((s, i) => {
+      if (i) w.add(',');
+      w.mapped(s, csvSize(s), csvCell);
+    });
+    w.add('\r\n');
+  };
+  if (names.length) writeRow(names);
+  for (const row of rows) {
+    const o = needObject(row);
+    writeRow(names.map((name) => cellText(valueAt(o, name) ?? { t: 'null' })));
+  }
+  return w.done();
+};
+
+// Inferred: a flat object array becomes a table; nested values are compact JSON text in escaped cells.
+const toHtml: MbsJson = ([j], scope) => {
+  const doc = input(scope, j?.text ?? '').j;
+  checkSize(doc);
+  const rows = needArray(doc).items;
+  const names = columnsOf(rows);
+  const w = writer();
+  w.add('<table><thead><tr>');
+  for (const name of names) {
+    w.add('<th>'); w.mapped(name, escapedSize(name, htmlEscape), htmlEscape); w.add('</th>');
+  }
+  w.add('</tr></thead><tbody>');
+  for (const row of rows) {
+    const o = needObject(row);
+    w.add('<tr>');
+    for (const name of names) {
+      const value = cellText(valueAt(o, name) ?? { t: 'null' });
+      w.add('<td>'); w.mapped(value, escapedSize(value, htmlEscape), htmlEscape); w.add('</td>');
+    }
+    w.add('</tr>');
+  }
+  w.add('</tbody></table>');
+  return w.done();
+};
+
+// Inferred: root is <root>; object keys name elements, arrays repeat their parent name, and null is empty.
+const toXml: MbsJson = ([j], scope) => {
+  const root = input(scope, j?.text ?? '').j;
+  checkSize(root);
+  const w = writer();
+  const element = (name: string, value: Json, depth: number): void => {
+    if (depth > MAX_DEPTH) throw new MbsError(`The JSON is nested too deeply (more than ${MAX_DEPTH} levels)`);
+    if (value.t === 'arr') {
+      if (!value.items.length) { w.add(`<${name}/>`); return; }
+      for (const item of value.items) element(name, item, depth + 1);
+      return;
+    }
+    if (value.t === 'null') { w.add(`<${name}/>`); return; }
+    w.add(`<${name}>`);
+    if (value.t === 'obj') for (const [key, child] of value.entries) element(xmlName(key), child, depth + 1);
+    else {
+      const text = value.t === 'str' ? value.v : value.t === 'num' ? value.raw : String(value.v);
+      w.mapped(text, escapedSize(text, xmlEscape), xmlEscape);
+    }
+    w.add(`</${name}>`);
+  };
+  element('root', root, 0);
+  return w.done();
+};
+
+// Inferred: objects use two-space indentation; uniform scalar-object arrays use TOON tabular rows.
+const toToon: MbsJson = ([j], scope) => {
+  const root = input(scope, j?.text ?? '').j;
+  checkSize(root);
+  const w = writer();
+  const line = (depth: number, s: string) => w.add('  '.repeat(depth) + s + '\n');
+  const emit = (value: Json, depth: number, name?: string): void => {
+    if (depth > MAX_DEPTH) throw new MbsError(`The JSON is nested too deeply (more than ${MAX_DEPTH} levels)`);
+    if (value.t === 'obj') {
+      if (name !== undefined) line(depth, `${name}:`);
+      if (!value.entries.length && name !== undefined) return;
+      for (const [key, child] of value.entries) emit(child, depth + (name === undefined ? 0 : 1), toonAtom(str(key)));
+    } else if (value.t === 'arr') {
+      const objects = value.items.every((x) => x.t === 'obj');
+      const cols = objects && value.items.length ? (value.items[0] as Obj).entries.map(([k]) => k) : [];
+      const tabular = objects && cols.length > 0 && value.items.every((x) => x.t === 'obj' && x.entries.length === cols.length && cols.every((k) => valueAt(x, k)?.t !== 'obj' && valueAt(x, k)?.t !== 'arr' && valueAt(x, k) !== undefined));
+      if (tabular) {
+        line(depth, `${name ?? 'items'}[${value.items.length}]{${cols.map((x) => toonAtom(str(x))).join(',')}}:`);
+        for (const item of value.items) line(depth + 1, cols.map((k) => toonAtom(valueAt(item as Obj, k)!)).join(','));
+      } else {
+        line(depth, `${name ?? 'items'}[${value.items.length}]:`);
+        for (const item of value.items) {
+          if (item.t === 'arr' || item.t === 'obj') line(depth + 1, compact(item));
+          else line(depth + 1, toonAtom(item));
+        }
+      }
+    } else line(depth, name === undefined ? toonAtom(value) : `${name}: ${toonAtom(value)}`);
+  };
+  emit(root, 0);
+  return w.done().trimEnd();
+};
+
 export const MBS_JSON: Record<string, MbsJson> = {
   'json.parse': ([j], scope) => keep(scope, parseJson(j?.text ?? '')),
   'json.createobjectref': (_, scope) => keep(scope, { t: 'obj', entries: [] }),
@@ -593,6 +751,10 @@ export const MBS_JSON: Record<string, MbsJson> = {
 
   'json.format': ([j], scope) => pretty(input(scope, j?.text ?? '').j, sessionOf(scope).format),
   'json.compact': ([j], scope) => compact(input(scope, j?.text ?? '').j),
+  'json.tocsv': toCsv,
+  'json.tohtml': toHtml,
+  'json.toxml': toXml,
+  'json.totoon': toToon,
   'json.setformatoptions': ([indent, after], scope) => {
     const [i, a] = [indent?.text ?? DEFAULT_FORMAT.indent, after?.text ?? DEFAULT_FORMAT.afterKey];
     if (i.length > 16 || a.length > 16) throw new MbsError('The indent and the text after a key can be at most 16 characters');
