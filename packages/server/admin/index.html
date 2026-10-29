@@ -433,7 +433,7 @@
     <h2>Backups <span class="spacer"></span><button id="backup-stop" hidden>Stop backup</button> <button class="primary" id="backup">Back up now</button></h2>
     <p id="backup-said" class="sr-only" role="status"></p>
     <p class="meta" id="schedule"></p>
-    <p class="note">Encryption at rest encrypts new database backups by default (a separate TABULARIUS_BACKUP_KEY takes precedence). Existing backups, external containers, source files, exports and logs can still contain plaintext. The encrypt command does not seal these files; protect the whole folder and backup disk with operating-system encryption. Sizes count shared files once, in the newest set that references them.</p>
+    <p class="note" id="backup-encryption-note" hidden>Encryption at rest encrypts new database backups by default (a separate TABULARIUS_BACKUP_KEY takes precedence). Existing backups, external containers, source files, exports and logs can still contain plaintext. The encrypt command does not seal these files; protect the whole folder and backup disk with operating-system encryption. Sizes count shared files once, in the newest set that references them.</p>
     <p class="note"><label>Backups go to <input id="backup-folder" type="text" style="width:26em" placeholder="a full path; empty for the default"></label> <button id="backup-folder-set" type="button">Set</button> <span id="backup-folder-note"></span></p>
     <div id="sets"></div>
     <details id="restore-box">
@@ -2190,6 +2190,8 @@ async function refresh() {
     : `No schedule (the server was started with --no-backups). Backups go to ${esc(b.dest)}.`;
   if (document.activeElement !== $('backup-folder')) $('backup-folder').value = b.saved ?? '';
   $('backup-folder').disabled = $('backup-folder-set').disabled = !!b.fixed;
+  // Said only where a backup key is in use, which is where the difference between what it seals and what it does not matters.
+  $('backup-encryption-note').hidden = !b.encrypted;
   $('backup-folder-note').textContent = b.fixed ? 'The server was started with --backup-dir, so that folder counts. Change it there and restart.'
     : (b.saved ?? b.defaultDest) !== b.dest ? 'Saved. It counts after the server restarts, because point-in-time backups or the off-site copy follow the old folder.' : '';
   const p = b.progressive;
