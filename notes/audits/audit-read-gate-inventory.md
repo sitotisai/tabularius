@@ -176,9 +176,9 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/cli/src/diagnostics.ts:205](../../packages/cli/src/diagnostics.ts#L205) `designCopy` | `SQLite.all` (205); `SQLite.prepare` (205, 208) | OPERATOR |
 | [packages/cli/src/diagnostics.ts:445](../../packages/cli/src/diagnostics.ts#L445) `diagnostics` | `SQLite.get` (445); `SQLite.prepare` (445, 449); `SQLite.all` (449) | OPERATOR |
 | [packages/cli/src/doctor.ts:139](../../packages/cli/src/doctor.ts#L139) `accountChecks` | `SQLite.all` (139); `SQLite.prepare` (139) | OPERATOR |
-| [packages/cli/src/main.ts:711](../../packages/cli/src/main.ts#L711) `accountsWithPasswordOff` | `SQLite.all` (711); `SQLite.prepare` (711) | OPERATOR |
-| [packages/cli/src/main.ts:740](../../packages/cli/src/main.ts#L740) `hostedRead` | `SQLite.all` (740, 743); `SQLite.prepare` (740, 743); `Store.sql` (740, 743) | OPERATOR |
-| [packages/cli/src/main.ts:2411](../../packages/cli/src/main.ts#L2411) `main` | `Store.orphanContainerReport` (2411); `Store.auditLog` (2884); `SQLite.get` (3143); `SQLite.prepare` (3143) | OPERATOR |
+| [packages/cli/src/main.ts:712](../../packages/cli/src/main.ts#L712) `accountsWithPasswordOff` | `SQLite.all` (712); `SQLite.prepare` (712) | OPERATOR |
+| [packages/cli/src/main.ts:741](../../packages/cli/src/main.ts#L741) `hostedRead` | `SQLite.all` (741, 744); `SQLite.prepare` (741, 744); `Store.sql` (741, 744) | OPERATOR |
+| [packages/cli/src/main.ts:2412](../../packages/cli/src/main.ts#L2412) `main` | `Store.orphanContainerReport` (2412); `Store.auditLog` (2885); `SQLite.get` (3144); `SQLite.prepare` (3144) | OPERATOR |
 | [packages/scripts/src/data-api-step.ts:104](../../packages/scripts/src/data-api-step.ts#L104) `respond` | `Store.get` (104, 131, 140); `Store.find` (105, 117) | SCRIPT |
 | [packages/scripts/src/engine.ts:8130](../../packages/scripts/src/engine.ts#L8130) `ScriptEngine/containerFile` | `Store.get` (8130); `Store.containerId` (8131); `Store.container` (8132) | SCRIPT |
 | [packages/scripts/src/engine.ts:5727](../../packages/scripts/src/engine.ts#L5727) `ScriptEngine/design` | `Store.valueListItems` (5727) | SCRIPT |
@@ -214,10 +214,10 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/scripts/src/testrun.ts:199](../../packages/scripts/src/testrun.ts#L199) `seedSelections` | `Calculations.globalValue` (199); `Store.find` (204) | DESIGN |
 | [packages/scripts/src/testrun.ts:338](../../packages/scripts/src/testrun.ts#L338) `testRun` | `Store.evaluateEach` (338) | DESIGN |
 | [packages/scripts/src/testrun.ts:270](../../packages/scripts/src/testrun.ts#L270) `testScript` | `Store.findIds` (270) | DESIGN |
-| [packages/server/src/admin.ts:2368](../../packages/server/src/admin.ts#L2368) `Admin/audit` | `Store.auditLog` (2368) | ADMIN |
-| [packages/server/src/admin.ts:1089](../../packages/server/src/admin.ts#L1089) `Admin/handle` | `Store.externalContainerReport` (1089); `Store.orphanContainerReport` (1094, 1098) | ADMIN |
-| [packages/server/src/admin.ts:2808](../../packages/server/src/admin.ts#L2808) `Admin/status` | `Store.externalContainerCount` (2808) | ADMIN |
-| [packages/server/src/admin.ts:2451](../../packages/server/src/admin.ts#L2451) `Admin/viewAs` | `Store.find` (2451) | ADMIN |
+| [packages/server/src/admin.ts:2370](../../packages/server/src/admin.ts#L2370) `Admin/audit` | `Store.auditLog` (2370) | ADMIN |
+| [packages/server/src/admin.ts:1090](../../packages/server/src/admin.ts#L1090) `Admin/handle` | `Store.externalContainerReport` (1090); `Store.orphanContainerReport` (1095, 1099) | ADMIN |
+| [packages/server/src/admin.ts:2810](../../packages/server/src/admin.ts#L2810) `Admin/status` | `Store.externalContainerCount` (2810) | ADMIN |
+| [packages/server/src/admin.ts:2453](../../packages/server/src/admin.ts#L2453) `Admin/viewAs` | `Store.find` (2453) | ADMIN |
 | [packages/server/src/agent.ts:316](../../packages/server/src/agent.ts#L316) `dryRunPlan` | `Store.findIds` (316) | DESIGN |
 | [packages/server/src/agent.ts:339](../../packages/server/src/agent.ts#L339) `runApprovedStep` | `Store.findIds` (339) | DESIGN |
 | [packages/server/src/agent.ts:162](../../packages/server/src/agent.ts#L162) `runStep` | `Store.findIds` (162); `Store.auditLog` (230); `Store.canViewRecord` (242) | DESIGN |

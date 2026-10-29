@@ -18,7 +18,7 @@ import { CalcError, ERR, type Env } from '../../calc/src/index.ts';
 import { callJavaScriptModule, type PluginHost } from '../../store/src/javascript.ts';
 import { parseManifest, type PluginManifest } from './manifest.ts';
 import { readPluginSecrets } from './secrets.ts';
-import { checkInstalled, discoverablePluginFolder } from './package.ts';
+import { checkInstalled, discoverablePluginFolder, recoverPluginInstalls, withPluginInstallLock } from './package.ts';
 import type { PluginCall, PluginRegistry } from './registry.ts';
 
 /** The code for each of a plug-in's functions, run in the sandbox. */
@@ -144,6 +144,16 @@ export function readPlugin(dir: string, dataDir?: string): { manifest: PluginMan
 export function loadPlugins(registry: PluginRegistry, dataDir: string, log: (msg: string) => void = () => {}): void {
   const root = join(dataDir, 'plugins');
   if (!existsSync(root)) return;
+  return withPluginInstallLock(dataDir, () => {
+    recoverPluginInstalls(dataDir);
+    loadPluginsLocked(registry, dataDir, log);
+  });
+}
+
+function loadPluginsLocked(registry: PluginRegistry, dataDir: string, log: (msg: string) => void): void {
+  const root = join(dataDir, 'plugins');
+  const candidates: ReturnType<typeof readPlugin>[] = [];
+  const ids = new Map<string, number>();
   for (const e of readdirSync(root, { withFileTypes: true })) {
     if (!e.isDirectory() || !existsSync(join(root, e.name, 'plugin.json'))) continue;
     if (!discoverablePluginFolder(e.name)) {
@@ -151,11 +161,24 @@ export function loadPlugins(registry: PluginRegistry, dataDir: string, log: (msg
       continue;
     }
     try {
+      const raw = JSON.parse(readFileSync(join(root, e.name, 'plugin.json'), 'utf8')) as { id?: unknown } | null;
+      if (typeof raw?.id === 'string') ids.set(raw.id, (ids.get(raw.id) ?? 0) + 1);
       const { manifest, calls } = readPlugin(join(root, e.name), dataDir);
+      candidates.push({ manifest, calls });
+    } catch (err) {
+      log(`Plug-in in ${e.name} not installed: ${(err as Error).message}`);
+    }
+  }
+  for (const { manifest, calls } of candidates) {
+    if ((ids.get(manifest.id) ?? 0) > 1) {
+      log(`Plug-in ${manifest.id} not installed: duplicate plug-in id ${manifest.id}; remove the extra folders`);
+      continue;
+    }
+    try {
       registry.install(manifest, calls);
       log(`Plug-in ${manifest.name} ${manifest.version} (${manifest.id}) installed`);
     } catch (err) {
-      log(`Plug-in in ${e.name} not installed: ${(err as Error).message}`);
+      log(`Plug-in ${manifest.id} not installed: ${(err as Error).message}`);
     }
   }
   // Built-in packs turned off for a file (plugins/builtin-off.json: { "Invoices": ["com.openhbam.baseelements"] }).

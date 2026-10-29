@@ -1,7 +1,7 @@
 // The CI test jobs split the suite into shards plus a gates job. Every test file must run in exactly one of them.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { allTests, gateTests, plan, ROOT, shardFiles } from '../../../scripts/test-plan.ts';
 
@@ -27,4 +27,21 @@ test('shards are filled longest file first, so their loads come out nearly even'
   const recorded = plan(4).shards;
   const sizes = recorded.map((shard) => shard.length);
   assert.ok(Math.max(...sizes) - Math.min(...sizes) <= Math.ceil(sizes[0] / 4), `uneven shard sizes ${sizes}`);
+});
+
+test('repository scripts tests are selected exactly once and npm test includes them', () => {
+  const selected = [...plan(4).gates, ...plan(4).shards.flat()];
+  for (const file of readdirSync(join(ROOT, 'scripts')).filter((f) => f.endsWith('.test.ts'))) {
+    assert.equal(selected.filter((f) => f === `scripts/${file}`).length, 1, file);
+  }
+  assert.match(JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).scripts.test, /scripts\/\*\.test\.ts/);
+});
+
+test('package scripts have unique keys and docs check runs both generators', () => {
+  const source = readFileSync(join(ROOT, 'package.json'), 'utf8');
+  const keys = [...source.matchAll(/^    "([^"]+)":/gm)].map((m) => m[1]);
+  assert.equal(new Set(keys).size, keys.length);
+  const command = JSON.parse(source).scripts['docs:check'];
+  assert.match(command, /docs-settings-cli\.ts --check/);
+  assert.match(command, /filemaker-glossary\.ts --check/);
 });
