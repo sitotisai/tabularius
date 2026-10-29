@@ -14,9 +14,9 @@
 // server's own user only) are saved there and the folder's settings point
 // `tabularius serve` at them. Deleting removes them again.
 
-import { updateJsonStateSync } from '../../store/src/durable.ts';
+import { atomicWrite, updateJsonStateSync } from '../../store/src/durable.ts';
 import { createPrivateKey, createPublicKey, generateKeyPairSync, sign, X509Certificate, type KeyObject } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { isIP } from 'node:net';
 import { readSettings, SETTINGS_FILE } from './fms-migrate.ts';
@@ -118,8 +118,7 @@ const PEM_CERT = /-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g
 const pem = (label: string, body: Buffer) => `-----BEGIN ${label}-----\n${body.toString('base64').replace(/.{1,64}/g, '$&\n')}-----END ${label}-----\n`;
 
 function write(file: string, text: string): void {
-  writeFileSync(file + '.tmp', text, { mode: 0o600 });
-  renameSync(file + '.tmp', file);
+  atomicWrite(file, text);
 }
 
 /** The folder settings file's values, as written (paths relative to the folder). */
