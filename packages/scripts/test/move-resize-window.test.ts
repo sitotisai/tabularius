@@ -93,3 +93,11 @@ test("OnLayoutSizeChange runs when a window opens and when Move/Resize Window ch
     store.applyDesign([{ op: 'updateLayout', layout: 'Main', design: { triggers: [] } }] as never);
   }
 });
+
+
+test('Get window geometry uses the interactive geometry supplied by the browser', async () => {
+  const card: OpenWindow = { id: 'C', name: 'Card', style: 'card', layout: 'Main', height: 260, width: 420, top: 60, left: 80 };
+  const r = await run([`Exit Script [ Text Result: ${size} ]`], { startWindow: card, openWindows: [main, card] });
+  assert.equal(r.error, 0);
+  assert.equal(r.result, '260,420,60,80');
+});

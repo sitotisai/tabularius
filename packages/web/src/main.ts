@@ -6,6 +6,8 @@
 const PASSKEY_SECOND_FACTOR_REQUIRED = 9000;
 
 import { ViewerState, viewerKey, viewerMessage, restoreViewer, type ViewerAction } from './web-viewer.ts';
+import { clampWindow, type WindowRect } from './window-geometry.ts';
+import { windowControls } from './window-controls.ts';
 import { SessionLifetime } from './session-lifetime.ts';
 import { mergeObjectState, mergeObjectRecord, mergeFoundObjectRows, refreshMatches, checkpointCache, foundPortalPage, foundPortalRange, keepPortalFormatting, portalRevert, replacePortal } from './refresh.ts';
 import { Api, ApiError, PIECED_FROM, fileListOff, listDatabases, retryableRequest, retrying, unreachableRequest, type ExportFormat } from './api.ts';
@@ -1858,6 +1860,8 @@ class Session implements Host {
     this.disposed = true;
     this.stopPageCalls?.();
     this.stopPageCalls = undefined;
+    this.removeWindowControls?.();
+    this.removeWindowControls = undefined;
     this.sessionLifetime.dispose();
     this.timer = undefined;
     clearTimeout(this.resized); this.resized = undefined;
@@ -6408,7 +6412,11 @@ class Session implements Host {
   }
 
   /** A card or dialog in front: the window under it (toolbar and bars too) waits, as in FileMaker. */
+  private removeWindowControls?: () => void;
+
   private syncWindowChrome(): void {
+    this.removeWindowControls?.();
+    this.removeWindowControls = undefined;
     const w = this.frontWindow();
     const modal = this.behind.length > 0 && (w.style === 'card' || w.style === 'dialog');
     for (const el of [this.toolbar, this.windowBar, this.bottomBar]) {
@@ -6420,6 +6428,13 @@ class Session implements Host {
       const close = h('button', { type: 'button', class: 'window-close', 'aria-label': `Close ${w.name}`, title: 'Close Window' }, '×');
       close.addEventListener('click', () => void this.closeFrontWindow());
       this.frame.prepend(close);
+    }
+    if (this.behind.length && w.style !== 'document') {
+      this.removeWindowControls = windowControls(this.frame, w.name,
+        () => ({ left: parseFloat(this.frame.style.left), top: parseFloat(this.frame.style.top),
+          width: parseFloat(this.frame.style.width), height: parseFloat(this.frame.style.height) }),
+        () => ({ width: this.stage.clientWidth, height: this.stage.clientHeight }),
+        (rect) => this.placeWindow(rect), () => !this.scripting && !this.disposed && this.frontWindow().id === w.id);
     }
     this.frame.setAttribute('role', w.style === 'document' ? 'none' : 'dialog');
     if (w.style === 'document') this.frame.removeAttribute('aria-label');
@@ -6462,12 +6477,15 @@ class Session implements Host {
     const width = (w.width ?? this.renderer?.width ?? 600) * zoom;
     const height = (w.height ?? (parts.reduce((n, p) => n + p.height, 0) || 400)) * zoom;
     const area = { width: this.stage.clientWidth || innerWidth, height: this.stage.clientHeight || innerHeight };
-    const gutter = 16;
-    const fitW = Math.min(width, area.width - 2 * gutter);
-    const fitH = Math.min(height, area.height - 2 * gutter);
-    const left = w.left !== undefined ? Math.min(Math.max(gutter, w.left), area.width - gutter - fitW) : (area.width - fitW) / 2;
-    const top = w.top !== undefined ? Math.min(Math.max(gutter, w.top), area.height - gutter - fitH) : Math.max(gutter, (area.height - fitH) / 2);
-    Object.assign(this.frame.style, { width: `${fitW}px`, height: `${fitH}px`, left: `${Math.max(gutter, left)}px`, top: `${top}px` });
+    this.placeWindow(clampWindow({ width, height, left: w.left ?? (area.width - width) / 2,
+      top: w.top ?? (area.height - height) / 2 }, area));
+  }
+
+  /** Keep the script request's window state in layout points; placement uses stage CSS pixels. */
+  private placeWindow(rect: WindowRect): void {
+    const zoom = this.meta ? this.effectiveZoom() : 1;
+    Object.assign(this.frontWindow(), { left: rect.left, top: rect.top, width: rect.width / zoom, height: rect.height / zoom });
+    Object.assign(this.frame.style, { width: `${rect.width}px`, height: `${rect.height}px`, left: `${rect.left}px`, top: `${rect.top}px` });
   }
 
   /** Shows what a script left (or a paused one has so far): layout, found set, record, mode. */

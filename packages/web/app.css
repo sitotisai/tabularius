@@ -1018,3 +1018,21 @@ dialog.ai-confirm { max-width: min(28rem, 92vw); padding: var(--s4); border: 1px
 dialog.ai-confirm::backdrop { background: rgb(0 0 0 / .4); }
 dialog.ai-confirm h2 { margin: 0 0 var(--s2); font-size: var(--t-lg); }
 dialog.ai-confirm ul { margin: 0 0 var(--s2); padding-left: 18px; }
+
+/* Window gestures share one keyboard stop, before the close control and layout fields. */
+.window-title { flex: none; min-height: 38px; width: 100%; padding: 6px 42px 6px 18px; border: 0; border-radius: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); background: var(--panel); cursor: move; touch-action: none; user-select: none; }
+.window-title:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; }
+.window-grip { position: absolute; z-index: 4; touch-action: none; }
+.window-grip-n, .window-grip-s { left: 12px; right: 12px; height: 8px; cursor: ns-resize; }
+.window-grip-n { top: 0; }
+.window-grip-s { bottom: 0; }
+.window-grip-e, .window-grip-w { top: 12px; bottom: 12px; width: 8px; cursor: ew-resize; }
+.window-grip-e { right: 0; }
+.window-grip-w { left: 0; }
+.window-grip-ne, .window-grip-nw, .window-grip-se, .window-grip-sw { width: 12px; height: 12px; }
+.window-grip-ne, .window-grip-nw { top: 0; }
+.window-grip-se, .window-grip-sw { bottom: 0; }
+.window-grip-ne, .window-grip-se { right: 0; }
+.window-grip-nw, .window-grip-sw { left: 0; }
+.window-grip-ne, .window-grip-sw { cursor: nesw-resize; }
+.window-grip-nw, .window-grip-se { cursor: nwse-resize; }
