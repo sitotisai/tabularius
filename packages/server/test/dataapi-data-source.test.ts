@@ -66,7 +66,11 @@ test('without fmDataSource, a file with no account of the same name shows nothin
   const r = await login({});
   assert.equal(r.status, 200);
   const got = await records(r.body.response.token);
-  assert.equal(got.body.messages[0].code, '200', JSON.stringify(got.body.messages)); // no access to B's records
+  const missing = await call('/databases/A/layouts/Absent/records', 'Bearer ' + r.body.response.token);
+  assert.equal(got.status, missing.status);
+  assert.equal(got.body.messages[0].code, '105', JSON.stringify(got.body.messages));
+  assert.deepEqual(got.body.messages.map((m: { code: string; message: string }) => ({ ...m, message: m.message.replace('External', 'TARGET') })),
+    missing.body.messages.map((m: { code: string; message: string }) => ({ ...m, message: m.message.replace('Absent', 'TARGET') })));
 });
 
 test('fmDataSource signs in to the other file with its own account', async () => {

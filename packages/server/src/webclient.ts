@@ -420,7 +420,11 @@ export class WebClient {
       if (shown) session.window = shown;
       // Everything here runs with the account's privilege set, as the Data API does.
       const privileges = sessionPrivileges(store, session);
-      if (m[2] !== undefined) privileges.checkLayout(decodeURIComponent(m[2]));
+      if (m[2] !== undefined) {
+        const name = decodeURIComponent(m[2]);
+        privileges.checkLayout(name);
+        if (!this.readableLayout(store, name, privileges)) throw new ApiError(105, `Layout "${name}" is missing`, 400);
+      }
       if (m[3]) {
         if (req.method !== 'POST') throw new ApiError(3, 'Command is unavailable', 405);
         const layout = decodeURIComponent(m[2]);
@@ -748,6 +752,13 @@ export class WebClient {
     return { values: store.fieldIndex(layout, body.field, { prefix, limit, privileges }) };
   }
 
+  private readableLayout(store: Store, name: string, privileges: Privileges): boolean {
+    try {
+      const info = store.layout(name);
+      return info.owner === store || privileges.in(info.owner).table(info.table).view !== false;
+    } catch { return false; }
+  }
+
   /** The layout menu: FileMaker's order with folders, marking layouts that can be opened. */
   private menu(store: Store, privileges: Privileges, account?: string) {
     const open = new Set(store.layouts().map((l) => l.name));
@@ -755,7 +766,7 @@ export class WebClient {
       ? store.schema.layoutOrder
       : store.schema.layouts.map((l) => ({ id: l.id, name: l.name, kind: 'item' as const, depth: 0 }));
     // Layouts the privilege set has no access to are not listed at all.
-    const layouts = order.filter((o) => o.kind !== 'item' || privileges.layout(o.name).layout !== 'none')
+    const layouts = order.filter((o) => o.kind !== 'item' || (privileges.layout(o.name).layout !== 'none' && this.readableLayout(store, o.name, privileges)))
       .map((o) => ({ ...o, open: o.kind === 'item' && open.has(o.name) }));
     // File Options: the layout the file opens on, and its window script triggers.
     const options = store.schema.fileOptions;
@@ -857,6 +868,7 @@ export class WebClient {
 
   private layout(store: Store, name: string, privileges: Privileges, session: Session, host = '') {
     const info = store.layout(name);
+    if (!this.readableLayout(store, name, privileges)) throw new ApiError(105, `Layout "${name}" is missing`, 400);
     const design = info.layoutId !== undefined ? store.design(info.layoutId) : undefined;
     if (!design) throw new ApiError(105, `Layout "${name}" has no design`, 404);
     const theme = store.themes().find((t) => t.id === design.themeId);
@@ -934,7 +946,7 @@ export class WebClient {
         const where = occ ? { table: occ.table.name, ...(occ.store !== store ? { file: occ.store.name } : {}) } : {};
         return { ...p, ...where, ...(may ? { create: true } : {}) };
       }),
-      layouts: Object.fromEntries(store.layouts().filter((l) => privileges.layout(l.name).layout !== 'none').map((l) => [store.schema.layouts.find((x) => x.name === l.name)?.id, l.name])),
+      layouts: Object.fromEntries(store.layouts().filter((l) => privileges.layout(l.name).layout !== 'none' && this.readableLayout(store, l.name, privileges)).map((l) => [store.schema.layouts.find((x) => x.name === l.name)?.id, l.name])),
       ...(store.schema.pageSetup ? { pageSetup: store.schema.pageSetup } : {}),
       // Value lists the Sort dialog can order by (a custom order): those the account may see, not of related values.
       sortLists: store.schema.valueLists.filter((v) => v.field?.relatedFromId === undefined && privileges.valueList(v.name) !== 'none').map((v) => v.name),
