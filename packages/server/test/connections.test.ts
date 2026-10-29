@@ -3,13 +3,14 @@ import { deleteBeforeStateLock } from './state-lock-race.ts';
 // against a local stand-in for S3; nothing here reaches a real service.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Server } from 'node:http';
 import { createServer } from 'node:http';
 import { Connections, serve } from '../src/index.ts';
-import { guardedFetch } from '../src/connections.ts';
+import { ConnectionError, guardedFetch } from '../src/connections.ts';
+import { withFilesystemHook } from '../../store/src/fs-boundary.ts';
 import { fakeS3 } from './fake-s3.ts';
 
 const KEYS = { accessKey: 'AKIA' + 'IOSFODNN7EXAMPLE', secretKey: 'wJalr' + 'XUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY' };
@@ -85,6 +86,61 @@ test('secrets are never returned, written in the clear, or logged', async () => 
   // Readable by the server's user alone.
   if (process.platform !== 'win32') {
     for (const name of ['.openhbam-connection-secrets.json', '.openhbam-connections.key']) assert.equal(statSync(join(dir, name)).mode & 0o077, 0, name);
+  }
+});
+
+test('the sealing key is never made through a planted link', () => {
+  const folder = mkdtempSync(join(tmpdir(), 'tabularius-connection-key-'));
+  const keys = ['TABULARIUS_SECRETS_KEY', 'TABULARIUS_ENCRYPTION_KEY'];
+  const saved = keys.map((key) => process.env[key]);
+  for (const key of keys) delete process.env[key];
+  try {
+    const c = new Connections(folder);
+    c.create({ name: 'linked', type: 's3', config: { bucket: 'invoices' } });
+    const keyFile = join(folder, '.openhbam-connections.key');
+    const nowhere = join(folder, 'nowhere');
+    const refused = (e: unknown) => e instanceof ConnectionError && /plain file/.test(e.message);
+    if (process.platform !== 'win32') {
+      symlinkSync(nowhere, keyFile);
+      assert.throws(() => c.setSecret('linked', 'accessKey', 'abc'), refused);
+      assert.equal(existsSync(nowhere), false);
+      assert.equal(lstatSync(keyFile).isSymbolicLink(), true);
+      assert.equal(existsSync(join(folder, '.openhbam-connection-secrets.json')), false);
+      rmSync(keyFile);
+    }
+    c.setSecret('linked', 'accessKey', 'abc');
+    assert.equal(lstatSync(keyFile).isFile(), true);
+    if (process.platform !== 'win32') assert.equal(lstatSync(keyFile).mode & 0o777, 0o600);
+    assert.match(readFileSync(keyFile, 'utf8'), /^[0-9a-f]{64}\n$/);
+    c.setSecret('linked', 'secretKey', 'def');
+    c.approve('linked');
+    assert.equal(new Connections(folder).use('linked').secrets.accessKey, 'abc');
+
+    if (process.platform !== 'win32') {
+      const otherFolder = mkdtempSync(join(folder, 'existing-target-'));
+      const other = new Connections(otherFolder);
+      other.create({ name: 'linked', type: 's3', config: { bucket: 'invoices' } });
+      const victim = join(otherFolder, 'victim');
+      const otherKey = join(otherFolder, '.openhbam-connections.key');
+      writeFileSync(victim, 'keep', { mode: 0o644 });
+      const mode = lstatSync(victim).mode;
+      // Plant the link after the unchanged reader saw no key, at the creation boundary.
+      withFilesystemHook((event) => {
+        if (event.operation === 'open' && event.phase === 'checked' && event.path === otherKey) {
+          symlinkSync(victim, otherKey);
+        }
+      }, () => assert.throws(() => other.setSecret('linked', 'accessKey', 'abc'), refused));
+      assert.equal(readFileSync(victim, 'utf8'), 'keep');
+      assert.equal(lstatSync(victim).mode, mode);
+      assert.equal(lstatSync(otherKey).isSymbolicLink(), true);
+      assert.equal(existsSync(join(otherFolder, '.openhbam-connection-secrets.json')), false);
+    }
+  } finally {
+    keys.forEach((key, i) => {
+      if (saved[i] === undefined) delete process.env[key];
+      else process.env[key] = saved[i];
+    });
+    rmSync(folder, { recursive: true, force: true });
   }
 });
 

@@ -20,10 +20,11 @@ import { addressBucket } from '../../store/src/client-ip.ts';
 import { sameSecret } from './secrets.ts';
 import { expiryClock } from '../../store/src/clock.ts';
 import { createHash, randomBytes } from 'node:crypto';
-import { chmodSync, existsSync, writeFileSync } from 'node:fs';
+import { closeSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { openSync as openChecked } from '../../store/src/fs-boundary.ts';
 import { spendPasswordCheck, StoreError, type Store } from '../../store/src/index.ts';
 import { publicPasswordLockout } from './password-login-policy.ts';
 import { aiBlocker, aiRefusal } from './ai-access.ts';
@@ -167,11 +168,11 @@ export class OAuthServer {
     this.opts = opts;
     const file = join(dir, OAUTH_DB);
     // Hashes only, but who signed in to which file: readable by the server's user only, like the files themselves.
-    if (!existsSync(file)) writeFileSync(file, '', { mode: 0o600, flag: 'a' });
     try {
-      chmodSync(file, 0o600);
-    } catch {
+      closeSync(openChecked(file, 'a', 0o600));
+    } catch (error) {
       // Another user's file on a shared folder: left as it is.
+      if ((error as NodeJS.ErrnoException).code !== 'EPERM') throw error;
     }
     this.db = new DatabaseSync(file);
     this.db.exec('PRAGMA busy_timeout = 5000');
