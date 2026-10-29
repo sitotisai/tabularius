@@ -13,6 +13,18 @@ export interface Baseline {
   tolerance: number;
   operations: RatioRow[];
   wide?: WideBudget;
+  performanceBudgets?: PerformanceBudget[];
+}
+
+export interface PerformanceBudget { id: 'find' | 'import' | 'backupRestore' | 'coldStart'; maxMs: number }
+export interface PerformanceMeasure { id: PerformanceBudget['id']; ms: number }
+export const PERFORMANCE_IDS: PerformanceBudget['id'][] = ['find', 'import', 'backupRestore', 'coldStart'];
+export function checkPerformance(measures: PerformanceMeasure[], budgets: PerformanceBudget[]) {
+  if (measures.length !== PERFORMANCE_IDS.length || budgets.length !== PERFORMANCE_IDS.length ||
+    PERFORMANCE_IDS.some((id, i) => measures[i]?.id !== id || budgets[i]?.id !== id ||
+      !Number.isFinite(measures[i].ms) || measures[i].ms <= 0 ||
+      !Number.isFinite(budgets[i].maxMs) || budgets[i].maxMs <= 0)) throw new Error('invalid performance budget or measurement');
+  return measures.map((measure, i) => ({ ...measure, maxMs: budgets[i].maxMs, over: measure.ms > budgets[i].maxMs }));
 }
 
 export interface WideBudget { records: number; tables: number; maxMs: number }
