@@ -42,5 +42,9 @@
   {
     "file": "packages/web/test/boot-guard.test.ts",
     "reason": "Checks browser boot guard source without opening a browser"
+  },
+  {
+    "file": "packages/cli/test/npm-scripts.test.ts",
+    "reason": "Checks package.json lists no script twice and that every script is written down"
   }
 ]
