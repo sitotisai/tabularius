@@ -983,7 +983,9 @@ cursor older than that, or from before a restart, answers 410 with a fresh
 one. Webhooks push the same changes: add one in the admin console API
 (`POST /tabularius/admin/v1/webhooks` with `{url, database, tables}`). Each
 delivery is a batch signed with `x-tabularius-signature: sha256=<HMAC of the
-body>` using the secret returned when the webhook was made. Like scripts,
+body>` using the secret returned when the webhook was made, and carries
+`x-tabularius-webhook: <id>`, the id of the webhook that sent it, so one
+receiver can tell several webhooks apart. Like scripts,
 the server sends nothing out unless started with `--allow-webhooks`.
 
 **Inbound hooks.** Another service can run a script by calling the server:

@@ -42,5 +42,9 @@
   {
     "file": "packages/web/test/boot-guard.test.ts",
     "reason": "Checks browser boot guard source without opening a browser"
+  },
+  {
+    "file": "packages/cli/test/docs-headers.test.ts",
+    "reason": "Checks that every custom header in the code is named in the documentation and the other way round"
   }
 ]
