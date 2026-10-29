@@ -1724,9 +1724,38 @@
     "E4"
    ]
   ],
-  "expected": "result",
-  "note": "the page allows PERCENT; how a fraction of rows rounds (50 percent of 7 rows) is not stated, so 4 here is an assumption of rounding up",
-  "known": "PERCENT is valid FileMaker SQL and is refused here with a plain \"not supported\" error; the page does not say how a fraction of a row rounds, so there is nothing to match yet."
+  "expected": "derived",
+  "note": "the page allows PERCENT but does not state how a fraction rounds; the SQL standard rounds 50 percent of 7 rows up to 4"
+ },
+ {
+  "id": "fetch-07b",
+  "area": "FETCH FIRST",
+  "construct": "1 PERCENT rounds up to one row (derived)",
+  "source": "https://help.claris.com/en/sql-reference/content/offset-and-fetch-first-clauses.html",
+  "sql": "SELECT emp_id FROM emp ORDER BY emp_id FETCH FIRST 1 PERCENT ROWS ONLY",
+  "rows": [["E1"]],
+  "expected": "derived",
+  "note": "the SQL standard rounds 1 percent of 7 rows up from 0.07"
+ },
+ {
+  "id": "fetch-07c",
+  "area": "FETCH FIRST",
+  "construct": "100 PERCENT returns every row (derived)",
+  "source": "https://help.claris.com/en/sql-reference/content/offset-and-fetch-first-clauses.html",
+  "sql": "SELECT emp_id FROM emp ORDER BY emp_id FETCH FIRST 100 PERCENT ROWS ONLY",
+  "rows": [["E1"], ["E2"], ["E3"], ["E4"], ["E5"], ["E6"], ["E7"]],
+  "expected": "derived",
+  "note": "100 percent of 7 rows is all 7 rows"
+ },
+ {
+  "id": "fetch-07d",
+  "area": "FETCH FIRST",
+  "construct": "PERCENT above 100 is refused (derived)",
+  "source": "https://help.claris.com/en/sql-reference/content/offset-and-fetch-first-clauses.html",
+  "sql": "SELECT emp_id FROM emp ORDER BY emp_id FETCH FIRST 101 PERCENT ROWS ONLY",
+  "error": true,
+  "expected": "derived",
+  "note": "the supported percentage range is 0 to 100"
  },
  {
   "id": "fetch-08",
