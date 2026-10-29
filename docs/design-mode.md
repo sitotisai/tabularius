@@ -51,7 +51,7 @@ Browse and Find mode, select on entry, the keys that go to the next object
 the container format (crop, reduce, enlarge, or reduce or enlarge to fit).
 The concealed edit box, scroll bar and Return/Enter settings are read from
 .fmp12 files by inference from private sample files (FieldObj flag bits 21, 8, 6
-and 7), not yet checked against a FileMaker Design Report. "Hide object when" <!-- known-difference: Reading .fmp12 files ;; The concealed edit box, scroll bar and Return/Enter settings are read from private sample files by inference (FieldObj flag bits 21, 8, 6 and 7), not checked against a FileMaker Design Report ;; A converted field can show these options differently from FileMaker ;; A Design Report of a file that uses those options -->
+and 7), not yet checked against a FileMaker Design Report. "Hide object when" <!-- known-difference: Reading .fmp12 files ;; The concealed edit box, scroll bar and Return/Enter settings are read from private sample files by inference (FieldObj flag bits 21, 8, 6 and 7), not checked against a FileMaker Design Report; comparison unverified ;; A converted field can show these options differently from FileMaker ;; A Design Report of a file that uses those options -->
 has its "Apply in Find mode" option, popovers a title bar and title, slide
 controls their dots and swipe, and buttons, popovers, portals and web viewers
 take OnObjectEnter and OnObjectExit triggers. The layout inspector sets the view
@@ -557,8 +557,8 @@ Flicks sample.
 |---|---|---|---|
 | Auto-enter creation/modification values (date, time, timestamp, name, account name) | yes, checked | yes | yes |
 | Serial number (next value, increment) | yes, checked | yes | yes |
-| Serial "generate on commit" | not yet (no sample has it) | yes | yes: a script's New Record leaves the field empty and its first commit gives the serial (a reverted record uses none). Records the Data API, the web client or an import create are committed at once, so they get it then | <!-- known-difference: Reading .fmp12 files ;; Serial 'generate on commit' is not read from .fmp12 files: no sample has it (design mode and the engine support it) ;; A converted serial field comes across without the option ;; A sample file with the option set -->
-| Value from last visited record | not yet (no sample has it) | yes | yes: New Record in the web client and in scripts copies the field from the record the window was on | <!-- known-difference: Reading .fmp12 files ;; 'Value from last visited record' is not read from .fmp12 files: no sample has it (design mode and the engine support it) ;; A converted field comes across without the option ;; A sample file with the option set -->
+| Serial "generate on commit" | not yet (no sample has it) | yes | yes: a script's New Record leaves the field empty and its first commit gives the serial (a reverted record uses none). Records the Data API, the web client or an import create are committed at once, so they get it then | <!-- known-difference: Reading .fmp12 files ;; Serial 'generate on commit' is not read from .fmp12 files: no sample has it (design mode and the engine support it); comparison unverified ;; A converted serial field comes across without the option ;; A sample file with the option set -->
+| Value from last visited record | not yet (no sample has it) | yes | yes: New Record in the web client and in scripts copies the field from the record the window was on | <!-- known-difference: Reading .fmp12 files ;; 'Value from last visited record' is not read from .fmp12 files: no sample has it (design mode and the engine support it); comparison unverified ;; A converted field comes across without the option ;; A sample file with the option set -->
 | Data | yes, checked | yes | yes |
 | Calculated value, replace existing value | yes, checked | yes | yes |
 | Do not evaluate if all referenced fields are empty | yes, checked (calculation fields too) | yes | yes |
@@ -576,7 +576,7 @@ Flicks sample.
 | Storage: do not store calculation results | yes, checked | yes | yes |
 | Indexing None / Minimal / All, automatically create indexes | yes, checked | yes | kept for FileMaker; Tabularius's own word index covers finds |
 | Default language | yes for English and Japanese (the only ones in the samples); others keep their number | yes, any language Claris lists | sorts, ranges, SQL and groups follow it ([Languages for sorting](sort-languages.md)) |
-| Furigana | not yet | no | no | <!-- known-difference: Reading .fmp12 files ;; Furigana is not read, edited or applied ;; Fields carry no Furigana setting ;; An owner decision on whether to support it, and a sample file that uses it -->
+| Furigana | not yet | no | no | <!-- known-difference: Reading .fmp12 files ;; Furigana is not read, edited or applied; comparison unverified ;; Fields carry no Furigana setting ;; An owner decision on whether to support it, and a sample file that uses it -->
 | Container: store externally, secure/open, path, base directory | base directories only (see Containers) | yes | open external storage is honoured for new files (`RC_Data_FMS/<file>/…`); secure storage keeps them in the database |
 
 ## External data sources
@@ -607,7 +607,7 @@ and the path calculation is worked out per record; a field set to secure
 storage, or not set to store externally, keeps its files in the database. The
 settings are also carried by the Design Report and copied fields (`<Remote>` and
 `<BaseDirectoryCatalog>`, as FileMaker writes them). The reader takes the base directories from the `.fmp12` (Flicks matches
-its Design Report), but not yet whether a field stores externally: no sample <!-- known-difference: Reading .fmp12 files ;; Whether a field stores its container externally is not read from .fmp12 files: no sample does, and container fields carry a directory and path even when they do not ;; A converted container field keeps its data in the database ;; A sample file with an externally stored container field, and its Design Report -->
+its Design Report), but not yet whether a field stores externally: no sample <!-- known-difference: Reading .fmp12 files ;; Whether a field stores its container externally is not read from .fmp12 files: no sample does, and container fields carry a directory and path even when they do not; comparison unverified ;; A converted container field keeps its data in the database ;; A sample file with an externally stored container field, and its Design Report -->
 does, and container fields carry a directory and path even when they don't.
 Thumbnails are made by the server when a picture or PDF is shown.
 

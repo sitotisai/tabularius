@@ -19,7 +19,7 @@ row also says where the expectation comes from:
 | Failing step | Tabularius before | Tabularius now | Source |
 |---|---|---|---|
 | Go to Record [ Next ] on the last record (no Exit after last) | 101 | 101 | Reported ([Brian Dunning, error 101](https://www.briandunning.com/errors/96)) |
-| Go to Record [ Previous ] on the first record | 101 | 101 | Inferred (same as Next) | <!-- known-difference: Scripts and script steps ;; Go to Record [ Previous ] on the first record gives 101, inferred from Next ;; A script reading Get ( LastError ) there sees 101 ;; A FileMaker run of the step on the first record -->
+| Go to Record [ Previous ] on the first record | 101 | 101 | Inferred (same as Next) | <!-- known-difference: Scripts and script steps ;; Go to Record [ Previous ] on the first record gives 101, inferred from Next; comparison unverified ;; A script reading Get ( LastError ) there sees 101 ;; A FileMaker run of the step on the first record -->
 | Go to Record [ First ] / by number with no such record | 101 | 101 | Meaning ("Record is missing") |
 | Go to Layout by a name that isn't there | 105 | 105 | Meaning |
 | Perform Find / Constrain Found Set, no match | 401 | 401 | Meaning |
@@ -29,14 +29,14 @@ row also says where the expectation comes from:
 | Set Field By Name, a field that isn't there | 102 | 102 | Meaning |
 | Select Window / Close Window, a window that isn't there | 112 | 112 | Meaning |
 | Go to Object, an object that isn't there | 116 | 116 | Meaning ("Layout object is missing") |
-| Go to Field, a field not on the layout | 102 | 102 | Inferred | <!-- known-difference: Scripts and script steps ;; Go to Field to a field that is not on the layout gives 102, inferred ;; A script reading Get ( LastError ) there sees 102 ;; A FileMaker run of the step -->
+| Go to Field, a field not on the layout | 102 | 102 | Inferred | <!-- known-difference: Scripts and script steps ;; Go to Field to a field that is not on the layout gives 102, inferred; comparison unverified ;; A script reading Get ( LastError ) there sees 102 ;; A FileMaker run of the step -->
 | Go to Related Record, nothing related to the current record | 101 | 101 | Reported ([Brian Dunning, error 101](https://www.briandunning.com/errors/96)) |
 | Go to Related Record, matching the found set, nothing related | 101 | **401** | Reported (same page: "returns 401 instead") |
 | Undecoded Revert Transaction options, unspecified Set Revert Transaction on Error state, or undecoded binary Import Records mode | — | 3 | Tabularius capability decision based on Claris’s “Command is unavailable”; detail explains repair. No automatic transaction rollback. |
 | Revert Transaction with an error code | 5000-5499 | 5000-5499 | Meaning |
 | Re-Login with a wrong account name or password | 213 | **212** | Meaning ("invalid user account or password"); 213 is no longer in Claris's list |
 | Re-Login to an account that needs or has a second factor, that owes a password change, or that is local-only when the script's caller is not this computer | — | **212** | Tabularius rule: a password alone must meet what a normal sign-in asks, and a step cannot answer a one-time code. The run keeps its account. A run with no caller address (a schedule, an automation, an inbound hook, an agent or a debugger run) counts as not this computer, so it cannot re-log in to a local-only account; a Data API, web client, OData, debugger or MCP caller counts by the address its request came from |
-| Delete / Reset / Enable Account, an account that isn't there | 213 | 213 | Inferred: 213 meant "User account and/or password does not exist" in FileMaker 14's list, and Claris's current list drops it | <!-- known-difference: Scripts and script steps ;; Delete, Reset or Enable Account on an account that is not there gives 213, inferred from FileMaker 14's list (Claris's current list drops it) ;; A script reading Get ( LastError ) there sees 213 ;; A FileMaker run of each step on a missing account -->
+| Delete / Reset / Enable Account, an account that isn't there | 213 | 213 | Inferred: 213 meant "User account and/or password does not exist" in FileMaker 14's list, and Claris's current list drops it | <!-- known-difference: Scripts and script steps ;; Delete, Reset or Enable Account on an account that is not there gives 213, inferred from FileMaker 14's list (Claris's current list drops it); comparison unverified ;; A script reading Get ( LastError ) there sees 213 ;; A FileMaker run of each step on a missing account -->
 | AI steps naming an AI account Configure AI Account didn't set up | 3 | **877** | Meaning ("AI account not found") |
 | Insert from URL, a malformed URL | 1631 | **1630** | Meaning ("URL format is incorrect") |
 | Insert from URL, a protocol other than http/https | 1631 | **1626** | Meaning ("Protocol not supported") |

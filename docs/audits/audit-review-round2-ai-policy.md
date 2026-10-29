@@ -1,6 +1,6 @@
 # Round-two review: AI policy, redaction, MCP and agent tools
 
-Date: 2026-10-18. Item: r26-02. Result: **two reproduced defects fixed**, with regression coverage; existing protections that held were retained. This is a Tabularius implementation review, not a claim about Claris behavior. Claris equivalence is **unverified**. <!-- known-difference: Privileges and security ;; Whether FileMaker's AI-visible data policy and redaction match this review is not settled ;; Nothing shows; the review makes no claim about undocumented Claris behaviour ;; A FileMaker run of the same policy and redaction checks -->
+Date: 2026-10-18. Item: r26-02. Result: **two reproduced defects fixed**, with regression coverage; existing protections that held were retained. This is a Tabularius implementation review, not a claim about Claris behavior. Claris equivalence is **unverified**. <!-- known-difference: Privileges and security ;; Whether FileMaker's AI-visible data policy and redaction match this review is not settled; comparison unverified ;; Nothing shows; the review makes no claim about undocumented Claris behaviour ;; A FileMaker run of the same policy and redaction checks -->
 
 ## Method and history
 

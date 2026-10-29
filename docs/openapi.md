@@ -31,7 +31,7 @@ say what FileMaker Server's own description says.
   `packages/server/test/dataapi-response-contract.json`; where the Claris guide
   shows nothing, it says so under `notVerified`.
 - A response schema read off the documented example, not checked key by key,
-  carries `x-tabularius-inferred`. It lists the keys the example shows, none <!-- known-difference: Data API ;; A response schema read off the documented example, not checked key by key, carries x-tabularius-inferred; it lists the keys the example shows, none required ;; A client generated from the description treats those properties as optional ;; A captured FileMaker response, or a Claris guide page that shows the shape -->
+  carries `x-tabularius-inferred`. It lists the keys the example shows, none <!-- known-difference: Data API ;; A response schema read off the documented example, not checked key by key, carries x-tabularius-inferred; it lists the keys the example shows, none required; comparison unverified ;; A client generated from the description treats those properties as optional ;; A captured FileMaker response, or a Claris guide page that shows the shape -->
   required, and allows others.
 - Query parameters whose names carry a placeholder (`_offset.{portal}`) cannot be
   written as OpenAPI parameters; they are under `x-tabularius-query-patterns` on the

@@ -383,7 +383,7 @@ when you press Ctrl-C. To host your own FileMaker file, see [QUICKSTART.md](QUIC
   AI. Insert Embedding and Perform Semantic Find by natural language need an
   embedding model (see the embeddings paragraph above).
 
-Not yet: containers in FileMaker's secure (encrypted) external storage. See <!-- known-difference: Reading .fmp12 files ;; Containers in FileMaker's secure (encrypted) external storage are not supported ;; Such containers do not come across from a converted file ;; An owner decision on supporting them, and a sample file that has them -->
+Not yet: containers in FileMaker's secure (encrypted) external storage. See <!-- known-difference: Reading .fmp12 files ;; Containers in FileMaker's secure (encrypted) external storage are not supported; comparison unverified ;; Such containers do not come across from a converted file ;; An owner decision on supporting them, and a sample file that has them -->
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## What does not carry over
@@ -625,7 +625,7 @@ a shared machine such as a terminal server anyone could listen there.
 
 An LDAP directory or Active Directory works the same way, for sites that
 authenticate against one (tested against a stand-in directory that speaks the
-protocol, not yet a live Active Directory <!-- known-difference: Privileges and security ;; LDAP sign-in is tested against a stand-in directory, not a live Active Directory ;; A directory with matching rules the stand-in lacks may behave differently ;; A run against a live directory -->). People type their directory username and password
+protocol, not yet a live Active Directory <!-- known-difference: Privileges and security ;; LDAP sign-in is tested against a stand-in directory, not a live Active Directory; comparison unverified ;; A directory with matching rules the stand-in lacks may behave differently ;; A run against a live directory -->). People type their directory username and password
 into the ordinary sign-in; the server binds to the directory with them, and an
 external account named their email or one of their groups gives the privilege
 set. Active Directory's usual shape is a service account that searches for the
@@ -1472,7 +1472,7 @@ backups, webhooks, the PostgreSQL port and the folder watcher run in one
 process. HTTPS works too, automatic certificates included: the front process
 gets and renews the certificate. So does encryption at rest: the first
 process unlocks the files and locks them again once the others have let
-go. Not yet combined with point-in-time backups or standbys. The admin <!-- known-difference: Server operation ;; Encryption at rest across several worker processes is not yet combined with point-in-time backups or standbys ;; The combination is not offered ;; An owner decision -->
+go. Not yet combined with point-in-time backups or standbys. The admin <!-- known-difference: Server operation ;; Encryption at rest across several worker processes is not yet combined with point-in-time backups or standbys; comparison unverified ;; The combination is not offered ;; An owner decision -->
 console's slowest scripts and finds, and the metrics' request counts and
 durations, add up every process's, as of a few seconds ago; the memory, CPU
 and event-loop metrics are the first process's.

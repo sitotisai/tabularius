@@ -362,8 +362,8 @@ build as an unindexed scan.
 
 This measures an already-converted hosted SQLite file, not `.fmp12` conversion.
 The previously reported 22.7-second startup of a private large solution and its
-multi-second layout renders are **unverified** here. Matching that product's <!-- known-difference: Performance ;; The start-up and layout render times of one very large solution in another product are not compared with ours ;; Nothing shows; the benchmark here only measures a generated file ;; A run of the same solution on both products -->
-behavior at this scale is also **unverified**. No browser is launched: the web <!-- known-difference: Performance ;; Behaviour at that scale in another product is not matched or measured ;; Nothing shows; we do not claim equal speed ;; A side by side run on the same large file -->
+multi-second layout renders are **unverified** here. Matching that product's <!-- known-difference: Performance ;; The start-up and layout render times of one very large solution in another product are not compared with ours; comparison unverified ;; Nothing shows; the benchmark here only measures a generated file ;; A run of the same solution on both products -->
+behavior at this scale is also **unverified**. No browser is launched: the web <!-- known-difference: Performance ;; Behaviour at that scale in another product is not matched or measured; comparison unverified ;; Nothing shows; we do not claim equal speed ;; A side by side run on the same large file -->
 measurements cover its layout/script menu payload and first layout metadata,
 not painting, static assets or a complete browser navigation. The optional
 checkout-version git lookup is suppressed in the measurement process; file

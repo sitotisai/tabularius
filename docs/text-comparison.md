@@ -1,6 +1,6 @@
 # How text is compared
 
-<!-- known-difference-file: Text comparison ;; Where two spellings of the same text (é as one character or with a combining accent, a ligature, full-width letters) count as equal differs from place to place, and none of it is checked against FileMaker except that a find ignores case, accents and width ;; A relationship or a SQL query can miss a record that a find returns ;; A FileMaker run of each row below with generated pairs (é against e and a combining accent, Å against the angstrom sign, ﬁ against fi, the ligatures ﬃ ﬄ ﬅ ﬆ, an emoji with joiners), or a Claris page that says what each place does -->
+<!-- known-difference-file: Text comparison ;; Where two spellings of the same text (é as one character or with a combining accent, a ligature, full-width letters) count as equal differs from place to place, and none of it is checked against FileMaker except that a find ignores case, accents and width; comparison unverified ;; A relationship or a SQL query can miss a record that a find returns ;; A FileMaker run of each row below with generated pairs (é against e and a combining accent, Å against the angstrom sign, ﬁ against fi, the ligatures ﬃ ﬄ ﬅ ﬆ, an emoji with joiners), or a Claris page that says what each place does -->
 
 Text that looks the same can be stored in different ways: **é** as one character or as **e** followed by a combining
 accent (what a Mac file name uses), **Å** as the letter with a ring, the angstrom sign or **A** and a ring, **ﬁ** as a

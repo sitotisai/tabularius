@@ -135,7 +135,7 @@ The compatibility rationale is that validation constrains data written to the
 file; making validity depend on what an editor may view could reject existing
 valid choices. Claris documents membership in the specified list, but does not
 explicitly settle hidden-record membership in the pages above. Accordingly,
-**FileMaker parity for this finding remains unverified**. Retaining the behavior <!-- known-difference: Privileges and security ;; Whether FileMaker lets a validation by value list see records the editor may not view is not confirmed, and the behaviour is kept as it was ;; A field validated against a list backed by confidential data can accept a value the editor could not see listed ;; A native FileMaker test with a restricted account -->
+**FileMaker parity for this finding remains unverified**. Retaining the behavior <!-- known-difference: Privileges and security ;; Whether FileMaker lets a validation by value list see records the editor may not view is not confirmed, and the behaviour is kept as it was; comparison unverified ;; A field validated against a list backed by confidential data can accept a value the editor could not see listed ;; A native FileMaker test with a restricted account -->
 is a conservative compatibility decision pending native confirmation, not a
 confirmed FileMaker exemption. Do not use a list backed by confidential data
 as a membership validator on a field an untrusted account can edit.

@@ -7,8 +7,8 @@ Use `tabularius dump <file> --prefix <path> --text` to explore a file yourself.
 
 Status legend: **verified** means checked against sample files and tested;
 **inferred** means it fits every sample we have but needs more files to confirm.
-<!-- known-difference-file: Reading .fmp12 files ;; Some bytes of a .fmp12 are read by inference: they fit every sample we have but no more files confirm them (privilege bits and option values, field type codes, table occurrence graph boxes, the layout view byte, object flags, text style attributes, chart data) ;; A converted file can differ from what FileMaker shows for an option that uses such a byte ;; More sample files that use the option, or a FileMaker Design Report of the same file -->
-<!-- known-difference-file: Reading .fmp12 files ;; Rich-text formatting runs, externally stored containers, how global fields are stored and the user's custom layout display order are not decoded yet ;; A converted file does not carry them ;; Sample files that use them (for the display order, one where layouts were reordered) -->
+<!-- known-difference-file: Reading .fmp12 files ;; Some bytes of a .fmp12 are read by inference: they fit every sample we have but no more files confirm them (privilege bits and option values, field type codes, table occurrence graph boxes, the layout view byte, object flags, text style attributes, chart data); comparison unverified ;; A converted file can differ from what FileMaker shows for an option that uses such a byte ;; More sample files that use the option, or a FileMaker Design Report of the same file -->
+<!-- known-difference-file: Reading .fmp12 files ;; Rich-text formatting runs, externally stored containers, how global fields are stored and the user's custom layout display order are not decoded yet; comparison unverified ;; A converted file does not carry them ;; Sample files that use them (for the display order, one where layouts were reordered) -->
 
 ## 1. Container
 
