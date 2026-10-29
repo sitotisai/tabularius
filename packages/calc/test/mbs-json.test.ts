@@ -211,7 +211,7 @@ test('MBS JSON: through MBS ( … ), bad JSON is an MBS error and IsError says s
   assert.equal(evaluateText('MBS ( "JSON.AddValueToArray" ; "[]" ; 5 ; "5" )', c).replace(/\s/g, ''), '[5,"5"]');
   assert.equal(evaluateText('MBS ( "IsError" )', c), '0');
   // What Tabularius doesn't do says so.
-  assert.match(fm(c, 'JSON.ReplaceEvaluate', '{}', '$', '1'), /not available/);
+  assert.equal(fm(c, 'JSON.ReplaceEvaluate', '{}', '$', '`1`'), '1');
 });
 
 test('MBS JSON: what a formula builds stays within bounds, and plain numbers are never taken for references', () => {
