@@ -30,7 +30,6 @@ import { addressBucket, endTransaction, PrivilegeError, schemaVisibility, spendP
 import { monotonicClock } from '../../store/src/monotonic.ts';
 import { secondFileSqlRefusal } from './sql-second-file.ts';
 import { executeWrite, parseWrite, returningColumns, WriteRefusal, type WritePlan, type WriteResult } from './pgwrite.ts';
-import { SignInFailures } from '../../store/src/sign-in-failures.ts';
 import type { SqlValue } from '../../store/src/find.ts';
 import type { Host } from './host.ts';
 import { BinaryFormatError, binaryParam, binaryValue, castParamTypes, expansionBudget, isFalse, isPlainNumber } from './pgbinary.ts';
@@ -635,8 +634,8 @@ class Connection {
     const from = this.socket.remoteAddress ?? 'unknown';
     // Blocked by an administrator: refused before the password is checked, as for the Data API.
     if (this.server.host.config.blockNewUsers()) return fail('57P03', 'the server isn\'t accepting new users right now; try again later');
-    // Hosted files and the unhosted-name pool have independent failure histories and
-    // eviction. Exposing their lockout state would reveal whether a file exists.
+    // Hosted files and invented names have independent failure histories. Exposing
+    // their lockout state would reveal whether a file exists.
     const passwordMessage = `password authentication failed for user "${this.user}"`;
     if (!this.store) {
       const until = this.user ? await this.server.checkUnhostedPassword(password, from, db, this.user) : undefined;
@@ -1476,14 +1475,13 @@ export class PgServer {
   private localUnsignedCount = 0;
   private readonly signed = new Map<string, number>();
   private signedCount = 0;
-  private readonly unhostedFailures = new SignInFailures();
-
-  /** The same accounting as Store, in a separate bounded budget for names with no Store.
+  /** The same accounting as Store, shared with HTTP for names with no Store.
    * Reserve failures before yielding; every reply still spends one hash to hide file existence. */
   async checkUnhostedPassword(password: string, from: string, database: string, account: string): Promise<number | undefined> {
-    const key = this.unhostedFailures.accountKey(account, from, database);
-    this.unhostedFailures.record(key, from, false);
-    const until = this.unhostedFailures.lockedOut(key, from);
+    const failures = this.host.unhostedSignIns.table(database);
+    const key = failures.accountKey(account, from, database);
+    failures.record(key, from, false);
+    const until = failures.lockedOut(key, from);
     await spendPasswordCheck(password);
     return until;
   }
