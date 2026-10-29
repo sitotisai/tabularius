@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore, Store } from '../../store/src/index.ts';
 import { serve } from '../src/index.ts';
+import { SignInFailures } from '../../store/src/sign-in-failures.ts';
 
 let dir: string;
 let served: Awaited<ReturnType<typeof serve>>;
@@ -96,4 +97,34 @@ test('an address that spends its budget on invented accounts is refused the same
     assert.ok(realPasskey.some((s) => s.includes('wait=true')), 'thirty bad assertions from one address lock it at a hosted file');
     assert.deepEqual(missingPasskey, realPasskey);
   } finally { await new Promise<void>((resolve) => proxied.server.close(() => resolve())); }
+});
+
+test('an address locked out at one invented name is not locked at another name or a hosted file, and recovery codes share the address budget of passwords', { timeout: 180_000 }, async () => {
+  const proxied = await serve({ dir, port: 0, hostname: '127.0.0.1', watch: false, log: () => {}, proxyHeader: 'x-forwarded-for', trustedProxies: ['127.0.0.1'] });
+  try {
+    const odata = (db: string, address: string, i: number) => fetch(`${proxied.url}/fmi/odata/v4/${db}/T`, { headers: { authorization: basic(`Spend${i}`, 'wrong'), 'x-forwarded-for': address } });
+    const recovery = (db: string, address: string) => fetch(`${proxied.url}/fmi/data/vLatest/databases/${db}/sessions/recovery`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': address }, body: JSON.stringify({ account: 'Ann', code: 'wrong' }) });
+    const shape = async (res: Response) => `${res.status} wait=${res.headers.has('retry-after')}`;
+    // One address spends its whole budget at the name Burn.
+    for (let i = 0; i < 31; i++) await odata('Burn', '203.0.113.1', i);
+    assert.equal(await shape(await odata('Burn', '203.0.113.1', 99)), '401 wait=true');
+    // It is not locked at a second invented name, as it is not locked at a second hosted file.
+    assert.equal(await shape(await odata('OtherName', '203.0.113.1', 0)), '401 wait=false');
+    assert.equal(await shape(await odata('Real', '203.0.113.1', 0)), '401 wait=false');
+    // At one name, passwords and recovery codes spend one address budget, hosted or not.
+    for (const db of ['Real', 'Gone']) {
+      for (let i = 0; i < 31; i++) await odata(db, '203.0.113.2', i);
+      const res = await recovery(db, '203.0.113.2');
+      assert.equal(await shape(res), '401 wait=true', db);
+      assert.match((await res.text()).replaceAll(db, '<file>'), /Too many failed sign-ins/);
+    }
+  } finally { await new Promise<void>((resolve) => proxied.server.close(() => resolve())); }
+});
+
+test('a file name as long as a request line allows keeps the key short', () => {
+  const failures = new SignInFailures();
+  const key = failures.accountKey('Ann', '198.51.100.1', 'x'.repeat(60_000));
+  assert.ok(key.length < 400, `${key.length} characters`);
+  assert.notEqual(key, failures.accountKey('Ann', '198.51.100.1', 'x'.repeat(59_999)));
+  assert.equal(failures.accountKey('Ann', '198.51.100.1', 'Name'), failures.accountKey('Ann', '198.51.100.1', 'NAME'));
 });
