@@ -161,6 +161,8 @@ class World {
   lastK = 0;
   /** An older copy of the standby's state file, to put back as if the last saves never happened. */
   staleState?: string;
+  /** What the standby's file looked like when that copy of its state was taken. */
+  staleStamp?: string;
   accountsMade: string[] = ['ann', 'bob'];
   nextContainerBig = true;
   readonly random: () => number;
@@ -327,7 +329,13 @@ class World {
     }
     this.acked = this.committed;
     this.staleState = this.stateText();
+    this.staleStamp = this.fileStamp();
     this.note(`settled at ${this.committed} edits`);
+  }
+
+  fileStamp(): string {
+    const stamp = (p: string) => existsSync(p) ? `${statSync(p).size}@${statSync(p).mtimeMs}` : '-';
+    return [this.standbyFile(), this.standbyFile() + '-wal'].map(stamp).join(' ');
   }
 
   stateText(): string | undefined {
@@ -487,6 +495,7 @@ async function failover(w: World, how: { settled: boolean; split: boolean; prima
   w.acked = k;
   w.lastK = k;
   w.staleState = undefined;
+  w.staleStamp = undefined;
   w.standby = new Standby({ folder: old.dir, primary: next.link.url, token: TOKEN, wait: 1, overwrite: true, log: (m) => void w.standbyLog.push(m) });
   w.standby.start();
   w.primary.link.set('open');
@@ -517,7 +526,10 @@ async function run(seed: number): Promise<void> {
         case 'standbyCrash': {
           // The last saves of its state never happened: it comes back with an older note of what it had done.
           await w.stopStandby();
-          const stale = w.staleState;
+          // Only while its file is as that note left it: a standby that went on after the note (and saved a note of the
+          // change before touching the file, as it always does) would not have lost that note in a real crash, and the
+          // restart racing the standby's catching up would otherwise decide whether the run is possible at all.
+          const stale = w.staleStamp === w.fileStamp() ? w.staleState : undefined;
           if (stale !== undefined) writeFileSync(join(w.standbyNode.dir, STANDBY_STATE), stale);
           w.note(`standby crash (state put back to the last settled one: ${stale !== undefined})`);
           await w.startStandbyNow();
