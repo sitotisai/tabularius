@@ -35,7 +35,12 @@ Other ways to get it:
 - **Windows.** The release lists a `windows-x64.exe` program when it was built and passed its
   check for that release; Windows is the least tested system ([versions](docs/versioning.md)). Without
   one, use `powershell -ExecutionPolicy Bypass -File scripts\install.ps1` from a checkout, which
-  needs Git and puts a `tabularius` command on your PATH.
+  needs trusted local source and puts a `tabularius` command on your PATH; open a new terminal afterward.
+  It downloads Node only if a compatible local copy is unavailable and needs npm registry access
+  for dependencies. If policy refuses to start it, ask your administrator to approve or sign
+  the script; the installer cannot handle a refusal that happens before it runs.
+  See [Windows installer recovery](docs/release-builds.md#windows-installer-recovery) for download,
+  permission and Windows Security failures.
 - **Linux with musl (Alpine)** can't run the program, which needs glibc. Use Docker
   (`docker compose up -d`) or the checkout install below.
 - **From a checkout**, with Node 22.20 or newer: `./scripts/install.sh` on macOS or Linux. It

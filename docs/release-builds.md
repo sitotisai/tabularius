@@ -148,3 +148,41 @@ who made it.
 ## Windows readiness
 
 Windows execution is unverified. See the [Windows readiness audit](audits/audit-windows.md) for the offline findings, simulated tests, installer trust boundary, and the native install/service/upgrade/backup checklist required before claiming Windows support. The PowerShell source installer requires trusted local source and verifies any Node download before extraction. <!-- known-difference: Windows hosting ;; Windows execution is unverified ;; A Windows build or install can fail where the offline tests pass ;; Follow the Windows readiness checklist on a real Windows machine -->
+
+
+## Windows installer recovery
+
+`scripts/install.ps1` installs from trusted local source, rather than downloading a standalone
+Tabularius release. Existing exact-filename checksum verification and rollback storage are retained.
+A downloaded Node now must pass both SHA-256 verification and `--version` (22.20 or newer) before
+the existing Node directory moves; a failed publication attempts to restore `node.previous`.
+Staging stays inside the install folder to avoid copying between drives during publication.
+The application must also pass `--version` before command wrappers are written.
+Checksums come from the same HTTPS host as Node and do not independently authenticate its publisher.
+
+| Failure | Message and next step |
+| --- | --- |
+| No Internet, TLS failure, proxy refusal or interrupted request | Download failed; check Internet access, proxy and certificate trust, then retry. |
+| No write access or insufficient space | Cannot write the install or temporary folder; check permissions and free space, then retry. |
+| Checksum mismatch, missing checksum or truncated download | SHA256 mismatch or missing checksum; download again from nodejs.org and do not use the damaged archive. |
+| Extraction failure | Archive could not be extracted; check free space and security software, then retry. |
+| Windows on Arm | Native Arm64 selects the Arm64 Node ZIP, including when the process reports another architecture; native execution remains unverified. |
+| 32-bit or unknown Windows architecture when Node is needed | Unsupported processor; use 64-bit Windows on x64 or Arm64. A compatible preinstalled Node is reused without downloading. |
+| Existing Node in use, replacement denied | Cannot replace Node; close programs using it and check permissions before retrying. |
+| Interrupted replacement or failed rollback | Saved node.previous needs recovery; keep it and restore it to node when that folder is absent. |
+| PATH missing in an existing terminal | Open a new terminal; the installer updates its own process and the user PATH but cannot update its parent shell. |
+| SmartScreen, quarantine or another launch failure | Downloaded Node cannot run --version; review the verified download with Windows Security or your administrator before retrying. The installer does not remove security protections. |
+| Dependency installation failure | Check npm availability, Internet access, proxy, certificate trust and checkout write access, then retry. |
+| Execution-policy refusal | Ask an administrator to approve or sign the trusted script; this occurs before script execution, so PowerShell owns the error output. |
+
+The installer cannot reliably distinguish a security block from another executable launch failure.
+PowerShell parameter-binding errors also occur before its error handler runs. These pre-execution
+errors cannot be replaced by installer messages without changing the command used to start it.
+Application dependency installation still runs in the checkout; it is not a transactional application
+upgrade. Node rollback protection does not promise rollback of changes made by npm.
+
+Offline tests parse the message table, check failure references and replacement ordering, and run
+pure architecture, archive-name and checksum decisions when PowerShell is available. They visibly
+skip PowerShell execution when it is absent. Windows ACLs, file locks, execution policy, SmartScreen,
+user PATH persistence, native Arm64 and real TLS/proxy failures remain unverified until the native
+Windows readiness checklist is run. No offline test downloads or installs software or changes a service.
