@@ -2,12 +2,14 @@
 id: script-step-134
 title: "Add Account"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Add Account
+
+Since 0.1.0
 
 Add Account is a accounts and security script step. This page describes how the offline Tabularius engine handles it.
 

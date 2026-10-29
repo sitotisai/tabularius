@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_PGWIRE_TX_MAX_MS
+
+Since 0.1.0
 
 The longest a SQL connection may keep one transaction open, however busy it is, in milliseconds. Only matters with --sql-writes.
 

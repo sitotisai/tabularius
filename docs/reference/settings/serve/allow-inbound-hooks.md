@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # tabularius serve --allow-inbound-hooks
+
+Since 0.1.0
 
 `--allow-inbound-hooks` is a serve option. The full command usage is in [serve](../../cli/serve.md).
 

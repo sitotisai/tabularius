@@ -2,12 +2,14 @@
 id: script-step-222
 title: "Configure Regression Model"
 area: script-steps
-since: unknown
 status: not-yet
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Configure Regression Model
+
+Since 0.1.0
 
 Configure Regression Model is a ai and models script step. This page describes how the offline Tabularius engine handles it.
 

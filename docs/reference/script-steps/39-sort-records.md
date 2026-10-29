@@ -2,12 +2,14 @@
 id: script-step-39
 title: "Sort Records"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Sort Records
+
+Since 0.1.0
 
 Sort Records is a records and finds script step. This page describes how the offline Tabularius engine handles it.
 

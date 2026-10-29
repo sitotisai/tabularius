@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # tabularius serve --sql-writes
+
+Since 0.1.0
 
 `--sql-writes` is a serve option. The full command usage is in [serve](../../cli/serve.md).
 

@@ -2,12 +2,14 @@
 id: script-step-6
 title: "Go to Layout"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Go to Layout
+
+Since 0.1.0
 
 Go to Layout is a layouts and windows script step. This page describes how the offline Tabularius engine handles it.
 

@@ -2,12 +2,14 @@
 id: script-step-190
 title: "Create Data File"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Create Data File
+
+Since 0.1.0
 
 Create Data File is a files and output script step. This page describes how the offline Tabularius engine handles it.
 

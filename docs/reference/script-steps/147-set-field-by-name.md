@@ -2,12 +2,14 @@
 id: script-step-147
 title: "Set Field By Name"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Set Field By Name
+
+Since 0.1.0
 
 Set Field By Name is a fields and values script step. This page describes how the offline Tabularius engine handles it.
 

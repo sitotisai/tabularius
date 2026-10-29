@@ -2,12 +2,14 @@
 id: script-step-202
 title: "Configure Machine Learning Model"
 area: script-steps
-since: unknown
 status: not-yet
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Configure Machine Learning Model
+
+Since 0.1.0
 
 Configure Machine Learning Model is a ai and models script step. This page describes how the offline Tabularius engine handles it.
 

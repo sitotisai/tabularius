@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_AI_EXCLUDE
+
+Since 0.1.0
 
 Comma-separated files kept from the assistant and AI apps entirely.
 

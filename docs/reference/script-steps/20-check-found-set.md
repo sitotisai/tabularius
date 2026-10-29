@@ -2,12 +2,14 @@
 id: script-step-20
 title: "Check Found Set"
 area: script-steps
-since: unknown
 status: not-yet
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Check Found Set
+
+Since 0.1.0
 
 Check Found Set is a records and finds script step. This page describes how the offline Tabularius engine handles it.
 

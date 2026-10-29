@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_MAX_UPLOAD
+
+Since 0.1.0
 
 Largest file accepted by the server upload route, in bytes.
 

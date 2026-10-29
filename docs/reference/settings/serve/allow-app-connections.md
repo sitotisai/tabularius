@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # tabularius serve --allow-app-connections
+
+Since 0.1.0
 
 `--allow-app-connections` is a serve option. The full command usage is in [serve](../../cli/serve.md).
 

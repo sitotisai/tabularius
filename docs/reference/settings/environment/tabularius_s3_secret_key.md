@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_S3_SECRET_KEY
+
+Since 0.1.0
 
 Secret access key for off-site S3-compatible storage.
 

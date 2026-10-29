@@ -2,12 +2,14 @@
 id: script-step-217
 title: "Set AI Call Logging"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Set AI Call Logging
+
+Since 0.1.0
 
 Set AI Call Logging is a ai and models script step. This page describes how the offline Tabularius engine handles it.
 

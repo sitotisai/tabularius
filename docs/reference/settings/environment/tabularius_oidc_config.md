@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_OIDC_CONFIG
+
+Since 0.1.0
 
 A JSON file describing several providers.
 

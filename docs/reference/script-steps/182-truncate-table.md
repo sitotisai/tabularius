@@ -2,12 +2,14 @@
 id: script-step-182
 title: "Truncate Table"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Truncate Table
+
+Since 0.1.0
 
 Truncate Table is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

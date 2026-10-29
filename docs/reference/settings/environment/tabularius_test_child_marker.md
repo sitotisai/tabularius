@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_TEST_CHILD_MARKER
+
+Since 0.1.0
 
 Internal to `scripts/test-cross-file-isolation.ts`: the runner sets a temporary marker path for its forbidden-command stubs. A stub writes the marker if invoked, causing the audit to fail. No manual setting is needed.
 

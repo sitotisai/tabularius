@@ -2,12 +2,14 @@
 id: script-step-82
 title: "New File"
 area: script-steps
-since: unknown
 status: not-yet
 verified: f200448e0
+since: 0.1.0
 ---
 
 # New File
+
+Since 0.1.0
 
 New File is a files and output script step. This page describes how the offline Tabularius engine handles it.
 

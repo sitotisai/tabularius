@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_FMS_KEY_PASSPHRASE
+
+Since 0.1.0
 
 Passphrase for the source server certificate key during migration.
 

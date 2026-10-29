@@ -2,12 +2,14 @@
 id: script-step-72
 title: "Exit Loop If"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Exit Loop If
+
+Since 0.1.0
 
 Exit Loop If is a script flow script step. This page describes how the offline Tabularius engine handles it.
 

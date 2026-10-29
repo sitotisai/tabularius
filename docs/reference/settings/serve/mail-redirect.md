@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # tabularius serve --mail-redirect
+
+Since 0.1.0
 
 `--mail-redirect` is a serve option. The full command usage is in [serve](../../cli/serve.md).
 

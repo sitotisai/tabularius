@@ -2,12 +2,14 @@
 id: script-step-185
 title: "Configure Region Monitor Script"
 area: script-steps
-since: unknown
 status: not-yet
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Configure Region Monitor Script
+
+Since 0.1.0
 
 Configure Region Monitor Script is a script flow script step. This page describes how the offline Tabularius engine handles it.
 

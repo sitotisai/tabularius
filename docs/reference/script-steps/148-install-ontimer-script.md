@@ -2,12 +2,14 @@
 id: script-step-148
 title: "Install OnTimer Script"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Install OnTimer Script
+
+Since 0.1.0
 
 Install OnTimer Script is a script flow script step. This page describes how the offline Tabularius engine handles it.
 

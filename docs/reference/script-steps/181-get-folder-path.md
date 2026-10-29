@@ -2,12 +2,14 @@
 id: script-step-181
 title: "Get Folder Path"
 area: script-steps
-since: unknown
 status: not-yet
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Get Folder Path
+
+Since 0.1.0
 
 Get Folder Path is a files and output script step. This page describes how the offline Tabularius engine handles it.
 

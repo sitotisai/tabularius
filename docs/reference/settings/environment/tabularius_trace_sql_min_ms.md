@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_TRACE_SQL_MIN_MS
+
+Since 0.1.0
 
 With `TABULARIUS_TRACE_SQL` set, logs only statements that took this many milliseconds or more.
 

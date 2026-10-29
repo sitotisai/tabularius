@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_LDAP_SEARCH_DN
+
+Since 0.1.0
 
 The account used to find a person before they sign in.
 

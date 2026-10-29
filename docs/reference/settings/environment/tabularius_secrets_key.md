@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_SECRETS_KEY
+
+Since 0.1.0
 
 Passphrase used to seal outside-connection secrets.
 

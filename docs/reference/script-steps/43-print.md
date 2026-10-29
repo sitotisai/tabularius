@@ -2,12 +2,14 @@
 id: script-step-43
 title: "Print"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Print
+
+Since 0.1.0
 
 Print is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

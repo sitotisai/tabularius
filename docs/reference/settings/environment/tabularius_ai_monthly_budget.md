@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_AI_MONTHLY_BUDGET
+
+Since 0.1.0
 
 A stop at about this many US dollars a month.
 

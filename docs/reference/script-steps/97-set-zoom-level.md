@@ -2,12 +2,14 @@
 id: script-step-97
 title: "Set Zoom Level"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Set Zoom Level
+
+Since 0.1.0
 
 Set Zoom Level is a layouts and windows script step. This page describes how the offline Tabularius engine handles it.
 

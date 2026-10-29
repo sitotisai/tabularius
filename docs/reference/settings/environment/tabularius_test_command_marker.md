@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_TEST_COMMAND_MARKER
+
+Since 0.1.0
 
 Internal to `scripts/test-auth-review-round2.ts`: the runner sets a temporary marker path for its forbidden-command stubs (`launchctl`, `systemctl`, `sc`, `git`, `npm`, `curl`, `sudo`). A stub writes the marker if invoked, causing the audit to fail. No manual setting is needed.
 

@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_TRACE_SQL
+
+Since 0.1.0
 
 Enables SQL statement tracing to stderr. A value that is neither a switch-on nor a switch-off word stops `serve`, naming the setting.
 

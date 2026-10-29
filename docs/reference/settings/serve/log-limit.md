@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # tabularius serve --log-limit
+
+Since 0.1.0
 
 `--log-limit` is a serve option. The full command usage is in [serve](../../cli/serve.md).
 

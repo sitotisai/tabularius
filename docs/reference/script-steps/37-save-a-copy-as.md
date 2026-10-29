@@ -2,12 +2,14 @@
 id: script-step-37
 title: "Save a Copy as"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Save a Copy as
+
+Since 0.1.0
 
 Save a Copy as is a fields and values script step. This page describes how the offline Tabularius engine handles it.
 

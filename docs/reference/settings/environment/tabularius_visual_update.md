@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_VISUAL_UPDATE
+
+Since 0.1.0
 
 Internal to `npm run test:visual -- --update`: tells the visual regression test to write changed screenshot baselines. No manual setting is needed.
 

@@ -2,12 +2,14 @@
 id: script-step-124
 title: "Set Window Title"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Set Window Title
+
+Since 0.1.0
 
 Set Window Title is a layouts and windows script step. This page describes how the offline Tabularius engine handles it.
 

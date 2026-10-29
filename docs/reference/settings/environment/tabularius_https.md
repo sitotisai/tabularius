@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_HTTPS
+
+Since 0.1.0
 
 `name[,name]` for a Let's Encrypt certificate, or `local` for this server's own authority.
 

@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_OIDC_GROUPS_CLAIM
+
+Since 0.1.0
 
 The claim that lists the person's groups.
 

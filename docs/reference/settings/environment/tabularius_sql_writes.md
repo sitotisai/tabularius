@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_SQL_WRITES
+
+Since 0.1.0
 
 1 lets the SQL connection run INSERT, UPDATE and DELETE (off by default); needs the SQL port.
 

@@ -2,12 +2,14 @@
 id: script-step-120
 title: "Arrange All Windows"
 area: script-steps
-since: unknown
 status: not-yet
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Arrange All Windows
+
+Since 0.1.0
 
 Arrange All Windows is a layouts and windows script step. This page describes how the offline Tabularius engine handles it.
 

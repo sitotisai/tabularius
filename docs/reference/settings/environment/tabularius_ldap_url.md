@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_LDAP_URL
+
+Since 0.1.0
 
 The directory server's `ldaps://` address.
 

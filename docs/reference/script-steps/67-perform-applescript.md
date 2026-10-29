@@ -2,12 +2,14 @@
 id: script-step-67
 title: "Perform AppleScript"
 area: script-steps
-since: unknown
 status: not-yet
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Perform AppleScript
+
+Since 0.1.0
 
 Perform AppleScript is a script flow script step. This page describes how the offline Tabularius engine handles it.
 

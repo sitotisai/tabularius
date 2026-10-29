@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_PGWIRE_MAX_BUFFERED_ROWS
+
+Since 0.1.0
 
 Combined result rows that one SQL connection may hold in portals.
 

@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_HTTPS_EMAIL
+
+Since 0.1.0
 
 The contact address given to Let's Encrypt.
 

@@ -2,12 +2,14 @@
 id: script-step-13
 title: "Insert Current Date"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Insert Current Date
+
+Since 0.1.0
 
 Insert Current Date is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

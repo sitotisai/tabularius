@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_MCP_TOKEN
+
+Since 0.1.0
 
 Administrator bearer token for the MCP endpoint.
 

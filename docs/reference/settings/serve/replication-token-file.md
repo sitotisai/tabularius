@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # tabularius serve --replication-token-file
+
+Since 0.1.0
 
 `--replication-token-file` is a serve option. The full command usage is in [serve](../../cli/serve.md).
 

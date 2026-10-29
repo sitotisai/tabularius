@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # tabularius serve --ldap-bind-dn-template
+
+Since 0.1.0
 
 `--ldap-bind-dn-template` is a serve option. The full command usage is in [serve](../../cli/serve.md).
 

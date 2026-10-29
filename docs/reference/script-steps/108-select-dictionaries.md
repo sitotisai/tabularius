@@ -2,12 +2,14 @@
 id: script-step-108
 title: "Select Dictionaries"
 area: script-steps
-since: unknown
 status: not-yet
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Select Dictionaries
+
+Since 0.1.0
 
 Select Dictionaries is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

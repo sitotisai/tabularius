@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_UPLOAD_IDLE_HOURS
+
+Since 0.1.0
 
 How many hours an upload in pieces (`container-uploads`) may receive nothing before it is dropped (24 by default; `0` keeps them until the server restarts).
 

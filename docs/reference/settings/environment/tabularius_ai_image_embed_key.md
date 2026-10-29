@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_AI_IMAGE_EMBED_KEY
+
+Since 0.1.0
 
 API key for the configured image embedding provider.
 

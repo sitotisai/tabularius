@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # tabularius serve --backup-every
+
+Since 0.1.0
 
 `--backup-every` is a serve option. The full command usage is in [serve](../../cli/serve.md).
 

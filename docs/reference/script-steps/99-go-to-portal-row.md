@@ -2,12 +2,14 @@
 id: script-step-99
 title: "Go to Portal Row"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Go to Portal Row
+
+Since 0.1.0
 
 Go to Portal Row is a records and finds script step. This page describes how the offline Tabularius engine handles it.
 

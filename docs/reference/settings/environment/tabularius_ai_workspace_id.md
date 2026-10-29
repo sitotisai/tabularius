@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_AI_WORKSPACE_ID
+
+Since 0.1.0
 
 The workspace id for a key not made inside a workspace.
 

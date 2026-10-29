@@ -2,12 +2,14 @@
 id: script-step-87
 title: "Show Custom Dialog"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Show Custom Dialog
+
+Since 0.1.0
 
 Show Custom Dialog is a layouts and windows script step. This page describes how the offline Tabularius engine handles it.
 

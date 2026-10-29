@@ -2,12 +2,14 @@
 id: script-step-132
 title: "Export Field Contents"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Export Field Contents
+
+Since 0.1.0
 
 Export Field Contents is a files and output script step. This page describes how the offline Tabularius engine handles it.
 

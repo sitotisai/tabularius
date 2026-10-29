@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_STOP_GRACE_MS
+
+Since 0.1.0
 
 How long `tabularius service stop` waits for the server to finish before it ends it (30000 by default).
 

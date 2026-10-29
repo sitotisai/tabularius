@@ -2,12 +2,14 @@
 id: script-step-34
 title: "Close File"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Close File
+
+Since 0.1.0
 
 Close File is a files and output script step. This page describes how the offline Tabularius engine handles it.
 

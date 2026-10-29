@@ -2,12 +2,14 @@
 id: script-step-50
 title: "Select All"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Select All
+
+Since 0.1.0
 
 Select All is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

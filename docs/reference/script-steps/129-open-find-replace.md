@@ -2,12 +2,14 @@
 id: script-step-129
 title: "Open Find/Replace"
 area: script-steps
-since: unknown
 status: not-yet
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Open Find/Replace
+
+Since 0.1.0
 
 Open Find/Replace is a fields and values script step. This page describes how the offline Tabularius engine handles it.
 

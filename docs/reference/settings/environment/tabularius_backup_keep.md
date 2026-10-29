@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_BACKUP_KEEP
+
+Since 0.1.0
 
 How many backups to keep (7 by default).
 

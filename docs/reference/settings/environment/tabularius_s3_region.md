@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_S3_REGION
+
+Since 0.1.0
 
 The bucket's region (`AWS_REGION` is used when this is not set).
 

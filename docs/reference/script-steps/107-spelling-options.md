@@ -2,12 +2,14 @@
 id: script-step-107
 title: "Spelling Options"
 area: script-steps
-since: unknown
 status: not-yet
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Spelling Options
+
+Since 0.1.0
 
 Spelling Options is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

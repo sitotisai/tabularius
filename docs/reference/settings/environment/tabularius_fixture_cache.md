@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_FIXTURE_CACHE
+
+Since 0.1.0
 
 Where `npm run fixtures` keeps downloaded fixture files between checkouts (`~/.cache/tabularius-fixtures` by default).
 

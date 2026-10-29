@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_CHROMIUM
+
+Since 0.1.0
 
 Chromium executable used by the browser test harness.
 

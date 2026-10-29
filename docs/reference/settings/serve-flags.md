@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # Serve flags
+
+Since 0.1.0
 
 These are the options named by `tabularius help serve`. A flag takes precedence over the matching environment variable. Changes take effect when the server starts.
 

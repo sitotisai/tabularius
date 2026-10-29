@@ -2,12 +2,14 @@
 id: script-step-74
 title: "Go to Related Record"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Go to Related Record
+
+Since 0.1.0
 
 Go to Related Record is a records and finds script step. This page describes how the offline Tabularius engine handles it.
 

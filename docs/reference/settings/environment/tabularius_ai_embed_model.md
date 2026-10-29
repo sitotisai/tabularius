@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_AI_EMBED_MODEL
+
+Since 0.1.0
 
 Model id for text embeddings at the configured endpoint.
 

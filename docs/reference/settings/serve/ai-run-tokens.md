@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # tabularius serve --ai-run-tokens
+
+Since 0.1.0
 
 `--ai-run-tokens` is a serve option. The full command usage is in [serve](../../cli/serve.md).
 

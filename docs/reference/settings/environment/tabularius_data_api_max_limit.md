@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_DATA_API_MAX_LIMIT
+
+Since 0.1.0
 
 Largest record count one Data API request may ask for.
 

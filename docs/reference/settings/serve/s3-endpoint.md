@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # tabularius serve --s3-endpoint
+
+Since 0.1.0
 
 `--s3-endpoint` is a serve option. The full command usage is in [serve](../../cli/serve.md).
 

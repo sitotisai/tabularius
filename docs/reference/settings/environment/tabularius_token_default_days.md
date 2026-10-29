@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_TOKEN_DEFAULT_DAYS
+
+Since 0.1.0
 
 Days an API or AI-app token lives when no lifetime is asked for (calendar feed addresses keep their own default).
 

@@ -2,12 +2,14 @@
 id: script-step-115
 title: "Allow Formatting Bar"
 area: script-steps
-since: unknown
 status: not-yet
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Allow Formatting Bar
+
+Since 0.1.0
 
 Allow Formatting Bar is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

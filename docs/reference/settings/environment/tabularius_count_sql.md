@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_COUNT_SQL
+
+Since 0.1.0
 
 Counts the prepared statements a store runs and the rows they change, for measuring (scripts/bulk-scale.ts, docs/performance.md).
 

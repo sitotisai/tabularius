@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_TEST_SMTP_FILE
+
+Since 0.1.0
 
 A file holding that account (`~/.openhbam/test-smtp` by default).
 

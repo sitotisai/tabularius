@@ -2,12 +2,14 @@
 id: script-step-160
 title: "Insert from URL"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Insert from URL
+
+Since 0.1.0
 
 Insert from URL is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

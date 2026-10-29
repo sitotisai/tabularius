@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_LDAP_BASE_DN
+
+Since 0.1.0
 
 Where in the directory people are looked up.
 

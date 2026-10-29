@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_PGWIRE_MAX_ROWS
+
+Since 0.1.0
 
 Maximum rows a SQL query may return.
 

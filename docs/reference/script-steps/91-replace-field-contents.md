@@ -2,12 +2,14 @@
 id: script-step-91
 title: "Replace Field Contents"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Replace Field Contents
+
+Since 0.1.0
 
 Replace Field Contents is a fields and values script step. This page describes how the offline Tabularius engine handles it.
 

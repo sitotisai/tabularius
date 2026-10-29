@@ -2,12 +2,14 @@
 id: script-step-140
 title: "Open Manage Data Sources"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Open Manage Data Sources
+
+Since 0.1.0
 
 Open Manage Data Sources is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

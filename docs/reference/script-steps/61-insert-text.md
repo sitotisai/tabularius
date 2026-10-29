@@ -2,12 +2,14 @@
 id: script-step-61
 title: "Insert Text"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Insert Text
+
+Since 0.1.0
 
 Insert Text is a fields and values script step. This page describes how the offline Tabularius engine handles it.
 

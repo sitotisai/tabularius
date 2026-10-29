@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_PGWIRE_IDLE_MS
+
+Since 0.1.0
 
 How long a signed-in SQL connection may sit idle outside active work before it is closed, in milliseconds.
 

@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_FUZZ_SELFTEST
+
+Since 0.1.0
 
 Internal to the fuzz harness (`scripts/fuzz/worker.ts`): `error`, `hang`, `exit` or `oom` makes every input fail that way, to prove the detector end to end. Set by `packages/server/test/fuzz.test.ts`; no manual setting is needed.
 

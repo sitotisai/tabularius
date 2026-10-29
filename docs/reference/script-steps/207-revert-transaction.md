@@ -2,12 +2,14 @@
 id: script-step-207
 title: "Revert Transaction"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Revert Transaction
+
+Since 0.1.0
 
 Revert Transaction is a records and finds script step. This page describes how the offline Tabularius engine handles it.
 

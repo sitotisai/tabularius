@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_CONVERT_TIMEOUT
+
+Since 0.1.0
 
 Time budget for a conversion process, in seconds.
 

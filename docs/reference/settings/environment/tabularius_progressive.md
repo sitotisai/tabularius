@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_PROGRESSIVE
+
+Since 0.1.0
 
 How often changes are saved as a point you can restore to with `tabularius restore --at`; `off` for never.
 

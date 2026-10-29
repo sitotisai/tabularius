@@ -2,12 +2,14 @@
 id: script-step-25
 title: "Omit Record"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Omit Record
+
+Since 0.1.0
 
 Omit Record is a records and finds script step. This page describes how the offline Tabularius engine handles it.
 

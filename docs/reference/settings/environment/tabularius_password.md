@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_PASSWORD
+
+Since 0.1.0
 
 Password supplied to a CLI command that otherwise asks interactively.
 

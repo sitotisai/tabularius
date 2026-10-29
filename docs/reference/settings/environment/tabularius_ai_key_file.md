@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_AI_KEY_FILE
+
+Since 0.1.0
 
 A file holding the Anthropic key, read again when it changes.
 

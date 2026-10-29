@@ -2,12 +2,14 @@
 id: script-step-143
 title: "Save Records as Excel"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Save Records as Excel
+
+Since 0.1.0
 
 Save Records as Excel is a records and finds script step. This page describes how the offline Tabularius engine handles it.
 

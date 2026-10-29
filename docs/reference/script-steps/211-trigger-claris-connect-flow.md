@@ -2,12 +2,14 @@
 id: script-step-211
 title: "Trigger Claris Connect Flow"
 area: script-steps
-since: unknown
 status: not-yet
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Trigger Claris Connect Flow
+
+Since 0.1.0
 
 Trigger Claris Connect Flow is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

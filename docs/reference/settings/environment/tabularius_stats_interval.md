@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_STATS_INTERVAL
+
+Since 0.1.0
 
 How often the server writes statistics log lines.
 

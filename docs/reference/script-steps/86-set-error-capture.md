@@ -2,12 +2,14 @@
 id: script-step-86
 title: "Set Error Capture"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Set Error Capture
+
+Since 0.1.0
 
 Set Error Capture is a script flow script step. This page describes how the offline Tabularius engine handles it.
 

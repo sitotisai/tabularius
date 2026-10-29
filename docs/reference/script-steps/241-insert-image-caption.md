@@ -2,12 +2,14 @@
 id: script-step-241
 title: "Insert Image Caption"
 area: script-steps
-since: unknown
 status: not-yet
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Insert Image Caption
+
+Since 0.1.0
 
 Insert Image Caption is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_SYNC_SECRETS
+
+Since 0.1.0
 
 Directory containing sync credentials for hosted files.
 

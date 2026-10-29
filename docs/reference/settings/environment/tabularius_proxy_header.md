@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_PROXY_HEADER
+
+Since 0.1.0
 
 The header a trusted proxy puts the client address in.
 

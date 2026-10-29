@@ -2,12 +2,14 @@
 id: script-step-56
 title: "Insert Picture"
 area: script-steps
-since: unknown
 status: partly
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Insert Picture
+
+Since 0.1.0
 
 Insert Picture is a other steps script step. This page describes how the offline Tabularius engine handles it.
 

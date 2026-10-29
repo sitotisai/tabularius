@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_MCP_TOKEN_FILE
+
+Since 0.1.0
 
 A private regular file holding the MCP access token.
 

@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_CONNECTIONS_PER_ADDRESS
+
+Since 0.1.0
 
 Maximum simultaneous transport connections admitted from one address.
 

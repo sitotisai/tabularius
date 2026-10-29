@@ -2,12 +2,14 @@
 id: script-step-3
 title: "Save a Copy as XML"
 area: script-steps
-since: unknown
 status: works
 verified: f200448e0
+since: 0.1.0
 ---
 
 # Save a Copy as XML
+
+Since 0.1.0
 
 Save a Copy as XML is a fields and values script step. This page describes how the offline Tabularius engine handles it.
 

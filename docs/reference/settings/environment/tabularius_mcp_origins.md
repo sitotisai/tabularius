@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_MCP_ORIGINS
+
+Since 0.1.0
 
 Additional browser origins permitted to call the MCP endpoint.
 

@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_MIN_PASSWORD_LENGTH
+
+Since 0.1.0
 
 The fewest characters a new password may have in a file whose own policy names no minimum, and for the admin console.
 

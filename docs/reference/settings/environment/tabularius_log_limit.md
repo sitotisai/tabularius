@@ -1,4 +1,10 @@
+---
+since: 0.1.0
+---
+
 # TABULARIUS_LOG_LIMIT
+
+Since 0.1.0
 
 Size at which a server log is rotated.
 
