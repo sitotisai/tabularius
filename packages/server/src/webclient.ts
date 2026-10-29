@@ -509,7 +509,7 @@ export class WebClient {
         else if (m[3] === 'index') send(200, this.index(store, layout, body, privileges));
         else if (m[3] === 'position') send(200, this.position(store, layout, body, privileges));
         else if (m[3] === 'explain') send(200, this.explain(store, session, layout, body, privileges));
-        else if (m[3] === 'history') send(200, this.history(store, layout, body, privileges));
+        else if (m[3] === 'history') send(200, this.history(store, session, layout, body, privileges));
         else if (m[3] === 'value-list') send(200, this.valueListFor(store, body, privileges));
         else if (m[3] === 'revert') send(200, this.revert(store, session, layout, body, privileges));
         else send(200, await this.button(store, session, layout, body, privileges, clientAddress(req)));
@@ -546,7 +546,7 @@ export class WebClient {
    * record may be deleted (its history stays) if the account can view the whole table. Fields the account may not see
    * are left out.
    */
-  private history(store: Store, layout: string, body: Record<string, unknown>, privileges: Privileges) {
+  private history(store: Store, session: Session, layout: string, body: Record<string, unknown>, privileges: Privileges) {
     const recordId = Number(body.recordId);
     if (!Number.isInteger(recordId) || recordId < 1) throw new ApiError(5, 'Name a record', 400);
     const table = store.layout(layout).table;
@@ -563,6 +563,7 @@ export class WebClient {
       ...(limit !== undefined && Number.isFinite(limit) ? { limit } : {}),
       hideField: (f) => !privileges.full && privileges.field(table, f) === 'none',
       hideTable: (tn) => !privileges.full && privileges.table(tn).view !== true,
+      who: { account: session.account, privileges },
     });
     return { ...h, exists };
   }
