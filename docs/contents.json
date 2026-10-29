@@ -4,9 +4,12 @@
       "title": "Start here",
       "pages": [
         "README.md",
+        "docs/features.md",
         "QUICKSTART.md",
         "ADMIN.md",
-        "docs/README.md"
+        "docs/README.md",
+        "docs/hosting-and-connecting.md",
+        "docs/hosting-for-a-team.md"
       ]
     },
     {
@@ -647,6 +650,7 @@
     {
       "title": "Architecture, design and research",
       "pages": [
+        "docs/developing.md",
         "docs/ARCHITECTURE.md",
         "docs/design-guide.md",
         "docs/visual-regression.md",

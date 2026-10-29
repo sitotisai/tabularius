@@ -4,7 +4,7 @@ Use this guide to host a solution for people or integrations on a network. HTTPS
 
 ## 1. Prepare a hosted folder
 
-Put the solution in a dedicated folder and set passwords for its accounts before making it reachable. Review [hosting for a team](../../../README.md#hosting-for-a-team) for storage, worker, and backup choices.
+Put the solution in a dedicated folder and set passwords for its accounts before making it reachable. Review [hosting for a team](../../hosting-for-a-team.md) for storage, worker, and backup choices.
 
 ## 2. Start with a local HTTPS certificate
 

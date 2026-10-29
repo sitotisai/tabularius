@@ -23,19 +23,19 @@ const MB = 1024 * 1024;
 
 /** [page, the sentence with the figure in a capture group, the figure in the code]. */
 const FIGURES: [string, RegExp, () => number][] = [
-  ['README.md', /It records up to ([\d,]+) steps/, () => RECORD_STEPS],
-  ['README.md', /A session may hold (\d+) event streams/, () => MAX_STREAMS_PER_SESSION],
-  ['README.md', /with (\d+) KB waiting to be sent, is closed/, () => MAX_STREAM_BUFFER / 1024],
-  ['README.md', /moved to `<name>-old.log` at (\d+) MB/, () => DEFAULT_LOG_LIMIT / MB],
-  ['README.md', /After (\w+) wrong passwords in \d+ minutes from one address/, () => LOCKOUT.attempts],
-  ['README.md', /After \w+ wrong passwords in (\d+) minutes from one address/, () => LOCKOUT.windowMs / 60_000],
-  ['README.md', /can't\s+sign in to the account for (\d+) minutes/, () => LOCKOUT.lockMs / 60_000],
-  ['README.md', /return at most \*\*([\d,]+) rows\*\* by default/, () => maxRows()],
-  ['README.md', /files over a megabyte are stored in (\d+) MB pieces/, () => CONTAINER_CHUNK / MB],
-  ['README.md', /once a day into\s+`<folder>\/Backups\/<date_time>\/`, keeping the last (\d+)/, () => source('packages/server/src/backup.ts', /const keep = opts\.keep \?\? (\d+);/)],
+  ['docs/features.md', /It records up to ([\d,]+) steps/, () => RECORD_STEPS],
+  ['docs/hosting-for-a-team.md', /A session may hold (\d+) event streams/, () => MAX_STREAMS_PER_SESSION],
+  ['docs/hosting-for-a-team.md', /with (\d+) KB waiting to be sent, is closed/, () => MAX_STREAM_BUFFER / 1024],
+  ['docs/hosting-for-a-team.md', /moved to `<name>-old.log` at (\d+) MB/, () => DEFAULT_LOG_LIMIT / MB],
+  ['docs/hosting-and-connecting.md', /After (\w+) wrong passwords in \d+ minutes from one address/, () => LOCKOUT.attempts],
+  ['docs/hosting-and-connecting.md', /After \w+ wrong passwords in (\d+) minutes from one address/, () => LOCKOUT.windowMs / 60_000],
+  ['docs/hosting-and-connecting.md', /can't\s+sign in to the account for (\d+) minutes/, () => LOCKOUT.lockMs / 60_000],
+  ['docs/hosting-for-a-team.md', /return at most \*\*([\d,]+) rows\*\* by default/, () => maxRows()],
+  ['docs/hosting-and-connecting.md', /files over a megabyte are stored in (\d+) MB pieces/, () => CONTAINER_CHUNK / MB],
+  ['docs/hosting-for-a-team.md', /once a day into\s+`<folder>\/Backups\/<date_time>\/`, keeping the last (\d+)/, () => source('packages/server/src/backup.ts', /const keep = opts\.keep \?\? (\d+);/)],
 ];
 
-test('the figures the README states are the code\'s', () => {
+test('the figures the guides state are the code\'s', () => {
   const wrong: string[] = [];
   for (const [file, pattern, actual] of FIGURES) {
     const text = read(file);
