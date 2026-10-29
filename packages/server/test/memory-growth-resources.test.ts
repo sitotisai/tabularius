@@ -241,10 +241,12 @@ test('deleted schedules release their held-warning marker', (t) => {
 test('PostgreSQL unsigned address table has an aggregate ceiling', (t) => {
   const pg = new PgServer(hostFor(t), { port: 0 });
   t.after(() => pg.close());
-  for (let i = 0; i < 1024; i++) assert.equal(pg.holdUnsigned(String(i)), true);
+  for (let i = 0; i < 256; i++) assert.equal(pg.holdUnsigned(String(i)), true);
   assert.equal(pg.holdUnsigned('overflow'), false);
+  assert.equal(pg.holdUnsigned('@local'), true, 'remote callers cannot fill the local sign-in budget');
   pg.releaseUnsigned('0');
   assert.equal(pg.holdUnsigned('next'), true);
+  pg.releaseUnsigned('@local');
 });
 
 test('cluster unanswered file operations are capped and rejected on shutdown', async (t) => {

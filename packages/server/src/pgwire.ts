@@ -188,8 +188,9 @@ function columnsOf(names: string[], types: (string | null)[], rows: SqlValue[][]
     // Container pointers stay numeric; compatibility of a different SQL container representation is unverified.
     if (t === 'REAL' || t === 'INTEGER') return { name, oid: OID.numeric };
     if (t) return { name, oid: OID.text };
-    const v = rows.find((r) => r[i] !== null && r[i] !== undefined)?.[i] as unknown;
-    return { name, oid: typeof v === 'number' || typeof v === 'bigint' ? OID.numeric : v instanceof Uint8Array ? OID.bytea : OID.text };
+    const values: unknown[] = rows.map((r) => r[i]).filter((v) => v !== null && v !== undefined);
+    return { name, oid: values.length && values.every((v) => typeof v === 'number' || typeof v === 'bigint') ? OID.numeric
+      : values.length && values.every((v) => v instanceof Uint8Array) ? OID.bytea : OID.text };
   });
 }
 
@@ -279,6 +280,13 @@ export function txIdleMs(): number {
   return Number.isInteger(n) && n >= 0 ? n : 30_000;
 }
 
+/** Idle time for a signed-in connection outside active work (TABULARIUS_PGWIRE_IDLE_MS, default 300,000; 0 for no limit). */
+export function pgwireIdleMs(): number {
+  const given = process.env.TABULARIUS_PGWIRE_IDLE_MS?.trim();
+  const n = given ? Number(given) : 300_000;
+  return Number.isSafeInteger(n) && n >= 0 ? n : 300_000;
+}
+
 /** The longest a connection may keep one transaction open, in ms, however busy it is (TABULARIUS_PGWIRE_TX_MAX_MS, default 300,000; 0 for no limit). Read per BEGIN. */
 export function txMaxMs(): number {
   const given = process.env.TABULARIUS_PGWIRE_TX_MAX_MS?.trim();
@@ -337,8 +345,8 @@ class Connection {
     this.socket = socket;
     this.server = server;
     // Held while waiting to sign in, so one network can't fill the server with connections that never do.
-    this.unsignedKey = server.isLocal(socket) ? undefined : addressBucket(socket.remoteAddress ?? '');
-    if (this.unsignedKey !== undefined && !server.holdUnsigned(this.unsignedKey)) {
+    this.unsignedKey = server.isLocal(socket) ? '@local' : addressBucket(socket.remoteAddress ?? '');
+    if (!server.holdUnsigned(this.unsignedKey)) {
       this.unsignedKey = undefined;
       socket.on('error', () => {});
       // Nothing reads this socket, so it would not see the client close (a client that sent its startup message leaves
@@ -674,6 +682,12 @@ class Connection {
     this.signedKey = signedKey;
     this.privileges = p;
     this.releaseUnsigned();
+    const idle = pgwireIdleMs();
+    if (idle) this.socket.setTimeout(idle, () => {
+      if (this.closed || this.socket.destroyed || !this.privileges) return;
+      if (this.working) { this.socket.setTimeout(idle); return; }
+      this.socket.destroy();
+    });
     this.store.recordUsage(this.user, 'sql');
     const status: Record<string, string> = {
       server_version: '14.0 (Tabularius)', server_encoding: 'UTF8', client_encoding: 'UTF8', DateStyle: 'ISO, MDY',
@@ -1002,7 +1016,7 @@ class Connection {
     const r = target.selectIn(this.tx, text, params, cap === 0 ? Infinity : cap + 1);
     if (cap > 0 && r.rows.length > cap) throw new PgError('54000', `SQL results are limited to ${cap} rows; use LIMIT and page through the result with a stable ORDER BY`);
     // Clients read the catalog on connect and for every autocomplete; only queries of the file's own tables are reads of its data.
-    if (!catalog) writer.run({ account: this.user, surface: 'sql' }, () => target.logQuery(text, r.rows.length, { privileges: this.privileges }));
+    writer.run({ account: this.user, surface: 'sql' }, () => target.logQuery(text, r.rows.length, { privileges: this.privileges }));
     const { fieldTypes } = target.describeTyped(text);
     return { cols: booleans(withCastColumns(columnsOf(r.names, r.types, r.rows, fieldTypes), casts, catalog ? undefined : this.bareNames(sql, casts, target)), catalog), rows: r.rows };
   }
@@ -1401,7 +1415,8 @@ class Connection {
       } else {
         // The types Describe gave the client, which it reads binary values by: a column with no declared type
         // (an expression) is described as text before any row exists, so it stays text here.
-        const r = this.run(p.sql, p.params);
+        const highest = sqlTokens(p.sql).reduce((n, token) => token.kind === 'parameter' ? Math.max(n, Number(token.text.slice(1))) : n, 0);
+        const r = this.run(p.sql, p.params.slice(0, highest));
         const described = this.describe(p.sql);
         this.keepPortalResult(p, described && described.length === r.cols.length ? { cols: described, rows: r.rows } : r);
       }
@@ -1456,6 +1471,8 @@ export class PgServer {
   private readonly sockets = new Set<Socket>();
   private readonly conns = new Set<Connection>();
   private readonly unsigned = new Map<string, number>();
+  private remoteUnsignedCount = 0;
+  private localUnsignedCount = 0;
   private readonly signed = new Map<string, number>();
   private signedCount = 0;
   private readonly unhostedFailures = new SignInFailures();
@@ -1473,15 +1490,22 @@ export class PgServer {
   /** Counts a connection not yet signed in from a network; false when it has too many. */
   holdUnsigned(key: string): boolean {
     const n = this.unsigned.get(key) ?? 0;
-    if (n >= MAX_UNSIGNED_PER_ADDRESS || (!n && this.unsigned.size >= 1024)) return false;
+    const local = key === '@local';
+    if ((!local && n >= MAX_UNSIGNED_PER_ADDRESS) || (local ? this.localUnsignedCount : this.remoteUnsignedCount) >= 256) return false;
     this.unsigned.set(key, n + 1);
+    if (local) this.localUnsignedCount++;
+    else this.remoteUnsignedCount++;
     return true;
   }
 
   releaseUnsigned(key: string): void {
-    const n = (this.unsigned.get(key) ?? 0) - 1;
+    const held = this.unsigned.get(key) ?? 0;
+    if (!held) return;
+    const n = held - 1;
     if (n > 0) this.unsigned.set(key, n);
     else this.unsigned.delete(key);
+    if (key === '@local') this.localUnsignedCount--;
+    else this.remoteUnsignedCount--;
   }
 
   /** Reserves a signed-in slot after authentication; the account is scoped to its hosted file. */
@@ -1517,6 +1541,7 @@ export class PgServer {
       this.sockets.add(socket);
       socket.on('close', () => this.sockets.delete(socket));
       socket.setNoDelay(true);
+      socket.setKeepAlive(true, 30_000);
       this.conns.add(new Connection(socket, this));
     });
   }
