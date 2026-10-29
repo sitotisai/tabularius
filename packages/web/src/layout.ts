@@ -1392,9 +1392,10 @@ export function tellPages(scope: ParentNode, name: string, value?: unknown): voi
 }
 
 /** Calls a global function of a web viewer's page, once the page has loaded (Perform JavaScript in Web Viewer). */
-export async function callWebViewer(frame: HTMLIFrameElement, fn: string, args: string[]): Promise<void> {
+export async function callWebViewer(frame: HTMLIFrameElement, fn: string, args: string[]): Promise<string | void> {
   // A page from a web host cannot be called: it would be sent the function and its parameters.
-  if (frame.dataset.external === '1') return;
+  // Native-product error codes for this browser limitation are unverified.
+  if (frame.dataset.external === '1') return 'Cannot perform JavaScript in a web viewer from an allowed external host. Use a page made in this file (a data: HTML address).';
   if (frame.dataset.loaded !== '1') {
     await new Promise<void>((resolve) => {
       frame.addEventListener('load', () => resolve(), { once: true });

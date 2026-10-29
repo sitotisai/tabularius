@@ -285,8 +285,8 @@ the web shows as text that names the host to allow.
 - A listed page loads over **https only**, on the default port, with no sign-in in the address; `http://` never loads.
 - It runs in a frame of its own origin, in a sandbox: it cannot reach the app, its cookies or the session, cannot open
   windows or take the window over, and is told nothing about it. It gets none of the page API above (no
-  `FileMaker.PerformScript`, no `window.tabularius`), Perform JavaScript in Web Viewer sends it nothing, and the
-  viewer's Go Back and Go Forward only follow the addresses the layout sets, not links the person follows inside it.
+  `FileMaker.PerformScript`, no `window.tabularius`), Perform JavaScript in Web Viewer sends it nothing and displays an error explaining that a page made in the file is required, and the
+  viewer's Go Back and Go Forward only follow the addresses set through the client wrapper (including Set Web Viewer), not links the person follows inside it.
 - The list is per file, and the app's page allows framing every listed host of any file; the web client frames only
   the hosts of the file it is showing. After the list changes, people need to reload the page.
 - The host sees the address of whoever opens the page (the page is fetched by their browser, with no referrer), and
@@ -296,7 +296,7 @@ the web shows as text that names the host to allow.
   so the console refuses a `*.` wildcard over a public suffix (such as `*.co.uk` or `*.github.io`). It knows the country registries' second levels, the cloud's storage and service names and the common hosting, blog and dynamic-DNS platforms, not the whole public suffix list, so pick wildcards with care.
   The console refuses the names the server answers to, since a page of one would run beside the app: the address it was reached at, `--public-url`, the `--https` domains, the `--mcp-origin` and `--browser-origin` origins and the computer's own name. Set `--public-url` so the server knows its public address. A list that came back with a restored backup is checked against these names too, every time it is read, and against the name each request came in by: an entry that covers one is not honoured, and the console's answer lists it as `ignored`. So does an entry in a restored file that fails the checks above (a wildcard over a public suffix, for one). The app page's policy names at most 200 hosts (about 8 KB of names) across all files; a host past that is not framed.
 
-<!-- known-difference: Web client ;; A web viewer loads an https address only when an administrator listed its host for the file, over https only; FileMaker loads any address, and Go Back, Go Forward and Perform JavaScript in Web Viewer do not work on a page from a web host ;; An address on the web shows as text naming the host, until it is listed ;; Owner decision -->
+<!-- known-difference: Web client ;; A web viewer loads an https address only when an administrator listed its host for the file, over https only; Go Back and Go Forward track wrapper-selected addresses only, and Perform JavaScript in Web Viewer displays a client error for external pages without sending them a message; equivalent native-product error behavior is unverified ;; An address on the web shows as text naming the host, until it is listed ;; Owner decision -->
 
 ## Browser storage and forgetting a device
 

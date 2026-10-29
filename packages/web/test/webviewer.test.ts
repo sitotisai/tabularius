@@ -276,7 +276,8 @@ test('web viewers: only an https address on the file\'s list loads; "*." allows 
 test('web viewers: a page from a web host is sent nothing by the window', async () => {
   const sent: unknown[] = [];
   const frame = { dataset: { external: '1', viewerDocument: 'doc' }, contentWindow: { postMessage: (m: unknown) => sent.push(m) } } as unknown as HTMLIFrameElement;
-  await callWebViewer(frame, 'later', ['secret']);
+  assert.equal(await callWebViewer(frame, 'later', ['private argument']),
+    'Cannot perform JavaScript in a web viewer from an allowed external host. Use a page made in this file (a data: HTML address).');
   restoreViewer(frame, new ViewerState('https://x.example.com/'));
   assert.deepEqual(sent, []);
 });
@@ -287,4 +288,17 @@ test('web viewers: a page from a web host sits in a sandbox with no referrer, at
   assert.equal(attributes.src, 'https://maps.example.com/a%20b');
   assert.equal(attributes.referrerpolicy, 'no-referrer');
   assert.deepEqual(attributes.sandbox.split(' ').sort(), ['allow-forms', 'allow-same-origin', 'allow-scripts']);
+});
+
+test('external viewer history follows script-selected URLs without reading iframe history', () => {
+  const state = new ViewerState('https://widgets.example.com/first');
+  state.apply('Go to URL', 'https://widgets.example.com/second');
+  state.navigate('#unreported-external-navigation');
+  assert.equal(state.hash, undefined);
+  assert.equal(state.apply('Go Back'), true);
+  assert.equal(state.url, 'https://widgets.example.com/first');
+  assert.equal(state.apply('Go Back'), false);
+  assert.equal(state.apply('Go Forward'), true);
+  assert.equal(state.url, 'https://widgets.example.com/second');
+  assert.equal(state.apply('Go Forward'), false);
 });

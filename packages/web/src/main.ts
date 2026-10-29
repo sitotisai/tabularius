@@ -5999,7 +5999,10 @@ class Session implements Host {
     if (!found || found.o.kind !== 'web-viewer') return;
     const scope = this.content.querySelector('.fm-current') ?? this.content;
     const frame = scope.querySelector<HTMLIFrameElement>(`.fm[data-id="${found.o.id}"] iframe.fm-webviewer`) ?? this.content.querySelector<HTMLIFrameElement>(`.fm[data-id="${found.o.id}"] iframe.fm-webviewer`);
-    if (frame) await callWebViewer(frame, fn, args);
+    if (frame) {
+      const error = await callWebViewer(frame, fn, args);
+      if (error) toast(error, 'error');
+    }
   }
 
   /** Visible child identities and found-set positions, refreshed again at each acknowledgement. */
