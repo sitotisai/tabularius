@@ -53,6 +53,25 @@ test('Windows skips opening directories but still flushes files', () => {
   assert.deepEqual(calls, ['open:/data/file', 'sync:1', 'close:1']);
 });
 
+test('a file is opened for writing on Windows, where flushing a read-only handle is refused', () => {
+  const flags: string[] = [];
+  const fs: DurableFs = { ...fakeFs('EPERM').fs, openSync(_path, mode) { flags.push(mode); return 1; } };
+  syncPath('/data/file', fs, 'win32');
+  syncPath('/data/file', fs, 'linux');
+  syncPath('/data/file', fs, 'darwin');
+  assert.deepEqual(flags, ['r+', 'r', 'r']);
+});
+
+test('a real file and its folder are flushed and published on this system', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'durable-real-'));
+  try {
+    const staged = join(dir, 'staged');
+    writeFileSync(staged, 'x');
+    writeDurable(staged, join(dir, 'live'));
+    assert.equal(readFileSync(join(dir, 'live'), 'utf8'), 'x');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('directory IO failures are not hidden', () => {
   assert.throws(() => syncPath('/data', fakeFs('EIO').fs, 'linux'), { code: 'EIO' });
 });
