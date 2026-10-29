@@ -20,7 +20,7 @@
 
 import type { FmpFile } from './file.ts';
 import { pathInt } from './chunks.ts';
-import { buildTree, Node, segmentOf } from './tree.ts';
+import { Node, segmentOf } from './tree.ts';
 import { decodeText } from './scsu.ts';
 
 export interface ContainerBlob {
@@ -41,6 +41,8 @@ export interface ContainerBlob {
 }
 
 const METADATA_STREAMS = new Set(['FNAM', 'SIZE', 'DPI_']);
+/** Upper bound on assembled embedded data; Node copies segments and SQLite binds the result. */
+export const MAX_CONVERSION_BLOB_BYTES = 64 * 1024 * 1024;
 
 const MIME_BY_TAG: Record<string, string> = {
   JPEG: 'image/jpeg',
@@ -148,17 +150,29 @@ export function readContainers(file: FmpFile, tableId: number): Map<number, Cont
  * A table's container blobs one at a time, in blob id order, so only one is
  * in memory however many the table holds. `after` skips blob ids up to it.
  */
-export function* containerBlobs(file: FmpFile, tableId: number, after = 0): Generator<ContainerBlob> {
+export function* containerBlobs(file: FmpFile, tableId: number, after = 0, onSkipped?: (id: number, bytes: number) => void, maxBytes = MAX_CONVERSION_BLOB_BYTES): Generator<ContainerBlob> {
   let id: number | undefined;
   let node = new Node();
+  let bytes = 0;
+  let skipped = false;
   for (const { path, chunk } of file.chunks(undefined, [tableId, 31, 5])) {
     const blob = path.length >= 4 ? pathInt(path[3]) : undefined;
+    // Longer blob-id forms in genuine files are unverified; report the path rather than lose the blob.
+    if (path.length >= 4 && blob === undefined) throw new Error(`table ${tableId}: unsupported container id path ${Buffer.from(path[3]).toString('hex')}`);
     if (blob === undefined || blob <= after) continue;
     if (blob !== id) {
-      if (id !== undefined) yield readBlob(id, node);
+      if (id !== undefined) {
+        if (skipped) onSkipped?.(id, bytes);
+        else yield readBlob(id, node);
+      }
       id = blob;
       node = new Node();
+      bytes = 0;
+      skipped = false;
     }
+    bytes += chunk.type === 'kv' || chunk.type === 'kvlong' || chunk.type === 'segment' || chunk.type === 'data' ? chunk.data.length : 0;
+    if (bytes > maxBytes) { skipped = true; continue; }
+    if (skipped) continue;
     let n = node;
     for (let i = 4; i < path.length; i++) {
       const seg = segmentOf(path[i]);
@@ -168,15 +182,21 @@ export function* containerBlobs(file: FmpFile, tableId: number, after = 0): Gene
     }
     n.add(chunk);
   }
-  if (id !== undefined) yield readBlob(id, node);
+  if (id !== undefined) {
+    if (skipped) onSkipped?.(id, bytes);
+    else yield readBlob(id, node);
+  }
 }
 
 /** The file's image library (31.5.[id]): images and icons that layouts use, stored like container blobs. */
 export function readImageLibrary(file: FmpFile): Map<number, ContainerBlob> {
-  const root = buildTree(file, () => true, file.chunks(undefined, [31, 5]));
   const out = new Map<number, ContainerBlob>();
-  for (const [id, node] of root.child(31, 5)?.numbered() ?? []) {
-    let blob = readBlob(id, node);
+  let current: number | undefined;
+  let node = new Node();
+  let bytes = 0;
+  let total = 0;
+  const add = (id: number, image: Node) => {
+    let blob = readBlob(id, image);
     // Pasted pictures can keep a PDF next to a JPEG or PNG preview; browsers draw the preview.
     if (!WEB_IMAGES.includes(blob.type)) {
       const tag = WEB_IMAGES.find((t) => blob.streams.get(t)?.length);
@@ -185,8 +205,34 @@ export function readImageLibrary(file: FmpFile): Map<number, ContainerBlob> {
         blob = { ...blob, type: tag, data, mime: mimeOf(tag, blob.filename, data) };
       }
     }
-    if (blob.data.length) out.set(id, blob);
+    if (blob.data.length) {
+      total += blob.data.length;
+      if (total > MAX_CONVERSION_BLOB_BYTES) throw new Error(`image library exceeds ${MAX_CONVERSION_BLOB_BYTES} bytes; conversion stopped before memory exhaustion`);
+      out.set(id, blob);
+    }
+  };
+  for (const { path, chunk } of file.chunks(undefined, [31, 5])) {
+    if (path.length < 3) continue;
+    const id = pathInt(path[2]);
+    if (id === undefined) throw new Error(`unsupported image id path ${Buffer.from(path[2]).toString('hex')}`);
+    if (current !== id) {
+      if (current !== undefined) add(current, node);
+      current = id;
+      node = new Node();
+      bytes = 0;
+    }
+    bytes += chunk.type === 'kv' || chunk.type === 'kvlong' || chunk.type === 'segment' || chunk.type === 'data' ? chunk.data.length : 0;
+    if (bytes > MAX_CONVERSION_BLOB_BYTES) throw new Error(`image ${id} exceeds ${MAX_CONVERSION_BLOB_BYTES} bytes; conversion stopped before memory exhaustion`);
+    let n = node;
+    for (let i = 3; i < path.length; i++) {
+      const seg = segmentOf(path[i]);
+      let child = n.children.get(seg);
+      if (!child) n.children.set(seg, (child = new Node()));
+      n = child;
+    }
+    n.add(chunk);
   }
+  if (current !== undefined) add(current, node);
   return out;
 }
 
