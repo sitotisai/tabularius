@@ -16,6 +16,8 @@ const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtur
 let dir: string;
 let cluster: Awaited<ReturnType<typeof serveCluster>>;
 let base: string;
+/** What the cluster said while the tests ran; a failed sign-in shows the end of it (a worker that stopped, say). */
+const said: string[] = [];
 
 const data = `/fmi/data/vLatest/databases/Charts`;
 const PEOPLE = ['Ann', 'Bob', 'Cat', 'Dan', 'Eve', 'Fay'];
@@ -36,7 +38,7 @@ before(async () => {
   store.applyDesign([{ op: 'createScript', name: 'Crash transaction', text: 'Open Transaction\nSet Field [ Congress::Name ; "uncommitted crash edit" ]\nCommit Records/Requests [ With dialog: Off ]\nPause/Resume Script [ Duration (seconds): 120 ]\nCommit Transaction' }]);
   host.close();
   setAdminPassword(dir, 'secret');
-  cluster = await serveCluster({ dir, port: 0, listFilesPublicly: true, log: (m) => process.env.CLUSTER_LOG && console.error(m) }, 2);
+  cluster = await serveCluster({ dir, port: 0, listFilesPublicly: true, log: (m) => { said.push(m); if (process.env.CLUSTER_LOG) console.error(m); } }, 2);
   base = cluster.url;
 });
 after(async () => {
@@ -46,7 +48,10 @@ after(async () => {
 
 const login = async (account: string) => {
   const r = await fetch(`${base}${data}/sessions`, { method: 'POST', headers: { authorization: 'Basic ' + btoa(`${account}:pw`), 'content-type': 'application/json' }, body: '{}' });
-  return (await r.json()).response.token as string;
+  const body = await r.json();
+  // A sign-in that fails says why, instead of leaving the caller to trip over a missing token.
+  assert.ok(body?.response?.token, `sign-in as ${account} gave ${r.status} ${JSON.stringify(body?.messages)}; cluster log: ${said.slice(-8).join(' | ') || '(nothing)'}`);
+  return body.response.token as string;
 };
 const admin = { authorization: 'Basic ' + btoa('admin:secret'), 'x-tabularius-admin': '1' };
 

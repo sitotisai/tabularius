@@ -45,7 +45,7 @@ for (const field of ['Text', 'Tags', 'Calc']) for (const related of [false, true
   });
 }
 
-test('pathological wildcards finish within two seconds without blocking the test runner', (t) => {
+test('pathological wildcards finish within a second without blocking the test runner', (t) => {
   const { store, path } = fixture(t);
   store.create('Items', { Text: 'a'.repeat(60) });
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
@@ -56,7 +56,7 @@ test('pathological wildcards finish within two seconds without blocking the test
     assert.equal(store.find('Items', { query: [{ Text: 'a*'.repeat(20) + 'b#' }] }).foundCount, 0);
     assert.ok(performance.now() - start < 1000, 'matching must finish within one second');
     store.close();
-  `], { encoding: 'utf8', timeout: 2000 });
+  `], { encoding: 'utf8', timeout: 20_000 }); // the child times the matching itself; this only catches a hang, however slowly a busy runner starts a process
   assert.equal(result.error, undefined, String(result.error));
   assert.equal(result.status, 0, result.stderr);
 });
