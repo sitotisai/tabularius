@@ -16,6 +16,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFile
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { checkHealth, healthUrl, waitForRestart } from '../packages/cli/src/service.ts';
+import { backupFolder } from '../packages/server/src/backup.ts';
 
 const repo = resolve(import.meta.dirname, '..');
 // Not under /tmp: a systemd system unit gets a private one. On Windows, under Program Files: the boot task runs as the system
@@ -124,6 +125,9 @@ try {
   if (process.platform === 'linux') sh('sudo', ['journalctl', '-u', 'openhbam', '--no-pager', '-n', '150'], { ok: true });
   else if (process.platform === 'darwin') sh('cat', [join(home, 'logs', 'server.log')], { ok: true });
   else sh('schtasks', ['/Query', '/TN', 'openhbam', '/V', '/FO', 'LIST'], { ok: true });
+  // The backup an upgrade takes first, run here so a failure shows where it came from (the command prints only a sentence).
+  step('a backup by hand');
+  await backupFolder(folder, join(base, 'diagnostic-backups'), 0).then((r) => console.log(`backup ok: ${r.dir}`), (err: NodeJS.ErrnoException) => console.log(`backup failed: ${err.code} ${err.syscall ?? ''} ${err.path ?? ''}\n${err.stack}`));
   throw e;
 } finally {
   if (installed) cli('service', 'uninstall');
