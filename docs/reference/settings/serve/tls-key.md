@@ -8,7 +8,7 @@
 | Accepted values | PEM private key file path |
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | No direct environment equivalent |
-| Explained in | [README.md](../../../../README.md) |
+| Explained in | [docs/hosting-for-a-team.md](../../../hosting-for-a-team.md) |
 | Code | [packages/cli/src/main.ts:1340](../../../../packages/cli/src/main.ts#L1340) |
 
 [All serve flags](../serve-flags.md)

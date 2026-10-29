@@ -8,7 +8,7 @@
 | Accepted values | Positive number of tokens; decimal digits only for numbers, within the safe integer range |
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | No direct environment equivalent |
-| Explained in | [README.md](../../../../README.md) |
+| Explained in | [docs/features.md](../../../features.md) |
 | Code | [packages/cli/src/main.ts:1451](../../../../packages/cli/src/main.ts#L1451) |
 
 [All serve flags](../serve-flags.md)

@@ -8,7 +8,7 @@
 | Accepted values | ollama, lmstudio, or an embedding endpoint URL |
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | [`TABULARIUS_AI_EMBED_URL`](../environment/tabularius_ai_embed_url.md) |
-| Explained in | [README.md](../../../../README.md) |
+| Explained in | [docs/features.md](../../../features.md) |
 | Code | [packages/cli/src/main.ts:1256](../../../../packages/cli/src/main.ts#L1256) |
 
 [All serve flags](../serve-flags.md)

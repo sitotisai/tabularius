@@ -8,7 +8,7 @@
 | Accepted values | Port number from 0 to 65535; decimal digits only for numbers, within the safe integer range |
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | `PORT` |
-| Explained in | [README.md](../../../../README.md) |
+| Explained in | [docs/hosting-for-a-team.md](../../../hosting-for-a-team.md) |
 | Code | [packages/cli/src/main.ts:1049](../../../../packages/cli/src/main.ts#L1049) |
 
 [All serve flags](../serve-flags.md)
