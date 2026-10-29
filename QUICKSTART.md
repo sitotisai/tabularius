@@ -103,8 +103,8 @@ client and an AI tool over MCP make the same changes (see [docs/design-mode.md](
 - **All the time, as a service:** run `tabularius service install ~/tabularius`.
   It starts at sign-in, or at boot with `--system`. `tabularius upgrade`
   updates it in place later.
-- **Over the internet:** add `--https files.example.com` (see the README's
-  "Hosting for a team").
+- **Over the internet:** add `--https files.example.com` (see
+  [Hosting for a team](docs/hosting-for-a-team.md)).
 
 ## What else is there
 

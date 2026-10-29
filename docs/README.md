@@ -8,6 +8,9 @@ To read these pages offline with search, build the site: `npm run docs:build` wr
 
 ## Getting started and tutorials
 
+- [What Tabularius does](features.md) — See everything Tabularius can do today, area by area, and what does not carry over from a FileMaker file.
+- [Hosting files and connecting to them](hosting-and-connecting.md) — Host a folder of files from a checkout, sign in, set privileges, connect an AI app and call the Data API.
+- [Hosting for a team](hosting-for-a-team.md) — Look up how to install, upgrade, secure, back up, monitor and size a server.
 - [Moving a solution](moving-a-solution.md) — Bring a FileMaker solution, accounts and workflows to Tabularius.
 - [FileMaker Server migration and sync runbook](fms-migration-runbook.md) — Copy hosted files and container folders from FileMaker Server, and keep a trial copy in step through the Data API.
 - [FileMaker glossary and menu map](filemaker-glossary.md) — Look up a FileMaker term or menu name and see what it is called and where it lives in Tabularius.
@@ -32,6 +35,8 @@ To read these pages offline with search, build the site: `npm run docs:build` wr
 - [Walkthrough recorder](walkthrough-recorder.md) — Capture a synthetic browser walkthrough as an accessible standalone SVG.
 - [The alternative client](next-client.md) — Work in a hosted file from a calmer, data-first browser client at /next/: lists, a command bar, pickers, boards and saved views.
 - [Connect an AI app](connect-ai.md) — Connect an MCP client to a hosted file.
+- [Per-file AI-visible policy](ai-visible-policy.md) — Choose, for each hosted file, what the AI assistant and AI apps may see, and how new and converted files default.
+- [AI-visible policy implementation report](ai-visible-policy-report.md) — The implementation report for the per-file AI-visible policy.
 - [Local embeddings](local-embeddings.md) — Set up semantic search and retrieval with an embedding model on your computer.
 - [Writing a plug-in](writing-a-plugin.md) — Add calculation functions in JavaScript or WebAssembly.
 - [Native field types](native-field-types.md) — Use boolean, integer, decimal, JSON and UUID fields in native files.
@@ -74,6 +79,7 @@ To read these pages offline with search, build the site: `npm run docs:build` wr
 - [Reporting a file that does not open](reporting-a-file-that-does-not-open.md) — What to send, and what never to send, when a FileMaker file will not convert or open.
 - [Performance](performance.md) — Review benchmark results for common operations on large files.
 - [In-memory lease and TTL clocks](in-memory-lease-clocks.md) — Which timers and leases use the monotonic clock, and how tests replace it.
+- [SQL writes over the PostgreSQL port](pgwire-writes.md) — Turn on INSERT, UPDATE and DELETE for the SQL connection and see how they are checked.
 - [PostgreSQL session statements](pgwire-session.md) — See which session commands the SQL connection accepts and which only warn.
 - [BI tools on the PostgreSQL connection](pgwire-bi-tools.md) — The queries psql, JDBC, DBeaver, Metabase, Npgsql and SQLAlchemy send on connect and when browsing, where each came from, what answers, and what is not verified.
 - [FileMaker SQL grammar conformance](sql-grammar-conformance.md) — The SQL grammar checked construct by construct against Claris's SQL reference, through ExecuteSQL and the SQL connection: what was found, what was fixed, what still differs, and what the pages do not settle.
@@ -101,6 +107,7 @@ To read these pages offline with search, build the site: `npm run docs:build` wr
 
 ## Architecture, design and research
 
+- [Developing and testing from a checkout](developing.md) — Run Tabularius from its source, read a file with the command-line reader, and run the tests and evals.
 - [Architecture and roadmap](ARCHITECTURE.md) — Understand the platform's structure and planned capabilities.
 - [Design guide](design-guide.md) — Follow the visual and interaction conventions for Tabularius's own pages.
 - [Visual regression baselines](visual-regression.md) — Compare or review the core client and admin screen screenshots.
