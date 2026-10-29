@@ -39,10 +39,38 @@ One page: what Tabularius is built to defend, against whom, and what it does not
 - **Exposing the server to the internet beyond a proxy that does HTTPS.** [The remote connector plan](remote-connector-exposure.md) says what has to be public for claude.ai and nothing more; a live review of an exposed server is a separate piece of work (backlog item r20-07).
 - **The model provider.** With the assistant on, what it reads goes to the provider under the provider's terms. [Personal data isolation](personal-data-isolation.md) keeps names, addresses and the like from reaching the model, per file.
 
+## Filesystem boundary
+
+`packages/store/src/fs-boundary.ts` checks file paths before and during file operations. It is meant to stop a swapped file, symlink or FIFO from being followed or truncated, and to detect a replaced folder between a check and a use. Refused paths fail with `ESTALE` and the message “Filesystem path changed or is not a safe regular file”. A group- or world-readable backup source is refused with `EPRIVATECOPY` (“Backup needs a private copy”).
+
+These checks are not `openat(2)` and do not make path-based operations atomic. The folders must belong to the service user. A hostile concurrent rename of a parent folder is out of scope.
+
+**Modules that use it**
+
+- `packages/cli/src/service.ts`
+- `packages/cli/src/windows-task.ts`
+- `packages/plugins/src/package.ts`
+- `packages/plugins/src/sandboxed.ts`
+- `packages/scripts/src/engine.ts`
+- `packages/server/src/backup-external.ts`
+- `packages/server/src/backup-verify.ts`
+- `packages/server/src/backup.ts`
+- `packages/server/src/container-uploads.ts`
+- `packages/server/src/containers.ts`
+- `packages/server/src/encrypt.ts`
+- `packages/server/src/restore-files.ts`
+- `packages/server/src/server-logs.ts`
+- `packages/server/src/stats-log.ts`
+- `packages/server/src/uploads.ts`
+- `packages/store/src/durable.ts`
+- `packages/store/src/file-ops.ts`
+- `packages/store/src/store.ts`
+
 ## How this is kept true
 
 - `packages/server/test/defaults.test.ts` starts a server with no flags and holds every row of the defaults table to what it does; the page is made from the table, so a changed default fails the test until the page says so.
 - Each attacker row above has audits or tests behind it, linked from the row. Where a row has a gap, it is named in [Owner decisions](security-defaults.md#owner-decisions), not left out.
 - Every place the code reads record data must pass the caller's privileges or say why it need not. Two checks find the reads from the code: `npm run check:read-gate` lists every store, calculation and SQL read by function in [the read-gate audit](../notes/audits/audit-read-gate-inventory.md), and `npm run check:read-gate-typed` uses the type checker to find the calls whose arguments carry no `Privileges` (`packages/server/test/read-gate-typed.test.ts`). A new read fails until someone classifies it in `scripts/read-gate-typed-allowlist.json` or the audit's allow-list with the check that makes it safe; `read-gate-sweep.test.ts` then calls every documented route and MCP tool as a restricted account against a solution seeded with values and counts that must not appear.
 - A secret (token, hash, code, challenge, nonce, password) is compared with `sameSecret` (`packages/store/src/same-secret.ts`), which takes the same time wherever the two differ; `==`, `===`, `startsWith` and Buffer `equals` stop at the first difference. `npm run check:secrets` (`scripts/check-secret-primitives.ts`, run by `packages/server/test/secret-primitives.test.ts` in the gates) reads every source file and fails on a comparison of a value with a secret-looking name that does not go through it. It judges by names, so a comparison that is not of a secret (a cache stamp, a public checksum) is listed in the script with the reason. Not covered: a secret held in a Map keyed by the raw token (random 192 bits and up, looked up by hash table, not realistically probeable), and the direct `timingSafeEqual` calls on byte buffers, which are already constant-time.
+- The filesystem-boundary module list is held by `packages/store/test/fs-boundary-doc.test.ts`.
 - Every place the code reads record data must pass the caller's privileges or say why it need not. Two checks find the reads from the code: `npm run check:read-gate` lists every store, calculation and SQL read by function in [the read-gate audit](../notes/audits/audit-read-gate-inventory.md), and `npm run check:read-gate-typed` uses the type checker to find the calls whose arguments carry no `Privileges` (`packages/server/test/read-gate-typed.test.ts`). A new read fails until someone classifies it in `scripts/read-gate-typed-allowlist.json` or the audit's allow-list with the check that makes it safe; `read-gate-sweep.test.ts` then calls every documented route and MCP tool as a restricted account against a solution seeded with values and counts that must not appear.
