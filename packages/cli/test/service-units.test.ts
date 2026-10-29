@@ -112,7 +112,7 @@ test('Task Scheduler validator: the schema rules the generator relies on', () =>
   assert.deepEqual(validateTaskXml(good, false), []);
   const bad = (from: string, to: string, system = false) => validateTaskXml(good.replace(from, to), system);
   assert.match(bad('<Count>255</Count>', '<Count>999</Count>').join('\n'), /1 to 255/);
-  assert.match(bad('<Interval>PT1M</Interval>', '<Interval>PT30S</Interval>').join('\n'), /PT1M to P31D/);
+  assert.match(bad('<RestartOnFailure><Interval>PT1M</Interval>', '<RestartOnFailure><Interval>PT30S</Interval>').join('\n'), /PT1M to P31D/);
   assert.match(bad('<Enabled>true</Enabled>\n    <Hidden>', '<Enabled>yes</Enabled>\n    <Hidden>').join('\n'), /not true or false/);
   assert.match(bad('<Priority>7</Priority>', '<Priority>11</Priority>').join('\n'), /0 to 10/);
   assert.match(bad('<LogonType>InteractiveToken</LogonType>', '<LogonType>Interactive</LogonType>').join('\n'), /LogonType/);
