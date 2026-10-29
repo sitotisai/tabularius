@@ -160,7 +160,7 @@ export class SqlEndpoint {
     for (const to of store.schema.tableOccurrences) {
       const occ = occurrence(store, to.id);
       if (!occ || !p.in(occ.store).readsEverything || secondFileSqlRefusal(p, occ.store, store)) continue;
-      const stored = new Set((occ.store.sql.prepare(`PRAGMA table_info(${JSON.stringify(occ.table.name)})`).all() as { name: string }[]).map((c) => c.name));
+      const stored = new Set((occ.store.sql.prepare(`PRAGMA table_info("${occ.table.name.replace(/"/g, '""')}")`).all() as { name: string }[]).map((c) => c.name));
       out.push({
         name: to.name, baseTable: occ.table.name, file: occ.store.name,
         columns: occ.table.fields.filter((f) => stored.has(f.name)).map((f) => ({ name: f.name, type: f.type })),
