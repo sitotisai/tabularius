@@ -5,7 +5,7 @@ Administrator bearer token for the MCP endpoint.
 | Setting | Value |
 | --- | --- |
 | Default | Unset; loopback administration only |
-| Accepted values | Token string |
+| Accepted values | Token string of at least 16 characters |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
 | Code | [packages/cli/src/main.ts:1835](../../../../packages/cli/src/main.ts#L1835) |

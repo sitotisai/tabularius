@@ -1,9 +1,10 @@
+import { oidcBrowser } from './oidc-browser.ts';
 // An AI app's sign-in (OAuth at /mcp) through an identity provider: the same button the web client has, against a
 // stand-in OpenID Connect provider. The person gets the external account the file maps them to, under its privilege
 // set, and every refusal of the password sign-in still applies.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { copyFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { createHash, generateKeyPairSync, randomBytes, sign } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -12,8 +13,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { Store } from '../../store/src/index.ts';
 import { serve } from '../src/index.ts';
 
-const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
-const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtures';
+const fetch = oidcBrowser();
+
 const REDIRECT = 'https://claude.ai/api/mcp/auth_callback';
 let dir: string, server: Server, idp: Server, base: string, issuer: string, store: Store;
 const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -26,7 +27,6 @@ const idToken = (claims: Record<string, unknown>) => {
 };
 
 before(async () => {
-  if (skip) return;
   idp = createServer(async (req, res) => {
     const url = new URL(req.url!, issuer);
     const send = (body: unknown, status = 200) => res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body));
@@ -45,11 +45,12 @@ before(async () => {
   await new Promise<void>((r) => idp.listen(0, '127.0.0.1', r));
   issuer = `http://127.0.0.1:${(idp.address() as { port: number }).port}`;
   dir = mkdtempSync(join(tmpdir(), 'tabularius-oauth-oidc-'));
-  copyFileSync(fixture, join(dir, 'Charts.fmp12'));
   const s = await serve({ dir, port: 0, listFilesPublicly: true, log: () => {}, oidc: { name: 'Test IdP', issuer, clientId: 'tabularius' } });
   server = s.server;
   base = s.url;
-  store = s.host.get('Charts')!;
+  store = s.host.create('Test');
+  store.applyDesign([{ op: 'createTable', name: 'Items', fields: [{ name: 'Name' }] }]);
+  store.create('Items', { Name: 'Synthetic' });
   store.savePrivilegeSet({ name: 'Bot', records: { view: true, edit: false, create: false, delete: false }, layouts: 'viewOnly', valueLists: 'viewOnly', scripts: 'none', extendedPrivileges: ['fmmcp'] });
   store.savePrivilegeSet({ name: 'NoAi', records: { view: true, edit: false, create: false, delete: false }, layouts: 'viewOnly', valueLists: 'viewOnly', scripts: 'none', extendedPrivileges: ['fmrest'] });
   store.setExternalAccount('ai-staff', 'Bot');
@@ -74,7 +75,7 @@ async function appStart() {
 }
 
 /** Clicks the provider's button, signs in at the (stand-in) provider and comes back; returns the page's reply. */
-async function throughProvider(params: Record<string, string>, extra: Record<string, string> = { database: 'Charts' }): Promise<Response> {
+async function throughProvider(params: Record<string, string>, extra: Record<string, string> = { database: 'Test' }): Promise<Response> {
   const start = await fetch(`${base}/oauth/authorize?${form({ ...params, oidc: 'test-idp', ...extra })}`, { redirect: 'manual' });
   if (start.status !== 302) return start;
   const auth = new URL(start.headers.get('location')!);
@@ -91,14 +92,14 @@ const hiddenFields = (html: string) => Object.fromEntries([...html.matchAll(/<in
 /** Clicks "Allow" on the page the provider's return shows. */
 const allow = (page: string) => post('/oauth/authorize', form(hiddenFields(page)));
 
-test('the sign-in page offers the identity provider', { skip }, async () => {
+test('the sign-in page offers the identity provider', async () => {
   const { params } = await appStart();
   const html = await (await fetch(`${base}/oauth/authorize?${form(params)}`)).text();
   assert.match(html, /Sign in with Test IdP/);
   assert.match(html, /name="oidc" value="test-idp"/);
 });
 
-test('sign in through the provider: the app gets a token for the mapped account, under its privilege set', { skip }, async () => {
+test('sign in through the provider: the app gets a token for the mapped account, under its privilege set', async () => {
   person = { email: 'alex@example.com', email_verified: true, groups: ['ai-staff'] };
   const { client_id, verifier, params } = await appStart();
   const consent = await throughProvider(params);
@@ -126,7 +127,7 @@ test('sign in through the provider: the app gets a token for the mapped account,
   assert.match(store.apiTokens().find((x) => next.access_token.includes(x.id))!.label!, /alex@example\.com/);
 });
 
-test('sign in through the provider: refused when the account\'s privilege set has no AI access', { skip }, async () => {
+test('sign in through the provider: refused when the account\'s privilege set has no AI access', async () => {
   person = { email: 'nora@example.com', email_verified: true, groups: ['no-ai'] };
   const { params } = await appStart();
   const back = await throughProvider(params);
@@ -134,7 +135,7 @@ test('sign in through the provider: refused when the account\'s privilege set ha
   assert.match(await back.text(), /doesn&#39;t allow AI apps|doesn't allow AI apps/);
 });
 
-test('sign in through the provider: refused with no matching account, a disabled account, or a file with AI off', { skip }, async () => {
+test('sign in through the provider: refused with no matching account, a disabled account, or a file with AI off', async () => {
   const { params } = await appStart();
   person = { email: 'stranger@example.com', email_verified: true, groups: ['nobody'] };
   const none = await throughProvider(params);
@@ -152,7 +153,7 @@ test('sign in through the provider: refused with no matching account, a disabled
   }
 });
 
-test('mapped OAuth tokens are revoked when the person account is deactivated', { skip }, async () => {
+test('mapped OAuth tokens are revoked when the person account is deactivated', async () => {
   person = { email: 'alex@example.com', email_verified: true, groups: ['ai-staff'] };
   store.setPassword('alex@example.com', 'person-password-123', 'NoAi');
   const { client_id, verifier, params } = await appStart();
@@ -181,7 +182,7 @@ test('mapped OAuth tokens are revoked when the person account is deactivated', {
   } finally { store.setAccountActive('alex@example.com', true); }
 });
 
-test('email-less group sign-in cannot mint person credentials', { skip }, async () => {
+test('email-less group sign-in cannot mint person credentials', async () => {
   person = { groups: ['ai-staff'] };
   const { params } = await appStart();
   const response = await throughProvider(params);
@@ -189,20 +190,20 @@ test('email-less group sign-in cannot mint person credentials', { skip }, async 
   assert.match(await response.text(), /trusted, verified email/);
 });
 
-test('sign in through the provider: an unknown file or provider shows a page, never a redirect to the app', { skip }, async () => {
+test('sign in through the provider: an unknown file or provider shows a page, never a redirect to the app', async () => {
   const { params } = await appStart();
   const noFile = await fetch(`${base}/oauth/authorize?${form({ ...params, oidc: 'test-idp', database: 'Nope' })}`, { redirect: 'manual' });
   assert.equal(noFile.status, 400);
-  const noProvider = await fetch(`${base}/oauth/authorize?${form({ ...params, oidc: 'nope', database: 'Charts' })}`, { redirect: 'manual' });
+  const noProvider = await fetch(`${base}/oauth/authorize?${form({ ...params, oidc: 'nope', database: 'Test' })}`, { redirect: 'manual' });
   assert.equal(noProvider.status, 401);
   assert.match(await noProvider.text(), /Unknown sign-in provider/);
 });
 
-test('the provider alone never gives an app a code: approval is needed, once, for that app only', { skip }, async () => {
+test('the provider alone never gives an app a code: approval is needed, once, for that app only', async () => {
   person = { email: 'alex@example.com', email_verified: true, groups: ['ai-staff'] };
   const a = await appStart();
   // The provider is asked to let the person pick the account, so a browser already signed in can't finish unseen.
-  const start = await fetch(`${base}/oauth/authorize?${form({ ...a.params, oidc: 'test-idp', database: 'Charts' })}`, { redirect: 'manual' });
+  const start = await fetch(`${base}/oauth/authorize?${form({ ...a.params, oidc: 'test-idp', database: 'Test' })}`, { redirect: 'manual' });
   assert.equal(new URL(start.headers.get('location')!).searchParams.get('prompt'), 'select_account');
   const page = await (await throughProvider(a.params)).text();
   const fields = hiddenFields(page);
@@ -231,7 +232,7 @@ test('the provider alone never gives an app a code: approval is needed, once, fo
   }
 });
 
-test('an app named like someone else can\'t push the real email out of the token label', { skip }, async () => {
+test('an app named like someone else can\'t push the real email out of the token label', async () => {
   person = { email: 'alex@example.com', email_verified: true, groups: ['ai-staff'] };
   const reg = await fetch(`${base}/oauth/register`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ client_name: `Drive (ceo@corp.com)\nfake ${'x'.repeat(200)}`, redirect_uris: [REDIRECT] }) });
   const { client_id } = await reg.json() as { client_id: string };
@@ -246,7 +247,7 @@ test('an app named like someone else can\'t push the real email out of the token
   assert.ok(!/[\r\n]/.test(label));
 });
 
-test('an identity-provider sign-in\'s refresh token does not renew past its first day', { skip }, async () => {
+test('an identity-provider sign-in\'s refresh token does not renew past its first day', async () => {
   person = { email: 'alex@example.com', email_verified: true, groups: ['ai-staff'] };
   const { client_id, verifier, params } = await appStart();
   const back = await allow(await (await throughProvider(params)).text());
@@ -267,7 +268,7 @@ test('an identity-provider sign-in\'s refresh token does not renew past its firs
 });
 
 for (const active of [false, true]) {
-  test(`legacy federated codes without trusted identity are refused with the person ${active ? 'active' : 'inactive'}`, { skip }, async () => {
+  test(`legacy federated codes without trusted identity are refused with the person ${active ? 'active' : 'inactive'}`, async () => {
     const { client_id, verifier, params } = await appStart();
     store.setExternalAccount('Team', 'Bot');
     store.setPassword('pat@example.test', 'person-password-123', 'NoAi');
@@ -275,7 +276,7 @@ for (const active of [false, true]) {
     const db = new DatabaseSync(join(dir, '.openhbam-oauth.sqlite'));
     try {
       db.prepare('INSERT INTO codes (hash, client_id, redirect_uri, challenge, database, account, expires, who, identity) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)')
-        .run(createHash('sha256').update(code).digest('hex'), client_id, REDIRECT, params.code_challenge, 'Charts', 'Team', Date.now() + 60_000, 'pat@example.test');
+        .run(createHash('sha256').update(code).digest('hex'), client_id, REDIRECT, params.code_challenge, 'Test', 'Team', Date.now() + 60_000, 'pat@example.test');
       store.deleteAccount('Team');
       store.setPassword('Team', 'local-password-123', 'Bot');
       store.setAccountActive('pat@example.test', active);
@@ -298,7 +299,7 @@ for (const active of [false, true]) {
   });
 }
 
-test('another open of the file between the approval page and the click does not void the approval', { skip }, async () => {
+test('another open of the file between the approval page and the click does not void the approval', async () => {
   // Opening a file fills in the identity of every account that has none yet, and a background open (the warmer's) can come
   // between the page and the click, or between the sign-in and a refresh. The person's identity is part of what the approval
   // and the refresh token are bound to, so it is settled when the mark is made, not left for whoever opens the file next.
@@ -311,14 +312,14 @@ test('another open of the file between the approval page and the click does not 
     const consent = await throughProvider(params);
     assert.equal(consent.status, 200);
     const page = await consent.text();
-    new Store(store.path, 'Charts').close();
+    new Store(store.path, 'Test').close();
     const back = await allow(page);
     assert.equal(back.status, 302, 'the approval still stands');
     const code = new URL(back.headers.get('location')!).searchParams.get('code')!;
     const t = await post('/oauth/token', form({ grant_type: 'authorization_code', code, code_verifier: verifier, client_id, redirect_uri: REDIRECT }));
     assert.equal(t.status, 200);
     const { refresh_token } = await t.json() as { refresh_token: string };
-    new Store(store.path, 'Charts').close();
+    new Store(store.path, 'Test').close();
     const refreshed = await post('/oauth/token', form({ grant_type: 'refresh_token', refresh_token, client_id }));
     assert.equal(refreshed.status, 200, 'the refresh token still stands');
   } finally {
@@ -327,7 +328,7 @@ test('another open of the file between the approval page and the click does not 
 });
 
 for (const change of ['inactive', 'no fmmcp', 'second factor', 'file AI off']) {
-  test(`a structured-identity code cannot mint credentials after consent when the mapping has ${change}`, { skip }, async () => {
+  test(`a structured-identity code cannot mint credentials after consent when the mapping has ${change}`, async () => {
     store.setExternalAccount('@example.test', 'Bot');
     store.setPassword('pat@example.test', 'person-password-123', 'NoAi');
     person = { email: 'pat@example.test', email_verified: true };
@@ -374,7 +375,7 @@ for (const change of ['inactive', 'no fmmcp', 'second factor', 'file AI off']) {
   });
 }
 
-test('an active domain mapping grants federated OAuth without requiring the person to have fmmcp', { skip }, async () => {
+test('an active domain mapping grants federated OAuth without requiring the person to have fmmcp', async () => {
   store.setExternalAccount('@example.test', 'Bot');
   store.setPassword('pat@example.test', 'person-password-123', 'NoAi');
   person = { email: 'pat@example.test', email_verified: true };
