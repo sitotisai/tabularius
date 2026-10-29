@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 for (const scenario of ['urls', 'gif', 'jobs', 'bytes', 'tools', 'cancel', 'active-cancel', 'lifecycle', 'tool-cancel', 'mime']) {
   test(`AR-server-containers-media-${({ urls: '01', gif: '02 / AR-server-data-apis-11', mime: '04' } as Record<string, string>)[scenario] ?? '03'}: ${scenario}`, async () => {
-    const child = spawn(process.execPath, ['--no-warnings', new URL('./media-limits-child.ts', import.meta.url).pathname, scenario], {
+    const child = spawn(process.execPath, ['--no-warnings', fileURLToPath(new URL('./media-limits-child.ts', import.meta.url)), scenario], {
       stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, TABULARIUS_THUMBNAILS: 'builtin' },
     });
     let output = '';
