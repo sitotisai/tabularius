@@ -137,10 +137,39 @@ test('MBS Time: Format and Parse, with names in the locale asked for', () => {
 test('MBS Math through MBS ( … ): numbers come back as numbers, errors set IsError', () => {
   const c: CalcContext = {};
   assert.equal(evaluateText('MBS ( "Math.Sum" ; 1 ; 2 ; 4 ) + 1', c), '8');
-  assert.equal(evaluateText('MBS ( "Math.Median" ; 1 )', c).startsWith('[MBS] ERROR'), true);
+  assert.equal(evaluateText('MBS ( "Math.Median" ; 1 )', c), '1');
   assert.match(evaluateText('MBS ( "Math.HexToDec" ; "XYZ" )', c), /^\[MBS\] ERROR/);
   assert.equal(evaluateText('MBS ( "IsError" )', c), '1');
   assert.equal(evaluateText('GetAsText ( MBS ( "Time.Parse" ; "2016-11-30" ; "%Y-%m-%d" ) )', c), '11/30/2016 0:00:00');
+});
+
+test('MBS Math: Median, TextToNumber and InsidePolygon follow inferred forms', () => {
+  assert.equal(m('Math.Median', 1, 9, 3), 3);
+  assert.equal(m('Math.Median', '1\r2\r9\r10'), 5.5);
+  assert.equal(m('Math.Median'), '');
+  assert.equal(m('Math.Median', '4\r4'), 4);
+  assert.equal(m('Math.Median', '1\r2\r3'), m('Math.Average', 1, 2, 3));
+  assert.throws(() => m('Math.Median', '1'.repeat(200001).split('').join('\r')), /Too many values/);
+  assert.throws(() => m('Math.Median', '一'), MbsError);
+  assert.equal(m('Math.TextToNumber', '-1,234.5'), -1234.5);
+  assert.equal(m('Math.TextToNumber', '+1.234,5'), 1234.5);
+  assert.equal(m('Math.TextToNumber', '12,5'), 12.5);
+  assert.equal(m('Math.TextToNumber', '12.5'), 12.5);
+  assert.equal(m('Math.TextToNumber', '1,234,567'), 1234567);
+  assert.equal(m('Math.TextToNumber', m('Math.NumberToText', 42.25)), 42.25);
+  assert.throws(() => m('Math.TextToNumber', '1,23,4'), MbsError);
+  assert.throws(() => m('Math.TextToNumber', '１２'), MbsError);
+  assert.throws(() => m('Math.TextToNumber', '1'.repeat(10001)), /too long/);
+  const square = '0,0\r10,0\r10,10\r0,10';
+  assert.equal(m('Math.InsidePolygon', 5, 5, square), 1);
+  assert.equal(m('Math.InsidePolygon', 15, 5, square), 0);
+  assert.equal(m('Math.InsidePolygon', 0, 5, square), 1);
+  assert.equal(m('Math.InsidePolygon', 0, 0, square), 1);
+  assert.equal(m('Math.InsidePolygon', '1.5', '2.5', '0,0\r4,0\r0,4'), 1);
+  assert.throws(() => m('Math.InsidePolygon', 'x', 1, square), MbsError);
+  assert.throws(() => m('Math.InsidePolygon', 1, 1, '0,0\r1,1'), /at least 3/);
+  assert.throws(() => m('Math.InsidePolygon', 1, 1, '０,０\r1,0\r1,1'), MbsError);
+  assert.throws(() => m('Math.InsidePolygon', 1, 1, '0,0\r1,0\r1,1\r' + '0,1\r'.repeat(10000)), /at most 10000/);
 });
 
 test('MBS Math and Time: long, huge and out-of-range input gives an answer or an MBS error quickly', () => {
