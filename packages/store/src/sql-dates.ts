@@ -731,6 +731,11 @@ export const sqlDateFunctions = (now: () => Date = () => new Date()): Record<str
   SPACE: (n) => (n === null ? null : ' '.repeat(Math.min(Math.max(0, Math.trunc(Number(n))), 1_000_000))),
   CHR: (n) => (typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 127 ? String.fromCharCode(n) : null),
   STRVAL: (v) => (v === null ? null : String(v)),
+  fm_cast_text: (v, length) => {
+    if (v === null) return null;
+    const value = String(v);
+    return length === -1 ? value : [...value].slice(0, Number(length)).join('');
+  },
   // The argument of a STRVAL that is a condition (see withBooleanStrval): SQLite's 0 and 1 as FileMaker's False and True.
   fm_strbool: (v) => (v === null ? null : v === 0 || v === 0n ? 'False' : v === 1 || v === 1n ? 'True' : String(v)),
   NUMVAL: (v) => {
