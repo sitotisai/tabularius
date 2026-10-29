@@ -131,3 +131,38 @@ npm run docs:plugins
 ```
 
 For the restricted audit run these Node commands also loaded a temporary guard that checked the forbidden-command marker on exit. The combined run temporarily supplied synthetic release metadata to avoid a git version query and had permission for loopback sockets only. Initial unprivileged HTTP tests failed because loopback listening was denied; the guarded rerun passed after that environment issue was resolved. An initial guard failure on the optional version query was resolved with synthetic release metadata, not by allowing git or ignoring the marker. No command guard was triggered in the successful runs.
+
+## A29 follow-up
+
+The follow-up retained the existing Windows path, stop-request, permission-policy,
+filename, line-ending and sharing-retry implementations. It found one additional
+backup destination bug: when `Files` or `RC_Data_FMS` does not exist yet, resolving
+the nearest existing parent preserves the operator's spelling of the missing
+components. A destination such as `C:\Data\files\backup` therefore passed the
+case-sensitive guard for `C:\Data\Files`. Destination checks now use the existing
+platform-aware containment helper, including case folding on Windows and path
+component boundaries. POSIX comparisons remain case-sensitive.
+
+`packages/server/test/backup-folder-paths.test.ts` injects `path.win32` and a
+synthetic canonical-path lookup. Before the fix, both container-folder regression
+cases failed; after it, all five tests passed. The other cases retain sibling
+prefixes, different drives, ordinary backup subfolders, rejection of the hosted
+folder itself and drive-relative paths, and POSIX case handling. No subprocesses
+or real source files are used by this test.
+
+The follow-up ran `npm run typecheck` successfully and the following test command
+with a stub-only PATH and a forbidden-command marker checked on process exit:
+
+```sh
+node --no-warnings --test --test-concurrency=2 \
+  packages/server/test/backup-folder-paths.test.ts \
+  packages/server/test/windows-readiness.test.ts \
+  packages/store/test/windows-readiness.test.ts \
+  packages/cli/test/windows-readiness.test.ts
+```
+
+Result: **41 passed, 0 failed, 1 existing Windows-only skip**. No command marker
+was created and no test was weakened or given a new skip. Native Windows checks
+remain outstanding in the acceptance checklist above. The full precheck was not run because it
+invokes git. This follow-up changes no route, setting, MCP tool or documented
+compatibility difference, so their generated references do not need regeneration.

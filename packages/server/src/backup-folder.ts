@@ -1,6 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import { dirname, join } from 'node:path';
+import path from 'node:path';
+import { withinPath } from '../../store/src/portable-path.ts';
 
 export class BackupFolderError extends Error {
   readonly status: number;
@@ -11,31 +13,32 @@ export class BackupFolderError extends Error {
 }
 
 /** The path with symlinks followed as far as it exists (a folder not made yet is judged by the nearest one that is). */
-function realish(path: string): string {
+function realish(file: string, paths = path, canonical: (file: string) => string = realpathSync): string {
   const rest: string[] = [];
-  let at = resolve(path);
+  let at = paths.resolve(file);
   for (;;) {
     try {
-      return join(realpathSync(at), ...rest.reverse());
+      return paths.join(canonical(at), ...rest.reverse());
     } catch {
-      const up = dirname(at);
-      if (up === at) return resolve(path);
-      rest.push(basename(at));
+      const up = paths.dirname(at);
+      if (up === at) return paths.resolve(file);
+      rest.push(paths.basename(at));
       at = up;
     }
   }
 }
 
 /** The destination rules alone, answered without touching the disk beyond looking: is it a full path, and not the hosted files themselves. */
-function checkBackupRules(folder: string, hosted: string): string {
-  if (!isAbsolute(folder)) throw new BackupFolderError('the backup folder is a full path, like /Volumes/Backup/tabularius');
-  const at = resolve(folder);
-  const real = realish(at);
-  const home = realish(hosted);
-  if (real === home) throw new BackupFolderError("the backup folder can't be the hosted folder itself: pick another, or one inside it");
+export function checkBackupRules(folder: string, hosted: string, paths = path, canonical: (file: string) => string = realpathSync): string {
+  if (!paths.isAbsolute(folder)) throw new BackupFolderError('the backup folder is a full path, like /Volumes/Backup/tabularius');
+  const at = paths.resolve(folder);
+  const real = realish(at, paths, canonical);
+  const home = realish(hosted, paths, canonical);
+  if (paths.relative(home, real) === '') throw new BackupFolderError("the backup folder can't be the hosted folder itself: pick another, or one inside it");
   for (const inner of ['Files', 'RC_Data_FMS']) {
-    const guarded = join(home, inner);
-    if (real === guarded || real.startsWith(guarded + sep)) throw new BackupFolderError(`the backup folder can't be inside ${join(hosted, inner)}: its files are backed up`);
+    const guarded = paths.join(home, inner);
+    // Missing components have no canonical spelling yet; use the platform's case and separator rules.
+    if (withinPath(guarded, real, paths)) throw new BackupFolderError(`the backup folder can't be inside ${paths.join(hosted, inner)}: its files are backed up`);
   }
   return at;
 }
