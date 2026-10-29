@@ -40,7 +40,7 @@ async function start(t: TestContext) {
   const web = { authorization: `Bearer ${(await session.json()).response.token}` };
   const surfaces = [
     { name: 'OData', path: '/fmi/odata/v4/Shop/Items', headers: basic('Ann'), body: '{"Name":"ok"}', ok: 201, other: basic('Bob'), same: web },
-    { name: 'MCP', path: '/mcp', headers: { ...basic('Ann'), accept: 'application/json, text/event-stream' }, body: '{"jsonrpc":"2.0","id":1,"method":"ping"}', ok: 200, other: basic('Bob'), same: { authorization: `Bearer ${store.createApiToken('Ann', { surfaces: ['fmmcp'] })}` } },
+    { name: 'MCP', path: '/mcp', headers: { ...basic('Ann'), accept: 'application/json, text/event-stream' }, body: '{"jsonrpc":"2.0","id":1,"method":"ping"}', ok: 200, other: basic('Bob'), same: {} },
     { name: 'admin', path: '/tabularius/admin/v1/block-new-users', headers: { ...basic('admin'), 'x-tabularius-admin': '1' }, body: '{"on":false}', ok: 200 },
     { name: 'Admin API', path: '/fmi/admin/api/v2/server/config/general', headers: adminToken, body: '{}', method: 'PATCH', ok: 200, same: otherAdminToken },
     { name: 'web client', path: '/tabularius/app/v1/databases/Shop/layouts/Items/records', headers: web, body: '{}', ok: 200 },
