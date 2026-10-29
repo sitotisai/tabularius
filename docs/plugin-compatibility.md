@@ -11,7 +11,7 @@ A FileMaker plug-in is native code. Tabularius never loads one. Instead it runs 
 | BaseElements (`GyBE`, Goya) | Built in, on for every file; an administrator can turn it off per file | 102 run, 3 in part, 18 only in test mode, 8 refused | 32 not built |
 | Troi Text | Built in, on for every file; an administrator can turn it off per file | 1 documented pure function | other documented functions give `?` |
 | Troi Dialog | Built in, on for every file; an administrator can turn it off per file | 1 documented pure function | other documented functions give `?` |
-| Monkeybread Software (MBS) | Built in; `MBS ( "Name" ; … )` | 454 | every other MBS name gives an MBS error text, and `MBS ( "IsError" )` then says 1 until the next MBS call, within the same script run |
+| Monkeybread Software (MBS) | Built in; `MBS ( "Name" ; … )` | 456 | every other MBS name gives an MBS error text, and `MBS ( "IsError" )` then says 1 until the next MBS call, within the same script run |
 | 360Works Email, DataGuard | Not run | 0 | 12 named functions |
 | Any other plug-in | Not run | 0 | every function (calls Tabularius cannot name show as `⟨OWNR:index⟩`) |
 | A plug-in written for Tabularius | Runs in a sandbox, switched on per file by an administrator (see [writing-a-plugin.md](writing-a-plugin.md)) | its own | none |
@@ -45,7 +45,7 @@ BE_BackgroundTaskAdd, BE_BackgroundTaskList, BE_ClipboardGetFile, BE_ClipboardSe
 
 ## Monkeybread Software (MBS)
 
-454 functions run, by family:
+456 functions run, by family:
 
 | Family | Functions |
 | --- | --- |
@@ -65,7 +65,7 @@ BE_BackgroundTaskAdd, BE_BackgroundTaskList, BE_ClipboardGetFile, BE_ClipboardSe
 | Progress dialog | 9 |
 | QuickList | 67 |
 | RegEx | 24 |
-| Text | 53 |
+| Text | 55 |
 | Time | 6 |
 | Variable | 16 |
 | XML | 25 |

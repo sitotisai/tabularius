@@ -202,6 +202,40 @@ function soundex(s: string): string {
   return out.padEnd(4, '0');
 }
 
+// Inferred: number CR/LF-delimited lines from 1, include blank lines, and default to ": ".
+function addLineNumbers(s: string, separator = ': ', start = 1): string {
+  checkTextSize(s.length);
+  if (!Number.isSafeInteger(start) || start < 0) throw new MbsError('Text.AddLineNumbers: start must be a non-negative integer');
+  const lines = s.split(/\r\n|\r|\n/);
+  const size = lines.reduce((n, line, i) => n + String(start + i).length + separator.length + line.length, 0) + Math.max(0, lines.length - 1);
+  checkTextSize(size);
+  return lines.map((line, i) => `${start + i}${separator}${line}`).join('\r');
+}
+
+// Inferred: conventional Kölner phonetics groups, with umlaut transliteration and adjacent duplicate removal.
+function soundexGerman(s: string): string {
+  checkTextSize(s.length);
+  const normalized = s.toUpperCase().replace(/Ä/g, 'A').replace(/Ö/g, 'O').replace(/Ü/g, 'U').replace(/ß/g, 'SS');
+  const table: Record<string, string> = {
+    A: '0', E: '0', I: '0', J: '0', O: '0', U: '0', Y: '0', H: '',
+    B: '1', P: '1', D: '2', T: '2', F: '3', V: '3', W: '3', G: '4', K: '4', Q: '4', X: '48',
+    L: '5', M: '6', N: '6', R: '7', S: '8', Z: '8',
+  };
+  const out: string[] = [];
+  let previous = '';
+  let size = 0;
+  for (let i = 0; i < normalized.length; i++) {
+    const c = normalized[i];
+    const digit = c === 'C' ? (/[SZ]/.test(normalized[i - 1] ?? '') ? '8' : /[AHKLOQRUX]/.test(normalized[i + 1] ?? '') ? '4' : '8') : table[c];
+    if (digit === undefined) { previous = ''; continue; }
+    for (const d of digit) {
+      if (d !== '0' && d !== previous) { out.push(d); size++; checkTextSize(size); }
+      previous = d;
+    }
+  }
+  return out.join('');
+}
+
 /** IMAP's modified UTF-7 (RFC 3501): &…- holds base64 (with "," for "/") of UTF-16BE; "&-" is "&". */
 function decodeImapUtf7(s: string): string {
   return s.replace(/&([A-Za-z0-9+,]*)-/g, (_, b64: string) => {
@@ -362,6 +396,7 @@ type MbsText = (a: string[]) => string | number;
 
 /** The Text functions by lower-case name ("text.trim"). Each takes its parameters as text. */
 export const MBS_TEXT: Record<string, MbsText> = {
+  'text.addlinenumbers': ([s = '', separator = ': ', startText = '1']) => addLineNumbers(s, separator, Number(startText)),
   'text.capitalcase': ([s = '']) => s.toLowerCase().replace(/[\p{L}\p{N}][\p{L}\p{N}\p{M}]*/gu, (w) => w[0].toUpperCase() + w.slice(1)),
   'text.character': ([n = '']) => {
     const code = Number(n);
@@ -455,6 +490,7 @@ export const MBS_TEXT: Record<string, MbsText> = {
   'text.reverse': ([s = '']) => [...s].reverse().join(''),
   'text.righttrim': ([s = '']) => rightTrim(s),
   'text.soundex': ([s = '']) => soundex(s),
+  'text.soundexgerman': ([s = '']) => soundexGerman(s),
   'text.splitbylength': ([s = '', len]) => {
     const n = Math.max(1, int(len, 1));
     const chars = [...s];
