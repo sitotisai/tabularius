@@ -653,6 +653,7 @@
         "docs/accessibility.md",
         "docs/research/fmp12-format.md",
         "docs/research/prior-work.md",
+        "docs/research/encryption-pitr.md",
         "docs/research/write-back.md",
         "docs/research/n3-uuid-record-ids.md",
         "docs/research/secret-taint-tracking.md",
