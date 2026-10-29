@@ -1,3 +1,4 @@
+import { enterActivates } from '../src/ime.ts';
 // The one bar every command goes through (⌘K): go to a collection, start a record, sort, run a script, sign out.
 // Typing narrows the list; the best match is always first, so Enter does the obvious thing.
 
@@ -64,7 +65,7 @@ export class Palette {
     this.input.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowDown') { e.preventDefault(); this.select(this.active + 1); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); this.select(this.active - 1); }
-      else if (e.key === 'Enter') { e.preventDefault(); this.choose(this.shown[this.active]); }
+      else if (enterActivates(e, true)) { e.preventDefault(); this.choose(this.shown[this.active]); }
       // Tab asks, whatever matched.
       else if (e.key === 'Tab' && !e.shiftKey) {
         const ask = this.input.value.trim() ? this.extra?.(this.input.value) : undefined;

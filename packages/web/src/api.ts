@@ -127,7 +127,7 @@ export function fileListOff(e: unknown): boolean {
 
 export async function listDatabases(): Promise<string[]> {
   const r = await fetch('/fmi/data/vLatest/databases');
-  const body = await r.json();
+  const body = await r.json().catch(() => ({}));
   if (r.status === 503) throw new ApiError(301, 'Server busy. Try again shortly.', undefined, 503);
   if (!r.ok) throw new ApiError(Number(body.messages?.[0]?.code ?? -1), body.messages?.[0]?.message ?? httpProblem(r.status), undefined, r.status);
   return (body.response?.databases ?? []).map((d: { name: string }) => d.name);
@@ -177,9 +177,10 @@ export class Api {
       },
       body: '{}',
     });
-    const body = await r.json();
+    const body = await r.json().catch(() => ({}));
+    if (r.status === 503) throw new ApiError(301, 'Server busy. Try again shortly.', undefined, 503);
     const msg = body.messages?.[0];
-    if (!r.ok || msg?.code !== '0') throw new ApiError(Number(msg?.code ?? -1), msg?.message ?? 'Login failed', body['tabularius:denial'], r.status);
+    if (!r.ok || msg?.code !== '0') throw new ApiError(Number(msg?.code ?? -1), msg?.message ?? httpProblem(r.status), body['tabularius:denial'], r.status);
     const api = new Api(db, body.response.token);
     api.passwordChangeRequired = !!body.response.passwordChangeRequired;
     return api;
@@ -350,14 +351,20 @@ export class Api {
     return pending;
   }
 
-  private async sendNow(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<any> {
+  private async sendNow(method: string, path: string, body?: unknown, signal?: AbortSignal, keepalive = false): Promise<any> {
     const window = windowInfo();
     const raw = body instanceof FormData || body instanceof Blob;
+    const encoded = body === undefined ? undefined : raw ? (body as FormData | Blob) : JSON.stringify(body);
+    // Small record writes already in flight must survive a later pagehide too. Large normal writes retain
+    // their ordinary fetch path; unload writes still report the browser's keepalive quota failure.
+    const smallEdit = method === 'PATCH' && EDIT.test(path) && typeof encoded === 'string'
+      && new TextEncoder().encode(encoded).length < 60_000;
     const r = await fetch(path, {
       method,
       headers: { authorization: `Bearer ${this.token}`, 'x-tabularius-client': 'web', ...(window ? { 'x-tabularius-window': window } : {}), ...(body === undefined || raw ? {} : { 'content-type': 'application/json' }) },
-      body: body === undefined ? undefined : raw ? (body as FormData | Blob) : JSON.stringify(body),
+      body: encoded,
       signal,
+      keepalive: keepalive || smallEdit,
     });
     const json = await r.json().catch(() => ({}));
     if (path.startsWith('/tabularius/')) {
@@ -374,7 +381,7 @@ export class Api {
     const msg = json.messages?.[0];
     if (!r.ok || (msg && msg.code !== '0')) {
       const err = new ApiError(Number(msg?.code ?? -1), msg?.message ?? httpProblem(r.status), json['tabularius:denial'], r.status);
-      if (err.code === 952) this.onExpired();
+      if (err.status === 401) this.onExpired();
       throw err;
     }
     this.told(method, path);
@@ -448,6 +455,11 @@ export class Api {
     if (extra.portalData) body.portalData = extra.portalData;
     if (extra.portalStyles) body.portalStyles = extra.portalStyles;
     return (await this.call('PATCH', `${this.base(layout)}/records/${enc(id)}`, body)).modId;
+  }
+
+  /** Starts a small unload write immediately; modId still prevents overwriting another edit. */
+  async flushUpdate(layout: string, id: string, fieldData: Record<string, Value>, modId: string, portalData?: Record<string, Partial<PortalRow>[]>): Promise<string> {
+    return (await this.sendNow('PATCH', `${this.base(layout)}/records/${enc(id)}`, { fieldData, modId, ...(portalData ? { portalData } : {}) }, undefined, true)).modId;
   }
 
   /** Why a field shows its value: its formula and inputs, or the relationship it follows (no AI). */
