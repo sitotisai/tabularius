@@ -112,6 +112,7 @@ interface Pending {
   redirectUri: string;
   expires: number;
   flow: 'web' | 'ai' | 'data';
+  clientState?: string;
   resume?: Resume;
   /** Set when a Data API app started it (getoauthurl): where to send the person back, and the request it answers. */
   dataApi?: { trackingId: string; returnUrl: string; requestId: string };
@@ -218,6 +219,7 @@ export class Oidc {
         if (!columns.includes('created')) this.db.exec('ALTER TABLE pending ADD COLUMN created INTEGER NOT NULL DEFAULT 0');
         // A Data API app's sign-in (getoauthurl): where to send the person back, kept with the pending sign-in.
         if (!columns.includes('data_api')) this.db.exec('ALTER TABLE pending ADD COLUMN data_api TEXT');
+        if (!columns.includes('client_state')) this.db.exec('ALTER TABLE pending ADD COLUMN client_state TEXT');
         // The client address (its bucket) that started it. Rows from before this was kept have none, and are never evicted to make room.
         if (!columns.includes('address')) this.db.exec("ALTER TABLE pending ADD COLUMN address TEXT NOT NULL DEFAULT ''");
         // Who the provider vouched for in a Data API app's sign-in, until the app logs in (once, within five minutes).
@@ -305,7 +307,9 @@ export class Oidc {
   }
 
   private async start(s: ProviderState, req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
-    await this.redirect(s, url.searchParams.get('db') ?? '', req, res);
+    const clientState = url.searchParams.get('client_state') ?? undefined;
+    if (clientState !== undefined && !/^[a-f0-9]{48}$/.test(clientState)) throw new SignInError('Invalid browser sign-in state; please start again');
+    await this.redirect(s, url.searchParams.get('db') ?? '', req, res, undefined, clientState);
   }
 
   private pruneResumes(now: number): void {
@@ -410,10 +414,19 @@ export class Oidc {
     }
   }
 
-  private async redirect(s: ProviderState, db: string, req: IncomingMessage, res: ServerResponse, resume?: Resume): Promise<void> {
+  private async redirect(s: ProviderState, db: string, req: IncomingMessage, res: ServerResponse, resume?: Resume, clientState?: string): Promise<void> {
     // Without a public file list an unknown name goes to the identity provider like a real one, and is refused after the person has signed in there, so the start doesn't confirm which files exist.
     if (!this.host.get(db) && this.host.listFilesPublicly) throw new SignInError(`No hosted database named "${db}"`);
-    res.writeHead(302, { location: await this.authorizeUrl(s, db, req, resume), 'cache-control': 'no-store' }).end();
+    // Live-provider cross-site browser behavior is unverified; synthetic tests cover the cookie contract.
+    const secure = new URL(this.ownOrigin(req)).protocol === 'https:';
+    if (s.provider.formPost && !secure) throw new SignInError('This provider requires HTTPS to bind its form-post sign-in to this browser');
+    const location = await this.authorizeUrl(s, db, req, resume, undefined, clientState);
+    const state = new URL(location).searchParams.get('state')!;
+    // Abandoned/evicted flows must not fill the browser's Cookie header. Keep the newest flows within the pending cap.
+    const old = (req.headers.cookie ?? '').split(';').map((c) => c.trim().split('=')[0]).filter((name) => /^(?:__Host-)?tabularius_oidc_[a-f0-9]{24}$/.test(name));
+    const clear = old.slice(0, Math.max(0, old.length - MAX_PENDING_PER_ADDRESS + 1)).map((name) => `${name}=; Path=/; HttpOnly; Max-Age=0${secure ? '; Secure' : ''}`);
+    res.setHeader('set-cookie', [...clear, browserCookie(state, secure, !!s.provider.formPost, PENDING_MS / 1000)]);
+    res.writeHead(302, { location, 'cache-control': 'no-store' }).end();
   }
 
   /**
@@ -439,7 +452,7 @@ export class Oidc {
   }
 
   /** Starts a sign-in: the provider's address to send the person to. */
-  private async authorizeUrl(s: ProviderState, db: string, req: IncomingMessage, resume?: Resume, dataApi?: Pending['dataApi']): Promise<string> {
+  private async authorizeUrl(s: ProviderState, db: string, req: IncomingMessage, resume?: Resume, dataApi?: Pending['dataApi'], clientState?: string): Promise<string> {
     // Before anything is fetched or written: starting a sign-in needs no sign-in.
     const address = addressBucket(clientAddress(req));
     if (!this.starts.take(address)) throw new SignInError('Too many sign-in attempts from this address; try again in a minute', RETRY_AFTER_S);
@@ -456,7 +469,7 @@ export class Oidc {
       this.db.prepare('DELETE FROM pending WHERE expires <= ?').run(expiryClock.now());
       const evicted = this.makeRoom(address);
       const expires = now + PENDING_MS;
-      this.db.prepare('INSERT INTO pending (state,provider,database,verifier,nonce,redirect_uri,expires,flow,created,data_api,address) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(state, s.slug, db, verifier, nonce, redirectUri, expires, resume ? 'ai' : dataApi ? 'data' : 'web', now, dataApi ? JSON.stringify(dataApi) : null, address);
+      this.db.prepare('INSERT INTO pending (state,provider,database,verifier,nonce,redirect_uri,expires,flow,created,data_api,address,client_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(state, s.slug, db, verifier, nonce, redirectUri, expires, resume ? 'ai' : dataApi ? 'data' : 'web', now, dataApi ? JSON.stringify(dataApi) : null, address, clientState ?? null);
       this.db.exec('COMMIT');
       for (const gone of evicted) this.resumes.delete(gone);
       this.noteEvicted(evicted);
@@ -506,7 +519,20 @@ export class Oidc {
     const state = params.get('state') ?? '';
     const now = expiryClock.now();
     this.pruneResumes(performance.now());
-    const row = this.db.prepare('DELETE FROM pending WHERE state = ? AND expires > ? RETURNING provider, database, verifier, nonce, redirect_uri, expires, flow, created, data_api').all(state, now)[0] as { provider: string; database: string; verifier: string; nonce: string; redirect_uri: string; expires: number; flow: 'web' | 'ai' | 'data'; created: number; data_api: string | null } | undefined;
+    // Check the browser before consuming state: a stolen callback link cannot sign in or cancel the owner's flow.
+    // Data API getoauthurl flows start outside the browser and retain their existing app binding.
+    const binding = this.db.prepare('SELECT flow, redirect_uri, provider FROM pending WHERE state = ?').get(state) as { flow: string; redirect_uri: string; provider: string } | undefined;
+    if (binding && binding.flow !== 'data') {
+      const secure = new URL(binding.redirect_uri).protocol === 'https:';
+      const formPost = !!this.states.get(binding.provider)?.provider.formPost;
+      const expected = browserCookie(state, secure, formPost, 0).split(';')[0];
+      const cookies = (req.headers.cookie ?? '').split(';').map((c) => c.trim());
+      if (cookies.filter((c) => c.startsWith(expected.split('=')[0] + '=')).length !== 1 || !cookies.includes(expected)) {
+        throw new SignInError('This sign-in did not start in this browser; please start again');
+      }
+      res.setHeader('set-cookie', browserCookie(state, secure, formPost, 0));
+    }
+    const row = this.db.prepare('DELETE FROM pending WHERE state = ? AND expires > ? RETURNING provider, database, verifier, nonce, redirect_uri, expires, flow, created, data_api, client_state').all(state, now)[0] as { provider: string; database: string; verifier: string; nonce: string; redirect_uri: string; expires: number; flow: 'web' | 'ai' | 'data'; created: number; data_api: string | null; client_state: string | null } | undefined;
     const resumeEntry = this.resumes.get(state);
     this.resumes.delete(state);
     if (!row) {
@@ -542,7 +568,7 @@ export class Oidc {
         throw new SignInError('This app is no longer allowed to receive sign-in responses; please start again');
       }
     }
-    const p: Pending = { provider: row.provider, db: row.database, verifier: row.verifier, nonce: row.nonce, redirectUri: row.redirect_uri, expires: row.expires, flow: row.flow, ...(resume ? { resume } : {}), ...(dataApi ? { dataApi } : {}) };
+    const p: Pending = { provider: row.provider, db: row.database, verifier: row.verifier, nonce: row.nonce, redirectUri: row.redirect_uri, expires: row.expires, flow: row.flow, clientState: row.client_state ?? undefined, ...(resume ? { resume } : {}), ...(dataApi ? { dataApi } : {}) };
     // A Data API app's sign-in goes back to the app, whatever happened.
     if (p.dataApi) {
       try {
@@ -554,7 +580,13 @@ export class Oidc {
       return;
     }
     // An AI app's sign-in shows its trouble on the app's own sign-in page, not the web client's.
-    if (!resume) return this.finish(p, params, req, res);
+    if (!resume) {
+      try { await this.finish(p, params, req, res); } catch (e) {
+        if (!(e instanceof SignInError) && !(e instanceof ApiError)) throw e;
+        res.writeHead(302, { location: `/app/#error=${encodeURIComponent(e.message)}&state=${encodeURIComponent(p.clientState ?? '')}`, 'cache-control': 'no-store' }).end();
+      }
+      return;
+    }
     try {
       await this.finish(p, params, req, res);
     } catch (e) {
@@ -639,7 +671,7 @@ export class Oidc {
       return;
     }
     const token = this.api.open(store, email, 'web', via, clientAddress(req), undefined, undefined, { issuer, sub, person: email, mapping: via });
-    res.writeHead(302, { location: `/app/#db=${encodeURIComponent(store.name)}&token=${token}`, 'cache-control': 'no-store' }).end();
+    res.writeHead(302, { location: `/app/#db=${encodeURIComponent(store.name)}&token=${token}&state=${encodeURIComponent(p.clientState ?? '')}`, 'cache-control': 'no-store' }).end();
   }
 
   /**
@@ -855,4 +887,10 @@ export function emailTrusted(provider: Pick<OidcProvider, 'issuer' | 'trustEmail
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }).end(JSON.stringify(body));
+}
+
+/** Per-flow cookies allow simultaneous tabs. HTTPS uses a host-only cookie that a sibling domain cannot set. */
+function browserCookie(state: string, secure: boolean, formPost: boolean, maxAge: number): string {
+  const digest = createHash('sha256').update(state).digest('hex');
+  return `${secure ? '__Host-' : ''}tabularius_oidc_${digest.slice(0, 24)}=${digest}; Path=/; HttpOnly; SameSite=${formPost ? 'None' : 'Lax'}; Max-Age=${maxAge}${secure ? '; Secure' : ''}`;
 }

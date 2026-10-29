@@ -1620,9 +1620,9 @@ export class DataApi {
   }
 
   /** Blocked by an administrator (Admin API or console): sessions already open carry on, new ones wait. */
-  private refuseIfBlocked(store: Store, from: string, account?: string): void {
+  refuseIfBlocked(store: Store | undefined, from: string, account?: string): void {
     if (!this.host.config.blockNewUsers()) return;
-    this.host.logs?.write('Access', 'Warning', from, `${account ?? 'Someone'} could not sign in to ${store.name}: the server is blocking new users`);
+    this.host.logs?.write('Access', 'Warning', from, `${account ?? 'Someone'} could not sign in to ${store?.name ?? 'the server'}: the server is blocking new users`);
     throw new ApiError(812, 'The server isn\'t accepting new users right now; try again later', 503);
   }
 

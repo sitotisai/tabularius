@@ -1321,6 +1321,7 @@ function main(argv: string[]): number {
       const port = positiveWholeNumber(portFlag !== undefined ? '--port' : 'PORT', String(portText), 8080, { min: 0, max: 65535 });
       const hostname = flag(args, '--host') ?? process.env.TABULARIUS_HOST ?? (acme ? '0.0.0.0' : '127.0.0.1');
       const mcpToken = tokenOption(args, '--mcp-token', '--mcp-token-file', secret('TABULARIUS_MCP_TOKEN'), process.env.TABULARIUS_MCP_TOKEN_FILE, 'serve').value;
+      if (mcpToken !== undefined && mcpToken.length < 16) throw new Error('serve: the MCP administrator token must have at least 16 characters');
       // Scripts stay offline unless asked: Insert from URL could reach mail, SMS or payment services.
       const scriptNetwork = bool(args, '--allow-script-network');
       // Scripts' requests never reach this machine's own network (loopback, 10/8, 192.168/16 and so on) unless listed here.

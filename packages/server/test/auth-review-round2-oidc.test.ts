@@ -63,7 +63,7 @@ test('OIDC pending state survives handler restart and is consumed exactly once e
   const state = new URL(response.headers.get('location')!).searchParams.get('state')!;
   await response.arrayBuffer();
   s.restart(1);
-  const callback = (base: string) => fetch(`${base}/tabularius/auth/v1/oidc/callback?state=${state}&error=access_denied`, { redirect: 'manual' });
+  const callback = (base: string) => fetch(`${base}/tabularius/auth/v1/oidc/callback?state=${state}&error=access_denied`, { redirect: 'manual', headers: { cookie: response.headers.get('set-cookie')!.split(';')[0] } });
   const results = await Promise.all(s.bases.map(callback));
   const locations = results.map((r) => decodeURIComponent(r.headers.get('location') ?? ''));
   for (const result of results) await result.arrayBuffer();
