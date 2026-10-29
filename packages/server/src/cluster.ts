@@ -333,12 +333,14 @@ export class ClusterLink {
       await host.waitForCompaction(q.name);
       host.pauseFile(q.name);
     } else if (!host.get(q.name)) {
-      if (!host.openFile(q.name)) {
-        const file = host.files().find((f) => f.name.toLowerCase() === q.name.toLowerCase());
-        const path = file?.path ?? join(host.dir, q.name + '.openhbam.sqlite');
-        // Still encrypted (the leader didn't unlock it): not opened, which would make an empty store beside it.
-        if (existsSync(path) || !existsSync(path + ENCRYPTED_EXT)) host.add(path);
-      }
+      await whileLocked(() => {
+        if (!host.openFile(q.name)) {
+          const file = host.files().find((f) => f.name.toLowerCase() === q.name.toLowerCase());
+          const path = file?.path ?? join(host.dir, q.name + '.openhbam.sqlite');
+          // Still encrypted (the leader didn't unlock it): not opened, which would make an empty store beside it.
+          if (existsSync(path) || !existsSync(path + ENCRYPTED_EXT)) host.add(path);
+        }
+      });
     }
   }
 
@@ -501,6 +503,21 @@ export interface RestartTiming {
  */
 function socketPath(run: string, id: number): string {
   return process.platform === 'win32' ? `\\\\?\\pipe\\${basename(run)}-w${id}` : join(run, `w${id}.sock`);
+}
+
+/**
+ * Another process opening the same file at the same moment (the leader, replaying the write-ahead log of a file all workers
+ * had closed) can leave this one's first open failing with "database is locked" at once, whatever the wait it set: SQLite gives
+ * up on a read that keeps meeting recovery. The file is free a moment later, so the open is tried again; the worker that
+ * gave up would otherwise go on without the file while the one that asked was told it was open everywhere.
+ */
+export async function whileLocked<T>(work: () => T, wait: (ms: number) => Promise<unknown> = (ms) => new Promise((r) => setTimeout(r, ms)), attempts = 20): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try { return work(); } catch (e) {
+      if (attempt >= attempts || !/database is locked|SQLITE_BUSY/i.test(String((e as Error)?.message))) throw e;
+      await wait(25 * Math.min(attempt, 8));
+    }
+  }
 }
 
 export async function serveCluster(opts: ServeOptions, workers: number, blankFromNetwork = false, timing: RestartTiming = {}): Promise<{ server: Server; url: string; workers: number; tls?: AutoTls; pids(): (number | undefined)[]; close(): Promise<void> }> {
