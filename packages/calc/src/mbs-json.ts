@@ -2,7 +2,7 @@
 // Numbers keep the digits they were written with, so large numbers pass through without rounding, as MBS does.
 // A JSON parameter is JSON text or a reference number from JSON.Parse, CreateObjectRef or CreateArrayRef; adding
 // to or deleting from a reference changes it in place and gives the reference back.
-// Not here: JSON.ReplaceEvaluate, Colorize's styled text, the record
+// Not here: Colorize's styled text, the record
 // and import functions, and the functions whose pages haven't been checked.
 // They give an "isn't available" MBS error.
 
@@ -11,7 +11,7 @@ import { jmesSearch } from './jmespath.ts';
 import { jsonPathMatches, replaceAt } from './jsonpath.ts';
 import { withRegexBudget } from './regex-guard.ts';
 import { ENTRY_BYTES, retainedBudget, type RetainedBudget } from './retained-budget.ts';
-import { MAX_TEXT_RESULT, checkTextSize } from './text-budget.ts';
+import { checkTextSize, jsonStringSize, MAX_TEXT_RESULT } from './text-budget.ts';
 
 export type Json =
   | { t: 'null' }
@@ -970,7 +970,7 @@ export const MBS_JSON: Record<string, MbsJson> = {
     return Math.trunc(numeric(input(scope, j!.text).j));
   },
 
-  // JSONPath (jsonpath.ts): the matching values as an array; the page gives no Flags, so only 0 is taken.
+  // Inferred: JSONPath (jsonpath.ts) gives the matching values as an array; the page gives no Flags, so only 0 is taken.
   'json.query': ([j, path, flags], scope) => {
     if (flags && flags.text.trim() !== '' && Number(flags.text) !== 0) throw new MbsError('JSON.Query flags other than 0 aren\'t available');
     const doc = input(scope, j?.text ?? '').j;
@@ -980,7 +980,7 @@ export const MBS_JSON: Record<string, MbsJson> = {
     for (const m of found) if ((total += weigh(m.node, MAX_NODES - total)) > MAX_NODES) throw new MbsError(`The JSON is too large (more than ${MAX_NODES} values)`);
     return pretty({ t: 'arr', items: found.map((m) => clone(m.node)) }, sessionOf(scope).format);
   },
-  // Each match becomes the new value (JSON, or since 14.1 plain text or a number); a reference is changed in place.
+  // Inferred: each match becomes the new value (JSON, or since 14.1 plain text or a number); a reference is changed in place.
   'json.replace': ([j, path, replacement], scope) => {
     const inp = input(scope, j?.text ?? '');
     let value: Json;
@@ -994,10 +994,44 @@ export const MBS_JSON: Record<string, MbsJson> = {
     if (found.length * weigh(value, MAX_NODES) > MAX_NODES) throw new MbsError(`The JSON is too large (more than ${MAX_NODES} values)`);
     return output(scope, inp, replaceAt(root, found, () => clone(value)));
   },
+  // Inferred: evaluate a bounded JMESPath expression against each old value, then put its JSON result in that place.
+  'json.replaceevaluate': ([j, path, expression], scope) => {
+    const inp = input(scope, j?.text ?? '');
+    const root = clone(inp.j);
+    const found = withRegexBudget(() => jsonPathMatches(root, path?.text ?? ''));
+    const expr = expression?.text ?? '';
+    if (!expr || expr.length > 10_000 || found.length * Math.max(1, expr.length) > MAX_NODES) {
+      throw new MbsError('JSON.ReplaceEvaluate expression is too large or missing');
+    }
+    let total = 0;
+    const deadline = Date.now() + 3000;
+    const changed = replaceAt(root, found, (m) => {
+      if (Date.now() > deadline) throw new MbsError('JSON.ReplaceEvaluate took too long');
+      const value = jmesSearch(m.node, expr, { parse: parseJson, compact });
+      if ((total += weigh(value, MAX_NODES - total)) > MAX_NODES) throw new MbsError(`The JSON is too large (more than ${MAX_NODES} values)`);
+      return clone(value);
+    });
+    return output(scope, inp, changed);
+  },
 
-  // Inferred: JSON.Search renders the JMESPath result as JSON and uses null when nothing matches.
+  // Inferred: a path starting with $ asks for the canonical paths of JSONPath matches as a JSON array.
+  // Other expressions retain the existing JMESPath (jmespath.ts) result form.
   'json.search': ([j, path], scope) => {
     const doc = input(scope, j?.text ?? '').j;
+    if ((path?.text ?? '').trimStart().startsWith('$')) {
+      const found = withRegexBudget(() => jsonPathMatches(doc, path!.text));
+      let outputLength = 2;
+      const items: Json[] = found.map((m, i) => {
+        if (!m.path) throw new MbsError('JSON.Search paths for computed values aren\'t available');
+        const name = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        const value = '$' + m.path.map((step) => typeof step === 'number' ? `[${step}]` : `['${name(step)}']`).join('');
+        outputLength += jsonStringSize(value, 'utf16', false) + (i ? 1 : 0);
+        checkTextSize(outputLength);
+        return { t: 'str', v: value };
+      });
+      checkSize({ t: 'arr', items });
+      return pretty({ t: 'arr', items }, sessionOf(scope).format);
+    }
     const found = jmesSearch(doc, path?.text ?? '', { parse: parseJson, compact });
     // What shares parts with itself can be far larger written out than it looks, and long text counts for its length.
     if (weigh(found, MAX_NODES) > MAX_NODES) throw new MbsError(`The JSON is too large (more than ${MAX_NODES} values)`);
