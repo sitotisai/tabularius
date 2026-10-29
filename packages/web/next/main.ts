@@ -4,11 +4,12 @@
 // same Data API and privileges as the classic client at /app/, and shares its sign-in.
 
 import { Api, ApiError, listDatabases } from '../src/api.ts';
-import { fileField, mustChangeText, signInProblem, wantedFile } from './signin.ts';
+import { fileField, listProblem, mustChangeText, parseSession, sessionFailure, signInProblem, wantedFile } from './signin.ts';
 import type { DataRecord, LayoutMeta, ScriptsMenuEntry, SortSpec, Value } from '../src/types.ts';
 import { h, icon, mod, MOD_LABEL, typing } from './dom.ts';
 import { collections, listColumns, menuLayouts, pages, type Collection, type Column, type Page, type Related } from './model.ts';
 import { answerPageCalls, tellPages, webViewer } from '../src/layout.ts';
+import { attemptAdd, changedUnderDraft, decodeRoute, outcomeUnknown, sameSheet, saveAndRefresh, settleWrite, type AddOutcome, type AddState, type PortalSnapshot } from './edits.ts';
 import { editPage, newPage } from './pages.ts';
 import { parse, requests, unparse, type Search } from './query.ts';
 import { fileName, fromInputDate, initials, isImage, show, toInputDate } from './values.ts';
@@ -35,19 +36,26 @@ function store(key: string, value: string | undefined, area: 'session' | 'local'
 async function boot(): Promise<void> {
   const saved = stored(SESSION);
   if (saved) {
+    // What cannot be read is not a session: forget it, or every reload would report an outage.
+    const session = parseSession(saved);
+    if (!session) {
+      store(SESSION, undefined);
+      return signIn('The saved sign-in could not be used. Sign in again.');
+    }
     try {
-      const { db, token } = JSON.parse(saved) as { db: string; token: string };
-      const api = new Api(db, token);
+      const api = new Api(session.db, session.token);
       await api.menu();
       return void open(api);
-    } catch {
-      store(SESSION, undefined);
+    } catch (e) {
+      const failure = sessionFailure(e);
+      if (failure.clear) store(SESSION, undefined);
+      return signIn(failure.text, failure.retry ? () => void boot() : undefined, failure.wait);
     }
   }
   signIn();
 }
 
-async function signIn(message?: string): Promise<void> {
+async function signIn(message?: string, retry?: () => void, wait?: number): Promise<void> {
   let listError: unknown;
   const files = await listDatabases().catch((e) => { listError = e; return [] as string[]; });
   const field = fileField(files, listError);
@@ -60,11 +68,17 @@ async function signIn(message?: string): Promise<void> {
   const password = h('input', { name: 'password', type: 'password', autocomplete: 'current-password', 'aria-label': 'Password', placeholder: 'Password' });
   const otp = h('input', { name: 'otp', inputmode: 'numeric', autocomplete: 'one-time-code', pattern: '[0-9]*', 'aria-label': 'Authenticator code', placeholder: '123456' });
   const otpLabel = h('label', { hidden: true }, h('span', {}, 'Authenticator code'), otp);
-  const error = h('p', { class: 'signin-error', role: 'alert' }, message ?? '');
+  const error = h('p', { class: 'signin-error', role: 'alert' }, message ?? listProblem(listError));
   const go = h('button', { class: 'primary', type: 'submit' }, 'Open');
+  // Retry and Open never run together: whichever finishes last would be the one in charge. Retry also waits out
+  // what a 429 asked for.
+  let waiting = !!wait;
+  const lock = (busy: boolean) => { go.disabled = busy; if (again) again.disabled = busy || waiting; };
+  const again = retry ? h('button', { class: 'ghost', type: 'button', disabled: waiting, onclick: () => { lock(true); retry(); } }, 'Retry') : null;
+  if (again && wait) setTimeout(() => { waiting = false; if (!go.disabled) again.disabled = false; }, wait * 1000);
   const form = h('form', { class: 'signin', onsubmit: async (e: Event) => {
     e.preventDefault();
-    go.disabled = true;
+    lock(true);
     error.textContent = '';
     try {
       const name = db.value.trim();
@@ -80,7 +94,7 @@ async function signIn(message?: string): Promise<void> {
     } catch (err) {
       const problem = signInProblem(err, otp.value);
       error.textContent = problem.text;
-      go.disabled = false;
+      lock(false);
       if (problem.ask === 'code') {
         otpLabel.hidden = false;
         otp.focus();
@@ -97,6 +111,8 @@ async function signIn(message?: string): Promise<void> {
     field.kind === 'none' ? null : h('label', {}, h('span', {}, 'Password'), password),
     otpLabel,
     error,
+    // One try at a time: the screen is drawn again when the try ends, with its own Retry if it failed.
+    again,
     field.kind === 'none' ? null : go,
   );
   app.replaceChildren(h('main', { class: 'signin-page' }, form));
@@ -194,8 +210,9 @@ async function open(api: Api): Promise<void> {
   try {
     model = await readModel(api, (d, n) => { (bar.firstElementChild as HTMLElement).style.width = `${Math.round((d / Math.max(1, n)) * 100)}%`; });
   } catch (e) {
-    store(SESSION, undefined);
-    return signIn((e as Error).message);
+    const failure = sessionFailure(e);
+    if (failure.clear) store(SESSION, undefined);
+    return signIn(failure.text, failure.retry ? () => void open(api) : undefined, failure.wait);
   }
   current?.stop();
   current = new Workspace(api, model);
@@ -214,6 +231,12 @@ class Workspace {
   private readonly nav = h('nav', { class: 'rail', 'aria-label': 'Collections' });
   private readonly main = h('main', { class: 'stage' });
   private readonly sheet = h('aside', { class: 'sheet', 'aria-label': 'Record', hidden: true });
+  /** The panel's one status line: it stays when the panel is drawn again, so a save still running reports to it. */
+  private readonly status = h('span', { class: 'saved', 'aria-live': 'polite' });
+  /** What the panel shows, to tell a redraw of the same record from another one. */
+  private drawn?: { c: Collection; r: DataRecord };
+  /** The panel is being drawn again: the editors it keeps are taken out and put back, which is not leaving them. */
+  private redrawing = false;
   private readonly toast = h('div', { class: 'toast', role: 'status', 'aria-live': 'polite' });
   private toastTimer = 0;
 
@@ -304,7 +327,7 @@ class Workspace {
   // ---- routing: #/<table>[/<recordId>]
 
   private route(): void {
-    const [, table, rest] = location.hash.split('/').map((s) => decodeURIComponent(s));
+    const [, table, rest] = decodeRoute(location.hash);
     const page = table === '~' ? this.model.pages.find((p) => p.layout === rest) : undefined;
     // A page that isn't here (deleted, or just made and not read in yet) isn't a record of the first table.
     const id = table === '~' ? undefined : rest;
@@ -464,7 +487,7 @@ class Workspace {
     void this.pageAddress(p).then((address) => {
       if (this.page !== p) return;
       if (address === undefined) return void frame.replaceChildren(this.empty('Nothing to show yet', 'This page’s address is worked out by a script or from a record, so it shows in the classic view.'));
-      const viewer = webViewer(address, p.bridge);
+      const viewer = webViewer(address, p.bridge, p.hosts);
       viewer.setAttribute('title', p.layout);
       frame.replaceChildren(viewer);
     });
@@ -514,7 +537,7 @@ class Workspace {
   }
 
   /**
-   * A call from the page (window.tabularius, FileMaker.PerformScript): the same calls the classic client answers, each
+   * A call from the page (window.tabularius, FileMaker.PerformScript): a subset of the classic client’s calls, each
    * as this account, so the server's privilege checks apply.
    */
   private async pageCall(method: string, args: unknown[]): Promise<unknown> {
@@ -552,7 +575,7 @@ class Workspace {
       }
       case 'performScript': await this.runScript(text(args[0], 'The script name'), String(args[1] ?? '')); return null;
     }
-    throw new Error(`No such call: ${method}`);
+    throw new Error(`${method} is not supported in /next/; use /app/.`);
   }
 
   // ---- a collection
@@ -982,6 +1005,7 @@ class Workspace {
 
   private async openRecord(id: string): Promise<void> {
     const c = this.view!.collection;
+    this.record = undefined;
     try {
       const r = await this.api.record(c.layout, id);
       if (this.view?.collection !== c) return;
@@ -1009,13 +1033,50 @@ class Workspace {
     if (navigate && this.view) this.go(this.view.collection);
   }
 
+  private stillShowing(c: Collection, r: DataRecord): boolean {
+    return sameSheet(c, r, this.view?.collection, this.record);
+  }
+
+  /**
+   * Draws the panel for a record. Drawn again for the same record (another field's save finished), an editor that is
+   * still open (a draft, a failed save) and a related row being added stay as they are, with what was typed and
+   * what they say, instead of being thrown away with the rest.
+   */
   private drawSheet(c: Collection, r: DataRecord): void {
+    const same = this.drawn?.c === c && this.drawn.r === r;
+    const keep = same ? [...this.sheet.querySelectorAll<HTMLElement>('.editable[data-open], .mini-draft')] : [];
+    const active = document.activeElement;
+    this.redrawing = true;
+    try {
+      for (const x of keep) x.remove();
+      this.drawn = { c, r };
+      this.paintSheet(c, r);
+      for (const x of keep) {
+        if (x.classList.contains('editable')) {
+          this.sheet.querySelector(`.editable[data-field="${CSS.escape(x.dataset.field ?? '')}"]`)?.replaceWith(x);
+        } else {
+          const section = [...this.sheet.querySelectorAll<HTMLElement>('section.related')].find((y) => y.dataset.rel === x.dataset.rel);
+          if (!section) continue;
+          section.querySelector('.quiet-note')?.remove();
+          const list = section.querySelector('.mini');
+          if (list) list.after(x); else section.append(x);
+        }
+      }
+      if (active instanceof HTMLElement && keep.some((x) => x.contains(active))) active.focus();
+    } finally {
+      this.redrawing = false;
+    }
+  }
+
+  private paintSheet(c: Collection, r: DataRecord): void {
     const title = c.title ? show(r.fieldData[c.title]) : '';
     // The picture field shows at the top, unless what it holds isn't a picture: then it's a file like any other.
     const pic = c.image && (!r.fieldData[c.image] || isImage(r.fieldData[c.image])) ? c.image : undefined;
     const fields = c.columns.filter((x) => x.name !== c.title && x.name !== pic && !x.key);
     const keys = c.columns.filter((x) => x.key);
-    const saved = h('span', { class: 'saved', 'aria-live': 'polite' });
+    const saved = this.status;
+    saved.textContent = '';
+    saved.className = 'saved';
     const menu = this.recordMenu(c, r);
     this.sheet.replaceChildren(
       h('div', { class: 'sheet-bar' },
@@ -1035,7 +1096,7 @@ class Workspace {
           // A row opens as a record when its table is one of the collections.
           const target = rel.table ? this.model.collections.find((x) => x.table === rel.table && x.file === rel.file) : undefined;
           const add = rel.create && rel.columns.some((x) => !x.readOnly && !x.calculated);
-          const section: HTMLElement = h('section', { class: 'related' },
+          const section: HTMLElement = h('section', { class: 'related', 'data-rel': rel.name },
             h('div', { class: 'related-head' },
               h('h3', {}, rel.label, h('span', { class: 'count' }, rows.length ? String(rows.length) : '')),
               add ? h('button', { class: 'ghost related-add', 'aria-label': `Add to ${rel.label.toLowerCase()}`, onclick: () => this.addRelatedRow(c, r, rel, section, saved) }, icon('plus', 14), h('span', {}, 'Add')) : null),
@@ -1059,27 +1120,59 @@ class Workspace {
    * related record (its match fields filled from this record), Escape or leaving it empty drops it.
    */
   private addRelatedRow(c: Collection, r: DataRecord, rel: Related, section: HTMLElement, saved: HTMLElement): void {
-    if (section.querySelector('.mini-new')) { section.querySelector<HTMLElement>('.mini-new input')?.focus(); return; }
+    if (section.querySelector('.mini-draft')) { section.querySelector<HTMLElement>('.mini-draft input')?.focus(); return; }
     const cols = rel.columns.slice(0, 4);
     const inputs = cols.map((col) => col.readOnly || col.calculated ? null : h('input', {
       class: `editor mini-editor${col.type === 'number' ? ' num' : ''}`, 'aria-label': `New ${rel.label.toLowerCase()}: ${col.label}`, placeholder: col.label,
       type: col.type === 'date' ? 'date' : 'text', inputmode: col.type === 'number' ? 'decimal' : undefined,
     }));
     const row = h('div', { class: 'mini-new', style: `--cols:${cols.length}` }, ...inputs.map((i) => i ?? h('span', { class: 'cell' })));
-    let done = false;
-    const finish = async (keep: boolean) => {
-      if (done) return;
-      done = true;
+    // The row and, after a failure, what it says and offers. This is what stays when the panel is drawn again.
+    const draft = h('div', { class: 'mini-draft', 'data-rel': rel.name }, row);
+    // What the portal held when the row was started, so a retry can tell a row an earlier try made from the others.
+    const snapshot: PortalSnapshot = {
+      ids: new Set((r.portalData?.[rel.name] ?? []).map((x) => x.recordId)),
+      count: r.portalDataInfo?.find((x) => x.portalObjectName === rel.name)?.foundCount,
+    };
+    const types = Object.fromEntries(cols.map((col) => [col.name, col.type]));
+    const attempt: AddState = { maybeAdded: false };
+    // Only "editing" saves by itself (leaving the row, or Enter). After a failure the row waits for Retry, Enter or
+    // Escape: adding is not idempotent, so nothing is sent again without the person asking. When a try may already
+    // have added it ("anyway"), only the Add anyway button sends it.
+    let phase: 'editing' | 'saving' | 'failed' | 'done' = 'editing';
+    // After a try that may have reached the server nothing is sent but by Add anyway; Check again only looks.
+    let unsure = false;
+    let note: HTMLElement | undefined;
+    const drop = () => { phase = 'done'; draft.remove(); };
+    const finish = async (keep: boolean, force = false, check = false) => {
+      if (phase === 'saving' || phase === 'done') return;
+      if (unsure && !force && !check && keep) { this.say('Press Check again to look at the list, or Add anyway to add this row again.', true); return; }
       const data: Record<string, string> = {};
       cols.forEach((col, i) => { const v = inputs[i]?.value.trim(); if (v) data[col.name] = col.type === 'date' ? fromInputDate(v) : v; });
-      if (!keep || !Object.keys(data).length) { row.remove(); return; }
+      if (!keep || !Object.keys(data).length) return drop();
+      phase = 'saving';
+      note?.remove();
+      note = undefined;
       saved.textContent = 'Saving…';
       saved.className = 'saved';
       row.classList.add('busy');
+      let outcome = undefined as AddOutcome<DataRecord> | undefined;
       try {
-        r.modId = (await this.api.addRelated(c.layout, r.recordId, rel.name, data)).modId;
-        Object.assign(r, await this.api.record(c.layout, r.recordId));
+        const result = await saveAndRefresh(async () => {
+          outcome = await attemptAdd(attempt, {
+            // The record's modId moves with the whole record it is read with, never alone: if that read fails, a draft
+            // would otherwise go out on a modId that hides someone else's change. A later conflict is the safe error.
+            send: async () => { await this.api.addRelated(c.layout, r.recordId, rel.name, data); },
+            reread: () => this.api.record(c.layout, r.recordId),
+          }, snapshot, rel.name, data, types, force);
+          if (outcome.result === 'maybe' || outcome.result === 'failed') throw outcome.error;
+        }, async () => { Object.assign(r, await this.api.record(c.layout, r.recordId)); });
+        if (!result.saved) throw result.error;
+        phase = 'done';
+        draft.remove();
+        if (result.error) this.say(`Saved, but could not refresh: ${(result.error as Error).message}. Reopen the record.`, true);
         this.refreshRow(c, r);
+        if (!this.stillShowing(c, r)) return;
         this.drawSheet(c, r);
         const now = this.sheet.querySelector<HTMLElement>('.saved')!;
         now.textContent = 'Saved';
@@ -1087,19 +1180,33 @@ class Workspace {
         setTimeout(() => { if (now.textContent === 'Saved') now.textContent = ''; }, 1600);
         [...this.sheet.querySelectorAll<HTMLElement>('.related-add')].find((b) => b.getAttribute('aria-label') === `Add to ${rel.label.toLowerCase()}`)?.focus();
       } catch (e) {
-        saved.textContent = '';
-        row.remove();
-        this.say((e as Error).message, true);
+        phase = 'failed';
+        unsure = attempt.maybeAdded || outcome?.result === 'maybe';
+        const text = outcome?.result !== 'maybe' && attempt.maybeAdded ? `${(e as Error).message}. The row may already have been added, or the server may still finish it: press Check again to look at the list; Add anyway adds it again.` : (e as Error).message;
+        saved.textContent = (e as Error).message;
+        row.classList.remove('busy');
+        note = h('div', { class: 'mini-note', role: 'alert' }, h('span', {}, text),
+          unsure ? h('button', { type: 'button', class: 'ghost', onclick: () => void finish(true, false, true) }, 'Check again') : null,
+          unsure ? h('button', { type: 'button', class: 'ghost', onclick: () => void finish(true, true) }, 'Add anyway')
+            : h('button', { type: 'button', class: 'ghost', onclick: () => void finish(true) }, 'Retry'),
+          h('button', { type: 'button', class: 'ghost', onclick: drop }, 'Discard'));
+        draft.append(note);
+        this.say(text, true);
+        // The list may have changed under the row (the first try arrived): show it, the row stays.
+        if (outcome?.result === 'maybe' && outcome.fresh) {
+          Object.assign(r, outcome.fresh);
+          if (this.stillShowing(c, r)) this.drawSheet(c, r);
+        }
       }
     };
     row.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); void finish(true); }
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); void finish(false); }
     });
-    row.addEventListener('focusout', (e) => { if (!row.contains((e as FocusEvent).relatedTarget as Node)) void finish(true); });
+    row.addEventListener('focusout', (e) => { if (phase === 'editing' && !this.redrawing && !row.contains((e as FocusEvent).relatedTarget as Node)) void finish(true); });
     const list = section.querySelector('.mini');
     section.querySelector('.quiet-note')?.remove();
-    if (list) list.after(row); else section.append(row);
+    if (list) list.after(draft); else section.append(draft);
     inputs.find(Boolean)?.focus();
   }
 
@@ -1184,23 +1291,34 @@ class Workspace {
     const image = isImage(value);
     const picker = h('input', { type: 'file', hidden: true, accept: picture ? 'image/*' : undefined, tabindex: -1, 'aria-hidden': 'true' });
     const choose = () => picker.click();
+    let uploading = false;
+    let retry: HTMLElement | undefined;
     const put = async (run: () => Promise<void>, doing: string) => {
+      if (uploading) return;
+      uploading = true;
+      retry?.remove();
       saved.textContent = doing;
       saved.className = 'saved';
       wrap.classList.add('busy');
       try {
-        await run();
-        Object.assign(r, await this.api.record(c.layout, r.recordId));
+        const result = await saveAndRefresh(run, async () => { Object.assign(r, await this.api.record(c.layout, r.recordId)); });
+        if (!result.saved) throw result.error;
+        if (result.error) this.say(`Saved, but could not refresh: ${(result.error as Error).message}. Reopen the record.`, true);
         this.refreshRow(c, r);
+        if (!this.stillShowing(c, r)) return;
         this.drawSheet(c, r);
         const now = this.sheet.querySelector<HTMLElement>('.saved')!;
         now.textContent = 'Saved';
         now.className = 'saved ok';
         setTimeout(() => { if (now.textContent === 'Saved') now.textContent = ''; }, 1600);
       } catch (e) {
-        saved.textContent = '';
-        wrap.classList.remove('busy');
+        saved.textContent = (e as Error).message;
+        retry = h('button', { type: 'button', class: 'ghost', onclick: () => void put(run, doing) }, 'Retry');
+        wrap.append(retry);
         this.say((e as Error).message, true);
+      } finally {
+        uploading = false;
+        wrap.classList.remove('busy');
       }
     };
     const upload = (file: File | undefined) => { if (file) void put(() => this.api.upload(c.layout, r.recordId, col.name, 1, file), 'Uploading…'); };
@@ -1251,40 +1369,75 @@ class Workspace {
         title: readOnly ? (col.calculated ? 'Worked out from other fields' : undefined) : undefined,
       }, text || (cls === 'record-title' ? 'Untitled' : '—'));
     };
-    const wrap = h('div', { class: 'editable' }, display());
+    const wrap = h('div', { class: 'editable', 'data-field': col.name }, display());
     if (readOnly) return wrap;
 
     let saving = false;
+    /** What the field held when its editor opened, and whether a save of the draft ran into someone else's change. */
+    let opened = value();
+    let conflicted = false;
     /** Saves a new value (when it changed), then shows the record as the file now has it. */
-    const commit = async (next: string | undefined) => {
+    const commit = async (next: string | undefined): Promise<boolean> => {
       if (next !== undefined && next !== value()) {
+        // Someone else's change, seen by a conflict or by another save refreshing the record, is not written over: the
+        // draft is kept, and this is said again, until the editor is closed and the record read afresh.
+        if (conflicted || changedUnderDraft(r.fieldData[col.name], opened, next, col.type)) {
+          const text = `Someone else changed this record meanwhile: this field is now “${show(r.fieldData[col.name], col)}”. Your draft is kept; copy it, then close this box (Esc) and reopen the record before saving.`;
+          saved.textContent = text;
+          this.say(text, true);
+          return false;
+        }
         saving = true;
         saved.textContent = 'Saving…';
         saved.className = 'saved';
+        const was = r.fieldData[col.name];
+        let clash: { theirs: unknown } | undefined;
         try {
-          r.modId = await this.api.update(c.layout, r.recordId, { [col.name]: next }, { modId: r.modId });
-          // Calculations and auto-enter may have changed other fields: read the record again.
-          Object.assign(r, await this.api.record(c.layout, r.recordId));
+          const result = await saveAndRefresh(async () => {
+            try {
+              r.modId = await this.api.update(c.layout, r.recordId, { [col.name]: next }, { modId: r.modId });
+              r.fieldData[col.name] = next;
+            } catch (e) {
+              // The answer may have been lost after the file took the change: look, rather than retry into a false
+              // conflict, and never take the file's modId over someone else's change.
+              const settled = await settleWrite(e, col.name, next, was, col.type, () => this.api.record(c.layout, r.recordId));
+              if (settled.fresh && (settled.saved || settled.adopt)) Object.assign(r, settled.fresh);
+              if (settled.conflict) clash = { theirs: settled.fresh?.fieldData[col.name] };
+              if (!settled.saved) throw e;
+            }
+          }, async () => { Object.assign(r, await this.api.record(c.layout, r.recordId)); });
+          if (!result.saved) throw result.error;
+          delete wrap.dataset.open;
+          if (result.error) this.say(`Saved, but could not refresh: ${(result.error as Error).message}. Reopen the record.`, true);
           this.refreshRow(c, r);
+          if (!this.stillShowing(c, r)) return true;
+          // Focus is put back on the field only if it was still here, not if the person has gone on to another.
+          const focus = document.activeElement;
+          const here = !focus || focus === document.body || wrap.contains(focus);
           this.drawSheet(c, r);
           // The panel was drawn again: confirm on its new status line, and keep the place.
           const now = this.sheet.querySelector<HTMLElement>('.saved')!;
           now.textContent = 'Saved';
           now.className = 'saved ok';
           setTimeout(() => { if (now.textContent === 'Saved') now.textContent = ''; }, 1600);
-          [...this.sheet.querySelectorAll<HTMLElement>('.value')].find((x) => x.getAttribute('aria-label')?.startsWith(`${col.label}:`))?.focus();
-          return;
+          if (here) [...this.sheet.querySelectorAll<HTMLElement>('.value')].find((x) => x.getAttribute('aria-label')?.startsWith(`${col.label}:`))?.focus();
+          return true;
         } catch (e) {
-          saved.textContent = '';
-          this.say(e instanceof ApiError && e.code === 306 ? 'Someone else changed this record meanwhile. Here is their version.' : (e as Error).message, true);
-          const fresh = await this.api.record(c.layout, r.recordId).catch(() => undefined);
-          if (fresh) Object.assign(r, fresh);
+          if (clash || (e instanceof ApiError && e.code === 306)) conflicted = true;
+          const theirs = clash ? ` this field is now “${show(clash.theirs as Value, col)}”` : '';
+          const text = clash || (e instanceof ApiError && e.code === 306) ? `Someone else changed this record meanwhile${clash ? `:${theirs}` : ''}. Your draft is kept; copy it, then reopen the record before saving.`
+            : outcomeUnknown(e) ? `Could not confirm the save: ${(e as Error).message}. Your draft is kept; press Enter to try again.` : (e as Error).message;
+          saved.textContent = text;
+          this.say(text, true);
+          return false; // Keep the draft and allow another attempt.
         } finally {
           saving = false;
         }
       }
+      delete wrap.dataset.open;
       wrap.replaceChildren(display());
       (wrap.firstElementChild as HTMLElement)?.focus();
+      return true;
     };
 
     // A value list of related values: this record's values are asked for as the field opens.
@@ -1298,11 +1451,17 @@ class Workspace {
     };
     const open = () => {
       if (saving) return;
+      // While an editor is open its wrapper says so: the panel keeps it when another save draws the panel again.
+      wrap.dataset.open = '';
+      opened = value();
+      conflicted = false;
+      // After a failed save the draft waits for Enter (or Done, or a pick): leaving the field does not try again.
+      let failed = false;
       // Several values: toggles, each saved as it's flipped; the panel closes when focus leaves it.
       if (several) {
         const on = new Set(picked());
         let done = false;
-        const finish = (next: string | undefined) => { if (!done) { done = true; void commit(next); } };
+        const finish = async (next: string | undefined) => { if (!done && !saving) { done = true; failed = false; done = await commit(next); failed = !done; } };
         const group = h('div', { class: 'choices', role: 'group', 'aria-label': col.label },
           ...choices!.values.map((v) => h('button', {
             type: 'button', class: 'choice', 'aria-pressed': String(on.has(v)),
@@ -1315,7 +1474,7 @@ class Workspace {
           h('button', { type: 'button', class: 'ghost choices-done', onclick: () => finish(choices!.values.filter((v) => on.has(v)).join('\r')) }, 'Done'));
         group.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(undefined); } });
         group.addEventListener('focusout', (e) => {
-          if (!group.contains((e as FocusEvent).relatedTarget as Node)) finish(choices!.values.filter((v) => on.has(v)).join('\r'));
+          if (!this.redrawing && !failed && !group.contains((e as FocusEvent).relatedTarget as Node)) finish(choices!.values.filter((v) => on.has(v)).join('\r'));
         });
         wrap.replaceChildren(group);
         (group.querySelector('.choice') as HTMLElement | null)?.focus();
@@ -1330,9 +1489,9 @@ class Workspace {
           !known && current ? h('option', { value: current, selected: true }, current) : null,
           ...choices.values.map((v) => h('option', { value: v, selected: v === current }, label(v))));
         let done = false;
-        const finish = (next: string | undefined) => { if (!done) { done = true; void commit(next); } };
+        const finish = async (next: string | undefined) => { if (!done && !saving) { done = true; failed = false; done = await commit(next); failed = !done; } };
         select.addEventListener('change', () => finish(select.value));
-        select.addEventListener('blur', () => finish(undefined));
+        select.addEventListener('blur', () => { if (!this.redrawing && !failed) void finish(select.value); });
         select.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(undefined); } });
         wrap.replaceChildren(select);
         select.focus();
@@ -1352,12 +1511,14 @@ class Workspace {
         input.setAttribute('list', list.id);
       }
       let done = false;
-      const finish = (keep: boolean) => {
-        if (done) return;
+      const finish = async (keep: boolean) => {
+        if (done || saving) return;
         done = true;
-        void commit(keep ? (col.type === 'date' ? fromInputDate(input.value) : input.value) : undefined);
+        failed = false;
+        done = await commit(keep ? (col.type === 'date' ? fromInputDate(input.value) : input.value) : undefined);
+        failed = !done;
       };
-      input.addEventListener('blur', () => finish(true));
+      input.addEventListener('blur', () => { if (!this.redrawing && !failed) void finish(true); });
       input.addEventListener('keydown', (e) => {
         const k = e as KeyboardEvent;
         if (k.key === 'Escape') { k.preventDefault(); k.stopPropagation(); finish(false); }
