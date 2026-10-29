@@ -375,7 +375,7 @@ test('PostgreSQL repeated-user lockouts match for hosted real, hosted fake and u
   const store = localHost.get('Payroll')!;
   store.setPassword('Ann', 'pw', store.privilegeSets().find((p) => p.id === 1)!.name);
   const pg = new PgServer(localHost, { port: 0 });
-  const unhosted = (pg as unknown as { unhostedFailures: SignInFailures }).unhostedFailures;
+  const unhosted = localHost.unhostedSignIns.table('Payrol1');
   let from = '198.51.100.50';
   let now = Math.floor(performance.now()); // whole milliseconds, so expiry boundaries compare exactly
   t.mock.method(performance, 'now', () => now);
@@ -440,13 +440,13 @@ test('PostgreSQL repeated-user lockouts match for hosted real, hosted fake and u
   }
 });
 
-test('unhosted PostgreSQL floods retain dummy hashes after the PgServer address budget locks', async (t) => {
+test('unhosted PostgreSQL floods retain dummy hashes after the invented name address budget locks', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-pg-unhosted-limit-'));
   // An empty host must also track failures: there is no Store to own this budget.
   const localHost = new Host(dir);
   localHost.listFilesPublicly = true;
   const pg = new PgServer(localHost, { port: 0 });
-  const failures = (pg as unknown as { unhostedFailures: Map<string, { count: number; first: number; until?: number }> }).unhostedFailures;
+  const failures = localHost.unhostedSignIns.table('Missing');
   let from = '198.51.100.20';
   // Exercise network address accounting over a real loopback socket without requiring a TLS fixture.
   t.mock.method(pg, 'isLocal', (socket: Socket) => {
@@ -465,7 +465,7 @@ test('unhosted PostgreSQL floods retain dummy hashes after the PgServer address 
   const port = await pg.listen();
   const attempt = (i: number, publicList = true) => {
     localHost.listFilesPublicly = publicList;
-    return assert.rejects(Client.open({ user: `guess${i}`, password: 'wrong', database: `Missing${i}`, port }), publicList ? /3D000 .* is not hosted here/ : /28P01 password authentication failed/);
+    return assert.rejects(Client.open({ user: `guess${i}`, password: 'wrong', database: 'Missing', port }), publicList ? /3D000 .* is not hosted here/ : /28P01 password authentication failed/);
   };
   for (let i = 0; i < LOCKOUT.addressAttempts; i++) {
     from = i % 2 ? '::ffff:198.51.100.20' : '198.51.100.20';
@@ -500,16 +500,16 @@ test('unhosted PostgreSQL floods retain dummy hashes after the PgServer address 
   assert.equal(failures.get('\u0000address\u00002001:db8:1:2')?.count, 1, 'expired blocks start a fresh budget');
 });
 
-test('unhosted PostgreSQL requests still hash when the PgServer address table is full', async (t) => {
+test('unhosted PostgreSQL requests still hash when the invented name address table is full', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-pg-unhosted-full-'));
   const localHost = new Host(dir);
   const pg = new PgServer(localHost, { port: 0 });
-  const failures = (pg as unknown as { unhostedFailures: Map<string, { count: number; first: number; until?: number }> }).unhostedFailures;
+  const failures = localHost.unhostedSignIns.table('Missing');
   let now = Math.floor(performance.now()); // whole milliseconds, so expiry boundaries compare exactly
   const wall = Date.now();
   t.mock.method(performance, 'now', () => now);
   t.mock.method(Date, 'now', () => wall);
-  for (let i = 0; i < 40_000; i++) failures.set(`\u0000address\u00002001:db8:${i.toString(16)}:0`, { count: 1, first: now });
+  for (let i = 0; i < 256; i++) failures.set(`\u0000address\u00002001:db8:${i.toString(16)}:0`, { count: 1, first: now });
   const hashes = t.mock.method(crypto, 'scrypt');
   syncBuiltinESMExports();
   t.after(async () => {
@@ -521,7 +521,7 @@ test('unhosted PostgreSQL requests still hash when the PgServer address table is
   });
   assert.ok(await pg.checkUnhostedPassword('wrong', '198.51.100.30', 'Missing', 'Ann'), 'live address budgets refuse an untracked source at capacity');
   assert.equal(hashes.mock.callCount(), 1, 'a full table must not reveal an unhosted name with a fast reply');
-  assert.equal(failures.size, 40_000);
+  assert.equal(failures.size, 256);
   assert.equal(failures.has('\u0000address\u0000198.51.100.30'), false, 'live address counters cannot yield capacity');
   await pg.checkUnhostedPassword('wrong', '2001:db8:ff::1', 'Missing', 'Ann');
   assert.equal(hashes.mock.callCount(), 2);
@@ -542,13 +542,13 @@ test('unhosted PostgreSQL account tracking is bounded and expired entries free c
     await localHost.close();
     rmSync(dir, { recursive: true, force: true });
   });
-  const failures = (pg as unknown as { unhostedFailures: Map<string, { count: number; first: number; until?: number }> }).unhostedFailures;
+  const failures = localHost.unhostedSignIns.table('Missing');
   let now = Math.floor(performance.now()); // whole milliseconds, so expiry boundaries compare exactly
   t.mock.method(performance, 'now', () => now);
   await pg.checkUnhostedPassword('wrong', '127.0.0.1', 'Missing', 'Ann');
   assert.equal(failures.size, 1);
-  const key = failures.keys().next().value!;
-  for (let i = 1; i < 40_000; i++) failures.set(`old${i}`, { count: 1, first: now });
+  const key = failures.accountKey('Ann', '127.0.0.1', 'Missing');
+  for (let i = 1; i < 256; i++) failures.set(`old${i}`, { count: 1, first: now });
   for (let i = 1; i <= LOCKOUT.attempts; i++) {
     const until = await pg.checkUnhostedPassword('wrong', '127.0.0.1', 'Missing', 'Ann');
     assert.equal(!!until, i >= LOCKOUT.attempts - 1, 'existing accounts still lock at capacity');
@@ -557,11 +557,11 @@ test('unhosted PostgreSQL account tracking is bounded and expired entries free c
   for (let i = 0; i <= LOCKOUT.attempts; i++) {
     const until = await pg.checkUnhostedPassword('wrong', '127.0.0.1', 'Another', 'Ann');
     assert.equal(!!until, i >= LOCKOUT.attempts - 1, 'new accounts lock only after their own failures at capacity');
-    assert.equal(failures.size, 40_000, 'new names cannot grow the bounded table');
+    assert.equal(failures.size, 256, 'new accounts cannot grow the bounded table');
   }
   now += LOCKOUT.lockMs + LOCKOUT.windowMs;
-  assert.equal(await pg.checkUnhostedPassword('wrong', '127.0.0.1', 'Fresh', 'Ann'), undefined);
-  assert.equal(failures.size, 1, 'expired windows and locks are removed before retaining new names');
+  assert.equal(await pg.checkUnhostedPassword('wrong', '127.0.0.1', 'Missing', 'Fresh'), undefined);
+  assert.equal(failures.size, 1, 'expired windows and locks are removed before retaining a new account');
 });
 
 test('bound parameter bytes are capped across a connection’s portals', { timeout: 30_000 }, async (t) => {
