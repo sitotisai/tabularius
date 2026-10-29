@@ -55,6 +55,8 @@ budget: multiple portals, concurrent connections, and SQLite's own query work
 can still consume more memory. The measurements below cover three modest text columns.
 Streaming rows in batches with no cap is a possible follow-up.
 
+Signed-in connections enable TCP keepalive and close after five minutes without socket activity. `TABULARIUS_PGWIRE_IDLE_MS` sets that idle time in milliseconds when a connection signs in; `0` disables this idle timeout. Active query work is exempt. Connections waiting to sign in have a separate global budget of 256 remote sockets and 256 local sockets.
+
 ## Date and time result types
 
 A result column that reads a field directly carries its schema type, including
