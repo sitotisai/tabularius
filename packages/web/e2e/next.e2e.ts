@@ -1124,3 +1124,41 @@ test('text typed in the page editor while it saves is kept, not closed over', { 
   await page.locator('dialog.page-editor').waitFor({ state: 'detached' });
   await until(async () => pageSource(hosted.store('Gallery').design('Welcome')!.objects[0].webUrl), (h) => /typed while saving/.test(h ?? ''));
 });
+
+test('the next page bridge lists layouts, reads a value list, prints and navigates', { skip }, async () => {
+  hosted.store('Gallery').applyDesign([{ op: 'createValueList', name: 'Bridge choices', values: ['One', 'Two'] }]);
+  const page = await open('Gallery');
+  await page.evaluate(() => { globalThis.print = () => { document.body.dataset.bridgePrinted = 'yes'; }; });
+  await page.locator('.rail-pages .rail-item', { hasText: 'Welcome' }).click();
+  const frame = page.frameLocator('.page-frame iframe');
+  await frame.locator('#add').waitFor();
+  const result = await frame.locator('body').evaluate(async () => {
+    const bridge = (window as unknown as { tabularius: {
+      layouts(): Promise<string[]>;
+      valueList(name: string): Promise<{ values: string[] }>;
+      print(): Promise<null>;
+      goToLayout(name: string): Promise<null>;
+    } }).tabularius;
+    const layouts = await bridge.layouts();
+    const values = await bridge.valueList('Bridge choices');
+    const printed = await bridge.print();
+    let denied = '';
+    try { await bridge.goToLayout('Missing layout'); } catch (e) { denied = (e as Error).message; }
+    const go = document.createElement('button');
+    go.id = 'bridge-go';
+    go.textContent = 'Go to parks';
+    go.onclick = () => { void bridge.goToLayout('Parks'); };
+    document.body.append(go);
+    return { layouts, values, printed, denied };
+  });
+  assert.ok(result.layouts.includes('Welcome'));
+  assert.ok(result.layouts.includes('Parks'));
+  assert.deepEqual(result.values.values, ['One', 'Two']);
+  assert.equal(result.printed, null);
+  assert.match(result.denied, /There is no layout/);
+  assert.equal(await page.locator('body').getAttribute('data-bridge-printed'), 'yes');
+  await frame.locator('#bridge-go').click();
+  await until(() => page.evaluate(() => location.hash), (hash) => hash === '#/Parks');
+  await page.locator('.row:not(.head)').first().waitFor();
+  assert.deepEqual(page.errors, []);
+});

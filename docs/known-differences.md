@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**179 entries in 23 areas.** Waiting on: 22 on a sample file, 90 on a FileMaker run or Design Report, 14 on a Claris answer, 18 on a decision by the owner (an entry can wait on more than one).
+**180 entries in 23 areas.** Waiting on: 22 on a sample file, 91 on a FileMaker run or Design Report, 14 on a Claris answer, 18 on a decision by the owner (an entry can wait on more than one).
 
 ## Data API
 
@@ -266,6 +266,7 @@ part of it.
 | --- | --- | --- | --- |
 | Whether FileMaker displays and stores invalid date text (February 31) the same way remains unverified | The web client keeps 2024-02-31 while editing, then stores and displays 02/31/2024 after reload | A FileMaker run showing invalid date text in a date field | [docs/consistency.md › Unverified behavior left unchanged <!-- known-difference-ok: heading of the list below, whose items carry the markers -->](consistency.md) — “…and stores the invalid date the same way remains unverified. Keep the web formatter unchanged until that…” |
 | Dashboard layout and chart parity with FileMaker is inferred unless Claris documents it or it was checked in FileMaker | A chart type or summary may look or add up differently | A FileMaker run of the chart or summary in question | [docs/guides/running/dashboards-and-charts.md › References and differences](guides/running/dashboards-and-charts.md) — “…layout and chart parity with FileMaker is inferred unless a specific behavior is documented by Claris or…” |
+| The next client navigates a bridge layout request to its page or collection, not the original layout design | A collection uses its chosen layout and a layout absent from the loaded model is refused | A FileMaker run comparing navigation and printing | [docs/next-client.md › The alternative client (/next/)](next-client.md) — “…with FileMaker navigation and printing is unverified.” |
 | A web viewer loads an https address only when an administrator listed its host for the file, over https only; FileMaker loads any address, and Go Back, Go Forward and Perform JavaScript in Web Viewer do not work on a page from a web host | An address on the web shows as text naming the host, until it is listed | Owner decision | [docs/web-client.md › Web viewers that load a web page](web-client.md) — “” |
 | Formatting in a related field's or portal row's repetitions past the first, in repeating stored calculations, and formatting read from the .fmp12 file are not supported | That formatting is not shown or kept | Owner decision, and a sample file with such formatting | [docs/web-client.md › Browse mode](web-client.md) — “…"styles" can name "Tags(2)" beside its value. Not yet: formatting in a related field's or portal row's…” |
 | Browser erasure and equivalent device-forgetting behavior in FileMaker are unverified | Clearing requests and session expiry are tested; actual browser erasure is not established | Cross-browser storage checks and a comparison with FileMaker | [docs/web-client.md › Browser storage and forgetting a device](web-client.md) — “…and equivalent behavior in FileMaker are unverified.” |
