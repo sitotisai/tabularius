@@ -182,7 +182,8 @@ test('pgwire answers a newer protocol minor or an unknown option with NegotiateP
   });
   const newer = await talk(0x00030002, { user: 'alice', database: 'A', '_pq_.test': '1' });
   assert.equal(String.fromCharCode(newer[0]), 'v');
-  assert.equal(newer.readInt32BE(5), 0, 'newest minor this server speaks');
+  // The whole version number (3.0), as PostgreSQL sends it; libpq 18 refuses anything below 3.0.
+  assert.equal(newer.readInt32BE(5), 0x00030000, 'newest protocol version this server speaks');
   assert.equal(newer.readInt32BE(9), 1, 'one option it does not know');
   assert.equal(newer.subarray(13, newer.indexOf(0, 13)).toString(), '_pq_.test');
   const afterIt = newer.subarray(1 + newer.readInt32BE(1));
