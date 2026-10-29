@@ -2,19 +2,42 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, createPublicKey, generateKeyPairSync, verify, X509Certificate } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import { request } from 'node:https';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { connect } from 'node:net';
 import { serve, serveCluster, setAdminPassword } from '../src/index.ts';
+import { readKey } from '../src/acme.ts';
 
 // HTTPS out of the box: certificates from an ACME authority (Let's Encrypt), here a
 // stand-in that checks every signed request, fetches the challenge over HTTP and
 // issues certificates with openssl.
 const openssl = spawnSync('openssl', ['version']).status === 0;
 const skip = openssl ? false : 'openssl is not installed';
+
+test('the account key is written through a private temp name, never through a planted link', { skip: process.platform === 'win32' }, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-acme-key-'));
+  try {
+    const victim = join(dir, 'victim');
+    const file = join(dir, 'account.key');
+    writeFileSync(victim, 'keep');
+    symlinkSync(victim, file + '.tmp');
+
+    const key = readKey(file);
+    assert.equal(key.type, 'private');
+    assert.equal(readFileSync(victim, 'utf8'), 'keep');
+    assert.equal(lstatSync(file).isSymbolicLink(), false);
+    assert.ok(lstatSync(file).isFile());
+    assert.match(readFileSync(file, 'utf8'), /^-----BEGIN PRIVATE KEY-----/);
+    if (process.platform !== 'win32') assert.equal(statSync(file).mode & 0o777, 0o600);
+    assert.ok(lstatSync(file + '.tmp').isSymbolicLink());
+    assert.equal(readKey(file).export({ type: 'pkcs8', format: 'pem' }), key.export({ type: 'pkcs8', format: 'pem' }));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 const b64u = (b: Buffer | string) => Buffer.from(b).toString('base64url');
 
