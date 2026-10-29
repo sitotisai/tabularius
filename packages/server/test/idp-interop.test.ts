@@ -9,6 +9,7 @@ import { createStore } from '../../store/src/index.ts';
 import { STORE_EXT } from '../src/host.ts';
 import { serve } from '../src/index.ts';
 import type { Store } from '../../store/src/index.ts';
+import { oidcBrowser } from './oidc-browser.ts';
 
 type Case = { name: string; oidc: { groupClaim?: string; trustEmail?: boolean; claims: Record<string, unknown>; expect: string } };
 type ScimExercise = { lookup: string; create: Record<string, unknown>; group: string; groupAdd: Record<string, unknown>; oktaPatch: Record<string, unknown>; authentikPut: Record<string, unknown>; authentikGroupPut: Record<string, unknown>; deactivate: Record<string, unknown>; reactivate: Record<string, unknown>; invalidFilter: string };
@@ -81,12 +82,13 @@ after(async () => {
 
 async function signIn(provider: string, claims: Record<string, unknown>, bad?: 'signature' | 'issuer' | 'audience' | 'nonce' | 'expired'): Promise<string> {
   const slug = provider.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-  const start = await fetch(`${base}/tabularius/auth/v1/oidc/start/${slug}?db=Interop`, { redirect: 'manual' });
+  const browser = oidcBrowser();
+  const start = await browser(`${base}/tabularius/auth/v1/oidc/start/${slug}?db=Interop`, { redirect: 'manual' });
   assert.equal(start.status, 302);
   const auth = new URL(start.headers.get('location')!);
   const code = crypto.randomUUID();
   codes.set(code, { nonce: auth.searchParams.get('nonce')!, challenge: auth.searchParams.get('code_challenge')!, claims, ...(bad ? { bad } : {}) });
-  const callback = await fetch(`${base}/tabularius/auth/v1/oidc/callback?code=${code}&state=${auth.searchParams.get('state')}`, { redirect: 'manual' });
+  const callback = await browser(`${base}/tabularius/auth/v1/oidc/callback?code=${code}&state=${auth.searchParams.get('state')}`, { redirect: 'manual' });
   assert.equal(callback.status, 302);
   return decodeURIComponent(callback.headers.get('location') ?? '');
 }
