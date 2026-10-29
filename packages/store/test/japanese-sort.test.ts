@@ -23,3 +23,38 @@ test('a field indexed in Japanese sorts in Japanese order, others in English ord
     rmSync(dir, { recursive: true });
   }
 });
+
+test('Japanese text finds match mixed width and voiced half-width kana across find operators', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-ja-width-'));
+  try {
+    const path = join(dir, 'Width.sqlite');
+    createStore(path);
+    const store = new Store(path, 'Width');
+    try {
+      store.applyDesign([{ op: 'createTable', name: 'Items', fields: [
+        { name: 'Japanese', type: 'text', options: { indexLanguage: 'Japanese' } },
+        { name: 'English', type: 'text' },
+      ] }]);
+      const mixed = store.create('Items', { Japanese: 'Ａ１ﾊﾟ', English: 'Ａ１ﾊﾟ' }).recordId;
+      const full = store.create('Items', { Japanese: 'A1パ', English: 'A1パ' }).recordId;
+      const ids = (field: string, value: string) => store.find('Items', { query: [{ [field]: value }] }).records.map((r) => r.recordId);
+      for (const criterion of ['A1パ', '=A1パ', '==A1パ', 'A#パ', 'A1パ...A1パ']) {
+        assert.deepEqual(ids('Japanese', criterion), [mixed, full], criterion);
+      }
+      assert.deepEqual(ids('Japanese', 'Ａ１ﾊﾟ...Ａ１ﾊﾟ'), [mixed, full]);
+      assert.deepEqual(ids('English', 'A1パ...A1パ'), [full], 'other languages retain their range comparison');
+      const digits = store.create('Items', { Japanese: '１２３', English: '１２３' }).recordId;
+      const voiced = store.create('Items', { Japanese: 'ｶﾞ', English: 'ｶﾞ' }).recordId;
+      assert.deepEqual(ids('Japanese', '123...123'), [digits]);
+      assert.deepEqual(ids('Japanese', 'ガ...ガ'), [voiced]);
+      assert.deepEqual(ids('Japanese', '==ガ'), [voiced]);
+      assert.deepEqual(ids('English', 'ガ...ガ'), []);
+      store.words.enabled = false;
+      assert.deepEqual(ids('Japanese', 'A1パ'), [mixed, full], 'plain finds also work without the word index');
+    } finally {
+      store.close();
+    }
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});

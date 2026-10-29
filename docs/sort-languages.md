@@ -19,7 +19,9 @@ A field's language puts text in order in each of these, so they agree with one a
 
 - **Sort Records** and the Sort dialog, the Data API's `_sort`, portals and their sorts, value lists sorted by their field.
 - **A find** with `<`, `>`, `<=`, `>=` and a range (`a...m`): the words of the value that lie between the bounds in the
-  field's order, as Claris describes a text range.
+  field's order, as Claris describes a text range. For Japanese fields, full-width letters and digits share the ordinary
+  width's key, and half-width katakana with voiced marks share the full-width key. This range behavior has not been
+  verified against the original product.
 - **Sub-summary groups**: records whose values the language sorts as equal fall in one group (an accent the language
   ignores does not start a new group).
 - **SortValues** with a named locale: its text sorts in that language. An omitted or blank locale currently uses English;
