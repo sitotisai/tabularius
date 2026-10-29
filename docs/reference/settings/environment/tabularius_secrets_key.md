@@ -7,7 +7,7 @@ Passphrase used to seal outside-connection secrets.
 | Default | TABULARIUS_ENCRYPTION_KEY if set |
 | Accepted values | Nonempty passphrase; an empty value stops `serve` |
 | Restart needed | Yes for a running server. |
-| Explained in | [README.md](../../../../README.md) |
+| Explained in | [docs/hosting-for-a-team.md](../../../hosting-for-a-team.md) |
 | Code | [packages/server/src/connections.ts:8](../../../../packages/server/src/connections.ts#L8) |
 
 [All environment variables](../../../environment-variables.md)

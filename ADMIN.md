@@ -172,7 +172,7 @@ You need one of:
   (macOS, Linux) or `powershell -ExecutionPolicy Bypass -File scripts\install.ps1`
   (Windows). Each puts a `tabularius` command on your PATH and fetches Node
   if yours is too old.
-- **Docker**: `docker compose up -d` hosts `./Databases` on port 8080 (the README's Docker steps make the folder writable for the container and set the passwords).
+- **Docker**: `docker compose up -d` hosts `./Databases` on port 8080 ([Hosting for a team](docs/hosting-for-a-team.md) has the Docker steps that make the folder writable for the container and set the passwords).
 
 Then, on the server machine:
 
@@ -666,8 +666,11 @@ carries the mark over with the other settings, so for records made since, the
 audit log no longer has to say whose an id is, and audit retention does not
 matter. The mark is how far the file has got, not a promise kept outside it:
 
-- restoring a backup brings back the backup's mark with the rest of the file,
-  so ids given after that backup was taken are given again;
+- restoring a backup keeps the mark of the file it replaces when that is higher
+  (a copy of it is read before the file is replaced), so ids given after the
+  backup was taken stay spent and the next record is numbered after them, which
+  leaves a gap in the numbers. A restore into a folder with no file, or over a
+  file too damaged to read, has no mark to keep and takes the backup's;
 - a standby that was behind when it took over has the mark of the state it
   holds, so ids the primary gave that never reached it are given again;
 - a record made in a transaction that is then reverted gives its id back
@@ -818,8 +821,8 @@ change by hand). The same history is available to AI tools (`audit_log`,
 `explain_record_history`) and over the API (`GET /tabularius/admin/v1/audit`).
 
 A deleted record's id is not given to another record (see "Converting a file
-again" for the per-table mark and when it goes back: a restored backup, a
-standby that was behind). A file from before the mark, or one whose mark went
+again" for the per-table mark and when it goes back: a standby that was behind, or a restore
+over a file that could not be read). A file from before the mark, or one whose mark went
 back, can hold audit entries from different records that had one id. Record
 History and **Put back** (web client, AI tools) start at the record's latest
 creation, so an earlier record's changes are not shown and can't be put back

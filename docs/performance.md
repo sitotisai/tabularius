@@ -483,5 +483,5 @@ claim a green full benchmark gate on this machine.
 ## Also see
 
 - `node scripts/loadtest.ts <file.fmp12> --users 50`: many people using one
-  hosted file at once, over HTTP (see the README).
+  hosted file at once, over HTTP (see [Hosting for a team](hosting-for-a-team.md)).
 - `TABULARIUS_TRACE_SQL=1` (or `true`, `yes`, `on`; `false`, `off`, `no` and `0` turn it off) logs each SQLite statement and how long it took.

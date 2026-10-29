@@ -171,6 +171,15 @@ export function containsSecret(value: unknown, secrets: readonly string[]): bool
   });
 }
 
+/** Apply the record tools' copy-of-secret check to nested samples, traces and history values. */
+export function redactSecretCopies<T>(value: T, secrets: readonly string[]): T {
+  const walk = (v: unknown): unknown => typeof v === 'string'
+    ? containsSecret(v, secrets) ? HIDDEN : redactSecrets(v)
+    : Array.isArray(v) ? v.map(walk)
+    : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)])) : v;
+  return walk(value) as T;
+}
+
 function values(data: Record<string, unknown>, only?: Set<string>, max = only ? ASKED_CHARS : VALUE_CHARS, secrets = secretValues(data)): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(data)) {

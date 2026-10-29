@@ -8,7 +8,7 @@
 | Accepted values | Comma-separated hosted file names |
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | No direct environment equivalent |
-| Explained in | [README.md](../../../../README.md) |
+| Explained in | [docs/hosting-and-connecting.md](../../../hosting-and-connecting.md) |
 | Code | [packages/cli/src/main.ts:573](../../../../packages/cli/src/main.ts#L573) |
 
 [All serve flags](../serve-flags.md)

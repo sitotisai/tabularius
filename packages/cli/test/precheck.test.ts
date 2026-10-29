@@ -56,6 +56,11 @@ test('failure summary shows the first assertion line', () => {
   assert.deepEqual(testFailures('✖ gate name\n  error: |-\n    Expected true\n    Actual false'), ['✖ gate name — Expected true']);
 });
 
+test('failure summary leaves out todo tests that fail as expected', () => {
+  const output = ['✖ a todo (3.5ms) # notes/audit.md, finding 2', '  AssertionError: not yet', '✖ the real one (12ms)', '  AssertionError: Expected 1'].join('\n');
+  assert.deepEqual(testFailures(output), ['✖ the real one (12ms) — AssertionError: Expected 1']);
+});
+
 test('marker includes the commit and a working-tree hash that changes with a file', () => {
   const root = mkdtempSync(join(tmpdir(), 'tabularius-precheck-'));
   try {

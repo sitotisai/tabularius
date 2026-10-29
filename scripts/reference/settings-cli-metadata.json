@@ -28,7 +28,7 @@
       "default": "No embedding API key",
       "accepted": "API key text",
       "restart": "Yes for a running server.",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/features.md"
     },
     "TABULARIUS_AI_EMBED_MODEL": {
       "description": "Model id for text embeddings at the configured endpoint.",
@@ -154,7 +154,7 @@
       "default": "No backup encryption passphrase",
       "accepted": "Nonempty passphrase; an empty value stops `serve`",
       "restart": "Yes for a running server.",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "TABULARIUS_BACKUP_S3": {
       "description": "A `s3://bucket/prefix` address that backups are also copied to.",
@@ -175,7 +175,7 @@
       "default": "Auto-discovered browser for tests",
       "accepted": "Path to a Chromium executable",
       "restart": "No server restart; a new command reads it on invocation.",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/developing.md"
     },
     "TABULARIUS_CONNECTIONS_PER_ADDRESS": {
       "description": "Maximum simultaneous transport connections admitted from one address.",
@@ -189,7 +189,7 @@
       "default": "3600 seconds",
       "accepted": "Positive seconds up to 3600, which is also what any other value (0, negative, not a number, longer) gives; a link signed for more than an hour ahead is refused",
       "restart": "Yes for a running server.",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-and-connecting.md"
     },
     "TABULARIUS_CONVERT_MEMORY": {
       "description": "Memory budget for an uploaded file conversion worker, in MB. The memory cap cannot be turned off: zero, empty or a value that is not digits only stops `serve`.",
@@ -231,7 +231,7 @@
       "default": "No encryption passphrase (unset); set but empty refuses to start",
       "accepted": "Nonblank passphrase for encrypted hosted files; an empty value stops `serve`",
       "restart": "Yes for a running server.",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "TABULARIUS_FIXTURE_CACHE": {
       "description": "Where `npm run fixtures` keeps downloaded fixture files between checkouts (`~/.cache/tabularius-fixtures` by default).",
@@ -350,7 +350,7 @@
       "default": "Unset",
       "accepted": "LDAP distinguished name, template, attribute, or password as named by the variable",
       "restart": "Yes for a running server.",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-and-connecting.md"
     },
     "TABULARIUS_LDAP_URL": {
       "description": "The directory server's `ldaps://` address.",
@@ -448,7 +448,7 @@
       "default": "Unset",
       "accepted": "Client secret text",
       "restart": "Yes for a running server.",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-and-connecting.md"
     },
     "TABULARIUS_OIDC_CONFIG": {
       "description": "A JSON file describing several providers.",
@@ -504,7 +504,7 @@
       "default": "Prompt if needed",
       "accepted": "Password text",
       "restart": "No server restart; a new command reads it on invocation.",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-and-connecting.md"
     },
     "TABULARIUS_PGWIRE_MAX_BUFFERED_ROWS": {
       "description": "Combined result rows that one SQL connection may hold in portals.",
@@ -525,7 +525,7 @@
       "default": "100000",
       "accepted": "Nonnegative whole number of rows; 0 removes the cap",
       "restart": "Yes; restart the server after changing its environment.",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "TABULARIUS_PGWIRE_IDLE_MS": {
       "description": "How long a signed-in SQL connection may sit idle outside active work before it is closed, in milliseconds.",
@@ -623,7 +623,7 @@
       "default": "AWS_ACCESS_KEY_ID if set",
       "accepted": "Access key id",
       "restart": "Yes for a running server.",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "TABULARIUS_S3_ENDPOINT": {
       "description": "An S3-compatible service's address, for other providers than Amazon.",
@@ -644,7 +644,7 @@
       "default": "AWS_SECRET_ACCESS_KEY if set",
       "accepted": "Secret access key",
       "restart": "Yes for a running server.",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "TABULARIUS_SCRIPT_MAX_RECORD_OPS": {
       "description": "Maximum record operations per script run, shared by its steps and synchronous subscripts. Scans and repeated passes count again. The engine also enforces its 60-second default active-time limit and one-million-step limit inside cooperative batches; callers can set timeoutMs and maxSteps.",
@@ -658,7 +658,7 @@
       "default": "TABULARIUS_ENCRYPTION_KEY if set",
       "accepted": "Nonempty passphrase; an empty value stops `serve`",
       "restart": "Yes for a running server.",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "TABULARIUS_SHARE_RESULTS": {
       "description": "Controls in-memory sharing of query results when enabled by the server.",
@@ -714,7 +714,7 @@
       "default": "1m",
       "accepted": "interval such as 1m, or off",
       "restart": "Yes for a running server.",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "TABULARIUS_STOP_GRACE_MS": {
       "description": "How long `tabularius service stop` waits for the server to finish before it ends it (30000 by default).",
@@ -770,7 +770,7 @@
       "default": "System tools when available",
       "accepted": "builtin to disable system tools",
       "restart": "Yes for a running server.",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-and-connecting.md"
     },
     "TABULARIUS_TOKEN_DEFAULT_DAYS": {
       "description": "Days an API or AI-app token lives when no lifetime is asked for (calendar feed addresses keep their own default).",
@@ -812,7 +812,7 @@
       "default": "System temporary directory",
       "accepted": "Directory path",
       "restart": "Yes for a running server.",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-and-connecting.md"
     },
     "TABULARIUS_VISUAL_UPDATE": {
       "description": "Internal to `npm run test:visual -- --update`: tells the visual regression test to write changed screenshot baselines. No manual setting is needed.",
@@ -845,37 +845,37 @@
     "--ai": {
       "default": "Off",
       "accepted": "Switch; present enables the assistant",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-and-connecting.md"
     },
     "--ai-account-daily-tokens": {
       "default": "Unset",
       "accepted": "Positive number of tokens; decimal digits only for numbers, within the safe integer range",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/features.md"
     },
     "--ai-daily-tokens": {
       "default": "Unset",
       "accepted": "Positive number of tokens; decimal digits only for numbers, within the safe integer range",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/features.md"
     },
     "--ai-embed-model": {
       "default": "Provider default model",
       "accepted": "Embedding model id",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/features.md"
     },
     "--ai-embed-url": {
       "default": "Embedding service off",
       "accepted": "ollama, lmstudio, or an embedding endpoint URL",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/features.md"
     },
     "--ai-exclude": {
       "default": "No excluded files",
       "accepted": "Comma-separated hosted file names",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-and-connecting.md"
     },
     "--ai-fast-model": {
       "default": "claude-haiku-5-5",
       "accepted": "Model id or off",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/features.md"
     },
     "--ai-image-embed": {
       "default": "Off",
@@ -890,37 +890,37 @@
     "--ai-key-file": {
       "default": "~/.openhbam/anthropic-key",
       "accepted": "File path",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/features.md"
     },
     "--ai-model": {
       "default": "claude-opus-5-5",
       "accepted": "Model id",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/features.md"
     },
     "--ai-monthly-budget": {
       "default": "No monthly budget cap",
       "accepted": "Positive US dollar amount, with optional leading $",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/features.md"
     },
     "--ai-run-tokens": {
       "default": "300000",
       "accepted": "Whole number of tokens, 1 to 10,000,000",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/features.md"
     },
     "--ai-workspace-id": {
       "default": "~/.openhbam/anthropic-workspace-id if available",
       "accepted": "Workspace id",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/features.md"
     },
     "--allow-app-connections": {
       "default": "Off",
       "accepted": "switch (present = on)",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--allow-blank-passwords": {
       "default": "Off",
       "accepted": "Switch; present allows blank passwords",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-and-connecting.md"
     },
     "--allow-host": {
       "default": "Off",
@@ -930,7 +930,7 @@
     "--allow-inbound-hooks": {
       "default": "Off",
       "accepted": "switch (present = on)",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--allow-plain-http": {
       "default": "Off: listening beyond this computer needs HTTPS",
@@ -940,7 +940,7 @@
     "--allow-script-network": {
       "default": "Off",
       "accepted": "switch (present = on)",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--allow-script-network-to": {
       "default": "Off",
@@ -950,27 +950,27 @@
     "--allow-webhooks": {
       "default": "Off",
       "accepted": "switch (present = on)",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--backup-dir": {
       "default": "<folder>/Backups unless folder settings override it",
       "accepted": "Directory path",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--backup-every": {
       "default": "1d",
       "accepted": "off or an interval such as 1d",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--backup-s3": {
       "default": "Off",
       "accepted": "s3://bucket/prefix",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--capture-only": {
       "default": "No capture-only files",
       "accepted": "Comma-separated file name prefixes",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--capture-only-copies-to-redirect": {
       "default": "Off",
@@ -985,7 +985,7 @@
     "--host": {
       "default": "127.0.0.1, or 0.0.0.0 with automatic HTTPS",
       "accepted": "Listen address",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--http-port": {
       "default": "80",
@@ -995,17 +995,17 @@
     "--https": {
       "default": "Off",
       "accepted": "local or comma-separated DNS names",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--https-email": {
       "default": "Unset",
       "accepted": "Contact email address",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--keep": {
       "default": "7",
       "accepted": "Whole number of 1 or more; decimal digits only for numbers, within the safe integer range",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--keep-api-tokens-on-takeover": {
       "default": "Off: API tokens end when a standby takes over",
@@ -1015,12 +1015,12 @@
     "--ldap-base-dn": {
       "default": "Unset",
       "accepted": "LDAP distinguished name, template, attribute, or password as named by the variable",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-and-connecting.md"
     },
     "--ldap-bind-dn-template": {
       "default": "Unset",
       "accepted": "LDAP distinguished name, template, attribute, or password as named by the variable",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-and-connecting.md"
     },
     "--ldap-email-attribute": {
       "default": "Unset",
@@ -1030,7 +1030,7 @@
     "--ldap-group-attribute": {
       "default": "Unset",
       "accepted": "LDAP distinguished name, template, attribute, or password as named by the variable",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-and-connecting.md"
     },
     "--ldap-name": {
       "default": "Hostname of the configured LDAP URL",
@@ -1040,22 +1040,22 @@
     "--ldap-search-dn": {
       "default": "Unset",
       "accepted": "LDAP distinguished name, template, attribute, or password as named by the variable",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-and-connecting.md"
     },
     "--ldap-url": {
       "default": "LDAP sign-in off",
       "accepted": "ldaps:// URL",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-and-connecting.md"
     },
     "--ldap-user-attribute": {
       "default": "Unset",
       "accepted": "LDAP distinguished name, template, attribute, or password as named by the variable",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-and-connecting.md"
     },
     "--list-files-publicly": {
       "default": "Off",
       "accepted": "Switch; present makes file names public",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-and-connecting.md"
     },
     "--log-limit": {
       "default": "40MB",
@@ -1085,7 +1085,7 @@
     "--mcp-token": {
       "default": "unset; loopback administration only",
       "accepted": "Token string",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-and-connecting.md"
     },
     "--mcp-token-file": {
       "default": "Unset; loopback administration only",
@@ -1095,62 +1095,62 @@
     "--no-backups": {
       "default": "Backups on",
       "accepted": "Switch; present disables scheduled backups",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--oidc-client-id": {
       "default": "OIDC sign-in off",
       "accepted": "Client id",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-and-connecting.md"
     },
     "--oidc-config": {
       "default": "Unset",
       "accepted": "JSON file path",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-and-connecting.md"
     },
     "--oidc-groups-claim": {
       "default": "Unset",
       "accepted": "Claim or display name",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-and-connecting.md"
     },
     "--oidc-issuer": {
       "default": "OIDC sign-in off",
       "accepted": "Issuer URL",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-and-connecting.md"
     },
     "--oidc-name": {
       "default": "Hostname of the configured issuer URL",
       "accepted": "Claim or display name",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-and-connecting.md"
     },
     "--oidc-trust-email": {
       "default": "Unset",
       "accepted": "Switch; present trusts provider email",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-and-connecting.md"
     },
     "--port": {
       "default": "8080, or 443 with automatic HTTPS",
       "accepted": "Port number from 0 to 65535; decimal digits only for numbers, within the safe integer range",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--progressive": {
       "default": "Off",
       "accepted": "Interval such as 5m, or off",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--proxy-header": {
       "default": "Unset",
       "accepted": "x-forwarded-for, forwarded, or x-real-ip",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--public-url": {
       "default": "Taken from the listen address",
       "accepted": "Absolute public URL",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--replication-token": {
       "default": "Replication off",
       "accepted": "Token of at least 16 characters",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--replication-token-file": {
       "default": "Replication off",
@@ -1160,17 +1160,17 @@
     "--s3-endpoint": {
       "default": "AWS S3 endpoint",
       "accepted": "S3-compatible endpoint URL",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--send-mail": {
       "default": "Off",
       "accepted": "Switch; present enables SMTP sending",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--sql-port": {
       "default": "Off",
       "accepted": "Port from 0 to 65535; decimal digits only for numbers, within the safe integer range",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--sql-writes": {
       "default": "Off: the SQL connection is read-only",
@@ -1180,7 +1180,7 @@
     "--stats-interval": {
       "default": "1m",
       "accepted": "Interval such as 1m, or off",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--test-outbound": {
       "default": "Off",
@@ -1190,22 +1190,22 @@
     "--tls-cert": {
       "default": "Unset",
       "accepted": "PEM certificate file path",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--tls-key": {
       "default": "Unset",
       "accepted": "PEM private key file path",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--trusted-proxies": {
       "default": "No trusted proxy addresses",
       "accepted": "Comma-separated IP addresses or CIDR ranges",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--workers": {
       "default": "One process",
       "accepted": "Whole number from 1 to 64, or auto; decimal digits only for numbers, within the safe integer range",
-      "explainedBy": "README.md"
+      "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--acme-directory": {
       "default": "Default ACME directory",

@@ -13,8 +13,8 @@ test('reader overviews describe Encryption at Rest with a passphrase', () => {
   }
 });
 
-test('README distinguishes source-file CLI passphrases, folder unlocking and external containers', () => {
-  const text = read('README.md');
+test('the features page distinguishes source-file CLI passphrases, folder unlocking and external containers', () => {
+  const text = read('docs/features.md');
   const reader = text.split('- **Reader**:')[1].split('- **Hosting**:')[0];
   const hosting = text.split('- **Hosting**:')[1].split('- **FileMaker Data API')[0];
   assert.match(reader, /hidden\s+terminal prompt/);

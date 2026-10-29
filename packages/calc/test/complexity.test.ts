@@ -35,10 +35,14 @@ test('Substitute refuses exponential expansion before allocating the result', ()
 }));
 
 test('Substitute charges work for every pair against the full source text', () => budget(() => {
-  // Each absent search scans a megabyte, about half a millisecond; uncharged, the 4,000 of them take over two seconds and
-  // finish, charged they reach the 850 ms calculation work budget. A larger source or more pairs only costs the test more.
-  const pairs = Array.from({ length: 4000 }, (_, i) => `["absent${i}";"x"]`).join(';');
+  // Each absent search scans a megabyte. Uncharged, the pairs finish without reaching the 850 ms calculation work budget;
+  // charged, they reach it. How long a scan takes depends on the machine (half a millisecond on a CI runner, a fifth of that
+  // on an Apple chip), so the number of pairs is chosen from a measured scan to be three times the budget, never fewer than 4,000.
   const source = 'a'.repeat(1_000_000);
+  const probe = cpuNow();
+  for (let i = 0; i < 20; i++) source.indexOf(`probe${i}`);
+  const scan = Math.max((cpuNow() - probe) / 20, 0.001);
+  const pairs = Array.from({ length: Math.min(100_000, Math.max(4000, Math.ceil(3 * 850 / scan))) }, (_, i) => `["absent${i}";"x"]`).join(';');
   assert.throws(() => evaluateText(`Substitute("${source}";${pairs})`), /calculation work budget/i);
 }));
 
