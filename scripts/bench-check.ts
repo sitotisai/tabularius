@@ -4,7 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { loadavg } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import { CONFIG, TOLERANCE, compare, confirmedRegressions, median, medianRatios, ratios, wideElapsed, type Baseline, type BenchOutput, type RatioRow } from './bench-check-lib.ts';
+import { CONFIG, TOLERANCE, checkPerformance, compare, confirmedRegressions, median, medianRatios, ratios, wideElapsed, type Baseline, type BenchOutput, type PerformanceMeasure, type RatioRow } from './bench-check-lib.ts';
 
 const args = process.argv.slice(2);
 if (args.some((arg) => arg !== '--update-baseline')) throw new Error('usage: npm run bench:check -- [--update-baseline]');
@@ -17,6 +17,22 @@ const baselinePath = join(fileURLToPath(new URL('.', import.meta.url)), platform
 // includes module loading and HTTP, which the CPU calibration cannot normalize.
 const wideBudget = (JSON.parse(readFileSync(new URL('./bench-baseline.json', import.meta.url), 'utf8')) as Baseline).wide;
 if (!wideBudget) throw new Error('missing wide benchmark budget');
+const performanceBudgets = (JSON.parse(readFileSync(new URL('./bench-baseline.json', import.meta.url), 'utf8')) as Baseline).performanceBudgets;
+if (!performanceBudgets) throw new Error('missing performance budgets');
+
+function performanceBatch() {
+  if (loadavg()[0] >= 90) throw new Error('run benchmarks only when load1 < 90');
+  const run = spawnSync(process.execPath, ['--no-warnings', fileURLToPath(new URL('./bench-budgets.ts', import.meta.url))],
+    { encoding: 'utf8', maxBuffer: 1024 * 1024, timeout: 600_000 });
+  if (run.error) throw run.error;
+  if (run.status !== 0) throw new Error(`performance benchmark failed (${run.status}): ${run.stderr.trim()}`);
+  const output = JSON.parse(run.stdout) as { config: { records: number; importRows: number; coldRows: number; payloadBytes: number }; coldBytes: number; measures: PerformanceMeasure[] };
+  if (output.config.records !== 200_000 || output.config.importRows !== 100_000 || output.config.coldRows !== 131_072 ||
+    output.config.payloadBytes !== 8192 || output.coldBytes < 1024 ** 3) throw new Error('performance benchmark configuration changed');
+  const rows = checkPerformance(output.measures, performanceBudgets!);
+  for (const row of rows) console.log(`${row.id} | ${row.ms.toFixed(1)} ms | budget ${row.maxMs} ms | ${row.over ? 'over' : 'ok'}`);
+  return rows;
+}
 
 function wideBatch(): number {
   const samples: number[] = [];
@@ -62,7 +78,7 @@ function table(rows: ReturnType<typeof compare>): void {
 
 const first = batch();
 if (update) {
-  const baseline: Baseline = { version: 1, config: CONFIG, tolerance: TOLERANCE, operations: first, ...(platform === 'darwin-arm64' ? { wide: wideBudget } : {}) };
+  const baseline: Baseline = { version: 1, config: CONFIG, tolerance: TOLERANCE, operations: first, ...(platform === 'darwin-arm64' ? { wide: wideBudget, performanceBudgets } : {}) };
   writeFileSync(baselinePath, JSON.stringify(baseline, null, 2) + '\n');
   table(compare(first, baseline));
   console.log(`Updated ${baselinePath}`);
@@ -81,6 +97,16 @@ if (update) {
       process.exitCode = 1;
     } else console.log('No operation exceeded tolerance in two consecutive batches.');
   } else console.log('All operations within 40% tolerance.');
+}
+
+const performance = performanceBatch();
+if (performance.some((row) => row.over)) {
+  console.log('Performance run above budget; confirming with a fresh generated store.');
+  const confirmed = performanceBatch();
+  if (performance.some((row) => row.over && confirmed.some((next) => next.id === row.id && next.over))) {
+    console.error('Regression confirmed in performance budget workload.');
+    process.exitCode = 1;
+  }
 }
 
 if (wideBatch() > wideBudget.maxMs) {
