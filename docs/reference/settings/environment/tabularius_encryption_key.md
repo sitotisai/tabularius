@@ -7,7 +7,7 @@ Passphrase used to unlock encrypted hosted files. A set-but-empty or whitespace-
 | Default | No encryption passphrase (unset); set but empty refuses to start |
 | Accepted values | Nonblank passphrase for encrypted hosted files; an empty value stops `serve` |
 | Restart needed | Yes for a running server. |
-| Explained in | [README.md](../../../../README.md) |
+| Explained in | [docs/hosting-for-a-team.md](../../../hosting-for-a-team.md) |
 | Code | [packages/cli/src/doctor.ts:163](../../../../packages/cli/src/doctor.ts#L163) |
 
 [All environment variables](../../../environment-variables.md)
