@@ -833,7 +833,7 @@ export const MBS_JSON: Record<string, MbsJson> = {
     return output(scope, inp, replaceAt(root, found, () => clone(value)));
   },
 
-  // JMESPath (jmespath.ts): the result as JSON, null when nothing matches.
+  // Inferred: JSON.Search renders the JMESPath result as JSON and uses null when nothing matches.
   'json.search': ([j, path], scope) => {
     const doc = input(scope, j?.text ?? '').j;
     const found = jmesSearch(doc, path?.text ?? '', { parse: parseJson, compact });
