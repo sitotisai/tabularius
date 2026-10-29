@@ -58,7 +58,7 @@ import { ContainerUploadError, ContainerUploads, requestUploadSpool, MAX_CONTAIN
 
 import { captureDenial, DenialCollector, denialOperation } from './denial-audit.ts';
 import { denialOf, type DenialAudit } from '../../store/src/access-denial.ts';
-import { decoyPasskeyStart, listedFiles } from './file-list.ts';
+import { decoyPasskeyStart, listedFiles, unhostedPasswordFailure } from './file-list.ts';
 import { faultLog, logFaultFor, type FaultLog } from './fault-log.ts';
 import { canonicalJson, decimalNumberText } from '../../store/src/native-types.ts';
 import { openApiDocument } from './openapi.ts';
@@ -1373,9 +1373,8 @@ export class DataApi {
       // As a hosted file's sign-in does: refused for a block on new users before anything is checked, and the password
       // checked (at its cost) only when an account is named.
       if (this.host.config.blockNewUsers()) throw new ApiError(812, 'The server isn\'t accepting new users right now; try again later', 503);
-      const basic = /^Basic\s+(.+)$/i.exec(req.headers.authorization ?? '')?.[1];
-      const [account, ...rest] = basic ? Buffer.from(basic, 'base64').toString('utf8').split(':') : [];
-      if (account) await spendPasswordCheck(rest.join(':'));
+      const until = await unhostedPasswordFailure(this.host, req, db);
+      if (until) throw lockedOutError(until);
       throw new ApiError(212, 'Invalid user account and/or password; please try again', 401);
     }
     return this.store(db);
@@ -1809,7 +1808,11 @@ export class DataApi {
         // A file that isn't hosted answers as a hosted one does for an account it doesn't know (nothing to sign in to).
         if (!this.host.get(db) && !this.host.listFilesPublicly) {
           if (!body || !body.response) return decoyPasskeyStart(db, typeof body?.account === 'string' ? body.account : undefined, env.rpId);
-          // As a hosted file refuses an assertion that is malformed, or whose challenge it never issued.
+          // As a hosted file refuses an assertion that is malformed, or whose challenge it never issued, and charges it to the address.
+          const from = clientAddress(req);
+          const blocked = this.host.unhostedSignInFailures.addressLockedOut(from);
+          if (blocked) throw lockedOutError(blocked);
+          this.host.unhostedSignInFailures.countAddressFailure(from);
           const r = body.response as { credentialId?: unknown; challenge?: unknown };
           throw new ApiError(212, typeof r.credentialId !== 'string' || typeof r.challenge !== 'string' ? 'That passkey was not accepted; try again' : 'The sign-in has expired; try again', 401);
         }
