@@ -733,10 +733,53 @@ libxml2 writes (two spaces for each level, a line feed after the declaration,
 no line break at the end); where several nodes come back from XML.Query, how
 they are laid out is inferred. XML Tabularius can't read is an error even with <!-- known-difference: MBS plug-in functions ;; How several nodes returned by XML.Query are laid out is inferred; XML Tabularius cannot read is an error even with flag 1, a DOCTYPE is left out, and XML.SetSaveNoEmptyTags lasts for the session ;; Output can differ from MBS in those cases ;; An MBS run of those cases -->
 flag 1, a DOCTYPE is left out of what comes back, and XML.SetSaveNoEmptyTags
-lasts for the session rather than the
-whole server. Not yet: Colorize, Validate, ToJSON, Tidy, ToHTML, exclusive <!-- known-difference: MBS plug-in functions ;; Colorize, Validate, ToJSON, Tidy, ToHTML, exclusive canonical form and the file, container, record and import functions are not available ;; The call gives ? and error 3 ;; Owner decision on whether to build them -->
-canonical form, and the file, container, record and import functions. MBS's
-`Dictionary.*` and `Variable.*` functions run too, keeping each value's type.
+lasts for the session rather than the whole server.
+
+Four additional XML forms accept XML text or a session reference:
+
+- `XML.Tidy ( xml )` (inferred and unverified) writes the usual UTF-8 declaration and indents by two
+  spaces per level where no text is present. Existing text, including
+  whitespace-only text and CDATA, is preserved; `xml:space="preserve"` keeps
+  its subtree unindented. XML newline normalization still applies, and the
+  session's empty-tag preference is honored. Optional arguments are unavailable.
+  <!-- known-difference: MBS plug-in functions ;; XML.Tidy results are inferred and unverified: two-space indentation only where no text is present, existing text preserved after XML newline normalization, and the session empty-tag preference honored ;; Output may differ from MBS; optional argument forms give an MBS error ;; An MBS run of text, whitespace, CDATA and xml:space cases -->
+
+- `XML.ToJSON ( xml )` (inferred and unverified) wraps the result in the root name. Each element is an
+  object: attributes and namespace declarations use `@` keys, direct text and
+  CDATA concatenate under `#text`, and repeated sibling names become arrays.
+  Empty elements become `{}`; text and attributes stay strings. Comments and
+  processing instructions are omitted. Grouping loses the relative order of
+  mixed text and differently named child elements. Optional arguments are unavailable.
+  <!-- known-difference: MBS plug-in functions ;; XML.ToJSON results are inferred and unverified: root wrapper, element objects, @ attributes, #text strings, repeated sibling arrays, and empty objects for empty elements ;; Comments and processing instructions are omitted and mixed-content ordering is lost; optional argument forms give an MBS error ;; An MBS run of attributes, empty elements, repeated siblings and mixed content -->
+
+- `XML.Validate ( xml )` (inferred and unverified) returns `OK` for DTD-free XML 1.0 that passes
+  well-formedness and bound-name checks, or the usual MBS parse error for bad
+  XML. **XML Schema is not implemented**: a nonempty schema argument returns
+  an error saying so. An empty schema argument is accepted; additional
+  arguments are unavailable. It does not check application-specific structure,
+  types, or required fields.
+  <!-- known-difference: MBS plug-in functions ;; XML.Validate results are inferred and unverified: OK means only DTD-free XML 1.0 well-formedness and bound-name checks; XML Schema is not implemented ;; A schema argument gives an explicit XML Schema error; valid XML can still violate an application's schema ;; An MBS run of valid, malformed and schema-constrained documents -->
+
+- `XML.Canonical ( xml ; flags ; 1 )` (inferred and unverified) implements exclusive canonical XML for
+  whole namespace-free documents: sorted attributes, expanded empty tags,
+  canonical character escaping, and no XML declaration. Flag `0` omits
+  comments; flag `2` includes them. Any namespace declaration or prefixed name
+  (including `xml:` attributes), other flags, or additional arguments returns
+  an error saying exclusive canonicalization for that form isn't available.
+  Existing inclusive modes `0` and `2` keep their behavior.
+  <!-- known-difference: MBS plug-in functions ;; XML.Canonical exclusive mode 1 results are inferred and unverified against MBS; only whole namespace-free documents with flags 0 or 2 are supported ;; Namespace declarations, prefixed names and other exclusive options give an MBS error instead of a canonical result ;; An MBS run and exclusive canonical XML conformance cases involving namespace scope -->
+
+These four forms use the same bounded XML parser as the other XML functions,
+with stricter DTD-free checks. DTD declarations are rejected without processing
+them; external and user-defined entities are never expanded. Predefined XML
+entities and numeric character references are decoded normally. A reference
+already holds the parsed tree: declarations discarded by `XML.Parse` cannot
+be checked again. The new forms do not change that tree, and neither schema
+arguments nor entity addresses cause file or network reads.
+
+Not yet: Colorize, ToHTML, and the file, container, record and import functions.
+<!-- known-difference: MBS plug-in functions ;; Colorize, ToHTML and the XML file, container, record and import functions are not available ;; The call gives ? and error 3 ;; Owner decision on whether to build them -->
+MBS's `Dictionary.*` and `Variable.*` functions run too, keeping each value's type.
 MBS lists keys in no set order; Tabularius lists them in descending order, as
 every example on MBS's pages does. MBS's variables are shared by everyone on
 a server; Tabularius keeps them for the person's session, so no one sees another

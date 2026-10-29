@@ -7,15 +7,16 @@
 // - An element holding text isn't indented inside (libxml2 doesn't); when formatting, whitespace-only text between
 //   elements is dropped first.
 // - Flag 1 (go on after XML errors) isn't honoured: XML Tabularius can't read is an error.
-// Not here: XML.Colorize (styled text), XML.Validate (XML Schema), XML.ToJSON (MBS doesn't describe how mixed
-// content and text beside attributes come out), XML.Tidy and XML.ToHTML (no description of their output), and the
-// file, container, record and import functions. They give an "isn't available" MBS error.
+// Not here: XML.Colorize (styled text), XML.ToHTML (no description of its output), XML Schema validation,
+// namespace-dependent exclusive canonicalization and the file, container, record and import functions.
+// The additional DTD-free forms below are inferred and unverified against MBS.
 
 import { rethrowExecutionRefusal } from './execution-refusal.ts';
 
 import { withXmlWorkBudget, workBudget, budgetReplace, budgetDepth } from './work-budget.ts';
 import { MbsError } from './mbs-text.ts';
 import { canonicalXml } from './xmltools.ts';
+import { jsonStringSize } from './text-budget.ts';
 import { XPathError, xpathValues, evaluateXPath, formatNumber, makeNode, parseXmlDocument, stringValue, type XNode } from './xpath.ts';
 import { XsltError, applyXslt } from './xslt.ts';
 
@@ -41,10 +42,10 @@ function keep(scope: object, doc: XNode): number {
   return ref;
 }
 
-function parse(xml: string): XNode {
+function parse(xml: string, dtdFree = false): XNode {
   let doc: XNode;
   try {
-    doc = parseXmlDocument(xml, { processingInstructions: true });
+    doc = parseXmlDocument(xml, { processingInstructions: true, dtdFree });
   } catch (e) {
     rethrowExecutionRefusal(e);
     if (e instanceof XPathError) throw new MbsError(`Failed to parse XML: ${e.message}`);
@@ -169,8 +170,13 @@ class XmlChunks {
     this.parts.push(...parts);
   }
   join(): string { return this.parts.join(''); }
+  json(value: string): void {
+    workBudget()?.work(value.length);
+    workBudget()?.checkText(this.size + jsonStringSize(value));
+    this.push(JSON.stringify(value));
+  }
 }
-interface Write { format: boolean; noEmptyTags: boolean }
+interface Write { format: boolean; noEmptyTags: boolean; preserveText?: boolean }
 function dump(n: XNode, w: Write, level: number, out: XmlChunks): void {
   return budgetDepth(() => {
     switch (n.kind) {
@@ -185,20 +191,22 @@ function dump(n: XNode, w: Write, level: number, out: XmlChunks): void {
         for (const [prefix, uri] of n.nsDecls) out.push(` ${prefix ? `xmlns:${prefix}` : 'xmlns'}="${escAttr(uri)}"`);
         for (const a of n.attributes) out.push(` ${a.name}="${escAttr(a.value)}"`);
         let children = n.children;
-        if (w.format) children = withoutBlanks(children);
+        if (w.format && !w.preserveText) children = withoutBlanks(children);
         if (!children.length) {
           out.push(w.noEmptyTags ? `></${n.name}>` : '/>');
           return;
         }
-        const indent = w.format && !children.some((c) => c.kind === 'text');
+        const preserveSpace = w.preserveText && n.attributes.some((a) => a.name === 'xml:space' && a.value === 'preserve');
+        const indent = w.format && !preserveSpace && !children.some((c) => c.kind === 'text');
+        const indentation = (depth: number) => w.preserveText ? '  '.repeat(depth) : indentOf(depth);
         out.push('>');
         if (indent) out.push('\n');
         for (const c of children) {
-          if (indent) out.push(indentOf(level + 1));
+          if (indent) out.push(indentation(level + 1));
           dump(c, { ...w, format: indent }, level + 1, out);
           if (indent) out.push('\n');
         }
-        if (indent) out.push(indentOf(level));
+        if (indent) out.push(indentation(level));
         out.push(`</${n.name}>`);
         return;
       }
@@ -222,11 +230,11 @@ function dump(n: XNode, w: Write, level: number, out: XmlChunks): void {
 }
 const DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>\n';
 /** A whole document, or a node written as one (with the declaration unless `bare`). */
-function write(scope: object, n: XNode, format: boolean, bare = false): string {
+function write(scope: object, n: XNode, format: boolean, bare = false, preserveText = false): string {
   return withXmlWorkBudget(() => {
     try {
       const out = new XmlChunks();
-      dump(n, { format, noEmptyTags: sessionOf(scope).noEmptyTags }, 0, out);
+      dump(n, { format, noEmptyTags: sessionOf(scope).noEmptyTags, preserveText }, 0, out);
       const body = out.join().replace(/\n$/, '');
       workBudget()?.checkText(body.length + (bare ? 0 : DECLARATION.length));
       return bare ? body : DECLARATION + body;
@@ -427,6 +435,117 @@ function xslt(scope: object, xml: string, style: string, params: Map<string, str
   }
 }
 
+// The new forms require DTD-free XML 1.0. References use the same session lookup as their siblings;
+// re-reading their serialized tree also checks edits made through SetPathValue/SetPathXML.
+function checkedInput(scope: object, xml: string): XNode {
+  const ref = /^\d+$/.test(xml.trim()) ? sessionOf(scope).refs.get(Number(xml.trim())) : undefined;
+  return parse(ref ? write(scope, ref, false) : xml, true);
+}
+
+function toJson(doc: XNode): string {
+  const out = new XmlChunks();
+  const elementJson = (n: XNode): void => budgetDepth(() => {
+    out.push('{');
+    let first = true;
+    const key = (name: string) => {
+      if (!first) out.push(',');
+      first = false;
+      out.json(name);
+      out.push(':');
+    };
+    for (const [prefix, uri] of n.nsDecls) {
+      key(prefix ? `@xmlns:${prefix}` : '@xmlns');
+      out.json(uri);
+    }
+    for (const a of n.attributes) { key('@' + a.name); out.json(a.value); }
+    const groups = new Map<string, XNode[]>();
+    const text: string[] = [];
+    let textSize = 0;
+    for (const c of n.children) {
+      workBudget()?.nodes();
+      if (c.kind === 'element') {
+        const group = groups.get(c.name);
+        if (group) group.push(c);
+        else groups.set(c.name, [c]);
+      } else if (c.kind === 'text') {
+        textSize += c.value.length;
+        workBudget()?.checkText(textSize);
+        text.push(c.value);
+      }
+    }
+    for (const [name, children] of groups) {
+      key(name);
+      if (children.length > 1) out.push('[');
+      for (let i = 0; i < children.length; i++) {
+        if (i) out.push(',');
+        elementJson(children[i]);
+      }
+      if (children.length > 1) out.push(']');
+    }
+    if (text.length) {
+      key('#text');
+      workBudget()?.text(textSize);
+      out.json(text.join(''));
+    }
+    out.push('}');
+  });
+  out.push('{');
+  out.json(root(doc).name);
+  out.push(':');
+  elementJson(root(doc));
+  out.push('}');
+  return out.join();
+}
+
+// Exclusive C14N's namespace-free whole-document subset. No declaration, full end tags, canonical escapes,
+// code-point attribute order, and a newline on the root-facing side of each outside comment/instruction.
+function exclusiveCanonical(doc: XNode, comments: boolean): string {
+  const out = new XmlChunks();
+  const escape = (s: string, attribute = false) => budgetReplace(s, attribute ? /[&<"\t\n\r]/g : /[&<>\r]/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\t': '&#x9;', '\n': '&#xA;', '\r': '&#xD;' })[c]!);
+  const compare = (a: XNode, b: XNode): number => {
+    let i = 0;
+    let j = 0;
+    while (i < a.name.length && j < b.name.length) {
+      workBudget()?.work();
+      const ac = a.name.codePointAt(i)!;
+      const bc = b.name.codePointAt(j)!;
+      if (ac !== bc) return ac - bc;
+      i += ac > 0xffff ? 2 : 1;
+      j += bc > 0xffff ? 2 : 1;
+    }
+    return (a.name.length - i) - (b.name.length - j);
+  };
+  const writeNode = (n: XNode): void => budgetDepth(() => {
+    if (n.kind === 'element') {
+      if (n.nsDecls.length || n.name.includes(':') || n.attributes.some((a) => a.name.includes(':'))) {
+        fail('Exclusive canonicalization with namespaces isn\'t available in Tabularius; use namespace-free XML');
+      }
+      out.push('<', n.name);
+      workBudget()?.nodes(n.attributes.length);
+      for (const a of [...n.attributes].sort(compare)) out.push(' ', a.name, '="', escape(a.value, true), '"');
+      out.push('>');
+      for (const c of n.children) writeNode(c);
+      out.push('</', n.name, '>');
+    } else if (n.kind === 'text') out.push(escape(n.value));
+    else if (n.kind === 'comment' && comments) {
+      out.push('<!--', budgetReplace(n.value, /\r/g, () => '&#xD;'), '-->');
+    } else if (n.kind === 'processing-instruction') {
+      out.push('<?', n.name, n.value ? ' ' : '', budgetReplace(n.value, /\r/g, () => '&#xD;'), '?>');
+    }
+  });
+  let seenRoot = false;
+  for (const c of doc.children) {
+    if (c.kind === 'element') { writeNode(c); seenRoot = true; }
+    else if (c.kind === 'processing-instruction' || (c.kind === 'comment' && comments)) {
+      if (seenRoot) out.push('\n');
+      writeNode(c);
+      if (!seenRoot) out.push('\n');
+    }
+  }
+  return out.join();
+}
+
 export const MBS_XML: Record<string, MbsXml> = {
   'xml.parse': ([xml = ''], scope) => keep(scope, parse(xml)),
   // One reference or a list of them (MBS's XML.ItemRefs example passes a list).
@@ -536,6 +655,28 @@ export const MBS_XML: Record<string, MbsXml> = {
     const out = write(scope, doc, false);
     return fl & FLAG.noDeclaration ? out.slice(DECLARATION.length) : out;
   },
+  // Inferred: Tidy takes XML or a reference, uses Format's declaration/empty-tag preference and two spaces per
+  // level, but never drops existing text (including whitespace/CDATA); xml:space="preserve" disables indentation.
+  // The parser's XML newline normalization still applies. Optional forms remain unavailable; MBS is unverified.
+  'xml.tidy': ([xml = '', ...options], scope) => withXmlWorkBudget(() => {
+    if (options.length) fail('XML.Tidy with optional arguments isn\'t available in Tabularius');
+    return write(scope, checkedInput(scope, xml), true, false, true);
+  }),
+  // Inferred: a root-name wrapper; every element is an object, attributes/declarations use @, direct text/CDATA
+  // joins under #text, repeated sibling names become arrays. Comments/PIs are omitted; mixed ordering is lost.
+  // Empty elements are {}; text stays string-valued. Optional forms remain unavailable; MBS is unverified.
+  'xml.tojson': ([xml = '', ...options], scope) => withXmlWorkBudget(() => {
+    if (options.length) fail('XML.ToJSON with optional arguments isn\'t available in Tabularius');
+    return toJson(checkedInput(scope, xml));
+  }),
+  // Inferred: without a schema, Validate checks DTD-free XML 1.0 well-formedness (including bound QNames) and
+  // returns OK; malformed XML raises the usual MBS parse error. This is unverified, not XML Schema validation.
+  'xml.validate': ([xml = '', schema = '', ...options], scope) => withXmlWorkBudget(() => {
+    if (schema) fail('XML Schema is not implemented; XML.Validate only checks DTD-free XML well-formedness');
+    if (options.length) fail('XML.Validate with optional arguments isn\'t available in Tabularius');
+    checkedInput(scope, xml);
+    return 'OK';
+  }),
   'xml.query': ([xml = '', path = '', namespaces = '', flags], scope) => withXmlWorkBudget(() => {
     try {
       const fl = flagsOf(flags);
@@ -565,10 +706,16 @@ export const MBS_XML: Record<string, MbsXml> = {
     for (let i = 0; i < pairs.length; i += 2) map.set(pairs[i].trim(), pairs[i + 1]);
     return xslt(scope, xml, style, map);
   },
-  // For a whole document, C14N 1.0 (mode 0, the default, inferred) and 1.1 (mode 2) give the same result.
-  'xml.canonical': ([xml = '', flags, mode], scope) => {
+  // Inferred: exclusive mode 1 accepts a whole namespace-free document, with comments only for flag 2.
+  // Namespace-dependent and extra-argument forms remain unavailable; the MBS result is unverified.
+  // Existing whole-document C14N 1.0 (mode 0, default) and 1.1 (mode 2) keep their behavior.
+  'xml.canonical': ([xml = '', flags, mode, ...options], scope) => {
     const m = flagsOf(mode);
-    if (m === 1) fail('Exclusive canonicalization (mode 1) isn\'t available in Tabularius');
+    if (m === 1) return withXmlWorkBudget(() => {
+      const fl = flagsOf(flags);
+      if (options.length || (fl !== 0 && fl !== 2)) fail('Exclusive canonicalization with these options isn\'t available in Tabularius');
+      return exclusiveCanonical(checkedInput(scope, xml), !!(fl & 2));
+    });
     if (m !== 0 && m !== 2) fail('The mode must be 0, 1 or 2');
     try {
       return canonicalXml(xmlText(scope, xml), !!(flagsOf(flags) & 2));
