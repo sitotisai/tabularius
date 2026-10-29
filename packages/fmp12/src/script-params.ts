@@ -286,6 +286,8 @@ export interface StepParams {
   useLayout?: boolean;
   /** Go to Related Record: Match all records in the current found set (not just the current record). */
   matchFoundSet?: boolean;
+  /** Go to Related Record: keep the target table's found set and select a related record in it when false. */
+  showOnlyRelated?: boolean;
   /** Go to Related Record: show them in a new window; its name is slot 128, as for New Window. */
   newWindow?: boolean;
   /** Perform Script on Server with Callback: the script to run afterwards here, its parameter (a formula) and the State option. */
@@ -1479,6 +1481,8 @@ export function stepLine(name: string, p: StepParams | undefined, comment?: stri
       add(p.table ? `Table: ${p.table.name}` : p.tableOccurrence ? `Table: ${p.tableOccurrence.name}` : 'Table: <Current Table>');
       break;
     case 'Go to Related Record':
+      if (p.showOnlyRelated === true) add('Show only related records');
+      if (p.showOnlyRelated === false) add('Show only related records: Off');
       if (p.matchFoundSet) add('Match all records in the found set');
       if (p.tableOccurrence) add(`From table: ${q(p.tableOccurrence.name)}`);
       add(p.layout ? `Using layout: ${q(p.layout.name)}` : 'Using layout: <Current Layout>');

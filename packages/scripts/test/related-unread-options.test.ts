@@ -49,3 +49,24 @@ test('a step written in script text raises no warning and still matches the whol
     assert.equal(run.result, '0/3');
     assert.deepEqual((run.warnings ?? []).filter((w) => w.startsWith('Go to Related Record')), []);
   }));
+
+test('Show only related records off keeps the target found set and selects its first related record', () =>
+  withStore(async (store) => {
+    const lines = store.findIds('Lines');
+    const script = `Go to Layout [ “Orders” ]\nShow All Records\nGo to Related Record [ Show only related records: Off ; Match all records in current found set ; From table: “Lines” ; Using layout: “Lines” ]`;
+    store.applyDesign([{ op: 'createScript', name: 'Keep', text: script }] as never);
+    const run = await runScript(store, 'Keep', { layout: 'Lines', foundSet: [lines[2], lines[1]], recordId: lines[2] });
+    assert.deepEqual(run.foundSet, [lines[2], lines[1]]);
+    assert.equal(run.recordId, lines[2]);
+    assert.equal(run.foundCount, 2);
+  }));
+
+test('Show only related records off respects the current source record without Match all', () =>
+  withStore(async (store) => {
+    const lines = store.findIds('Lines');
+    const orders = store.findIds('Orders');
+    store.applyDesign([{ op: 'createScript', name: 'Current', text: 'Go to Related Record [ Show only related records: Off ; From table: “Lines” ; Using layout: “Lines” ]' }] as never);
+    const run = await runScript(store, 'Current', { layout: 'Orders', foundSet: [orders[1]], recordId: orders[1] });
+    assert.equal(run.recordId, lines[1]);
+    assert.equal(run.foundCount, 3);
+  }));
