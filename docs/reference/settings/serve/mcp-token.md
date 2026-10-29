@@ -5,7 +5,7 @@
 | Setting | Value |
 | --- | --- |
 | Default | unset; loopback administration only |
-| Accepted values | Token string of at least 16 characters |
+| Accepted values | Token string |
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | No direct environment equivalent |
 | Explained in | [docs/hosting-and-connecting.md](../../../hosting-and-connecting.md) |
