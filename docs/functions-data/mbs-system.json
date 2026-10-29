@@ -1,8 +1,8 @@
 [
   {
-    "name": "Container.Getbase64",
-    "signature": "Container.Getbase64 ( Value )",
-    "summary": "Provides the Container.Getbase64 calculation operation.",
+    "name": "Container.GetBase64",
+    "signature": "Container.GetBase64 ( Value )",
+    "summary": "Provides the Container.GetBase64 calculation operation.",
     "details": "Behavior beyond the implementation described here is unverified.",
     "examples": [
       {
@@ -14,9 +14,9 @@
     "differences": "Behavior beyond the implementation described here is unverified."
   },
   {
-    "name": "Container.Getdataurl",
-    "signature": "Container.Getdataurl ( Value )",
-    "summary": "Provides the Container.Getdataurl calculation operation.",
+    "name": "Container.GetDataURL",
+    "signature": "Container.GetDataURL ( Value )",
+    "summary": "Provides the Container.GetDataURL calculation operation.",
     "details": "Behavior beyond the implementation described here is unverified.",
     "examples": [
       {
@@ -28,9 +28,9 @@
     "differences": "Behavior beyond the implementation described here is unverified."
   },
   {
-    "name": "Container.Gettotalsize",
-    "signature": "Container.Gettotalsize ( Value )",
-    "summary": "Provides the Container.Gettotalsize calculation operation.",
+    "name": "Container.GetTotalSize",
+    "signature": "Container.GetTotalSize ( Value )",
+    "summary": "Provides the Container.GetTotalSize calculation operation.",
     "details": "Behavior beyond the implementation described here is unverified.",
     "examples": [
       {
@@ -42,9 +42,9 @@
     "differences": "Behavior beyond the implementation described here is unverified."
   },
   {
-    "name": "Container.Gettypes",
-    "signature": "Container.Gettypes ( Value )",
-    "summary": "Provides the Container.Gettypes calculation operation.",
+    "name": "Container.GetTypes",
+    "signature": "Container.GetTypes ( Value )",
+    "summary": "Provides the Container.GetTypes calculation operation.",
     "details": "Behavior beyond the implementation described here is unverified.",
     "examples": [
       {
@@ -56,17 +56,17 @@
     "differences": "Behavior beyond the implementation described here is unverified."
   },
   {
-    "name": "Files.Fileextension",
-    "signature": "Files.Fileextension ( Value )",
-    "summary": "Provides the Files.Fileextension calculation operation.",
+    "name": "Files.FileExtension",
+    "signature": "Files.FileExtension ( Value )",
+    "summary": "Provides the Files.FileExtension calculation operation.",
     "details": "Behavior beyond the implementation described here is unverified.",
     "examples": [],
     "status": "works-differently",
     "differences": "Behavior beyond the implementation described here is unverified."
   },
   {
-    "name": "Folders.Systemtemporary",
-    "signature": "Folders.Systemtemporary ( Value )",
+    "name": "Folders.SystemTemporary",
+    "signature": "Folders.SystemTemporary ( Value )",
     "summary": "Returns the host system temporary directory.",
     "details": "The result depends on the host environment or session; details of compatibility are unverified.",
     "examples": [],
@@ -74,9 +74,9 @@
     "differences": "The result depends on the host environment or session; details of compatibility are unverified."
   },
   {
-    "name": "Hash.Crc16",
-    "signature": "Hash.Crc16 ( InputType ; InputData { ; InputEncoding ; StartValue ; Poly ; FinalXOR ; ReflectInput ; ReflectOutput } )",
-    "summary": "Provides the Hash.Crc16 calculation operation.",
+    "name": "Hash.CRC16",
+    "signature": "Hash.CRC16 ( InputType ; InputData { ; InputEncoding ; StartValue ; Poly ; FinalXOR ; ReflectInput ; ReflectOutput } )",
+    "summary": "Provides the Hash.CRC16 calculation operation.",
     "details": "Behavior beyond the implementation described here is unverified.",
     "examples": [
       {
@@ -88,9 +88,9 @@
     "differences": "Behavior beyond the implementation described here is unverified."
   },
   {
-    "name": "Hash.Crc32",
-    "signature": "Hash.Crc32 ( InputType ; InputData { ; InputEncoding ; StartValue } )",
-    "summary": "Provides the Hash.Crc32 calculation operation.",
+    "name": "Hash.CRC32",
+    "signature": "Hash.CRC32 ( InputType ; InputData { ; InputEncoding ; StartValue } )",
+    "summary": "Provides the Hash.CRC32 calculation operation.",
     "details": "Behavior beyond the implementation described here is unverified.",
     "examples": [
       {
@@ -223,8 +223,8 @@
     "differences": "Behavior beyond the implementation described here is unverified."
   },
   {
-    "name": "Js.Evaluate",
-    "signature": "Js.Evaluate ( Value )",
+    "name": "JS.Evaluate",
+    "signature": "JS.Evaluate ( Value )",
     "summary": "Uses a JavaScript context associated with an active script session.",
     "details": "The result depends on the host environment or session; details of compatibility are unverified.",
     "examples": [],
@@ -232,8 +232,8 @@
     "differences": "The result depends on the host environment or session; details of compatibility are unverified."
   },
   {
-    "name": "Js.EvaluateToString",
-    "signature": "Js.EvaluateToString ( Value )",
+    "name": "JS.EvaluateToString",
+    "signature": "JS.EvaluateToString ( Value )",
     "summary": "Uses a JavaScript context associated with an active script session.",
     "details": "The result depends on the host environment or session; details of compatibility are unverified.",
     "examples": [],
@@ -241,8 +241,8 @@
     "differences": "The result depends on the host environment or session; details of compatibility are unverified."
   },
   {
-    "name": "Js.Free",
-    "signature": "Js.Free ( Value )",
+    "name": "JS.Free",
+    "signature": "JS.Free ( Value )",
     "summary": "Uses a JavaScript context associated with an active script session.",
     "details": "The result depends on the host environment or session; details of compatibility are unverified.",
     "examples": [],
@@ -250,8 +250,8 @@
     "differences": "The result depends on the host environment or session; details of compatibility are unverified."
   },
   {
-    "name": "Js.GetGlobalProperty",
-    "signature": "Js.GetGlobalProperty ( Value )",
+    "name": "JS.GetGlobalProperty",
+    "signature": "JS.GetGlobalProperty ( Value )",
     "summary": "Uses a JavaScript context associated with an active script session.",
     "details": "The result depends on the host environment or session; details of compatibility are unverified.",
     "examples": [],
@@ -259,8 +259,8 @@
     "differences": "The result depends on the host environment or session; details of compatibility are unverified."
   },
   {
-    "name": "Js.GetGlobalPropertyValue",
-    "signature": "Js.GetGlobalPropertyValue ( Value )",
+    "name": "JS.GetGlobalPropertyValue",
+    "signature": "JS.GetGlobalPropertyValue ( Value )",
     "summary": "Uses a JavaScript context associated with an active script session.",
     "details": "The result depends on the host environment or session; details of compatibility are unverified.",
     "examples": [],
@@ -268,8 +268,8 @@
     "differences": "The result depends on the host environment or session; details of compatibility are unverified."
   },
   {
-    "name": "Js.New",
-    "signature": "Js.New ( Value )",
+    "name": "JS.New",
+    "signature": "JS.New ( Value )",
     "summary": "Uses a JavaScript context associated with an active script session.",
     "details": "The result depends on the host environment or session; details of compatibility are unverified.",
     "examples": [],
@@ -277,8 +277,8 @@
     "differences": "The result depends on the host environment or session; details of compatibility are unverified."
   },
   {
-    "name": "Js.Release",
-    "signature": "Js.Release ( Value )",
+    "name": "JS.Release",
+    "signature": "JS.Release ( Value )",
     "summary": "Uses a JavaScript context associated with an active script session.",
     "details": "The result depends on the host environment or session; details of compatibility are unverified.",
     "examples": [],
@@ -286,8 +286,8 @@
     "differences": "The result depends on the host environment or session; details of compatibility are unverified."
   },
   {
-    "name": "Js.SetGlobalProperty",
-    "signature": "Js.SetGlobalProperty ( Value )",
+    "name": "JS.SetGlobalProperty",
+    "signature": "JS.SetGlobalProperty ( Value )",
     "summary": "Uses a JavaScript context associated with an active script session.",
     "details": "The result depends on the host environment or session; details of compatibility are unverified.",
     "examples": [],
@@ -295,8 +295,8 @@
     "differences": "The result depends on the host environment or session; details of compatibility are unverified."
   },
   {
-    "name": "Js.SetGlobalPropertyValue",
-    "signature": "Js.SetGlobalPropertyValue ( Value )",
+    "name": "JS.SetGlobalPropertyValue",
+    "signature": "JS.SetGlobalPropertyValue ( Value )",
     "summary": "Uses a JavaScript context associated with an active script session.",
     "details": "The result depends on the host environment or session; details of compatibility are unverified.",
     "examples": [],
@@ -304,9 +304,9 @@
     "differences": "The result depends on the host environment or session; details of compatibility are unverified."
   },
   {
-    "name": "Path.Addpathcomponent",
-    "signature": "Path.Addpathcomponent ( Path ; Component )",
-    "summary": "Provides the Path.Addpathcomponent calculation operation.",
+    "name": "Path.AddPathComponent",
+    "signature": "Path.AddPathComponent ( Path ; Component )",
+    "summary": "Provides the Path.AddPathComponent calculation operation.",
     "details": "Behavior beyond the implementation described here is unverified.",
     "examples": [
       {
@@ -318,9 +318,9 @@
     "differences": "Behavior beyond the implementation described here is unverified."
   },
   {
-    "name": "Path.Filemakerpathtonativepath",
-    "signature": "Path.Filemakerpathtonativepath ( Value )",
-    "summary": "Provides the Path.Filemakerpathtonativepath calculation operation.",
+    "name": "Path.FileMakerPathToNativePath",
+    "signature": "Path.FileMakerPathToNativePath ( Value )",
+    "summary": "Provides the Path.FileMakerPathToNativePath calculation operation.",
     "details": "Behavior beyond the implementation described here is unverified.",
     "examples": [
       {
@@ -332,9 +332,9 @@
     "differences": "Behavior beyond the implementation described here is unverified."
   },
   {
-    "name": "Path.Lastpathcomponent",
-    "signature": "Path.Lastpathcomponent ( Value )",
-    "summary": "Provides the Path.Lastpathcomponent calculation operation.",
+    "name": "Path.LastPathComponent",
+    "signature": "Path.LastPathComponent ( Value )",
+    "summary": "Provides the Path.LastPathComponent calculation operation.",
     "details": "Behavior beyond the implementation described here is unverified.",
     "examples": [
       {
@@ -346,8 +346,8 @@
     "differences": "Behavior beyond the implementation described here is unverified."
   },
   {
-    "name": "Progressdialog.Getcancel",
-    "signature": "Progressdialog.Getcancel ( Value )",
+    "name": "ProgressDialog.GetCancel",
+    "signature": "ProgressDialog.GetCancel ( Value )",
     "summary": "Controls or queries a host progress dialog; availability depends on the host UI.",
     "details": "The result depends on the host environment or session; details of compatibility are unverified.",
     "examples": [],
@@ -355,8 +355,8 @@
     "differences": "The result depends on the host environment or session; details of compatibility are unverified."
   },
   {
-    "name": "Progressdialog.Hide",
-    "signature": "Progressdialog.Hide ( Value )",
+    "name": "ProgressDialog.Hide",
+    "signature": "ProgressDialog.Hide ( Value )",
     "summary": "Controls or queries a host progress dialog; availability depends on the host UI.",
     "details": "The result depends on the host environment or session; details of compatibility are unverified.",
     "examples": [],
@@ -364,8 +364,8 @@
     "differences": "The result depends on the host environment or session; details of compatibility are unverified."
   },
   {
-    "name": "Progressdialog.Reset",
-    "signature": "Progressdialog.Reset ( Value )",
+    "name": "ProgressDialog.Reset",
+    "signature": "ProgressDialog.Reset ( Value )",
     "summary": "Controls or queries a host progress dialog; availability depends on the host UI.",
     "details": "The result depends on the host environment or session; details of compatibility are unverified.",
     "examples": [],
@@ -373,8 +373,8 @@
     "differences": "The result depends on the host environment or session; details of compatibility are unverified."
   },
   {
-    "name": "Progressdialog.Setbottomtext",
-    "signature": "Progressdialog.Setbottomtext ( Value )",
+    "name": "ProgressDialog.SetBottomText",
+    "signature": "ProgressDialog.SetBottomText ( Value )",
     "summary": "Controls or queries a host progress dialog; availability depends on the host UI.",
     "details": "The result depends on the host environment or session; details of compatibility are unverified.",
     "examples": [],
@@ -382,8 +382,8 @@
     "differences": "The result depends on the host environment or session; details of compatibility are unverified."
   },
   {
-    "name": "Progressdialog.Setbuttoncaption",
-    "signature": "Progressdialog.Setbuttoncaption ( Value )",
+    "name": "ProgressDialog.SetButtonCaption",
+    "signature": "ProgressDialog.SetButtonCaption ( Value )",
     "summary": "Controls or queries a host progress dialog; availability depends on the host UI.",
     "details": "The result depends on the host environment or session; details of compatibility are unverified.",
     "examples": [],
@@ -391,8 +391,8 @@
     "differences": "The result depends on the host environment or session; details of compatibility are unverified."
   },
   {
-    "name": "Progressdialog.Setprogress",
-    "signature": "Progressdialog.Setprogress ( Value )",
+    "name": "ProgressDialog.SetProgress",
+    "signature": "ProgressDialog.SetProgress ( Value )",
     "summary": "Controls or queries a host progress dialog; availability depends on the host UI.",
     "details": "The result depends on the host environment or session; details of compatibility are unverified.",
     "examples": [],
@@ -400,8 +400,8 @@
     "differences": "The result depends on the host environment or session; details of compatibility are unverified."
   },
   {
-    "name": "Progressdialog.Settitle",
-    "signature": "Progressdialog.Settitle ( Value )",
+    "name": "ProgressDialog.SetTitle",
+    "signature": "ProgressDialog.SetTitle ( Value )",
     "summary": "Controls or queries a host progress dialog; availability depends on the host UI.",
     "details": "The result depends on the host environment or session; details of compatibility are unverified.",
     "examples": [],
@@ -409,8 +409,8 @@
     "differences": "The result depends on the host environment or session; details of compatibility are unverified."
   },
   {
-    "name": "Progressdialog.Settoptext",
-    "signature": "Progressdialog.Settoptext ( Value )",
+    "name": "ProgressDialog.SetTopText",
+    "signature": "ProgressDialog.SetTopText ( Value )",
     "summary": "Controls or queries a host progress dialog; availability depends on the host UI.",
     "details": "The result depends on the host environment or session; details of compatibility are unverified.",
     "examples": [],
@@ -418,8 +418,8 @@
     "differences": "The result depends on the host environment or session; details of compatibility are unverified."
   },
   {
-    "name": "Progressdialog.Show",
-    "signature": "Progressdialog.Show ( Value )",
+    "name": "ProgressDialog.Show",
+    "signature": "ProgressDialog.Show ( Value )",
     "summary": "Controls or queries a host progress dialog; availability depends on the host UI.",
     "details": "The result depends on the host environment or session; details of compatibility are unverified.",
     "examples": [],
@@ -519,9 +519,9 @@
     "differences": "Behavior beyond the implementation described here is unverified."
   },
   {
-    "name": "Variable.Appendjson",
-    "signature": "Variable.Appendjson ( Value )",
-    "summary": "Provides the Variable.Appendjson calculation operation.",
+    "name": "Variable.AppendJSON",
+    "signature": "Variable.AppendJSON ( Value )",
+    "summary": "Provides the Variable.AppendJSON calculation operation.",
     "details": "Behavior beyond the implementation described here is unverified.",
     "examples": [
       {
@@ -533,9 +533,9 @@
     "differences": "Behavior beyond the implementation described here is unverified."
   },
   {
-    "name": "Variable.Appendvalue",
-    "signature": "Variable.Appendvalue ( Value )",
-    "summary": "Provides the Variable.Appendvalue calculation operation.",
+    "name": "Variable.AppendValue",
+    "signature": "Variable.AppendValue ( Value )",
+    "summary": "Provides the Variable.AppendValue calculation operation.",
     "details": "Behavior beyond the implementation described here is unverified.",
     "examples": [
       {
@@ -556,9 +556,9 @@
     "differences": "Behavior beyond the implementation described here is unverified."
   },
   {
-    "name": "Variable.Clearall",
-    "signature": "Variable.Clearall ( Value )",
-    "summary": "Provides the Variable.Clearall calculation operation.",
+    "name": "Variable.ClearAll",
+    "signature": "Variable.ClearAll ( Value )",
+    "summary": "Provides the Variable.ClearAll calculation operation.",
     "details": "Behavior beyond the implementation described here is unverified.",
     "examples": [],
     "status": "works-differently",
@@ -625,22 +625,22 @@
     "differences": "Behavior beyond the implementation described here is unverified."
   },
   {
-    "name": "Variable.Popjson",
-    "signature": "Variable.Popjson ( Value )",
-    "summary": "Provides the Variable.Popjson calculation operation.",
+    "name": "Variable.PopJSON",
+    "signature": "Variable.PopJSON ( Value )",
+    "summary": "Provides the Variable.PopJSON calculation operation.",
     "details": "Behavior beyond the implementation described here is unverified.",
     "examples": [],
     "status": "works-differently",
     "differences": "Behavior beyond the implementation described here is unverified."
   },
   {
-    "name": "Variable.Popvalue",
-    "signature": "Variable.Popvalue ( Value )",
-    "summary": "Provides the Variable.Popvalue calculation operation.",
+    "name": "Variable.PopValue",
+    "signature": "Variable.PopValue ( Value )",
+    "summary": "Provides the Variable.PopValue calculation operation.",
     "details": "Behavior beyond the implementation described here is unverified.",
     "examples": [
       {
-        "formula": "MBS ( \"Variable.Set\" ; \"x\" ; \"a\u00b6b\" ) & MBS ( \"Variable.PopValue\" ; \"x\" )",
+        "formula": "MBS ( \"Variable.Set\" ; \"x\" ; \"a¶b\" ) & MBS ( \"Variable.PopValue\" ; \"x\" )",
         "result": "OKb"
       }
     ],
@@ -671,9 +671,9 @@
     "differences": "Behavior beyond the implementation described here is unverified."
   },
   {
-    "name": "Variable.Valuecount",
-    "signature": "Variable.Valuecount ( Value )",
-    "summary": "Provides the Variable.Valuecount calculation operation.",
+    "name": "Variable.ValueCount",
+    "signature": "Variable.ValueCount ( Value )",
+    "summary": "Provides the Variable.ValueCount calculation operation.",
     "details": "Behavior beyond the implementation described here is unverified.",
     "examples": [],
     "status": "works-differently",
