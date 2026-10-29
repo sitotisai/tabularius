@@ -3,7 +3,7 @@
 // page devices use to trust it.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { copyFileSync, existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { request as httpsRequest } from 'node:https';
@@ -46,6 +46,51 @@ test('the authority and a server certificate a device can check', () => {
   } finally {
     rmSync(dir, { recursive: true });
   }
+});
+
+test('the authority key is never written through a planted link', { skip: process.platform === 'win32' }, (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-local-tls-key-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const local = join(dir, '.openhbam-tls', 'local');
+  mkdirSync(local, { recursive: true });
+  const victim = join(dir, 'victim');
+  const key = join(local, 'ca.key');
+  writeFileSync(victim, 'keep');
+  symlinkSync(victim, key);
+  assert.throws(() => localCertificate(dir, ['localhost']), (error: NodeJS.ErrnoException) => error.code === 'ESTALE');
+  assert.equal(readFileSync(victim, 'utf8'), 'keep');
+  assert.ok(lstatSync(key).isSymbolicLink());
+  assert.equal(existsSync(join(local, 'ca.crt')), false);
+  assert.deepEqual(readdirSync(local).filter((name) => name.endsWith('.tmp')), []);
+
+  rmSync(key);
+  const first = localCertificate(dir, ['localhost']);
+  assert.match(first.ca, /^-----BEGIN CERTIFICATE-----/);
+  assert.ok(lstatSync(key).isFile());
+  assert.equal(lstatSync(key).isSymbolicLink(), false);
+  assert.match(readFileSync(key, 'utf8'), /^-----BEGIN PRIVATE KEY-----/);
+  assert.equal(statSync(key).mode & 0o777, 0o600);
+  const second = localCertificate(dir, ['localhost']);
+  assert.equal(second.renewed, false);
+  assert.equal(second.ca, first.ca);
+  assert.deepEqual(readdirSync(local).filter((name) => name.endsWith('.tmp')), []);
+});
+
+test('a planted link at the certificate or name-list name is refused too', { skip: process.platform === 'win32' }, async (t) => {
+  for (const name of ['ca.crt', 'ca-names.json']) await t.test(name, (t) => {
+    const dir = mkdtempSync(join(tmpdir(), 'tabularius-local-tls-link-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const local = join(dir, '.openhbam-tls', 'local');
+    mkdirSync(local, { recursive: true });
+    const victim = join(dir, 'victim');
+    const file = join(local, name);
+    writeFileSync(victim, 'keep');
+    symlinkSync(victim, file);
+    assert.throws(() => localCertificate(dir, ['localhost']), (error: NodeJS.ErrnoException) => error.code === 'ESTALE');
+    assert.equal(readFileSync(victim, 'utf8'), 'keep');
+    assert.ok(lstatSync(file).isSymbolicLink());
+    assert.deepEqual(readdirSync(local).filter((entry) => entry.endsWith('.tmp')), []);
+  });
 });
 
 for (const workers of [1, 2]) test(`--https local${workers > 1 ? ' with --workers' : ''}: served over TLS, plain http is sent on to https, and the trust page and profile are open to all`, { skip }, async () => {
