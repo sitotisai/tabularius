@@ -32,6 +32,7 @@ This is a single-writer primary with asynchronous physical replication of the fi
   than the primary keeps (410), when a change it needs is missing, or when its file is not as it left it (see below).
 - The primary lists each standby it has heard from in the last minute (admin console, and the
   `tabularius_standby_behind`, `tabularius_standby_lag_seconds` and `tabularius_standby_last_seen_timestamp_seconds` metrics).
+  A standby sends `x-tabularius-standby-id`, 16 hexadecimal characters it picks at random when it starts, with each request for changes, so two standbys that reach the primary from one address are listed separately.
   Behind counts changes; lag seconds measures the age of the oldest unacknowledged change, or 0 when caught up. Replication
   is asynchronous: a takeover can lose up to that many seconds of acknowledged writes.
 
