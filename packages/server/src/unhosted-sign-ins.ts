@@ -3,32 +3,41 @@
 // address that spends its budget on an invented name would show every other invented name as locked and every hosted file as not.
 import { boundedName, LOCKOUT, SignInFailures } from '../../store/src/sign-in-failures.ts';
 
-/** How many invented names are remembered. Past it the one asked for longest ago is dropped, with its counters. */
+/** How many invented names get a table of their own. */
 const MAX_NAMES = 2048;
 
 export class UnhostedSignIns {
   private readonly tables = new Map<string, SignInFailures>();
+  /** The counters of every name past the limits below. Its keys carry the file name (callers pass it to accountKey), so accounts stay apart; its address budget is shared. */
+  private readonly overflow = new SignInFailures();
 
-  /** The counters for one file name that is not hosted (the name's case does not matter, as a hosted file's does not). */
+  /**
+   * The counters for one file name that is not hosted (the name's case does not matter, as a hosted file's does not). A table
+   * holding a live lock or an open budget is never dropped, as a hosted file's is not, so flooding names erases nothing: a
+   * name that finds no room is counted in the shared table, which still locks its accounts.
+   */
   table(db: string): SignInFailures {
     const key = boundedName(db.toLowerCase());
-    let table = this.tables.get(key);
-    if (table) this.tables.delete(key);
-    else table = new SignInFailures();
-    this.tables.set(key, table);
-    if (this.tables.size > MAX_NAMES) {
-      // A name with nothing counted goes first; otherwise the one asked for longest ago.
-      const empty = [...this.tables].find(([k, t]) => k !== key && t.size === 0)?.[0];
-      this.tables.delete(empty ?? this.tables.keys().next().value!);
+    const known = this.tables.get(key);
+    if (known) {
+      this.tables.delete(key);
+      this.tables.set(key, known);
+      return known;
     }
-    // All the names together hold no more than one table may, so many invented names cannot hold more memory than one.
+    if (this.tables.size >= MAX_NAMES || this.entries() > LOCKOUT.maxFailures) {
+      // The one asked for longest ago with nothing counted goes; if none is idle there is no room.
+      const idle = [...this.tables].find(([, t]) => t.idle())?.[0];
+      if (idle === undefined) return this.overflow;
+      this.tables.delete(idle);
+    }
+    const table = new SignInFailures();
+    this.tables.set(key, table);
+    return table;
+  }
+
+  private entries(): number {
     let total = 0;
     for (const t of this.tables.values()) total += t.size;
-    for (const [k, t] of this.tables) {
-      if (total <= LOCKOUT.maxFailures || k === key) break;
-      total -= t.size;
-      this.tables.delete(k);
-    }
-    return table;
+    return total;
   }
 }
