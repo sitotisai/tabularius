@@ -123,37 +123,54 @@ export function timestampFromDate(ms: number): number {
   return ms / 1000 + (UNIX_EPOCH_DAY - 1) * SECONDS_PER_DAY;
 }
 
-/** Number as FileMaker writes it: no exponent, at most 16 significant digits, no trailing zeros. */
+/** Sum numeric inputs using their decimal text, retaining the digits the numbers represent. */
 /**
  * Sum like FileMaker's decimal arithmetic: the result keeps no more decimal
  * places than the inputs have, so 0.1 added a thousand times is exactly 100.
  */
+function decimalParts(ns: number[]): { sum: bigint; scale: number } | undefined {
+  if (ns.some((n) => !Number.isFinite(n))) return undefined;
+  const parts = ns.map((raw) => {
+    // Tidy only binary noise left by a prior operation; retain longer decimal inputs when they are materially distinct.
+    const value = tidy(raw);
+    const match = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i.exec(String(value));
+    if (!match) return { sign: 1n, digits: 0n, places: 0 };
+    const places = (match[3]?.length ?? 0) - Number(match[4] ?? 0);
+    const digits = BigInt(match[2] + (match[3] ?? ''));
+    return { sign: match[1] === '-' ? -1n : 1n, digits, places };
+  });
+  const scale = Math.max(0, ...parts.map(({ places }) => places));
+  const sum = parts.reduce((total, part) => total + part.sign * part.digits * 10n ** BigInt(scale - part.places), 0n);
+  return { sum, scale };
+}
+
+function scaledText(sum: bigint, scale: number): string {
+  const negative = sum < 0n;
+  const digits = (negative ? -sum : sum).toString().padStart(scale + 1, '0');
+  const whole = scale ? digits.slice(0, -scale) : digits;
+  const fraction = scale ? `.${digits.slice(-scale)}`.replace(/0+$/, '') : '';
+  return `${negative ? '-' : ''}${whole}${fraction === '.' ? '' : fraction}`;
+}
+
+/** Sum decimal input text, retaining all digits represented by the numbers. */
+export function decimalSumText(ns: number[]): string {
+  if (!ns.length) return '0';
+  if (ns.some((n) => !Number.isFinite(n))) return String(ns.reduce((sum, n) => sum + n, 0));
+  const parts = decimalParts(ns)!;
+  return scaledText(parts.sum, parts.scale);
+}
+
+/** Exact decimal text for an average when dividing the scaled sum terminates exactly. */
+export function decimalAverageText(ns: number[]): string | undefined {
+  if (!ns.length || ns.some((n) => !Number.isFinite(n))) return undefined;
+  const parts = decimalParts(ns)!;
+  const count = BigInt(ns.length);
+  if (parts.sum % count !== 0n) return undefined;
+  return scaledText(parts.sum / count, parts.scale);
+}
+
 export function decimalSum(ns: number[]): number {
-  let places = 0;
-  let plain = false;
-  let sum = 0;
-  for (const raw of ns) {
-    // Whole numbers (most of a large table's values) need no look at their decimals, and a whole number the double
-    // holds exactly keeps every digit: rounding 4000000000000001 to 15 digits would change it.
-    if (Number.isSafeInteger(raw)) {
-      sum += raw;
-      continue;
-    }
-    // Binary noise from earlier arithmetic (13.950000000000001) is not a real decimal place. Digits past the 15th of
-    // a decimal are still dropped here (Sum ( 0.1234567890123456 ) is 0.123456789012346): finding #121 is only partly fixed.
-    const n = Number.isInteger(raw) ? raw : Number(raw.toPrecision(15));
-    sum += n;
-    if (plain) continue;
-    const str = String(n);
-    const dot = str.indexOf('.');
-    if (dot >= 0 && !/e/i.test(str)) places = Math.max(places, str.length - dot - 1);
-    if (places > 12 || /e/i.test(str)) plain = true;
-  }
-  if (plain) return sum;
-  const scale = 10 ** places;
-  // Past 2^53 the scaled sum is no longer exact, so rounding it would change digits that were right (4000000000000001 + 0.5).
-  if (Math.abs(sum) * scale >= Number.MAX_SAFE_INTEGER) return sum;
-  return Math.round(sum * scale) / scale;
+  return Number(decimalSumText(ns));
 }
 
 /**
