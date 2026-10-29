@@ -328,6 +328,8 @@ test('Found Set applies generated sorting to records and normal window state', a
 
 test('Found Set as JSON reads from a selected other-file window with that file’s privileges', async () => {
   heldFile.savePrivilegeSet({ name: 'RemoteReader', records: { view: true, edit: false, create: false, delete: false }, layouts: 'modifiable', valueLists: 'viewOnly', scripts: 'modifiable', extendedPrivileges: [], tables: { Customers: { view: true, edit: false, create: false, delete: false, fields: { Secret: 'none', Masked: 'masked' }, masks: { Masked: { kind: 'placeholder', text: 'Hidden' } } } } });
+  heldFile.siblings = () => [store];
+  store.siblings = () => [heldFile];
   heldFile.setPassword('remote-reader', 'remote-password', 'RemoteReader');
   store.savePrivilegeSet({ name: 'RemoteReader', records: { view: true, edit: false, create: false, delete: false }, layouts: 'modifiable', valueLists: 'viewOnly', scripts: 'modifiable', extendedPrivileges: [], tables: { Customers: { view: true, edit: false, create: false, delete: false } } });
   store.setPassword('remote-reader', 'remote-password', 'RemoteReader');

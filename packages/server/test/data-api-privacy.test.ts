@@ -123,7 +123,7 @@ test('AR-server-data-apis-02 owner privileges and intermediate records', (t) => 
   const f = fixture(t);
   f.other.create('PrivateTable', { PrivateColumn: 'private-key', PublicColumn: 'visible' });
   f.other.savePrivilegeSet({ ...definition, records: { ...all, fields: { PrivateColumn: 'none' } } });
-  f.other.setPassword('Reader', 'other-password', 'Reader');
+  f.other.setPassword('Reader', 'test-password', 'Reader');
   const externalKey = f.other.schema.tables.find((x) => x.name === 'PrivateTable')!.fields.find((x) => x.name === 'PrivateColumn')!.id;
   f.store.applyDesign([{ op: 'createRelationship', left: 'Parents', right: 'ExternalPrivate', predicates: [{ left: 'Link', right: externalKey }] }]);
   assert.deepEqual(describeRecord(f.store, 'Parents', f.parent, { privileges: f.store.privileges('Reader'), follow: ['ExternalPrivate'] }).related, []);
@@ -230,7 +230,7 @@ test('AR-server-data-apis-03 queued deletes recheck row rules and layout access'
 test('AR-server-data-apis-03 external deletes retain owner rules across serialized changes', async (t) => {
   const f = fixture(t);
   f.other.savePrivilegeSet({ ...definition, records: { ...all, view: 'PublicColumn = "A"' } });
-  f.other.setPassword('Reader', 'other-password', 'Reader');
+  f.other.setPassword('Reader', 'test-password', 'Reader');
   const a = f.other.create('PrivateTable', { PrivateColumn: 'never on the wire', PublicColumn: 'A' }).recordId;
   const b = f.other.create('PrivateTable', { PrivateColumn: 'hidden', PublicColumn: 'B' }).recordId;
   const token = f.store.createApiToken('Reader', { layouts: ['External'] });
@@ -396,7 +396,7 @@ test('AR-server-data-apis-04 HTTP', async (t) => {
     assert.ok(!r.body.rows.some((row: string[]) => row[index] === 'ExternalPrivate'));
   });
   f.other.savePrivilegeSet({ ...definition, records: { ...all, fields: { PrivateColumn: 'none' } } });
-  f.other.setPassword('Reader', 'other-password', 'Reader');
+  f.other.setPassword('Reader', 'test-password', 'Reader');
   const columns = await sql("SELECT FieldName FROM FileMaker_Fields WHERE TableName = 'ExternalPrivate'");
   assert.equal(columns.status, 200, columns.text);
   assert.deepEqual(columns.body.rows, [['PublicColumn']]);
@@ -425,7 +425,7 @@ test('AR-server-data-apis-04 pgwire', async (t) => {
     }
   });
   f.other.savePrivilegeSet({ ...definition, records: { ...all, fields: { PrivateColumn: 'masked' } } });
-  f.other.setPassword('Reader', 'other-password', 'Reader');
+  f.other.setPassword('Reader', 'test-password', 'Reader');
   const query = "SELECT column_name FROM information_schema.columns WHERE table_name = 'ExternalPrivate' ORDER BY column_name";
   // A file whose masked field the account cannot read is not read by SQL at all: the table answers as one that is not there.
   assert.deepEqual((await c.simple(query)).rows, []);
@@ -549,7 +549,7 @@ test('AR-server-data-apis-04 a table denied in another file is not listed on the
   t.after(() => c.close());
   const query = "SELECT table_name FROM information_schema.tables WHERE table_name = 'ExternalPrivate'";
   f.other.savePrivilegeSet(definition);
-  f.other.setPassword('Reader', 'other-password', 'Reader');
+  f.other.setPassword('Reader', 'test-password', 'Reader');
   assert.deepEqual((await c.simple(query)).rows, [['ExternalPrivate']]);
   f.other.savePrivilegeSet({ ...definition, tables: { PrivateTable: { ...all, view: false } } });
   assert.deepEqual((await c.simple(query)).rows, []);

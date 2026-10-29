@@ -99,7 +99,10 @@ test('implicit same-name cross-file accounts stop granting privileges when disab
   const b = new Store(join(dir, 'B' + STORE_EXT), 'B');
   const a = new Store(join(dir, 'A' + STORE_EXT), 'A');
   try {
-    b.setPassword('Ann', 'b-ann', '[Full Access]');
+    // The same password in both files is what makes Ann one person in each (Store.crossFileProven).
+    a.siblings = () => [b];
+    b.siblings = () => [a];
+    b.setPassword('Ann', 'a-pw', '[Full Access]');
     assert.equal(a.privileges('Ann').in(b).full, true);
     b.setAccountActive('Ann', false);
     assert.equal(a.privileges('Ann').in(b).full, false);

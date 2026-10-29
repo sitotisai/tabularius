@@ -34,6 +34,9 @@ before(() => {
     tables: { Items: { view: 'Visible = 1', edit: true, create: false, delete: false, fields: { Secret: 'none', GlobalSecret: 'none' } } },
     layouts: 'modifiable', scripts: 'viewOnly', scriptAccess: { Forbidden: 'none' }, valueLists: 'viewOnly', extendedPrivileges: [],
   });
+  // The same password in both files is what makes Owner and Both one person in each (Store.crossFileProven).
+  a.siblings = () => [b];
+  b.siblings = () => [a];
   b.setPassword('Owner', 'password', 'Limited');
   b.setPassword('Both', 'password', '[Full Access]');
   a.setPassword('Owner', 'password', '[Full Access]');

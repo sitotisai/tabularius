@@ -154,6 +154,8 @@ test('cross-file denial survives automatic rollback and is audited in its captur
   other.applyDesign([{ op: 'createTable', name: 'T', fields: [{ name: 'A' }] }, { op: 'createScript', name: 'Child', text: 'Delete Record/Request [ With dialog: Off ]\n' + detail }]);
   const rid = other.create('T', { A: 'related-record-sentinel' }).recordId;
   other.savePrivilegeSet({ name: 'Owner Rules', records: { view: true, edit: true, create: true, delete: false }, layouts: 'modifiable', scripts: 'viewOnly', valueLists: 'none', extendedPrivileges: [] });
+  s.siblings = () => [other];
+  other.siblings = () => [s];
   other.setPassword('clerk', 'pw', 'Owner Rules');
   s.applyDesign([{ op: 'createDataSource', name: 'Other', paths: ['file:Other'] }]);
   s.resolveFile = (name) => name === 'Other' ? other : undefined;

@@ -1264,6 +1264,8 @@ export class Host {
     this.compactionClosing.delete(store.name.toLowerCase());
     // Multi-file solutions: layouts can use tables in other files hosted here.
     store.resolveFile = (name) => this.get(name);
+    // A password accepted in one file is tried in every other one hosted here (Store.crossFileProven).
+    store.siblings = () => this.openStores();
     try {
       for (const g of store.accountsSharingLockout()) this.log(`${store.name}: the accounts ${g.map((n) => `"${n}"`).join(' and ')} share one sign-in lockout (their names read as one name to a directory), so guesses against one lock the other. Rename or delete one; tabularius doctor lists them.`);
     } catch { /* a damaged file says so itself */ }
