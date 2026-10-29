@@ -68,8 +68,11 @@ before(async () => {
       layouts: 'viewOnly', valueLists: 'viewOnly', scripts: 'viewOnly', scriptAccess: { ForbiddenB: 'none' },
       extendedPrivileges: ['fmrest', 'fmmcp'],
     });
-    for (const account of ['Reader', 'Owner']) data.setPassword(account, 'different password in B', 'B access');
     main.resolveFile = (name) => name.toLowerCase() === 'b' ? data : undefined;
+    // The same password in both files is what makes an account one person in each (Store.crossFileProven).
+    main.siblings = () => [data];
+    data.siblings = () => [main];
+    for (const account of ['Reader', 'Owner']) data.setPassword(account, 'password in A', 'B access');
     const table = data.schema.tables.find((t) => t.name === 'Items')!;
     const field = (name: string) => table.fields.find((f) => f.name === name)!.id;
     main.applyDesign([
@@ -131,7 +134,7 @@ before(async () => {
     main.savePrivilegeSet({ ...full, extendedPrivileges: [...new Set([...full.extendedPrivileges, 'fmrest', 'fmmcp', 'fmxdbc', 'fmodata'])] });
     main.setPassword('Owner', 'password in A', full.name);
     main.setPassword('Both', 'password in A', full.name);
-    data.setPassword('Both', 'password in B', data.privilegeSets().find((p) => p.id === 1)!.name);
+    data.setPassword('Both', 'password in A', data.privilegeSets().find((p) => p.id === 1)!.name);
     parent = main.create('Parents', { Id: 1, Visible: 1 }).recordId;
     hiddenParent = main.create('Parents', { Id: 2, Visible: 0 }).recordId;
   } finally {

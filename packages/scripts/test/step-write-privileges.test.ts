@@ -129,6 +129,8 @@ test('AR-script-engine-07: external owner and full-access caller', async () => {
     other.applyDesign([{ op: 'createTable', name: 'Items', fields: [{ name: 'Serial', type: 'number', options: { autoEnter: { serial: { next: '10', increment: 1 } } } }] }]);
     other.create('Items', {});
     other.savePrivilegeSet({ ...s.reader, records: { ...s.reader.records, edit: true } });
+    s.store.siblings = () => [other];
+    other.siblings = () => [s.store];
     other.setPassword('Reader', 'pw', 'Reader');
     s.store.resolveFile = (name) => name === 'Other' ? other : undefined;
     s.store.applyDesign([
@@ -355,6 +357,8 @@ test('Save a Copy checks the file it backs up after selecting another file windo
   const other = new Store(join(s.dir, 'Other.sqlite'), 'Other');
   try {
     other.applyDesign([{ op: 'createTable', name: 'OtherTasks', fields: [{ name: 'Title' }] }]);
+    s.store.siblings = () => [other];
+    other.siblings = () => [s.store];
     other.setPassword('Reader', 'pw', '[Full Access]');
     s.store.savePrivilegeSet({ ...s.reader, exporting: false });
     s.store.applyDesign([{ op: 'createDataSource', name: 'Other', paths: ['file:Other'] }]);
@@ -375,6 +379,8 @@ test('Truncate Table and Set Next Serial Value cannot elevate access to an exter
     other.applyDesign([{ op: 'createTable', name: 'Items', fields: [{ name: 'Serial', type: 'number', options: { autoEnter: { serial: { next: '10', increment: 1 } } } }] }]);
     other.create('Items', {});
     other.savePrivilegeSet(s.reader);
+    s.store.siblings = () => [other];
+    other.siblings = () => [s.store];
     other.setPassword('Reader', 'pw', 'Reader');
     s.store.applyDesign([{ op: 'createDataSource', name: 'Other', paths: ['file:Other'] }]);
     s.store.resolveFile = (name) => name === 'Other' ? other : undefined;
@@ -405,6 +411,8 @@ test('Export Field Contents cannot bypass the current file export restriction th
   try {
     other.applyDesign([{ op: 'createTable', name: 'Items', fields: [{ name: 'Title' }] }]);
     other.create('Items', { Title: 'external contents' });
+    s.store.siblings = () => [other];
+    other.siblings = () => [s.store];
     other.setPassword('Reader', 'pw', '[Full Access]');
     s.store.savePrivilegeSet({ ...s.reader, exporting: false });
     s.store.applyDesign([{ op: 'createDataSource', name: 'Other', paths: ['file:Other'] }]);

@@ -26,6 +26,9 @@ for (const external of [false, true]) test(`fresh outside-portal and further-rel
       store.applyDesign([{ op: 'createDataSource', name: 'Data', paths: ['file:Data'] }]);
       store.schema.tableOccurrences.find((o) => o.name === 'Products')!.dataSourceId = store.schema.dataSources[0].id;
       store.resolveFile = (name) => name === 'Data' ? data : undefined;
+      // The same password in both files is what makes Reader one person in each (Store.crossFileProven).
+      store.siblings = () => [data];
+      data.siblings = () => [store];
     }
     const batch = store.create('Batches', { Id: 1 }).recordId;
     store.create('Orders', { Batch: 1, Product: 1, Amount: 1 });

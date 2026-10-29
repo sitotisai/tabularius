@@ -19,6 +19,10 @@ function setup(t: TestContext) {
   });
   const [a, b] = stores;
   a.resolveFile = (name) => name === 'B' ? b : undefined;
+  // Set again once both files exist: the same password in both is what makes an account one person in each.
+  a.siblings = () => [b];
+  b.siblings = () => [a];
+  for (const account of ['Admin', 'Worker', 'Other']) a.setPassword(account, 'pw', '[Full Access]');
   t.after(() => { for (const store of stores) store.close(); rmSync(dir, { recursive: true, force: true }); });
   const options = { layout: 'T', account: 'Worker', executionAccount: 'Worker', executionVia: 'Team', privileges: a.privileges('Worker', 'Team') };
   return { a, b, options };
