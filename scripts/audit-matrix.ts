@@ -35,10 +35,13 @@ export const registryFile = new URL('./audit-classifications.json', import.meta.
 export const matrixFile = new URL('../docs/audits/r26-12-action-matrix.md', import.meta.url);
 export const sourceRegistryFile = new URL('./audit-route-sources.json', import.meta.url);
 export function registry(): Record<string, Classification> { return JSON.parse(readFileSync(registryFile, 'utf8')); }
+export function routeSourceDigests(): Record<string, string> {
+  return Object.fromEntries([...codeRoutes().keys()].map(source =>
+    [source, createHash('sha256').update(readFileSync(join(SERVER_SRC, source))).digest('hex')]));
+}
 /** Deliberately conservative: even a method added behind an existing path needs a fresh source review. */
 export function validateRouteSources(expected: Record<string, string> = JSON.parse(readFileSync(sourceRegistryFile, 'utf8'))): void {
-  const actual = Object.fromEntries([...codeRoutes().keys()].map(source =>
-    [source, createHash('sha256').update(readFileSync(join(SERVER_SRC, source))).digest('hex')]));
+  const actual = routeSourceDigests();
   if (JSON.stringify(Object.entries(expected).sort()) !== JSON.stringify(Object.entries(actual).sort())) {
     throw new Error('route implementation changed: review method/path classifications and source digests');
   }
@@ -69,6 +72,7 @@ export function render(): string {
     inventory.map(a => `| ${cell(a.id)} | ${a.family} | ${classified[a.id]}${/unverified/i.test(a.id) ? ' <!-- known-difference-ok: the action name contains the word -->' : ''} |`).join('\n') + '\n';
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  if (process.argv.includes('--refresh-sources')) writeFileSync(sourceRegistryFile, JSON.stringify(routeSourceDigests(), null, 2) + '\n');
   const text = render();
   if (process.argv.includes('--check')) {
     if (readFileSync(matrixFile, 'utf8') !== text) throw new Error('audit matrix is stale; run node scripts/audit-matrix.ts');

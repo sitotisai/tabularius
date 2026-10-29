@@ -592,6 +592,12 @@ through. Tabularius never connects out to any of them:
 - ODBC entries keep their DSN, for FileMaker. Tabularius doesn't connect to them
   and keeps no user name or password; the Design Report lists them without one.
 
+An interface file can place layouts and value lists over another hosted file's
+tables. Tabularius checks the account's privileges in that data file before
+returning values, and hides its layouts from an account without data-file
+access. Whether those cross-file privilege and missing-layout responses match
+FileMaker is unverified offline. <!-- known-difference: Cross-file access ;; Compatibility of cross-file privilege and missing-layout responses is unverified ;; An account without data-file access sees a missing layout and no values in Tabularius ;; Compare equivalent two-file accounts and layouts in FileMaker -->
+
 ## Containers
 
 The **Containers** tab is FileMaker's Manage Containers: the base directories
