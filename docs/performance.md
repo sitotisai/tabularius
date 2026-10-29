@@ -494,6 +494,23 @@ do not describe this checkout's current timings, so `bench:check
 tolerance or the 12,000 ms wide budget. The wide HTTP probe could not run here
 because this sandbox refuses binding to `127.0.0.1`.
 
+### Find, import, backup and cold-start budgets
+
+`npm run bench:check` also runs `scripts/bench-budgets.ts` against disposable,
+generated stores. It measures one text find over 200,000 records; planning and
+importing 100,000 CSV-shaped rows; backup and restore of that store; and a fresh
+process opening and querying a second store with at least 1 GiB of generated
+payload. Store generation is outside the timings. The check prints each elapsed
+time beside its absolute limit in `scripts/bench-baseline.json` and repeats the
+workload to confirm any over-budget result. `--quick` scales the workload down
+for the subsecond unit smoke test; it does not establish a performance result.
+
+On this machine, full workload measurements were about 231–266 ms for find,
+7,833–9,253 ms for import, 453–542 ms for backup and restore, and 249 ms for
+cold start. The respective budgets are 750, 27,000, 1,700 and 750 ms, around
+three times the observed timings. They are machine measurements, not a claim
+about another deployment platform.
+
 ## Also see
 
 - `node scripts/loadtest.ts <file.fmp12> --users 50`: many people using one
