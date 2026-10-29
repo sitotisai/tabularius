@@ -64,6 +64,14 @@ export function accountsSharingLockout(names: string[]): string[][] {
   return [...groups.values()].filter((g) => g.length > 1).map((g) => g.sort());
 }
 
+/**
+ * A name kept to a bounded size without merging distinct names that share a long prefix. The suffix makes long keys longer
+ * than any short name, so the namespaces cannot collide. A file name comes from the request line, so it needs this as much as an account.
+ */
+export function boundedName(name: string): string {
+  return name.length <= 128 ? name : `${name.slice(0, 96)}:${createHash('sha256').update(name).digest('hex')}`;
+}
+
 /** Shared hosted/unhosted accounting. Capacity never evicts live locks or open address budgets. */
 export class SignInFailures extends Map<string, Failure> {
   private nextExpiry = Infinity;
@@ -84,8 +92,12 @@ export class SignInFailures extends Map<string, Failure> {
   // order. Their failures remain charged to an address counter until its window expires.
   private readonly evictable = new Set<string>();
 
-  constructor(onLock?: (key: string, address?: string) => void, onExpire?: (key: string, endedAt: number) => void) {
+  private readonly capacity: number;
+
+  /** `capacity` is how many counters the table keeps; a hosted file keeps LOCKOUT.maxFailures. */
+  constructor(onLock?: (key: string, address?: string) => void, onExpire?: (key: string, endedAt: number) => void, capacity = LOCKOUT.maxFailures) {
     super();
+    this.capacity = capacity;
     this.onLock = onLock;
     this.onExpire = onExpire;
   }
@@ -148,6 +160,12 @@ export class SignInFailures extends Map<string, Failure> {
     }
   }
 
+  /** Whether nothing is counted: every counter has run out. */
+  idle(): boolean {
+    this.sweep(elapsed());
+    return this.size === 0;
+  }
+
   /** Remember a successful directory identity independently of its failure counter. */
   confirmDirectory(key: string): void {
     this.sweep(elapsed());
@@ -162,7 +180,7 @@ export class SignInFailures extends Map<string, Failure> {
   }
 
   private ordinaryCapacityFull(): boolean {
-    return this.size - this.knownSharedKeys.size - this.directorySharedKeys.size >= LOCKOUT.maxFailures;
+    return this.size - this.knownSharedKeys.size - this.directorySharedKeys.size >= this.capacity;
   }
 
   private canRecord(key: string, shared: boolean, knownAccount = false): boolean {
@@ -206,12 +224,8 @@ export class SignInFailures extends Map<string, Failure> {
 
   accountKey(account: string, from: string, database?: string): string {
     if (sharedSource(from)) from = 'unknown';
-    const name = lockoutName(account).replace(/\u0000/g, '');
-    // Keep keys bounded without merging distinct names that share a long prefix.
-    // The suffix makes long keys longer than any short name, so the namespaces cannot collide.
-    const bounded = name.length <= 128 ? name : `${name.slice(0, 96)}:${createHash('sha256').update(name).digest('hex')}`;
-    const key = `${bounded}\0${addressBucket(from)}`;
-    return database === undefined ? key : `${database.toLowerCase()}\0${key}`;
+    const key = `${boundedName(lockoutName(account).replace(/\u0000/g, ''))}\0${addressBucket(from)}`;
+    return database === undefined ? key : `${boundedName(database.toLowerCase())}\0${key}`;
   }
 
   record(key: string, from: string, ok: boolean, knownAccount = false): boolean {

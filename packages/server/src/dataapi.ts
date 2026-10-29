@@ -34,7 +34,7 @@ import { assertAiPolicy } from './ai-policy.ts';
 import { AUTH_BODY_LIMIT, drainSmallBody } from './request-body.ts';
 import { assertRequestJsonBounds, JsonDepthError, JsonSizeError, JsonNumberError, MAX_JSON_QUERY_BYTES, parseRequestJson } from './request-json.ts';
 import { PASSKEY_SECOND_FACTOR_REQUIRED } from '../../store/src/error-codes.ts';
-import { SignInFailures, sharedSource } from '../../store/src/sign-in-failures.ts';
+import { sharedSource } from '../../store/src/sign-in-failures.ts';
 import { localOnlyRefused, publicPasswordLockout } from './password-login-policy.ts';
 import { noteSurfaceSignIn } from './surface-access.ts';
 import { requestOrigin } from './public-origin.ts';
@@ -58,7 +58,7 @@ import { ContainerUploadError, ContainerUploads, requestUploadSpool, MAX_CONTAIN
 
 import { captureDenial, DenialCollector, denialOperation } from './denial-audit.ts';
 import { denialOf, type DenialAudit } from '../../store/src/access-denial.ts';
-import { decoyPasskeyStart, listedFiles } from './file-list.ts';
+import { decoyPasskeyStart, listedFiles, unhostedPasswordFailure } from './file-list.ts';
 import { faultLog, logFaultFor, type FaultLog } from './fault-log.ts';
 import { canonicalJson, decimalNumberText } from '../../store/src/native-types.ts';
 import { openApiDocument } from './openapi.ts';
@@ -888,8 +888,6 @@ export class DataApi {
 
   private readonly host: Host;
   private readonly sessions = new Map<string, Session>();
-  /** Failed recovery-code requests for names with no file behind them: the same accounting as a file's, in a separate bounded budget. */
-  private readonly unhostedRecoveryFailures = new SignInFailures();
   /** Per-process ceiling also covers churning accounts and scoped API tokens. */
   readonly maxSessions = 2048;
   private readonly containerUploads = new ContainerUploads();
@@ -1373,9 +1371,8 @@ export class DataApi {
       // As a hosted file's sign-in does: refused for a block on new users before anything is checked, and the password
       // checked (at its cost) only when an account is named.
       if (this.host.config.blockNewUsers()) throw new ApiError(812, 'The server isn\'t accepting new users right now; try again later', 503);
-      const basic = /^Basic\s+(.+)$/i.exec(req.headers.authorization ?? '')?.[1];
-      const [account, ...rest] = basic ? Buffer.from(basic, 'base64').toString('utf8').split(':') : [];
-      if (account) await spendPasswordCheck(rest.join(':'));
+      const until = await unhostedPasswordFailure(this.host, req, db);
+      if (until) throw lockedOutError(until);
       throw new ApiError(212, 'Invalid user account and/or password; please try again', 401);
     }
     return this.store(db);
@@ -1809,7 +1806,12 @@ export class DataApi {
         // A file that isn't hosted answers as a hosted one does for an account it doesn't know (nothing to sign in to).
         if (!this.host.get(db) && !this.host.listFilesPublicly) {
           if (!body || !body.response) return decoyPasskeyStart(db, typeof body?.account === 'string' ? body.account : undefined, env.rpId);
-          // As a hosted file refuses an assertion that is malformed, or whose challenge it never issued.
+          // As a hosted file refuses an assertion that is malformed, or whose challenge it never issued, and charges it to the address.
+          const from = clientAddress(req);
+          const failures = this.host.unhostedSignIns.table(db);
+          const blocked = failures.addressLockedOut(from);
+          if (blocked) throw lockedOutError(blocked);
+          failures.countAddressFailure(from);
           const r = body.response as { credentialId?: unknown; challenge?: unknown };
           throw new ApiError(212, typeof r.credentialId !== 'string' || typeof r.challenge !== 'string' ? 'That passkey was not accepted; try again' : 'The sign-in has expired; try again', 401);
         }
@@ -1845,14 +1847,18 @@ export class DataApi {
           // A hosted file checks a code against a set of slow hashes: spend the same, so the time does not say which files
           // exist. That cost is charged to the caller first and refused cheaply once its budget is gone, as a hosted file does.
           const from = clientAddress(req);
-          const failures = this.unhostedRecoveryFailures;
+          // The table the name's passwords are counted in, as a hosted file counts both against one address budget; a code has its own account counter.
+          const failures = this.host.unhostedSignIns.table(db);
           const blocked = failures.addressLockedOut(from);
           if (blocked) throw lockedOutError(blocked);
           const account = typeof body.account === 'string' ? body.account : '';
-          const key = failures.accountKey(account, from, db);
-          if (failures.lockedOut(key, from) === undefined) {
+          if (!account) failures.countAddressFailure(from);
+          else {
+            // A code has a counter of its own, apart from the account's passwords; once it is locked the failure still counts against the address, and only the check is spared.
+            const key = failures.accountKey(account, from, db) + '\0recovery';
+            const wasLocked = failures.lockedOut(key, from) !== undefined;
             failures.record(key, from, false);
-            if (account) await spendRecoveryCodeCheck(typeof body.code === 'string' ? body.code : '');
+            if (!wasLocked) await spendRecoveryCodeCheck(typeof body.code === 'string' ? body.code : '');
           }
           throw new ApiError(212, 'That recovery code is not valid', 401);
         }
