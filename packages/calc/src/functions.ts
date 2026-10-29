@@ -1577,7 +1577,7 @@ for (const [name, f] of Object.entries(MBS_JSON)) {
 }
 // The Math and Time functions (mbs-math.ts): dates and timestamps are passed as themselves, the clock is the calculation's.
 for (const [name, f] of Object.entries(MBS_MATH)) {
-  MBS[name] = (v, env) => f({ values: v, texts: v.map((x) => T(x, env)), now: () => env.ctx.now?.() ?? new Date() });
+  MBS[name] = (v, env) => f({ values: v, texts: v.map((x) => T(x, env)), wait: env.ctx.mbsWait, now: () => env.ctx.now?.() ?? new Date() });
 }
 // The XML functions (mbs-xml.ts): references belong to the script session, as for JSON.
 for (const [name, f] of Object.entries(MBS_XML)) {

@@ -722,8 +722,20 @@ and `Time.TimeZoneOffset`. Times follow the server's time zone and its
 daylight-saving rules; MBS doesn't document every edge, so results around a
 clock change are inferred. `%Z` in Time.Format gives US zones by their <!-- known-difference: MBS plug-in functions ;; Results around a clock change are inferred (MBS does not document every edge), and %Z in Time.Format gives US zones by abbreviation but others by offset ;; Times near a daylight-saving change, and zone names outside the US, can differ from MBS ;; An MBS run of those cases -->
 abbreviation ("PST") but others by offset ("GMT+1" where MBS would print "CET").
-Not yet: `Math.Median`, `Math.TextToNumber`, <!-- known-difference: MBS plug-in functions ;; Math.Median, Math.TextToNumber, Math.InsidePolygon, Time.Sleep and Time.Wait are not available ;; The call gives ? and error 3 ;; Owner decision on whether to build them -->
-`Math.InsidePolygon`, `Time.Sleep` and `Time.Wait`. MBS's `XML.*` functions run
+Not yet: `Math.Median`, `Math.TextToNumber`, <!-- known-difference: MBS plug-in functions ;; Math.Median, Math.TextToNumber, Math.InsidePolygon are not available ;; The call gives ? and error 3 ;; Owner decision on whether to build them -->
+`Math.InsidePolygon`.
+`Time.Sleep ( seconds )` and `Time.Wait ( seconds )` run only in scripts as cooperative
+waits: they yield without blocking the process, return 0, and accept a finite duration
+from 0 to 10 seconds (at most 1024 input characters). Longer waits are rejected,
+not shortened. At most 20 waits can suspend one script step. Stopping the script,
+ending its session, or reaching its time limit cancels the wait. An open transaction
+rejects the call without waiting. Read permissions are rechecked after yielding.
+Plain calculations, empty durations, and extra arguments return the unavailable error.
+The seconds argument and zero success result are inferred and unverified for each function.
+<!-- known-difference: MBS plug-in functions ;; Time.Sleep's seconds argument and zero success result are inferred and unverified ;; Script-only cooperative wait capped at 10 seconds; open transactions reject it ;; A vendor run with generated inputs -->
+<!-- known-difference: MBS plug-in functions ;; Time.Wait's seconds argument and zero success result are inferred and unverified ;; Script-only cooperative wait capped at 10 seconds; ambiguous forms remain unavailable ;; A vendor run with generated inputs -->
+
+MBS's `XML.*` functions run
 too: GetPathValue, SetPathValue, SetPathXML, SetPathCData and DeletePath (MBS's
 dotted paths), Format, Compact, Query (XPath 1.0), SubTree, ExtractText,
 NodeNames, NodeCount, the attribute functions, Canonical, ApplyStylesheet and

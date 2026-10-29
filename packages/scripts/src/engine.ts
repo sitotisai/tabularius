@@ -1,3 +1,4 @@
+import { MbsError } from '../../calc/src/mbs-text.ts';
 import { documentNamePart, checkPathLength } from '../../store/src/portable-path.ts';
 // Runs FileMaker scripts against hosted stores, the way FileMaker Server runs
 // them for the Data API: no user interface, one window per file, found sets
@@ -618,6 +619,8 @@ export interface RunOptions {
   userStop?: EventTarget;
   /** Clock, for tests. */
   now?: () => Date;
+  /** Injectable cooperative timer; returns a cancellation function. */
+  waitClock?: { schedule(ms: number, done: () => void): () => void };
   /**
    * The account's privileges. Scripts then see and change only what the account
    * may, except scripts set to "Run script with full access privileges" (each
@@ -775,7 +778,10 @@ export class ScriptSession implements SessionGlobals {
   readonly ai: AiSessionState = { accounts: new Set(), ragAccounts: new Set(), ragConfigured: false, templates: new Map() };
 
   /** End this session's persistent JavaScript handles, even if an in-flight run still holds the session. */
+  readonly lifetime = new AbortController();
+
   close(): void {
+    this.lifetime.abort();
     closeMbsJavaScriptSession(this);
   }
 
@@ -952,6 +958,10 @@ interface Frame {
 }
 
 class Halt extends Error {}
+class NeedTimeWait extends HostWait {
+  readonly ms: number;
+  constructor(ms: number) { super('MBS time wait'); this.ms = ms; }
+}
 
 interface EmbeddingAsk { account: string; model: string; input: string }
 /** Formulas called GetEmbedding for texts not embedded yet: the step runs again once they are. */
@@ -985,7 +995,7 @@ const PLUGIN_FETCH_MS = 30_000;
 /** Request headers a plug-in can't set. */
 const FORBIDDEN_HEADERS = new Set(['host', 'content-length', 'connection', 'transfer-encoding', 'upgrade']);
 /** Formulas that may call GetEmbedding (or build a call with Evaluate): their step's variables are kept to put back. */
-const EMBEDS = /GetEmbedding\s*\(|Evaluate\s*\(/i;
+const EMBEDS = /MBS\s*\(|GetEmbedding\s*\(|Evaluate\s*\(/i;
 const CURL_PERFORM = /CURL\.Perform|BE_HTTP_|BE_SMTPSend|BE_SMTP_Send|BE_FTP_|BE_SaveURLToFile/i;
 const filesEmbedding = new WeakMap<object, boolean>();
 /** Whether any of a file's custom functions may call GetEmbedding. */
@@ -1468,7 +1478,7 @@ export class ScriptEngine {
 
   /** Ends the run when it was canceled, from the admin console or (while Allow User Abort is on) by the person running it. */
   private canceled(script: string): void {
-    if (this.stopSignal?.aborted) {
+    if (this.stopSignal?.aborted || this.session.lifetime.signal.aborted) {
       this.actions.push({ step: 'Halt Script', script, reason: 'canceled from the admin console' });
       throw new Halt();
     }
@@ -2756,12 +2766,14 @@ export class ScriptEngine {
       return this.quickStep(f, step, pc, b);
     } catch (e) {
       rethrowExecutionRefusal(e);
-      if (e instanceof NeedEmbedding || e instanceof NeedFetch || e instanceof NeedMail) throw new ScriptError(ERROR.unavailable, cantRunAgain(e));
+      if (e instanceof NeedTimeWait || e instanceof NeedEmbedding || e instanceof NeedFetch || e instanceof NeedMail) throw new ScriptError(ERROR.unavailable, cantRunAgain(e));
       throw e;
     }
   }
 
   private async stepWithEmbeddings(f: Frame, step: ScriptStep, pc: number, b: Blocks): Promise<number | 'exit' | undefined> {
+    const previousWait = this.timeWaitDone;
+    this.timeWaitDone = false;
     const keep = this.mayEmbed(f, step);
     const replay = keep ? beginMbsReplay(this.session) : undefined;
     // The answers to the web requests this step has made, dropped when it is done so the next step asks afresh.
@@ -2774,12 +2786,18 @@ export class ScriptEngine {
           return await this.step(f, step, pc, b);
         } catch (e) {
           rethrowExecutionRefusal(e);
-          if (!(e instanceof NeedEmbedding) && !(e instanceof NeedFetch) && !(e instanceof NeedMail)) throw e;
+          if (!(e instanceof NeedTimeWait) && !(e instanceof NeedEmbedding) && !(e instanceof NeedFetch) && !(e instanceof NeedMail)) throw e;
           if (!saved) throw new ScriptError(ERROR.unavailable, cantRunAgain(e));
           restoreVariables(f.locals, saved.locals);
           restoreVariables(this.session.variables, saved.globals);
           this.calcError = 0;
           this.calcMessage = undefined;
+          if (e instanceof NeedTimeWait) {
+            if (tries >= 20) throw new ScriptError(ERROR.unavailable, 'A step made more than 20 cooperative waits');
+            await this.waitForTime(f, e.ms);
+            this.timeWaitDone = true;
+            continue;
+          }
           if (e instanceof NeedFetch) {
             if (tries >= 20) throw new ScriptError(ERROR.network, 'A plug-in made more than 20 web requests in one step');
             made.push(e.ask.key);
@@ -2797,9 +2815,35 @@ export class ScriptEngine {
         }
       }
     } finally {
+      this.timeWaitDone = previousWait;
       if (replay) endMbsReplay(this.session, replay);
       for (const k of made) { this.pluginFetched.delete(k); this.pluginMailed.delete(k); }
     }
+  }
+
+  private timeWaitDone = false;
+
+  private async waitForTime(f: Frame, ms: number): Promise<void> {
+    this.canceled(f.script.name);
+    const scope = cancellationScope([this.aiSignal(), this.session.lifetime.signal]);
+    try {
+      await new Promise<void>((resolve) => {
+        let cancel = () => {};
+        const done = () => { cancel(); scope.signal.removeEventListener('abort', done); resolve(); };
+        scope.signal.addEventListener('abort', done, { once: true });
+        cancel = this.opts.waitClock
+          ? this.opts.waitClock.schedule(ms, done)
+          : (() => { const timer = setTimeout(done, ms); return () => clearTimeout(timer); })();
+        if (scope.signal.aborted) done();
+      });
+      this.canceled(f.script.name);
+      if (scope.signal.aborted) throw new ScriptError(ERROR.unavailable, 'The script time limit ended the wait');
+      // Recheck access after yielding, before replay can read any values.
+      this.enforceExecution(f.store);
+      this.opts.beforeFile?.(f.store);
+      if (this.current.store !== f.store) this.opts.beforeFile?.(this.current.store);
+      this.readCache.clear();
+    } finally { scope.dispose(); }
   }
 
   /** Answers to plug-ins' web requests made during the step that is running, by request. */
@@ -5381,6 +5425,12 @@ export class ScriptEngine {
       persistentData: (name, instance) => win.store.persistentData(name, instance),
       persistentDataIds: (name) => win.store.persistentDataIds(name),
       pluginSession: this.session,
+      mbsWait: (ms) => {
+        if (this.tx || writer.getStore()?.transaction?.open)
+          throw new MbsError('A time wait is not available inside an open transaction');
+        if (this.timeWaitDone) { this.timeWaitDone = false; return; }
+        throw new NeedTimeWait(ms);
+      },
       mbsCall: (name, args) => dynapdfCall(name, args, this.session, this.opts.documents, (path, bytes) => this.pluginFiles.write(path, bytes, false)),
       curlScope: this,
       ...(!this.opts.outbound && this.opts.network ? { curlFetch: (request: MbsCurlRequest) => this.curlFetch(f, request), ftpFetch: (request: PluginFtpRequest) => this.ftpFetch(f, request) } : {}),

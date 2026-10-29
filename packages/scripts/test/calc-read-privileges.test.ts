@@ -252,3 +252,19 @@ test('external value lists and field metadata retain destination privileges duri
     assert.equal((await s.run(formula, true)).result, 'REMOTE-SECRET|REMOTE-SECRET|Public\rSecret');
   } finally { other.close(); s.close(); }
 });
+
+for (const name of ['Time.Sleep', 'Time.Wait']) {
+  test(name + ': a cooperative wait retains field and row read restrictions', async () => {
+    const s = setup();
+    try {
+      let waits = 0;
+      const before = await s.run('GetField ( "Tasks::Secret" ) & "|" & ValueListItems ( "" ; "Titles" )');
+      const after = await s.run('MBS ( "' + name + '" ; 0 ) & "|" & GetField ( "Tasks::Secret" ) & "|" & ValueListItems ( "" ; "Titles" )', false, {
+        waitClock: { schedule(_ms, done) { waits++; queueMicrotask(done); return () => {}; } },
+      });
+      assert.equal(waits, 1);
+      assert.equal(before.result, '|public');
+      assert.equal(after.result, '0|' + before.result);
+    } finally { s.close(); }
+  });
+}

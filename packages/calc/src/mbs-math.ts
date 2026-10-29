@@ -1,8 +1,7 @@
 // MBS ( "Math.…" ) and ( "Time.…" ): MonkeyBread's number and time functions, following MBS's own function pages
 // (mbsplugins.eu). Where a page leaves something out, the comment says what Tabularius does and that it's inferred.
 // Not here: Math.Median (its page's one example disagrees with a median), Math.TextToNumber (its comma or dot
-// detection isn't described), Math.InsidePolygon (deprecated, no result described), Time.Sleep and Time.Wait
-// (they would hold up the server). They give an "isn't available" MBS error.
+// detection isn't described), Math.InsidePolygon (deprecated, no result described). They give an "isn't available" MBS error.
 
 import { MbsError } from './mbs-text.ts';
 import { decimalSum, num, text, type Value } from './values.ts';
@@ -11,8 +10,20 @@ const SECONDS_PER_DAY = 86400;
 const UNIX_EPOCH_DAY = 719163;
 
 /** What a function is given: each parameter as text (FileMaker's text of it) and as the value itself. */
-export interface MathArgs { values: Value[]; texts: string[]; now: () => Date }
+export interface MathArgs { values: Value[]; texts: string[]; now: () => Date; wait?: (ms: number) => void }
 type MbsMath = (a: MathArgs) => Value;
+
+/** Cooperative script waits only; at most 10 seconds and 1024 input characters per call. */
+function timeWait(name: string, { texts, wait }: MathArgs): Value {
+  if (!wait || texts.length !== 1 || texts[0].trim() === '')
+    throw new MbsError(`${name} is not available in Tabularius`);
+  if (texts[0].length > 1024) throw new MbsError('The wait input is too large');
+  const seconds = numberOf(texts[0], 'seconds');
+  if (!Number.isFinite(seconds) || seconds < 0 || seconds > 10)
+    throw new MbsError('The wait must be from 0 to 10 seconds');
+  wait(seconds * 1000);
+  return num(0);
+}
 
 // --- numbers ---------------------------------------------------------------------------------
 
@@ -654,6 +665,10 @@ export const MBS_MATH: Record<string, MbsMath> = {
   },
 
   // --- Time.* -----------------------------------------------------------------------------------
+  // Inferred: Time.Sleep takes one duration in seconds and returns 0; vendor parity is unverified.
+  'time.sleep': (a) => timeWait('Time.Sleep', a),
+  // Inferred: Time.Wait takes one duration in seconds and returns 0; other forms remain unavailable, unverified.
+  'time.wait': (a) => timeWait('Time.Wait', a),
   // MBS 15.0: an empty timestamp gives an empty result.
   'time.format': ({ values: [ts], texts: [, format = '', locale] }) => {
     const fm = fmSeconds(ts, 'timestamp');

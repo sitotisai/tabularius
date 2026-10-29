@@ -132,6 +132,8 @@ export interface CalcContext {
    */
   pluginSession?: object;
   /** Optional DynaPDF functions provided by the script host. */
+  /** Cooperative wait bridge, supplied only by a script host. */
+  mbsWait?(ms: number): void;
   mbsCall?(name: string, args: Value[]): Value | undefined;
   /** Opaque originating database/account key for JavaScript handle quotas and cool-downs, shared across sessions. */
   pluginAccount?: string;
