@@ -195,8 +195,10 @@ test('Compose: no file sets a secret, gives the container more power than the im
       for (const v of (svc.volumes ?? []) as string[]) assert.ok(!/docker\.sock|^\/(?:$|:)|^\/(?:etc|var|usr|root|home):/.test(v), `${file}: ${name} mounts ${v}`);
     }
   }
-  // The one commented-out example of a secret says to change it, so pasting it unchanged is not a working password.
-  assert.match(read('compose.yaml'), /# TABULARIUS_MCP_TOKEN: change-me/);
+  // The file gives no example token to paste: it points at the generated one and says an override must be random and long enough.
+  assert.doesNotMatch(read('compose.yaml'), /TABULARIUS_MCP_TOKEN:/);
+  assert.match(read('compose.yaml'), /tabularius mcp-token \/data/);
+  assert.match(read('compose.yaml'), /at least 16 characters/);
 });
 
 test('Compose: the folder, the port, the restart policy and the stop time fit the image', () => {
