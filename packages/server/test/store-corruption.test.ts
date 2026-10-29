@@ -15,6 +15,7 @@ import { serve } from '../src/index.ts';
 import { backupFolder, restoreBackup } from '../src/backup.ts';
 import { integrity, pageCheck, verifySet } from '../src/backup-verify.ts';
 import { fileChecks } from '../../cli/src/doctor.ts';
+import { notOnWindows } from '../../store/test/windows.ts';
 
 const PAGE = 4096;
 const EXT = '.openhbam.sqlite';
@@ -263,7 +264,7 @@ test('leftovers of an interrupted copy, restore or conversion beside the files d
   assert.equal(integrity(f.path('Work')), 'ok');
 });
 
-test('a write that fails for want of disk says so, writes nothing, and leaves the file sound and in use', (t) => {
+test('a write that fails for want of disk says so, writes nothing, and leaves the file sound and in use', { skip: notOnWindows('it limits the file size with ulimit, which Windows does not have') }, (t) => {
   // The disk is a file-size limit on a child process: writing past it fails the way a full disk does.
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-full-'));
   t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
@@ -380,7 +381,7 @@ test('checkFiles: false leaves the check made at start out', async (t) => {
   assert.deepEqual(off.host.names(), ['Good', 'Work'], 'not checked unless asked');
 });
 
-test('a folder or a file the server\'s user cannot write is refused with a message that says whose access to fix, and nothing is changed', (t) => {
+test('a folder or a file the server\'s user cannot write is refused with a message that says whose access to fix, and nothing is changed', { skip: notOnWindows('it takes write permission away with chmod, and Windows has access lists instead') }, (t) => {
   // Run as an ordinary user: root writes anywhere. Where the test itself is root, the child drops to "nobody".
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-readonly-'));
   t.after(() => { spawnSync('chmod', ['-R', 'u+rwx,go+rwx', dir]); rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }); });
