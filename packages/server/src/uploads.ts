@@ -14,7 +14,7 @@
 // then the .fmp12 sits next to its store, as if it had been dropped into
 // the folder.
 
-import { positiveWholeNumber } from './setting-values.ts';
+import { DEFAULT_MAX_UPLOAD, maxUpload, positiveWholeNumber, uploadIdleMs } from './setting-values.ts';
 import { eachChunk } from './dataapi.ts';
 import type { IncomingMessage } from 'node:http';
 import { randomBytes } from 'node:crypto';
@@ -33,7 +33,6 @@ import { monotonicClock } from '../../store/src/monotonic.ts';
 export const MAX_PIECE = 64 * 1024 * 1024;
 const KEEP = 20;
 /** An upload that has received nothing for this long is abandoned and removed (TABULARIUS_UPLOAD_IDLE_HOURS, default 24; 0 keeps them). */
-export const UPLOAD_IDLE_MS = Math.max(0, Number(process.env.TABULARIUS_UPLOAD_IDLE_HOURS ?? 24) || 0) * 60 * 60 * 1000;
 const UPLOAD_DIR = '.openhbam-uploads';
 const liveOwners = new Set<string>();
 const CRASH_GRACE_MS = 24 * 60 * 60 * 1000;
@@ -42,7 +41,7 @@ const CRASH_GRACE_MS = 24 * 60 * 60 * 1000;
  * byte of it is checked. Default 10 GB; set TABULARIUS_MAX_UPLOAD to the number of
  * bytes (0 for no limit) on a server that hosts larger files from the browser.
  */
-export const MAX_UPLOAD = Math.max(0, Math.trunc(Number(process.env.TABULARIUS_MAX_UPLOAD ?? 10 * 1024 * 1024 * 1024)) || 0);
+export const MAX_UPLOAD = DEFAULT_MAX_UPLOAD;
 
 /** Source bytes allowed across uploading, queued and converting files. Always finite: unset is 20 GiB; 0 or anything but digits is refused. */
 export function maxUploadInProgress(): number {
@@ -145,7 +144,7 @@ export class Uploads {
     this.host = host;
     this.log = log;
     this.now = opts.now ?? (() => monotonicClock.now());
-    this.idleMs = opts.idleMs ?? UPLOAD_IDLE_MS;
+    this.idleMs = opts.idleMs ?? uploadIdleMs();
     this.dir = join(host.dir, UPLOAD_DIR);
     this.sweepCrashLeftovers();
     this.sweeper = setInterval(() => this.sweep(), this.idleMs > 0 ? Math.min(this.idleMs, 15 * 60 * 1000) : 15 * 60 * 1000).unref();
@@ -232,8 +231,9 @@ export class Uploads {
     const size = Number(body.size);
     if (size === 0) throw new UploadError(400, `${name}.fmp12 is empty (0 bytes). If it shouldn't be, copy it again and make sure the copy finished, then drop it here again.`);
     if (!Number.isSafeInteger(size) || size < 0) throw new UploadError(400, 'Give the file\'s size in bytes');
-    if (MAX_UPLOAD && size > MAX_UPLOAD) {
-      const sizes = readableBytes(size) === readableBytes(MAX_UPLOAD) ? [`${size.toLocaleString('en-US')} bytes`, `${MAX_UPLOAD.toLocaleString('en-US')} bytes`] : [readableBytes(size), readableBytes(MAX_UPLOAD)];
+    const limit = maxUpload();
+    if (limit && size > limit) {
+      const sizes = readableBytes(size) === readableBytes(limit) ? [`${size.toLocaleString('en-US')} bytes`, `${limit.toLocaleString('en-US')} bytes`] : [readableBytes(size), readableBytes(limit)];
       throw new UploadError(413, `${name}.fmp12 is ${sizes[0]}, more than the ${sizes[1]} this server takes in one upload. Copy it into the hosted folder (${this.host.dir}) instead, or start the server with TABULARIUS_MAX_UPLOAD set to a larger number of bytes.`);
     }
     this.sweep();
