@@ -1,3 +1,5 @@
+import { pageCall } from './page-calls.ts';
+import { printPage } from '../src/page-calls.ts';
 // The alternative client (/next/): a calm, data-first way to work in a hosted file. Instead of drawing the
 // file's layouts, it shows each table as a collection (a list, and a record beside it) worked out from the
 // layouts the account can open, and puts every command behind one bar (⌘K). It reads and writes through the
@@ -541,41 +543,19 @@ class Workspace {
    * as this account, so the server's privilege checks apply.
    */
   private async pageCall(method: string, args: unknown[]): Promise<unknown> {
-    const text = (v: unknown, what: string): string => {
-      if (typeof v !== 'string' || !v) throw new Error(`${what} is missing`);
-      return v;
-    };
-    const fields = (v: unknown): Record<string, Value> => {
-      if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('Field data must be an object of field names and values');
-      return v as Record<string, Value>;
-    };
-    const range = (o: unknown) => {
-      const x = (o && typeof o === 'object' ? o : {}) as { offset?: unknown; limit?: unknown; sort?: unknown };
-      return {
-        offset: Math.max(1, Math.trunc(Number(x.offset) || 1)),
-        limit: Math.min(1000, Math.max(1, Math.trunc(Number(x.limit) || 100))),
-        ...(Array.isArray(x.sort) ? { sort: x.sort as SortSpec[] } : {}),
-      };
-    };
-    switch (method) {
-      case 'context': return { file: this.api.db, layout: this.page?.layout, mode: 'browse' };
-      case 'records': return this.api.records(text(args[0], 'The layout'), range(args[1]));
-      case 'find': {
-        const query = Array.isArray(args[1]) ? args[1] : args[1] && typeof args[1] === 'object' ? [args[1]] : undefined;
-        if (!query?.length) throw new Error('A find needs at least one request, such as {"Status": "Open"}');
-        return this.api.records(text(args[0], 'The layout'), { ...range(args[2]), query: query as FindRequest[] });
-      }
-      case 'record': return this.api.record(text(args[0], 'The layout'), text(args[1], 'The record id'));
-      case 'create': return { recordId: await this.api.create(text(args[0], 'The layout'), fields(args[1])) };
-      case 'update': return { modId: await this.api.update(text(args[0], 'The layout'), text(args[1], 'The record id'), fields(args[2])) };
-      case 'remove': await this.api.remove(text(args[0], 'The layout'), text(args[1], 'The record id')); return { deleted: true };
-      case 'summarize': {
-        if (!args[0] || typeof args[0] !== 'object') throw new Error('summarize takes a widget, such as {"kind": "number", "layout": "Invoices"}');
-        return this.api.summarize(args[0] as Record<string, unknown>);
-      }
-      case 'performScript': await this.runScript(text(args[0], 'The script name'), String(args[1] ?? '')); return null;
-    }
-    throw new Error(`${method} is not supported in /next/; use /app/.`);
+    return pageCall({
+      api: this.api, layout: this.page?.layout,
+      runScript: (name, parameter) => this.runScript(name, parameter),
+      // Collections use their chosen layout; equivalence with FileMaker navigation is unverified.
+      goToLayout: async (name) => {
+        const page = this.model.pages.find((p) => p.layout === name);
+        const collection = this.model.collections.find((c) => c.layouts.includes(name));
+        if (page) location.hash = `#/~/${encodeURIComponent(page.layout)}`;
+        else if (collection) this.go(collection);
+        else throw new Error(`Opening layout "${name}" is not supported in /next/; use /app/.`);
+      },
+      print: printPage,
+    }, method, args);
   }
 
   // ---- a collection

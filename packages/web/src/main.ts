@@ -1,3 +1,4 @@
+import { listedLayouts, pageLayouts, pageGoToLayout, pagePrint, printPage } from './page-calls.ts';
 // The app shell: pick a database, log in, then browse its layouts with a
 // status toolbar like FileMaker's (records, find, sort, form/list/table view).
 
@@ -3259,15 +3260,7 @@ class Session implements Host {
    * layout showing, which the Layout pop-up still names.
    */
   private listedLayouts(): MenuItem[] {
-    const out: MenuItem[] = [];
-    let skipBelow = -1;
-    for (const m of this.menuItems) {
-      if (skipBelow >= 0 && m.depth > skipBelow) continue;
-      skipBelow = -1;
-      if (m.hidden && m.kind === 'folder') skipBelow = m.depth;
-      else if (!m.hidden || m.name === this.meta?.layout.name) out.push(m);
-    }
-    return out;
+    return listedLayouts(this.menuItems, this.meta?.layout.name);
   }
 
   /** Items of FileMaker's built-in submenus that the web client has. */
@@ -6230,13 +6223,8 @@ class Session implements Host {
         };
       }
       // The layouts this account may open (its Layouts menu, without folders), and going to one.
-      case 'layouts': return this.listedLayouts().filter((m) => m.kind === 'item' && m.open).map((m) => m.name);
-      case 'goToLayout': {
-        const name = text(args[0], 'The layout');
-        if (!this.listedLayouts().some((m) => m.kind === 'item' && m.open && m.name === name)) throw new Error(`There is no layout "${name}" to go to`);
-        await this.goToLayout(name);
-        return null;
-      }
+      case 'layouts': return pageLayouts(this.listedLayouts());
+      case 'goToLayout': return pageGoToLayout(this.listedLayouts(), text(args[0], 'The layout'), (name) => this.goToLayout(name));
       case 'records': return this.api.records(text(args[0], 'The layout'), page(args[1]));
       case 'find': {
         const query = Array.isArray(args[1]) ? args[1] : args[1] && typeof args[1] === 'object' ? [args[1]] : undefined;
@@ -6253,12 +6241,7 @@ class Session implements Host {
         return this.api.summarize(args[0] as Record<string, unknown>);
       }
       // The browser's print dialog for the window as it is (the page, not a preview of records): where a dashboard is saved as PDF.
-      case 'print': {
-        if (!this.printing) throw new Error('This account isn\'t allowed to print.');
-        await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 100)));
-        window.print();
-        return null;
-      }
+      case 'print': return pagePrint(this.printing, printPage);
       case 'performScript': {
         const script = text(args[0], 'The script name');
         // FileMaker queues a script asked for while another runs (option 0, Continue); so does this.

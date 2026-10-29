@@ -37,8 +37,16 @@ panel beside it. Every command goes through one bar (⌘K / Ctrl K).
   [web-client.md](web-client.md)) is listed above the collections as a page, and fills the window under its
   name. With "Allow JavaScript to perform FileMaker scripts" on, it gets `window.tabularius` and
   `FileMaker.PerformScript`, answered as the signed-in account. The bridge supports `context`, `records`, `find`, `record`,
-  `create`, `update`, `remove`, `summarize` and `performScript`. Unlike `/app/`, `layouts`,
-  `goToLayout`, `valueList` and `print` are not supported here; pages using them must use `/app/`. **Edit page** (or ⌘K,
+  `create`, `update`, `remove`, `summarize`, `performScript`, `layouts`, `goToLayout`, `valueList` and `print`.
+  `layouts()` lists open layouts using the classic menu's hidden-layout and hidden-folder rules.
+  `goToLayout(name)` checks that same account-scoped menu, then opens a page or the layout's collection.
+  A collection uses its chosen layout rather than reproducing the requested layout's design; a layout absent
+  from the loaded pages and collections rejects with “not supported in /next/; use /app/”.
+  `valueList(name)` uses the current page's layout and the same account-scoped API as `/app/`.
+  `print()` checks the account's printing permission and opens the browser print dialog for the window as shown.
+  These are Tabularius bridge behaviours; equivalence with FileMaker navigation and printing is unverified.
+  <!-- known-difference: Web client ;; The next client navigates a bridge layout request to its page or collection, not the original layout design ;; A collection uses its chosen layout and a layout absent from the loaded model is refused ;; A FileMaker run comparing navigation and printing -->
+  **Edit page** (or ⌘K,
   Edit this page…) opens its code beside a preview that follows the typing; Save keeps it in the layout, in the
   web viewer's address formula (`packages/web/src/page-source.ts`, shared with the classic client's page
   editor), so FileMaker Pro opens the same layout. ⌘K, **New page…** makes one on the open table that lists
