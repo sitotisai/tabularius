@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createStore } from '../../store/src/index.ts';
+import { withFilesystemHook } from '../../store/src/fs-boundary.ts';
 import { backupFolder, restoreAt, restoreBackup } from '../src/backup.ts';
 import { Host } from '../src/host.ts';
 import { approveInRecord, approveRestoredFiles, firstStartRecord, HOSTED_RECORD_FILE, loadHostedRecord, verifiedHostedRecord, vet } from '../src/hosted-record.ts';
@@ -41,6 +42,52 @@ test('record is strict, atomic, and a damaged copy cannot be overwritten', (t) =
     writeFileSync(path, JSON.stringify(wrong));
     assert.equal(loadHostedRecord(dir), null);
   }
+});
+
+test('a temp swapped for a link before the rename is refused', { skip: process.platform === 'win32' }, (t) => {
+  const dir = folder(t);
+  const victim = join(dir, 'victim');
+  writeFileSync(victim, 'keep');
+  firstStartRecord(dir, [{ name: 'A', id: '00000000-0000-4000-8000-000000000001' }]);
+  const path = join(dir, HOSTED_RECORD_FILE);
+  const before = readFileSync(path, 'utf8');
+  assert.throws(() => withFilesystemHook((e) => {
+    if (e.operation === 'rename' && e.phase === 'checked') {
+      rmSync(e.path);
+      symlinkSync(victim, e.path);
+    }
+  }, () => approveInRecord(dir, 'B', '00000000-0000-4000-8000-000000000002', 'admin', 'admin')),
+  (e: NodeJS.ErrnoException) => e.code === 'ESTALE');
+  assert.equal(readFileSync(path, 'utf8'), before);
+  assert.equal(lstatSync(path).isSymbolicLink(), false);
+  assert.equal(readFileSync(victim, 'utf8'), 'keep');
+  assert.deepEqual(loadHostedRecord(dir), JSON.parse(before));
+});
+
+test('a record write survives the destination being replaced by another writer', (t) => {
+  const dir = folder(t);
+  firstStartRecord(dir, [{ name: 'A', id: '00000000-0000-4000-8000-000000000001' }]);
+  const path = join(dir, HOSTED_RECORD_FILE);
+  const before = loadHostedRecord(dir)!;
+  const replacement = { ...before, instance: before.instance === '00000000-0000-4000-8000-000000000003'
+    ? '00000000-0000-4000-8000-000000000004' : '00000000-0000-4000-8000-000000000003' };
+  let replaced = false;
+  withFilesystemHook((e) => {
+    if (e.operation === 'rename' && e.phase === 'checked' && !replaced) {
+      replaced = true;
+      const temp = join(dir, 'other-record.tmp');
+      writeFileSync(temp, JSON.stringify(replacement));
+      renameSync(temp, path);
+      assert.deepEqual(loadHostedRecord(dir), replacement);
+    }
+  }, () => approveInRecord(dir, 'B', '00000000-0000-4000-8000-000000000002', 'admin', 'admin'));
+  assert.equal(replaced, true);
+  const record = loadHostedRecord(dir);
+  assert.ok(record);
+  assert.deepEqual(Object.keys(record.files).sort(), ['a', 'b']);
+  assert.equal(record.files.b.id, '00000000-0000-4000-8000-000000000002');
+  assert.equal(record.files.b.by, 'admin');
+  assert.equal(record.files.b.how, 'admin');
 });
 
 test('an abandoned record temp does not block an approval', (t) => {

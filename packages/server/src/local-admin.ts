@@ -10,8 +10,9 @@
 // server stops.
 
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { removeEntrySync, writeFileSync } from '../../store/src/fs-boundary.ts';
 import { sameSecret } from './secrets.ts';
 
 export const LOCAL_FILE = '.openhbam.local';
@@ -34,8 +35,15 @@ export function localUrl(hostname: string | undefined, port: number, tls: boolea
 export function openLocalAccess(folder: string, url: string): () => void {
   const file = join(folder, LOCAL_FILE);
   const access: LocalAccess = { pid: process.pid, url, token: randomBytes(32).toString('hex') };
-  rmSync(file, { force: true }); // a new file, so the mode below applies
-  writeFileSync(file, JSON.stringify(access), { mode: 0o600 });
+  // A new file, so the mode applies. The boundary refuses a link, or another server's file, that turns up
+  // between removal and creation: remove it again and retry rather than follow it.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      removeEntrySync(file, { force: true });
+      writeFileSync(file, JSON.stringify(access), { mode: 0o600, flag: 'wx' });
+      break;
+    } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ESTALE' || attempt === 2) throw e; }
+  }
   return () => {
     try {
       if (sameSecret((JSON.parse(readFileSync(file, 'utf8')) as LocalAccess).token, access.token)) rmSync(file, { force: true });
