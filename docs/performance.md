@@ -480,6 +480,20 @@ implementations of the changed store methods also exceeded those same five
 budgets. They have not been raised or disabled. This PR therefore does not
 claim a green full benchmark gate on this machine.
 
+### Cached ExecuteSQL baseline refresh
+
+Three fresh runs at the baseline's 50,000-record configuration reproduced the
+four cached ExecuteSQL failures: the unchanged SUM, GROUP BY, JOIN and ORDER BY
+queries were 123%, 271%, 246% and 124% above their old ratios. Their matching
+after-change queries were 20–43% faster than baseline. The cache path still
+returns kept results at the current data stamp. File history after the old
+baseline shows no substantive change to that path; the later changes there
+validate SQL text size and correct schema visibility. The old ratios therefore
+do not describe this checkout's current timings, so `bench:check
+--update-baseline` regenerated the operation baseline without changing the 40%
+tolerance or the 12,000 ms wide budget. The wide HTTP probe could not run here
+because this sandbox refuses binding to `127.0.0.1`.
+
 ## Also see
 
 - `node scripts/loadtest.ts <file.fmp12> --users 50`: many people using one
