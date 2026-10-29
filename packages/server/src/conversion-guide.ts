@@ -281,7 +281,7 @@ export function conversionGuide(store: Store, hosted: string[] = [], report: Con
   if (r.steps.relatedOptions.length) {
     differs.push({
       title: 'Go to Related Record options are not read', severity: 'high', count: uses(r.steps.relatedOptions), where: places(r.steps.relatedOptions),
-      what: `${plural(uses(r.steps.relatedOptions), 'Go to Related Record step')} came from the file with its two options unread. If the original used "Match all records in current found set", it now goes from the current record alone, and "Show only related records" turned off is not supported. A run says so in its warnings.`,
+      what: `${plural(uses(r.steps.relatedOptions), 'Go to Related Record step')} came from the file with its two options unread. If the original used "Match all records in current found set", it now goes from the current record alone, and "Show only related records" defaults to on. A run says so in its warnings.`,
       instead: 'Open each step in the script editor and set the option again, or check the original in FileMaker.',
     });
   }
