@@ -64,7 +64,7 @@ function sourceFiles(root: string): string[] {
         if (e.name === 'node_modules') continue;
         const p = join(dir, e.name);
         if (e.isDirectory()) walk(p);
-        else if (e.name.endsWith('.ts') && !e.name.endsWith('.d.ts')) out.push(p);
+        else if (e.name.endsWith('.ts') && !e.name.endsWith('.d.ts')) out.push(p.replaceAll('\\', '/'));
       }
     };
     try { walk(join(root, 'packages', pkg, 'src')); } catch { /* a package without src */ }
@@ -151,7 +151,7 @@ export function scan(root: string): Reader[] {
         }
         if (api) {
           const { line } = sf.getLineAndCharacterOfPosition(node.getStart());
-          const file = relative(root, sf.fileName);
+          const file = relative(root, sf.fileName).replaceAll('\\', '/');
           readers.push({
             at: `${file}:${line + 1}`, file, line: line + 1, within: enclosing(node), api,
             gated: api.startsWith('sql.') ? false : gatedBy(node.arguments),
