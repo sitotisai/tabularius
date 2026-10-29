@@ -660,9 +660,9 @@ functions run natively, following MBS's own documentation: case, trimming,
 lists and words, Base64, hex, URL, quoted-printable, HTML and XML encoding in
 the text encoding you name (UTF-8, UTF-16, Latin-1, Windows, Mac, Hex,
 Base64; "Native" is Mac Roman on a Mac, Windows-1252 on Windows and UTF-8 on
-Linux), accents, Soundex, string distances and MIME types. Not yet: <!-- known-difference: MBS plug-in functions ;; Text.AddLineNumbers, Text.SoundExGerman, the styled-text, file and container functions and the DOS encoding are not available ;; The call gives ? and error 3 ;; Owner decision on whether to build them, and MBS documentation or samples -->
-`Text.AddLineNumbers`, `Text.SoundExGerman`, the styled-text, file and
-container ones, and the DOS encoding. MBS's `RegEx.*` functions run too
+Linux), accents, Soundex, string distances, MIME types, line numbering and German Soundex. The numbering separator and
+German phonetic edge rules are inferred and unverified. <!-- known-difference: MBS plug-in functions ;; Text.AddLineNumbers uses an inferred `number: ` prefix and CR separators; the result is unverified ;; Numbering output can differ from MBS ;; An MBS run on multiline text --> <!-- known-difference: MBS plug-in functions ;; Text.SoundExGerman uses an inferred Kölner Phonetik table; the result is unverified ;; German phonetic edge cases can differ from MBS ;; An MBS run on published German Soundex examples --> Not yet: <!-- known-difference: MBS plug-in functions ;; The styled-text, file and container functions and the DOS encoding are not available ;; The call gives ? and error 3 ;; Owner decision on whether to build them, and MBS documentation or samples -->
+the styled-text, file and container ones, and the DOS encoding. MBS's `RegEx.*` functions run too
 (Compile, Execute, Substring, Results, Replace, ReplaceAll, Extract, Match,
 FindMatches, Quote and the rest), with MBS's option names and numbers.
 Patterns are PCRE; Tabularius translates them for JavaScript's engine and
