@@ -2414,6 +2414,7 @@ export class Store {
     let was!: Schema;
     let result;
     let privBefore!: Map<string, string>;
+    let prepared = false;
     const nested = this.sql.isTransaction;
     this.sql.exec(nested ? 'SAVEPOINT security_design' : 'BEGIN IMMEDIATE');
     try {
@@ -2423,6 +2424,7 @@ export class Store {
       // so applyOps can rewrite them, and remember each set's state to spot which changed.
       privBefore = new Map(this.privilegeSets().map((p) => [p.name, JSON.stringify(p)]));
       result = applyOps({ schema: this.schema, designs: this.designs(), privileges: [...privBefore.keys()].map((n) => JSON.parse(privBefore.get(n)!) as PrivilegeDefinition), fileMode: this.fileMode, externalFile: (d) => this.otherFileDesign(d, opts.readOtherFile) }, ops, (id) => this.deletedDesign(id) ?? (opts.recordedRestore ? this.recordedRestore(ops, id) : undefined));
+      prepared = true;
       // Their triggers name columns, which would block dropping or changing them; finds build them again.
       this.words.dropAll();
       this.designAccount = opts.account ?? null;
@@ -2462,9 +2464,12 @@ export class Store {
       crashPoint('design-apply:after-commit');
     } catch (e) {
       if (this.sql.isTransaction) this.sql.exec(nested ? 'ROLLBACK TO security_design; RELEASE security_design' : 'ROLLBACK');
-      // Waiting rows written into the holder's transaction inside the savepoint just undone wait again.
-      this.requeueDeferred(this.deferredIntoHold.splice(intoHold));
-      this.resetCaches();
+      // A change refused before anything was written leaves the caches as they were.
+      if (prepared) {
+        // Waiting rows written into the holder's transaction inside the savepoint just undone wait again.
+        this.requeueDeferred(this.deferredIntoHold.splice(intoHold));
+        this.resetCaches();
+      }
       throw e instanceof DesignError ? new StoreError(e.code, e.message) : e;
     }
     if (this.securityBatchPublications) this.securityBatchPublications.push(() => this.onDesignChange());
