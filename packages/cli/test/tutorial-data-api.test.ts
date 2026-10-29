@@ -9,6 +9,9 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+// Git Bash reads C:\a\b as C:ab; it takes C:/a/b.
+const bash = (path: string): string => path.replaceAll('\\', '/');
+
 const root = join(import.meta.dirname, '..', '..', '..');
 const main = join(root, 'packages', 'cli', 'src', 'main.ts');
 const page = readFileSync(join(root, 'docs', 'tutorials', 'data-api-client.md'), 'utf8');
@@ -25,7 +28,7 @@ test('the Data API tutorial works as written', { skip: !hasCurl && 'curl missing
   const port = await freePort();
   const folder = join(work, 'tabularius-tutorial');
   // The page's own text, with the throwaway folder and port in place of the ones it shows.
-  const adapt = (s: string) => s.replaceAll('~/tabularius-tutorial', folder).replaceAll('8080', String(port)).replaceAll('examples/first-app', join(root, 'examples', 'first-app'));
+  const adapt = (s: string) => s.replaceAll('~/tabularius-tutorial', bash(folder)).replaceAll('8080', String(port)).replaceAll('examples/first-app', bash(join(root, 'examples', 'first-app')));
   const blocks = [...page.matchAll(/^```(\w+)( run)?\n([\s\S]*?)^```$/gm)].map((m) => ({ lang: m[1], run: !!m[2], code: m[3] }));
   const shell: string[] = [];
   let server: ReturnType<typeof spawn> | undefined;
@@ -47,7 +50,7 @@ test('the Data API tutorial works as written', { skip: !hasCurl && 'curl missing
     }
     const at = shell.indexOf('__SERVE__');
     assert.ok(at > 0, 'the page shows how to start the server');
-    const run = (script: string) => spawnSync('bash', ['-ec', `tabularius() { node --no-warnings '${main}' "$@"; }\n${script}`], { cwd: work, encoding: 'utf8', env: { ...process.env, HOME: work } });
+    const run = (script: string) => spawnSync('bash', ['-ec', `tabularius() { node --no-warnings '${bash(main)}' "$@"; }\n${script}`], { cwd: work, encoding: 'utf8', env: { ...process.env, HOME: work } });
 
     const setup = run(shell.slice(0, at).join('\n'));
     assert.equal(setup.status, 0, setup.stdout + setup.stderr);

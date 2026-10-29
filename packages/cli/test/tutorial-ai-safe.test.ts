@@ -8,6 +8,9 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+// Git Bash reads C:\a\b as C:ab; it takes C:/a/b.
+const bash = (path: string): string => path.replaceAll('\\', '/');
+
 const root = join(import.meta.dirname, '..', '..', '..');
 const main = join(root, 'packages', 'cli', 'src', 'main.ts');
 const page = readFileSync(join(root, 'docs', 'tutorials', 'let-an-ai-use-your-file-safely.md'), 'utf8');
@@ -23,7 +26,7 @@ test('the let-an-ai-use-your-file-safely tutorial works as written', { skip: !ha
   const work = mkdtempSync(join(tmpdir(), 'tabularius-tutorial-ai-'));
   const folder = join(work, 'tabularius');
   const blocksFor = (port: number) => {
-    const adapt = (s: string) => s.replaceAll('~/tabularius', folder).replace(/\b8080\b/g, String(port)).replaceAll('examples/support-desk', join(root, 'examples', 'support-desk'));
+    const adapt = (s: string) => s.replaceAll('~/tabularius', bash(folder)).replace(/\b8080\b/g, String(port)).replaceAll('examples/support-desk', bash(join(root, 'examples', 'support-desk')));
     return [...page.matchAll(/^```(\w+)(?: (run|serve))?\n([\s\S]*?)^```$/gm)].map((m) => ({ lang: m[1], run: m[2] === 'run', code: adapt(m[3]) }));
   };
   let port = await freePort();
@@ -36,7 +39,7 @@ test('the let-an-ai-use-your-file-safely tutorial works as written', { skip: !ha
     assert.equal(setup.length, 2, 'the page has its store creation and privacy setup blocks');
     assert.ok(serve, 'the page shows how to start the server');
     assert.ok(examples.length >= 8, 'the page has its runnable API, MCP and audit blocks');
-    const run = (script: string) => spawnSync('bash', ['-ec', `tabularius() { node --no-warnings '${main}' "$@"; }\n${script}`], { cwd: work, encoding: 'utf8', env: { ...process.env, HOME: work } });
+    const run = (script: string) => spawnSync('bash', ['-ec', `tabularius() { node --no-warnings '${bash(main)}' "$@"; }\n${script}`], { cwd: work, encoding: 'utf8', env: { ...process.env, HOME: work } });
     const made = run(setup.map((b) => b.code).join('\n'));
     assert.equal(made.status, 0, made.stdout + made.stderr);
 
