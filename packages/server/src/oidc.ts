@@ -776,6 +776,8 @@ export function assertSameOidcFile(expected: Pick<Stats, 'dev' | 'ino'>, actual:
 export function oidcHostDirectoryWarning(hostDir: string): string | undefined {
   const st = statSync(hostDir);
   const uid = process.getuid?.();
+  // Windows has no owner or mode bits to read: its folders are protected by access lists.
+  if (process.platform === 'win32') return;
   if ((uid !== undefined && st.uid !== uid) || (st.mode & 0o022) !== 0) return 'The hosted folder is not owned by this service or is group/world-writable; protect it from replacement by other users.';
 }
 
@@ -785,7 +787,7 @@ function secureOidcDirectory(hostDir: string): string {
   catch (e) { if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e; }
   const st = lstatSync(dir);
   const uid = process.getuid?.();
-  if (!st.isDirectory() || (uid !== undefined && st.uid !== uid) || (st.mode & 0o077) !== 0) throw new Error('OIDC storage directory must be a real directory owned by this service and private (mode 0700)');
+  if (!st.isDirectory() || (uid !== undefined && st.uid !== uid) || (process.platform !== 'win32' && (st.mode & 0o077) !== 0)) throw new Error('OIDC storage directory must be a real directory owned by this service and private (mode 0700)');
   return dir;
 }
 
@@ -793,7 +795,7 @@ function secureExisting(file: string): Stats | undefined {
   let st;
   try { st = lstatSync(file); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return; throw e; }
   const uid = process.getuid?.();
-  if (!st.isFile() || (uid !== undefined && st.uid !== uid) || (st.mode & 0o077) !== 0) throw new Error(`Unsafe OIDC storage file: ${file}`);
+  if (!st.isFile() || (uid !== undefined && st.uid !== uid) || (process.platform !== 'win32' && (st.mode & 0o077) !== 0)) throw new Error(`Unsafe OIDC storage file: ${file}`);
   return st;
 }
 
