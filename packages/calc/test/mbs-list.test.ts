@@ -119,3 +119,50 @@ test('MBS List.BestMatch refuses a call that would compare too much', () => {
   assert.throws(() => x('List.BestMatch', Array(5000).fill(v).join('\r'), 'b'.repeat(200)), /at most 100000000/);
   assert.equal(x('List.BestMatch', Array(100).fill(v).join('\r'), v), v);
 });
+
+test('MBS List.SortWithEvaluate: expression keys, stable ties and empty input', () => {
+  const sort = MBS_LIST['list.sortwithevaluate'];
+  const evalKey = (formula: string) => formula.replace(/^\s*"|"\s*$/g, '').toLowerCase();
+  assert.equal(sort([L('b¶A¶a¶B'), '?'], evalKey), L('A¶a¶b¶B¶'));
+  assert.equal(sort(['', '?'], evalKey), '');
+});
+
+test('MBS List.SortWithEvaluate evaluates an expression against each value', () => {
+  assert.equal(evaluateText('MBS ( "List.SortWithEvaluate" ; "b¶A" ; "Upper ( ? )" )', {}), 'A\rb\r');
+});
+
+test('MBS List.SortWithEvaluate: unicode and sibling Sort ordering', () => {
+  const sort = MBS_LIST['list.sortwithevaluate'];
+  const evalKey = (formula: string) => formula.slice(1, -1);
+  assert.equal(sort(['é\r水\r😀\rá', '?'], evalKey), 'á\ré\r水\r😀\r');
+  const items = L('b¶A¶a¶B');
+  assert.equal(sort([items, '?'], evalKey), x('List.Sort', items, 0, 0));
+});
+
+test('MBS List.SortWithEvaluate: bad forms and the enclosing evaluate work budget', () => {
+  assert.throws(() => MBS_LIST['list.sortwithevaluate'](['a\rb', 'Upper ( value )'], (f) => f), /\? value placeholder/);
+  assert.throws(() => MBS_LIST['list.sortwithevaluate'](['', '"?"'], (f) => f), /\? value placeholder/);
+  let calls = 0;
+  assert.throws(() => MBS_LIST['list.sortwithevaluate'](['a\rb\rc', '?'], () => {
+    if (++calls > 2) throw new Error('Calculation exceeds the supported work budget');
+    return 'a';
+  }), /work budget/);
+});
+
+test('MBS List.SortWithEvaluate does not replace a question mark inside a string literal', () => {
+  const got = MBS_LIST['list.sortwithevaluate'](['b\ra', 'If ( ? = "?" ; "z" ; ? )'], (formula) => formula);
+  assert.equal(got, 'a\rb\r');
+});
+
+test('MBS List.SortWithEvaluate: a value cannot close its text constant or add to the formula', () => {
+  const values = ['\\', 'a"b', '" & Left ( "zz" ; 1 ) & "', '\\" & "x', 'plain'];
+  const keyed = (v: string) => String(v.length);
+  const got = MBS_LIST['list.sortwithevaluate']([values.join('\r'), 'Length ( ? )'], (formula) => evaluateText(formula, {}));
+  const expected = [...values].sort((a, b) => (keyed(a) < keyed(b) ? -1 : keyed(a) > keyed(b) ? 1 : values.indexOf(a) - values.indexOf(b)));
+  assert.equal(got, expected.join('\r') + '\r');
+});
+
+test('MBS List.SortWithEvaluate: large input exceeds the calculation budget', () => {
+  const values = Array.from({ length: 100_000 }, (_, i) => `v${i}`).join('\n');
+  assert.throws(() => evaluateText(`MBS ( "List.SortWithEvaluate" ; "${values}" ; "?" )`, {}), /work budget/);
+});

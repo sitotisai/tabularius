@@ -6,18 +6,17 @@ import { ENTRY_BYTES, LIST_SLOT_BYTES, RetainedMap, retainedBudget, stringBytes 
 // change the list they're given, or with ReturnNewList give a new one. References start at 12000 for each session
 // (MBS: "Reference numbers start at 12000 and increase with each new list"), or take the name given to QuickList.New.
 // Where a page leaves something out the comment says what Tabularius does and that it's inferred.
-// Not here: SortWithEvaluate and AddSQL. They give an "isn't available" MBS error.
 
 import { MbsError } from './mbs-text.ts';
 import { compileRegex, optionsOf, regexMatchesEach } from './mbs-regex.ts';
 import { parseJson } from './mbs-json.ts';
 import {
   and, andColumn, bestMatch, crossProduct, csvSplit, deCombine, deleteColumn, deserialize, duplicates, listOut, matcher,
-  matchesPostfix, matchesPrefix, matchesSubString, not, notColumn, or, orColumn, removeFix, serialize, shuffle, sortOrder, sortValues, subList, xorColumn,
+  matchesPostfix, matchesPrefix, matchesSubString, not, notColumn, or, orColumn, removeFix, serialize, shuffle, sortOrder, sortValues, subList, xorColumn, sortWithEvaluate,
   trimValue, unique, valuesOf, xor,
 } from './mbs-list.ts';
 
-type MbsQuickList = (t: string[], scope: object) => string | number;
+type MbsQuickList = (t: string[], scope: object, services?: { evaluate?: (formula: string) => string; executeSQL?: (query: string, args: string[]) => string[][] }) => string | number;
 
 interface Session { next: number; lists: RetainedMap<string, string[]> }
 const sessions = new WeakMap<object, Session>();
@@ -297,6 +296,8 @@ export const MBS_QUICKLIST: Record<string, MbsQuickList> = {
   'quicklist.shuffle': ([ref, nl], scope) => changed(scope, ref, shuffle(listOf(scope, ref)), flag(nl)),
   'quicklist.trim': ([ref], scope) => changed(scope, ref, listOf(scope, ref).map(trimValue), false),
   'quicklist.sort': ([ref, flags], scope) => changed(scope, ref, sortValues(listOf(scope, ref), int(flags, 'flags', 0)), false),
+  // Inferred: same ? placeholder and stable text-key order as List.SortWithEvaluate.
+  'quicklist.sortwithevaluate': ([ref, expression = ''], scope, services) => changed(scope, ref, sortWithEvaluate(listOf(scope, ref), expression, services?.evaluate ?? (() => fail('SortWithEvaluate is not available here'))), false),
   // Sorts the list and puts the other lists in the same new order; they have to be as long (inferred).
   'quicklist.sortwith': ([ref, flags, ...others], scope) => {
     const items = listOf(scope, ref);
@@ -307,6 +308,16 @@ export const MBS_QUICKLIST: Record<string, MbsQuickList> = {
     others.forEach((o, k) => changes.set((o ?? '').trim(), perm.map((i) => lists[k][i])));
     sessionOf(scope).lists.replaceMany(changes);
     return 'OK';
+  },
+  // Inferred: append the first column of every query row; SQL is read only and uses ExecuteSQL's guarded callback.
+  'quicklist.addsql': ([ref, query = '', ...args], scope, services) => {
+    const executeSQL = services?.executeSQL;
+    if (!executeSQL) return fail('AddSQL is not available here');
+    const items = listOf(scope, ref);
+    const rows = executeSQL(query, args);
+    if (rows.length > 100_000) fail('AddSQL returns at most 100000 rows');
+    const values = rows.map((row) => row[0] ?? '');
+    return changed(scope, ref, [...items, ...values], false);
   },
   // Not case sensitive; "" when it isn't there.
   'quicklist.valueindex': ([ref, value = ''], scope) => {
