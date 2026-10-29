@@ -1,5 +1,5 @@
-// End to end: installs the server as a real service on this machine, then
-// upgrades it, then upgrades it to a version that can't start and checks that
+// End to end: installs the server as a real service on this machine, kills it
+// to see the service manager start it again, then upgrades it, then upgrades it to a version that can't start and checks that
 // the one before is put back. Run in CI on macOS, Linux and Windows
 // (.github/workflows/ci.yml); it needs sudo (macOS, Linux) or an
 // administrator (Windows), as it installs a system service.
@@ -12,7 +12,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, appendFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, appendFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { checkHealth, healthUrl, waitForRestart } from '../packages/cli/src/service.ts';
@@ -66,6 +66,18 @@ try {
   assert.equal(install.status, 0, 'service install');
   installed = true;
   assert.ok(await waitForRestart(url, t0, 90_000), `the service answers at ${url}`);
+  assert.deepEqual(await databases(), ['Kept']);
+
+  step('kill the server: the service manager starts it again');
+  const pidFile = join(folder, '.openhbam.pid');
+  const victim = Number(readFileSync(pidFile, 'utf8'));
+  assert.ok(Number.isInteger(victim) && victim > 0, `a process id in ${pidFile}`);
+  const killedAt = Date.now();
+  if (process.platform === 'win32') sh('taskkill', ['/F', '/T', '/PID', String(victim)]);
+  else process.kill(victim, 'SIGKILL');
+  // Task Scheduler waits a full minute before it restarts a failed task.
+  assert.ok(await waitForRestart(url, killedAt, 240_000), 'the service is started again after the server is killed');
+  assert.notEqual(Number(readFileSync(pidFile, 'utf8')), victim, 'a new server process');
   assert.deepEqual(await databases(), ['Kept']);
 
   step('upgrade to a new version');
