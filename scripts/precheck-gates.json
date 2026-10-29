@@ -36,6 +36,10 @@
     "reason": "Scans every source file for a secret compared without sameSecret"
   },
   {
+    "file": "packages/server/test/env-number-guard.test.ts",
+    "reason": "Scans every source file for a raw Number(process.env.X) outside the settings helpers"
+  },
+  {
     "file": "packages/store/test/docs-no-line-anchors.test.ts",
     "reason": "Checks documentation links avoid line anchors"
   },
