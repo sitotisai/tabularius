@@ -3103,12 +3103,32 @@
  {
   "id": "cond-07",
   "area": "CAST",
-  "construct": "CAST of a number to VARCHAR is not specified by the container example",
+  "construct": "CAST of a number to VARCHAR prints plain decimal text",
   "source": "https://help.claris.com/en/sql-reference/content/for-update-clause.html",
   "sql": "SELECT CAST(salary AS VARCHAR) FROM emp WHERE emp_id = 'E5'",
-  "expected": "unverified",
-  "paths": [],
-  "note": "the page gives CAST(container AS VARCHAR), but does not state what CAST(number AS VARCHAR) returns; unverified"
+  "rows": [["20000"]],
+  "expected": "derived",
+  "note": "the SQL standard's rule casts a number to its plain decimal text; the cited page does not state a numeric CAST result"
+ },
+ {
+  "id": "cond-08",
+  "area": "CAST",
+  "construct": "CAST of text to CHAR(1) keeps its first character",
+  "source": "https://help.claris.com/en/sql-reference/content/for-update-clause.html",
+  "sql": "SELECT CAST(emp_id AS CHAR(1)) FROM emp WHERE emp_id = 'E5'",
+  "rows": [["E"]],
+  "expected": "derived",
+  "note": "the SQL standard specifies the length; the cited page does not state a character CAST result"
+ },
+ {
+  "id": "cond-09",
+  "area": "CAST",
+  "construct": "CAST of a number to VARCHAR(3) keeps its first three characters",
+  "source": "https://help.claris.com/en/sql-reference/content/for-update-clause.html",
+  "sql": "SELECT CAST(salary AS VARCHAR(3)) FROM emp WHERE emp_id = 'E5'",
+  "rows": [["200"]],
+  "expected": "derived",
+  "note": "the SQL standard specifies plain decimal text and the length; the cited page does not state a numeric CAST result"
  },
  {
   "id": "cast-02",

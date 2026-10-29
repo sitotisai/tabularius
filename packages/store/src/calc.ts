@@ -9,7 +9,7 @@ import { rethrowExecutionRefusal } from '../../calc/src/execution-refusal.ts';
 import { charCount } from '../../calc/src/text.ts';
 import { FUNCTIONS, pluginNotInstalled } from '../../calc/src/functions.ts';
 import { fileMakerSqlSyntax, oneStatement, withAccount } from './sql-dates.ts';
-import { anyAllToIn, containerCastsToName, expandStars, fetchToLimit, refuseUnsupportedJoins } from './sql-grammar.ts';
+import { anyAllToIn, castsToTypes, containerCastsToName, expandStars, fetchToLimit, refuseUnsupportedJoins } from './sql-grammar.ts';
 import { checkGrouping, checkUnionTypes } from './sql-checks.ts';
 import {
   compile, CalcError, CalcNestingError, ERR, EMPTY, fromStored, toStored, asText, asNumberOrEmpty, asDate, asTime, asTimestamp, asBoolean,
@@ -2081,6 +2081,7 @@ export class Calculations {
       }
       sql = containerCastsToName(sql, (name) => containers.get(name.toLowerCase()) === true);
     }
+    sql = castsToTypes(sql);
     // USER, USERNAME and CURRENT_USER: whoever is signed in (nobody, for a query run without an account).
     sql = withAccount(sql, account ?? '', fieldNames);
     // Whether its calculations depend only on the file's data (see stable).

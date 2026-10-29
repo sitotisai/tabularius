@@ -53,6 +53,41 @@ export function containerCastsToName(sql: string, isContainer: (name: string) =>
   });
 }
 
+/** Character CASTs use decimal text for numbers and honor an optional character length. */
+export function castsToTypes(sql: string): string {
+  if (!/\bCAST\s*\(/i.test(sql)) return sql;
+  const plain = blanked(sql);
+  const cast = /\bCAST\s*\(/gi;
+  let result = '';
+  let cursor = 0;
+  for (const match of plain.matchAll(cast)) {
+    const start = match.index;
+    if (start < cursor) continue;
+    const open = start + match[0].lastIndexOf('(');
+    const end = closing(plain, open + 1);
+    if (end < 0) continue;
+    let as = -1;
+    let depth = 0;
+    for (let i = open + 1; i < end; i++) {
+      if (plain[i] === '(') depth++;
+      else if (plain[i] === ')') depth--;
+      else if (depth === 0 && (plain[i] === 'A' || plain[i] === 'a')
+        && /^AS\b/i.test(plain.slice(i, end)) && (i === open + 1 || !/\w/.test(plain[i - 1]))) as = i;
+    }
+    const type = as < 0 ? null : /^(\w+)(?:\s*\(\s*(\d+)(?:\s*,\s*(\d+))?\s*\))?\s*$/i.exec(sql.slice(as + 2, end).trim());
+    const name = type?.[1].toUpperCase();
+    if (name !== 'VARCHAR' && name !== 'CHAR' && name !== 'CHARACTER' || type?.[3] !== undefined) {
+      result += sql.slice(cursor, end + 1);
+      cursor = end + 1;
+      continue;
+    }
+    const operand = castsToTypes(sql.slice(open + 1, as));
+    result += sql.slice(cursor, start) + `fm_cast_text(${operand}, ${type?.[2] ?? '-1'})`;
+    cursor = end + 1;
+  }
+  return result + sql.slice(cursor);
+}
+
 const unsupported = (what: string) => new CalcError(ERR.calculation, `${what} is not supported`);
 
 /** RIGHT OUTER JOIN and FULL OUTER JOIN: FileMaker's SQL has only INNER and LEFT OUTER, and SQLite would accept these. */
