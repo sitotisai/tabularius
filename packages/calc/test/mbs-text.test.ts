@@ -37,6 +37,28 @@ test('MBS Text: case, trimming and characters, as the pages show', () => {
   assert.equal(mbs('text.UPPERCASE', 'a'), 'A');
 });
 
+test('MBS Text AddLineNumbers: inferred numbering, delimiters, and bounded output', () => {
+  assert.equal(mbs('Text.AddLineNumbers', 'alpha\rbeta'), '1: alpha\r2: beta');
+  assert.equal(mbs('Text.AddLineNumbers', 'x\r\ny', '|', 0), '0|x\r1|\r2|y');
+  assert.equal(mbs('Text.AddLineNumbers', ''), '1: ');
+  assert.equal(mbs('Text.AddLineNumbers', '😀é'), '1: 😀é');
+  assert.equal(mbs('Text.AddLineNumbers', 'a\nb', ': ', 1), mbs('Text.AddLineNumbers', 'a\rb', ': ', 1));
+  assert.match(mbs('Text.AddLineNumbers', 'x', ': ', -1), /^\[MBS\] ERROR: Text.AddLineNumbers/);
+  assert.match(mbs('Text.AddLineNumbers', 'x'.repeat(8_000_001)), /^\[MBS\] ERROR: the result is too large$/);
+  assert.equal(mbs('Text.AddLineNumbers', 'a', '#', 4), '4#a');
+});
+
+test('MBS Text SoundExGerman: inferred Kölner table and bounded deterministic output', () => {
+  assert.equal(mbs('Text.SoundExGerman', 'Müller'), '657');
+  assert.equal(mbs('Text.SoundExGerman', 'Schneider'), '8627');
+  assert.equal(mbs('Text.SoundExGerman', 'Schmidt'), '862');
+  assert.equal(mbs('Text.SoundExGerman', ''), '');
+  assert.equal(mbs('Text.SoundExGerman', 'Ärger'), mbs('Text.SoundExGerman', 'Aerger'));
+  assert.equal(mbs('Text.SoundExGerman', 'Fischer'), '387');
+  assert.equal(mbs('Text.SoundExGerman', ' 😀 '), '');
+  assert.match(mbs('Text.SoundExGerman', 'ä'.repeat(8_000_001)), /^\[MBS\] ERROR: the result is too large$/);
+});
+
 test('MBS Text: lists, words, joining and splitting', () => {
   assert.equal(mbs('Text.Concat', 'apple', '', 'banana'), 'applebanana');
   assert.equal(mbs('Text.ConcatWithDelimiter', ' - ', 'Vorname', '', 'Nachname', ''), 'Vorname - Nachname');
