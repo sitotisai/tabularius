@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { claimFolder, runningServer } from '../src/backup.ts';
+import { claimFolder, processIdentity, runningServer } from '../src/backup.ts';
 import { stopOwnServer } from '../../cli/src/service.ts';
 
 test('#174 a reused PID neither blocks a claim nor signals an unrelated process', (t) => {
@@ -33,4 +33,11 @@ test('#174 a mismatched birth identity is stale even while the PID is alive', (t
   assert.equal(runningServer(dir), undefined);
   const release = claimFolder(dir);
   try { assert.equal(runningServer(dir), process.pid); } finally { release(); }
+});
+
+test('on Linux a process is identified from /proc, so a container image without ps can still claim a folder', { skip: process.platform !== 'linux' }, () => {
+  const mine = processIdentity(process.pid);
+  assert.match(mine?.started ?? '', /^\d+$/);
+  assert.ok(mine?.command.includes('node'));
+  assert.equal(processIdentity(2 ** 22 + 12345), undefined);
 });
