@@ -12,14 +12,22 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, appendFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, appendFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { checkHealth, healthUrl, waitForRestart } from '../packages/cli/src/service.ts';
 
 const repo = resolve(import.meta.dirname, '..');
-// Not under /tmp: a systemd system unit gets a private one.
-const base = mkdtempSync(join(process.env.RUNNER_TEMP ?? homedir(), 'tabularius-e2e-'));
+// Not under /tmp: a systemd system unit gets a private one. On Windows, under Program Files: the boot task runs as the system
+// account and refuses Node or the program when other accounts can edit them, which they can in the runner's tool cache and temp folder.
+const win = process.platform === 'win32';
+const base = mkdtempSync(join(win ? (process.env.ProgramFiles ?? 'C:\\Program Files') : (process.env.RUNNER_TEMP ?? homedir()), 'tabularius-e2e-'));
+let node = process.execPath;
+if (win) {
+  mkdirSync(join(base, 'node'));
+  node = join(base, 'node', 'node.exe');
+  copyFileSync(process.execPath, node);
+}
 const origin = join(base, 'origin');
 const app = join(base, 'app');
 const home = join(base, 'home');
@@ -37,7 +45,7 @@ function sh(cmd: string, args: string[], opts: { cwd?: string; ok?: boolean; she
   return r;
 }
 const git = (cwd: string, ...args: string[]) => sh('git', ['-c', 'user.name=e2e', '-c', 'user.email=e2e@example.com', '-C', cwd, ...args]).stdout.trim();
-const cli = (...args: string[]) => sh(process.execPath, ['--no-warnings', join(app, 'packages', 'cli', 'src', 'main.ts'), ...args], { ok: true });
+const cli = (...args: string[]) => sh(node, ['--no-warnings', join(app, 'packages', 'cli', 'src', 'main.ts'), ...args], { ok: true });
 const commit = (message: string, change: () => void) => {
   change();
   git(origin, 'add', '-A');
