@@ -2,23 +2,29 @@
 
 `tabularius service install` writes one file for the system's own service manager; `tabularius service print <folder>` shows it without installing. This page says what each setting in those files is for, so you can judge a change before making it. Tests check every file against a strict reader for its format (`packages/cli/test/service-validators.ts`), compare it with a saved copy (`packages/cli/test/golden/service/`), and check that the arguments, the working folder and the writable folders read back as given, even for a folder called `My Data/$HOME/100%` or `Bob's`.
 
-What is **not** checked: that macOS or Windows accepts the file when it loads it. The files have static and simulated tests; the launchd and Task Scheduler files have been read against Apple's and Microsoft's published formats, not loaded on those systems. Run `tabularius service install` once on each system you rely on and look at the result.
+Native service-manager loading and enforcement remain **unverified** by the golden tests. The files have static and simulated tests; the launchd and Task Scheduler files have been read against Apple's and Microsoft's published formats, not loaded on those systems. Run `tabularius service install` once on each system you rely on and look at the result. <!-- known-difference: Service files ;; Native service-manager loading and enforcement are unverified by the golden tests ;; A definition may behave differently when loaded on its target system ;; Install and exercise user and system services on each target OS -->
+
+The default command contains `--port 8080 --host 127.0.0.1`, with no secrets on the command line. Adding `-- --https <domain>` selects `--host 0.0.0.0` for certificate validation; it leaves the port at 8080 unless you also pass `--port 443`. `--https local` and `--https lan` keep loopback unless you explicitly choose another host. Token files keep secrets out of the arguments; inline token options do not (see [Secrets](#secrets)).
+
+The tables give every emitted setting, with constant values written as `Name=value` (also for XML keys). User and system alternatives share a row. Service names stay `openhbam.service`, `org.openhbam.server` and scheduled task `openhbam` so existing installations remain manageable after the Tabularius rename.
 
 ## systemd (Linux)
 
 | Setting | Why |
 | --- | --- |
-| `ExecStart` | Node, the program, and `serve` with your options, each argument quoted. `%` and `$` are doubled, because systemd would otherwise replace `%h` or `$HOME` inside a folder name. |
+| `Description=tabularius server` | The service's display description. |
+| `After=network-online.target`, `Wants=network-online.target` | Requests network readiness and orders startup after it. |
+| `ExecStart` | Node, `--no-warnings`, a recovery entry passed through `--eval`, the program, and `serve` with your options, each argument quoted. The recovery entry restores `app.previous` when `app` is missing, then imports the CLI in the same process so signals still reach it. A single-file distribution runs its executable directly without that entry. `%` and `$` are doubled, because systemd would otherwise replace `%h` or `$HOME` inside a folder name. |
 | `WorkingDirectory` | The folder it hosts. |
 | `Restart=on-failure`, `RestartSec=5`, `RestartSteps=5`, `RestartMaxDelaySec=60` | Starts again after a crash, waiting longer each time up to a minute. The two `Restart…` steps need systemd 254 or later; older versions ignore them and wait five seconds every time. |
 | `TimeoutStopSec=60` | Saving and backing up on stop: twice the 30 seconds the service waits for the server to stop (`TABULARIUS_STOP_GRACE_MS`), so systemd never ends it first. |
 | `UMask=0077` | Files the server makes (hosted files, backups, logs) can be read only by its account. Remove the line if another account must read them. |
 | `LimitNOFILE=65536` | The default allows 1024 open files and connections; see [the runbook](runbook.md). |
-| `NoNewPrivileges`, `PrivateTmp` | A process it starts cannot gain privileges; it has its own temporary folder. |
-| `ProtectSystem=full`, `ReadWritePaths=-…` | `/usr`, `/boot` and `/etc` are read-only to it. The hosted folder, `~/.openhbam` and the folder that holds the program stay writable even if they sit under those. A `-` means "if it exists". `ProtectHome` is **not** set: options such as `--backup-dir` or `--tls-cert` can name files anywhere in a home folder, and the unit cannot know them all. |
-| `ProtectKernelTunables`, `ProtectControlGroups`, `RestrictSUIDSGID`, `RestrictRealtime`, `LockPersonality` | It has no use for these; refusing them removes things an attacker who got into the process could use. |
-| `User=`, `AmbientCapabilities=CAP_NET_BIND_SERVICE` (system unit) | Runs as you, not root, and may still listen on ports 80 and 443. |
-| `WantedBy=` | `multi-user.target` for the boot service, `default.target` for the user service. |
+| `NoNewPrivileges=true`, `PrivateTmp=true` | A process it starts cannot gain privileges; it has its own temporary folder. |
+| `ProtectSystem=full`, `ReadWritePaths` | `/usr`, `/boot` and `/etc` are read-only to it. The hosted folder, the service's home (`~/.openhbam` by default) and the parent of the program's `app` folder stay writable even if they sit under those. The parent allows upgrade staging and recovery of sibling folders. Each path has a `-` prefix meaning "if it exists". `ProtectHome` is **not** set: options such as `--backup-dir` or `--tls-cert` can name files anywhere in a home folder, and the unit cannot know them all. |
+| `ProtectKernelTunables=true`, `ProtectControlGroups=true`, `RestrictSUIDSGID=true`, `RestrictRealtime=true`, `LockPersonality=true` | It has no use for these; refusing them removes things an attacker who got into the process could use. |
+| `User`, `AmbientCapabilities=CAP_NET_BIND_SERVICE` (system unit) | Names the installing account and permits ports 80 and 443. It runs as that account, which is root only if installed as root. A user unit omits both settings and runs as its user without granting this capability. |
+| `WantedBy=multi-user.target`, `WantedBy=default.target` | The first is for the boot service, the second for the user service. |
 
 Left out on purpose:
 
@@ -30,24 +36,36 @@ Left out on purpose:
 
 | Key | Why |
 | --- | --- |
+| `plist.version=1.0`, `Label=org.openhbam.server` | A UTF-8 XML property list using Apple's plist DTD and the existing service identifier. |
 | `ProgramArguments`, `WorkingDirectory` | As above. |
-| `RunAtLoad`, `KeepAlive` | Starts when loaded and again after any exit. |
-| `ThrottleInterval` 10 | Waits ten seconds between starts, so a server that fails at once does not spin (this is launchd's own default, written down). |
-| `ExitTimeOut` 40 | launchd ends the server this long after asking it to stop: the 30 seconds a macOS system-service restart or upgrade waits for the server to stop, plus ten. |
-| `Umask` 63 | Decimal for octal 077: files it makes are for its own account. |
-| `SoftResourceLimits` `NumberOfFiles` 4096 | A launchd job starts with 256 open files. Not run on a Mac here. |
-| `UserName` (system only) | A LaunchDaemon runs as you, not root. |
-| `StandardOutPath`, `StandardErrorPath` | The console log in `~/.openhbam/logs/server.log`. |
+| `RunAtLoad=true`, `KeepAlive=true` | Starts when loaded and again after any exit. |
+| `ThrottleInterval=10` | Waits ten seconds between starts, so a server that fails at once does not spin (this is launchd's own default, written down). |
+| `ExitTimeOut=40` | launchd ends the server this long after asking it to stop: the 30 seconds a macOS system-service restart or upgrade waits for the server to stop, plus ten. |
+| `Umask=63` | Decimal for octal 077: files it makes are for its own account. |
+| `SoftResourceLimits`, `NumberOfFiles=4096` | Raises the open-file soft limit. Native application of this limit remains unverified here. | <!-- known-difference-ok: covered by the native service-manager loading and enforcement marker above -->
+| `UserName` (system only) | A LaunchDaemon names the installing account (root if installed as root). A LaunchAgent omits it and runs as the logged-in user. |
+| `StandardOutPath`, `StandardErrorPath` | Both use `logs/server.log` under the service's home, normally `~/.openhbam/logs/server.log`. |
 
 ## Windows Task Scheduler
 
 | Setting | Why |
 | --- | --- |
+| `Task`, `Task.version=1.2`, `Task.xmlns=http://schemas.microsoft.com/windows/2004/02/mit/task` | Task Scheduler's XML envelope and namespace. The declaration says UTF-16; install writes UTF-16LE with a byte-order mark. The golden stores the text as UTF-8 for review, not the installed bytes. |
+| `RegistrationInfo`, `Description` | Describes the Tabularius server and the folder it hosts. |
+| `Triggers`, `Enabled=true` | The selected trigger is enabled; the task itself is enabled too. |
 | `LogonTrigger` or `BootTrigger` | At sign-in, or at boot as the system account (`--system`, from an administrator prompt). `--system` is refused unless Node and the program can only be changed by administrators, and the task file is kept where only they can change it: see below. |
-| `LogonType` `InteractiveToken`, `RunLevel` `LeastPrivilege` | Runs as you with no stored password and no elevation. |
+| `Principals`, `Principal`, `Principal.id=Author`, `UserId` | Names the installing user in both the logon trigger and principal; the system task's principal instead names `S-1-5-18`. `Author` is an internal identifier used by the action. |
+| `LogonType=InteractiveToken`, `RunLevel=LeastPrivilege`, `RunLevel=HighestAvailable` | A user task uses the first two: no stored password and no elevation. The system task uses `HighestAvailable` and omits `LogonType`. |
+| `Settings` | Holds the scheduling policies below. |
 | `TimeTrigger` every minute, with `MultipleInstancesPolicy` `IgnoreNew` | Starts the server again within a minute when it has been killed or has crashed, and does nothing while it is running. Task Scheduler's own `RestartOnFailure` did not restart it in the Windows test (scripts/service-e2e.ts), so this is what does it. |
 | `RestartOnFailure` 1 minute, 255 times | Kept, but not relied on: see the line above. Microsoft's schema allows 1 to 255 for the count (an earlier version of this file said 999, which the schema does not allow). |
-| `ExecutionTimeLimit` `PT0S`, `MultipleInstancesPolicy` `IgnoreNew` | A server runs for good, and never twice. |
+| `ExecutionTimeLimit=PT0S`, `MultipleInstancesPolicy=IgnoreNew` | A server runs for good, and never twice. |
+| `DisallowStartIfOnBatteries=false`, `StopIfGoingOnBatteries=false` | Battery power neither prevents starting nor stops the server. |
+| `AllowHardTerminate=true` | Allows Task Scheduler to end the process forcibly. This is not a graceful-shutdown guarantee; the CLI uses the cooperative stop request described below. |
+| `StartWhenAvailable=true`, `RunOnlyIfNetworkAvailable=false` | Allows a missed start when available, without a Task Scheduler network condition. |
+| `IdleSettings`, `StopOnIdleEnd=false`, `RestartOnIdle=false`, `RunOnlyIfIdle=false` | Running does not depend on the machine being idle; ending idle time does not stop it or request a restart. |
+| `AllowStartOnDemand=true`, `Hidden=false`, `WakeToRun=false`, `Priority=7` | Allows manual starts, shows the task, does not wake the computer, and requests scheduler priority 7. |
+| `Actions`, `Actions.Context=Author`, `Exec`, `Command`, `Arguments`, `WorkingDirectory` | One action under the named principal runs Node with the same recovery entry and serve arguments described above, in the hosted folder. Single-file distributions run their executable directly. |
 
 ### `--system` and who can change the code it runs
 
@@ -86,6 +104,12 @@ The CLI requests graceful shutdown through a PID-specific file in the hosted fol
 Use `--mcp-token-file F` or `--replication-token-file F` after `--` to read a token from a private regular file. Install checks that the file exists, contains one nonempty line, and on Unix cannot be read by group or others (`chmod 600 F`). Relative paths become absolute paths at install time because the service starts in another working directory. The service file names the path; it does not copy the token. A symlink to a regular file is followed and its target is checked. The service account must be able to read the file when it starts. Key files (`--ai-key-file`, `--tls-key`) are also named by path.
 
 Inline `--mcp-token` and `--replication-token` remain supported. Their values appear in the process list and are written into the service file. POSIX modes restrict that file to its owner; on Windows, modes do not enforce or verify that privacy, so restrict the file and task ACLs, including inherited permissions, to the service identity and trusted administrators. Install prints the "written into the service file" note only for inline token options. The environment alternatives are `TABULARIUS_MCP_TOKEN_FILE` and `TABULARIUS_REPLICATION_TOKEN_FILE` for `serve`; `standby` reads the replication file with `--token-file` or `TABULARIUS_REPLICATION_TOKEN_FILE`.
+
+## Checking changes without installing
+
+`packages/cli/test/service-golden.test.ts` injects the platform, account, home, Node and program paths. It compares twelve exact definitions: Linux, macOS and Windows, each in user and system mode, with defaults and with `--https <domain>`. The earlier six extended HTTPS goldens and format-validator tests remain in place. The new test also checks every table setting and constant value against generated output, account selection, security defaults, and both token-file options. Its PATH contains only forbidden-command stubs that write a marker and exit 99; any marker fails the test. It never invokes install, upgrade or a service manager.
+
+Run `node --no-warnings --test --test-concurrency=2 packages/cli/test/service-golden.test.ts`. A normal run never writes a golden, including when one is missing. To accept an intentional change, use `UPDATE_GOLDEN=1 node --no-warnings --test --test-concurrency=2 packages/cli/test/service-golden.test.ts`, then review the changed definitions and this page. Updating goldens does not bypass the documentation or security assertions. Native loading and enforcement remain unverified by this test. <!-- known-difference-ok: repeats the native service-manager loading and enforcement marker above -->
 
 ## What install refuses
 
