@@ -47,7 +47,7 @@ import type { Node } from './parser.ts';
 import { ALL_STYLES, STYLE_BITS, restyle, rgbHex, sliceRuns, toCss, type TextFormat } from './styled.ts';
 import {
   CalcError, HostWait, ERR, EMPTY, asBoolean, asDate, calendarDay, checkedDate, checkedTimestamp, dateFromNumber, isStoredDay, timestampFromNumber, asNumber, asNumberOrEmpty, asText, asTime, asTimestamp, bool, dayNumber,
-  decimalSum, exactAbs, exactDivFloor, exactMod, exactOf, exactSign, formatNumber, fromDayNumber, fromExact, isBeyondDouble, isEmpty, isOverlongWholeText, MAX_DIGITS, num, numberFromText, parseDateText, parseTimeText, parseTimestampText, text, tidy, tidySum, type Value,
+  decimalAverageText, decimalSum, decimalSumText, exactAbs, exactDivFloor, exactMod, exactOf, exactSign, formatNumber, fromDayNumber, fromExact, isBeyondDouble, isEmpty, isOverlongWholeText, MAX_DIGITS, num, numberFromText, parseDateText, parseTimeText, parseTimestampText, text, tidy, tidySum, type Value,
 } from './values.ts';
 
 export interface Fn {
@@ -824,14 +824,25 @@ for (const name of ['Sum', 'Average']) def(name, 1, undefined, (a, env) => {
     }
   }
   const ns = values.map(asNumber);
-  return name === 'Sum' ? num(decimalSum(ns)) : ns.length ? num(decimalSum(ns) / ns.length) : EMPTY;
+  if (name === 'Sum') return ns.every(Number.isFinite)
+    ? { type: 'number', value: decimalSum(ns), decimal: decimalSumText(ns) }
+    : num(decimalSum(ns));
+  if (!ns.length) return EMPTY;
+  const exactAverage = decimalAverageText(ns);
+  return exactAverage === undefined
+    ? num(decimalSum(ns) / ns.length)
+    : { type: 'number', value: Number(exactAverage), decimal: exactAverage };
 });
 const variance = (ns: number[], sample: boolean) => {
   if (ns.length === 0) return undefined;
   // Claris: the standard deviation of a single value is undefined, an error (the sample forms only).
   if (sample && ns.length === 1) return NaN;
-  const mean = ns.reduce((s, n) => s + n, 0) / ns.length;
-  return ns.reduce((s, n) => s + (n - mean) ** 2, 0) / (ns.length - (sample ? 1 : 0));
+  const mean = decimalSum(ns) / ns.length;
+  const squares = ns.map((n) => {
+    const delta = tidy(n - mean);
+    return tidy(delta * delta);
+  });
+  return tidy(decimalSum(squares) / (ns.length - (sample ? 1 : 0)));
 };
 aggregate('Variance', (ns) => variance(ns, true));
 aggregate('VarianceP', (ns) => variance(ns, false));

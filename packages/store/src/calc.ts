@@ -3211,7 +3211,8 @@ export function serialNext(s: string, by: number): string {
 export function serialIncrement(s: string, by: number): string {
   const m = /^(.*?)(\d+)(\D*)$/.exec(s);
   if (!m) return s;
-  return m[1] + String(Number(m[2]) + by).padStart(m[2].length, '0') + m[3];
+  const next = Number.isInteger(by) ? (BigInt(m[2]) + BigInt(by)).toString() : String(Number(m[2]) + by);
+  return m[1] + next.padStart(m[2].length, '0') + m[3];
 }
 
 /**
