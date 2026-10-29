@@ -1593,14 +1593,23 @@ for (const [name, f] of Object.entries(MBS_DICT)) {
 // The List functions (mbs-list.ts) work on text.
 for (const [name, f] of Object.entries(MBS_LIST)) {
   MBS[name] = (v, env) => {
-    const r = f(v.map((x) => T(x, env)));
+    const r = f(v.map((x) => T(x, env)), (formula) => {
+      env.checkWorkBudget(64);
+      return env.textOf(env.evaluateNested(formula));
+    });
     return typeof r === 'number' ? num(r) : text(r);
   };
 }
 // QuickLists (mbs-quicklist.ts) belong to the script session.
 for (const [name, f] of Object.entries(MBS_QUICKLIST)) {
   MBS[name] = (v, env) => {
-    const r = f(v.map((x) => T(x, env)), env.ctx.pluginSession ?? env.ctx);
+    const r = f(v.map((x) => T(x, env)), env.ctx.pluginSession ?? env.ctx, {
+      evaluate: (formula) => {
+        env.checkWorkBudget(64);
+        return env.textOf(env.evaluateNested(formula));
+      },
+      executeSQL: env.ctx.executeSQL ? (query, args) => env.ctx.executeSQL!(query, args.map((x) => text(x))).map((row) => row.map((x) => env.textOf(x))) : undefined,
+    });
     return typeof r === 'number' ? num(r) : text(r);
   };
 }

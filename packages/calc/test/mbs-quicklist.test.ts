@@ -1,7 +1,7 @@
 // MBS ( "QuickList.…" ) against the examples on MBS's own function pages (mbsplugins.eu).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { evaluateText } from '../src/index.ts';
+import { evaluateText, text } from '../src/index.ts';
 import { MBS_QUICKLIST } from '../src/mbs-quicklist.ts';
 import { MbsError } from '../src/mbs-text.ts';
 
@@ -157,4 +157,123 @@ test('MBS QuickList matching with flag 2 keeps the source when no new list can b
   for (let i = 1; i < 10_000; i++) x('QuickList.New');
   assert.throws(() => x('QuickList.MatchesPrefix', src, 'W', 2), /Too many/);
   assert.equal(x('QuickList.GetList', src, 1), L('Hello¶World'));
+});
+
+test('MBS QuickList.SortWithEvaluate: stable evaluated keys and empty list', () => {
+  const scope = {};
+  const call = (name: string, ...args: (string | number)[]) => MBS_QUICKLIST[name.toLowerCase()](args.map(String), scope);
+  const q = call('QuickList.New', L('b¶A¶a¶B'));
+  // Direct service call mirrors Evaluate's value substitution while keeping the session list.
+  const result = MBS_QUICKLIST['quicklist.sortwithevaluate']([String(q), '?'], scope, { evaluate: (f) => f.slice(1, -1).toLowerCase() });
+  assert.equal(result, 'OK');
+  assert.equal(call('QuickList.GetList', q, 1), L('A¶a¶b¶B'));
+  const empty = call('QuickList.New');
+  MBS_QUICKLIST['quicklist.sortwithevaluate']([String(empty), '?'], scope, { evaluate: (f) => f });
+  assert.equal(call('QuickList.Count', empty), 0);
+});
+
+test('MBS QuickList.SortWithEvaluate evaluates formulas through the calculation context', () => {
+  assert.equal(evaluateText('Let ( [ q = MBS ( "QuickList.New" ; "b¶A" ) ; r = MBS ( "QuickList.SortWithEvaluate" ; q ; "Upper ( ? )" ) ] ; r & MBS ( "QuickList.GetList" ; q ; 1 ) )', {}), 'OKA\rb');
+});
+
+test('MBS QuickList.SortWithEvaluate: unicode and sibling Sort order', () => {
+  const scope = {};
+  const call = (name: string, ...args: (string | number)[]) => MBS_QUICKLIST[name.toLowerCase()](args.map(String), scope);
+  const q = call('QuickList.New', 'é\r水\r😀\rá');
+  MBS_QUICKLIST['quicklist.sortwithevaluate']([String(q), '?'], scope, { evaluate: (f) => f.slice(1, -1) });
+  assert.equal(call('QuickList.GetList', q, 1), 'á\ré\r水\r😀');
+  const sibling = call('QuickList.New', L('b¶A¶a¶B'));
+  MBS_QUICKLIST['quicklist.sortwithevaluate']([String(sibling), '?'], scope, { evaluate: (f) => f.slice(1, -1) });
+  assert.equal(call('QuickList.GetList', sibling, 1), L('A¶B¶a¶b'));
+});
+
+test('MBS QuickList.SortWithEvaluate: bad form and evaluate work budget', () => {
+  const scope = {};
+  const q = MBS_QUICKLIST['quicklist.new'](['a\rb\rc'], scope);
+  assert.throws(() => MBS_QUICKLIST['quicklist.sortwithevaluate']([String(q), 'Upper ( value )'], scope, { evaluate: (f) => f }), /\? value placeholder/);
+  let calls = 0;
+  assert.throws(() => MBS_QUICKLIST['quicklist.sortwithevaluate']([String(q), '?'], scope, { evaluate: () => {
+    if (++calls > 2) throw new Error('Calculation exceeds the supported work budget');
+    return 'a';
+  } }), /work budget/);
+});
+
+test('MBS QuickList.SortWithEvaluate leaves quoted question marks alone', () => {
+  const scope = {};
+  const q = MBS_QUICKLIST['quicklist.new'](['b\ra'], scope);
+  MBS_QUICKLIST['quicklist.sortwithevaluate']([String(q), 'If ( ? = "?" ; "z" ; ? )'], scope, { evaluate: (f) => f });
+  assert.equal(MBS_QUICKLIST['quicklist.getlist']([String(q), '1'], scope), 'a\rb');
+});
+
+test('MBS QuickList.SortWithEvaluate: huge input hits the evaluation work budget', () => {
+  const values = Array.from({ length: 100_000 }, (_, i) => `v${i}`).join('¶');
+  assert.throws(() => evaluateText(`Let ( [ q = MBS ( "QuickList.New" ; "${values}" ) ; r = MBS ( "QuickList.SortWithEvaluate" ; q ; "?" ) ] ; r )`, {}), /work budget/);
+});
+
+test('MBS QuickList.AddSQL appends the query result column and binds parameters', () => {
+  const scope = {};
+  const q = MBS_QUICKLIST['quicklist.new'](['seed'], scope);
+  const got = MBS_QUICKLIST['quicklist.addsql']([String(q), 'SELECT name WHERE id = ?', '7'], scope, {
+    executeSQL: (query, args) => {
+      assert.equal(query, 'SELECT name WHERE id = ?');
+      assert.deepEqual(args, ['7']);
+      return [['alpha', 'ignored'], ['βeta', 'ignored']];
+    },
+  });
+  assert.equal(got, 'OK');
+  assert.equal(MBS_QUICKLIST['quicklist.getlist']([String(q), '1'], scope), 'seed\ralpha\rβeta');
+});
+
+test('MBS QuickList.AddSQL uses the calculation ExecuteSQL bridge', () => {
+  let seen = '';
+  const got = evaluateText('Let ( [ q = MBS ( "QuickList.New" ; "seed" ) ; r = MBS ( "QuickList.AddSQL" ; q ; "SELECT value WHERE id = ?" ; "9" ) ] ; r & MBS ( "QuickList.GetList" ; q ; 1 ) )', {
+    executeSQL: (query, args) => {
+      seen = `${query}/${args.map((a) => a.type === 'text' ? a.value : '').join(',')}`;
+      return [[text('result')]];
+    },
+  });
+  assert.equal(got, 'OKseed\rresult');
+  assert.equal(seen, 'SELECT value WHERE id = ?/9');
+});
+
+test('MBS QuickList.AddSQL refuses privilege failures and writes', () => {
+  const scope = {};
+  const q = MBS_QUICKLIST['quicklist.new'](['seed'], scope);
+  const denied = { executeSQL: () => { throw new Error('ExecuteSQL cannot read table here'); } };
+  assert.throws(() => MBS_QUICKLIST['quicklist.addsql']([String(q), 'SELECT secret FROM T'], scope, denied), /cannot read table/);
+  assert.equal(MBS_QUICKLIST['quicklist.getlist']([String(q), '1'], scope), 'seed');
+  const readOnly = { executeSQL: (query: string) => {
+    if (!/^\s*SELECT\b/i.test(query)) throw new Error('SQL is read only');
+    return [];
+  } };
+  assert.throws(() => MBS_QUICKLIST['quicklist.addsql']([String(q), 'DELETE FROM T'], scope, readOnly), /read only/);
+});
+
+test('MBS QuickList.AddSQL refuses an oversized query result without a partial append', () => {
+  const scope = {};
+  const q = MBS_QUICKLIST['quicklist.new'](['seed'], scope);
+  assert.throws(() => MBS_QUICKLIST['quicklist.addsql']([String(q), 'SELECT value'], scope, {
+    executeSQL: () => Array.from({ length: 100_001 }, () => ['x']),
+  }), /at most 100000 rows/);
+  assert.equal(MBS_QUICKLIST['quicklist.getlist']([String(q), '1'], scope), 'seed');
+});
+
+test('MBS QuickList.AddSQL handles an empty query result', () => {
+  const scope = {};
+  const q = MBS_QUICKLIST['quicklist.new']([], scope);
+  assert.equal(MBS_QUICKLIST['quicklist.addsql']([String(q), 'SELECT value'], scope, { executeSQL: () => [] }), 'OK');
+  assert.equal(MBS_QUICKLIST['quicklist.count']([String(q)], scope), 0);
+});
+
+test('MBS QuickList.AddSQL keeps unicode result text', () => {
+  const scope = {};
+  const q = MBS_QUICKLIST['quicklist.new']([], scope);
+  MBS_QUICKLIST['quicklist.addsql']([String(q), 'SELECT value'], scope, { executeSQL: () => [['café'], ['東京'], ['😀']] });
+  assert.equal(MBS_QUICKLIST['quicklist.getlist']([String(q), '1'], scope), 'café\r東京\r😀');
+});
+
+test('MBS QuickList.AddSQL is unavailable without ExecuteSQL', () => {
+  const scope = {};
+  const q = MBS_QUICKLIST['quicklist.new']([], scope);
+  assert.throws(() => MBS_QUICKLIST['quicklist.addsql']([String(q), 'SELECT value'], scope), /not available here/);
 });

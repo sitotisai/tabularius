@@ -745,11 +745,21 @@ Tabularius's Deserialize reads. Not yet: Dictionary.ToXML and the SQL, variable-
 run too (values by index, matching, columns, sets, duplicates, sorting, Find,
 BestMatch and the rest). A list ends with a return where MBS's NoReturnEnding
 parameter says so; values compare case-sensitively unless MBS's page says
-otherwise; sorts go by character code (MBS doesn't name its order). Not yet: <!-- known-difference: MBS plug-in functions ;; List.CSVSplit, List.OrColumn, List.XOrColumn and List.SortWithEvaluate are not available, and sorts go by character code because MBS does not name its order ;; The call gives ? and error 3; sorted order can differ from MBS ;; Owner decision, and an MBS run that shows its sort order -->
-List.CSVSplit, List.OrColumn, List.XOrColumn and List.SortWithEvaluate. MBS's
+otherwise; sorts go by character code (MBS doesn't name its order). Not yet: <!-- known-difference: MBS plug-in functions ;; List.CSVSplit, List.OrColumn and List.XOrColumn are not available, and ordinary sorts go by character code because MBS does not name its order ;; The call gives ? and error 3; ordinary sorted order can differ from MBS ;; Owner decision, and an MBS run that shows its sort order -->
+List.CSVSplit, List.OrColumn and List.XOrColumn. <!-- known-difference: MBS plug-in functions ;; List.SortWithEvaluate substitutes each value for unquoted ? placeholders, sorts by the resulting text keys and keeps ties in input order; this result is inferred and unverified ;; A vendor result may use another placeholder form, key comparison or tie order ;; A vendor run covering placeholders, types and tied keys -->
+`List.SortWithEvaluate` evaluates its expression once per value, replacing each
+unquoted `?` with that value as a text literal; text keys sort ascending and
+ties keep their input order. This behavior is inferred and unverified.
+<!-- known-difference: MBS plug-in functions ;; QuickList.SortWithEvaluate uses the same inferred ? placeholder, text-key order and stable ties as List.SortWithEvaluate; this result is unverified ;; A vendor result may use another placeholder form, key comparison or tie order ;; A vendor run covering placeholders, types and tied keys -->
+`QuickList.SortWithEvaluate` uses the same inferred placeholder, text-key order
+and stable ties, mutating the QuickList in place.
+MBS's
 `QuickList.*` functions run as well, on lists kept for the session by
 reference (numbered from 12000, as MBS does, or by the name given); the same
-four are not yet available there, nor QuickList.AddSQL. The Hash functions <!-- known-difference: MBS plug-in functions ;; The same four List functions and QuickList.AddSQL are not available ;; The call gives ? and error 3 ;; Owner decision on whether to build them -->
+three are not yet available there. <!-- known-difference: MBS plug-in functions ;; QuickList.AddSQL appends the first result column of a read-only query, using ExecuteSQL's parameter, privilege, read and size limits; this result is inferred and unverified ;; Query column selection or result conversion may differ from MBS ;; A vendor run of queries with multiple columns, no rows, parameters and read limits -->
+`QuickList.AddSQL` appends the first result column from a read-only query using
+the `ExecuteSQL` path, including its query parameters, privilege checks and
+result limits. This behavior is inferred and unverified. The Hash functions
 (MD5, SHA1, SHA256 and SHA512 digests and HMACs, `Hash.Digest`, `Hash.CRC16`,
 `Hash.CRC32`) work on text, hex, base64 or container data. A few path and
 container helpers work too, along with `Version`, `IsRegistered` and progress
