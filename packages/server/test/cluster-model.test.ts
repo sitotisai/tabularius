@@ -122,7 +122,10 @@ const authorized = (token: string) => ({ authorization: `Bearer ${token}`, 'cont
 
 async function signIn(c: Cluster, account: string): Promise<Session> {
   const r = await fetch(`${c.data}/sessions`, { method: 'POST', headers: { authorization: 'Basic ' + btoa(`${account}:pw`), 'content-type': 'application/json' }, body: '{}' });
-  const token = ((await r.json()) as { response: { token: string } }).response.token;
+  const body = (await r.json()) as { response?: { token?: string }; messages?: unknown };
+  // A sign-in that fails says why, instead of leaving a TypeError on a missing token.
+  assert.ok(body.response?.token, `sign-in as ${account} gave ${r.status} ${JSON.stringify(body.messages)}`);
+  const token = body.response.token;
   return { account, token, worker: parseInt(token.slice(0, 2), 16) };
 }
 
