@@ -91,7 +91,7 @@ The examples below show each call's `arguments` and the text of the result's fir
 | [`search_records`](#search-records) | read-only | Search the text of every record, in every table, for words, best matches first, like a site search: "acme march invoice" finds records whose text fields hold those words, in any field. |
 | [`semantic_find`](#semantic-find) | read-only | Find records by meaning, best matches first: "customers unhappy about late delivery" finds records whose stored embedding is closest to the question, even with none of those words. |
 | [`summarize_records`](#summarize-records) | read-only | Totals of a found set, overall or broken down by up to 3 fields, like a sub-summary report: count of records, and sum, average, min, max, count or distinct count of fields. |
-| [`list_dashboards`](#list-dashboards) | read-only | Dashboards saved in a file: charts, summary tables and numbers worked out live from finds. |
+| [`list_dashboards`](#list-dashboards) | read-only | Dashboards owned by this account (all for full access): charts, summary tables and numbers worked out live from finds. |
 | [`get_dashboard`](#get-dashboard) | read-only | A saved dashboard (by id or name) with each widget worked out now, as this account: its find in words (relative dates with the range they mean today), its grouping, and its numbers. |
 | [`save_dashboard`](#save-dashboard) |  | Save a dashboard in a file from a plain-English request: "revenue by month for my top 10 customers this year" is a line chart on an Invoices layout, query [{"Date": "this year"}], groupBy ["Date", "Customer"], by "month", measure sum of Amount, top {field: "Customer", n: 10}, plus a table of the same grouped by Customer. |
 | [`find_data_problems`](#find-data-problems) | read-only | Data cleanup, step one (changes nothing): likely duplicate records on a layout (the same email or phone, names nearly alike with the same address), values not in the field's value list ("Actve" for "Active"), and malformed phone numbers and email addresses, each with a suggested fix where there is a likely one. |
@@ -2433,7 +2433,7 @@ Result:
 
 ### `list_dashboards`
 
-Dashboards saved in a file: charts, summary tables and numbers worked out live from finds. get_dashboard shows one with its numbers.
+Dashboards owned by this account (all for full access): charts, summary tables and numbers worked out live from finds. get_dashboard shows one with its numbers.
 
 **Hints:** read-only
 

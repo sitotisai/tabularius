@@ -13,7 +13,7 @@
 //
 // Same session tokens as the Data API. Numbers are worked out as the signed-in account: records it can't view
 // are left out, and a field it can't see is an error on that widget. Anyone signed in may make dashboards;
-// changing or deleting one is for the account that made it, or [Full Access].
+// reading, changing or deleting a saved definition is for the account that made it, or [Full Access].
 
 import { randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -417,6 +417,10 @@ const fromRow = (r: Row): Dashboard => ({
   ...(r.account ? { account: r.account } : {}), created: r.created, updated: r.updated,
 });
 
+/** Saved find criteria are private to their owner and full-access accounts. */
+export const mayRead = (d: Dashboard, privileges?: Privileges) =>
+  !privileges || privileges.full || (!!d.account && d.account.toLowerCase() === privileges.account.toLowerCase());
+
 /** Whether an account may change or delete a dashboard: the account that made it, or [Full Access]. */
 export const mayChange = (d: Dashboard, account: string | undefined, privileges?: Privileges) =>
   !privileges?.ceiling && (!privileges || privileges.full || (!!account && d.account?.toLowerCase() === account.toLowerCase()));
@@ -451,7 +455,7 @@ export class DashboardApi {
       if (privileges.ceiling && req.method !== 'GET' && !preview) throw new ApiError(9, 'This API token cannot change saved dashboards', 403);
       const boards = new Dashboards(store);
       const summary = (d: Dashboard) => ({ id: d.id, name: d.name, description: d.description, widgets: d.widgets.length, account: d.account, updated: d.updated, canChange: mayChange(d, session.account, privileges) });
-      if (!id && req.method === 'GET') send(200, { dashboards: boards.list().map(summary) });
+      if (!id && req.method === 'GET') send(200, { dashboards: boards.list().filter((d) => mayRead(d, privileges)).map(summary) });
       else if (!id && req.method === 'POST') {
         const body = cleanDashboard(await readJson(req)) as Pick<Dashboard, 'name' | 'widgets'> & { description?: string };
         if (preview) send(200, { name: body.name, widgets: body.widgets, data: computeDashboard(store, body.widgets, privileges) });
@@ -461,7 +465,7 @@ export class DashboardApi {
         }
       } else {
         const d = id ? boards.get(id) : undefined;
-        if (!d) throw new ApiError(401, 'No such dashboard', 404);
+        if (!d || !mayRead(d, privileges)) throw new ApiError(401, 'No such dashboard', 404);
         if (req.method === 'GET') send(200, { dashboard: d, canChange: mayChange(d, session.account, privileges), data: computeDashboard(store, d.widgets, privileges) });
         else if (!mayChange(d, session.account, privileges)) throw new ApiError(9, 'Only the account that made this dashboard, or one with [Full Access], can change it', 403);
         else if (req.method === 'PUT') {
