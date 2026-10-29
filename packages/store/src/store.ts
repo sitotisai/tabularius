@@ -1,3 +1,4 @@
+import { sortProgress } from './cooperative.ts';
 // An imported solution, opened for reading and writing. Values cross this
 // API in FileMaker's shapes: field names, repetitions as "Field(2)", and
 // dates in US (M/D/YYYY) or ISO format.
@@ -25,7 +26,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } 
 import { closeSync, constants as fsConstants, copyFileSync, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, readdirSync, readSync, renameSync, rmSync, statSync } from 'node:fs';
 import { checkedFile, cleanupPath, openSync, readFileSync, writeFileSync, writeSync } from './fs-boundary.ts';
 import { externalFieldNames, parseDate, parseTime, parseTimestamp, type DateStyle, type Field, type FieldType, type LayoutDesign, type LayoutDesigns, type LayoutObject, type Schema, type Table } from '../../fmp12/src/index.ts';
-import { findWhere, findScope, registerFindFunctions, beginFindBudget, FindError, type RelatedCriteria, type FieldInfo, type FindRequest, type SqlValue, type WordIndex } from './find.ts';
+import { findWhere, findScope, registerFindFunctions, beginFindBudget, findBudgetScope, FindError, type RelatedCriteria, type FieldInfo, type FindRequest, type SqlValue, type WordIndex } from './find.ts';
 import { defineFold, WordIndexes, wordIndexName } from './words.ts';
 import { q, dataSourceFile, SQL_TYPES, DESIGN_LOG, writeDesign, addExternalSizeColumn } from './import.ts';
 import { decimalKey, decimalNumberText, nativeValue } from './native-types.ts';
@@ -690,6 +691,8 @@ const FOUND_SET_SPARE = 5;
 const SORTED_KEEP = 4;
 /** Records read at a time while a find computes unstored calculations and globals (findSource). */
 const FIND_SOURCE_PAGE = 1000;
+/** Record ids a progressive find reads between two yields. */
+const FIND_BATCH = 1024;
 
 /**
  * The internal `_fm_` names a read-only query may touch: the row-id and
@@ -8918,12 +8921,7 @@ export class Store {
       if (!this.findListener || (!opts.query?.length && !opts.sort?.length)) return run();
       const started = performance.now();
       const r = run();
-      try {
-        const fields = [...new Set((opts.query ?? []).flatMap((q) => Object.keys(q).filter((k) => k !== 'omit')))];
-        const leadingWildcard = (opts.query ?? []).some((q) => Object.entries(q).some(([k, v]) => k !== 'omit' && typeof v === 'string' && /^[=!<>≤≥]*\*/.test(v.trim())));
-        this.findListener({ table: info.table, layout: info.name, fields, sort: (opts.sort ?? []).map((x) => x.fieldName), leadingWildcard,
-          ms: performance.now() - started, found: found(r), total: this.recordCount(info.table) });
-      } catch (e) { rethrowExecutionRefusal(e); /* timing is best effort */ }
+      this.reportFind(info, opts, started, found(r));
       return r;
     } catch (e) {
       if (e instanceof FindError) throw new StoreError(e.code, e.message);
@@ -8931,6 +8929,16 @@ export class Store {
     } finally {
       endBudget();
     }
+  }
+
+  private reportFind(info: LayoutInfo, opts: { query?: FindRequest[]; sort?: SortSpec[] }, started: number, found: number | undefined): void {
+    if (!this.findListener || (!opts.query?.length && !opts.sort?.length)) return;
+    try {
+      const fields = [...new Set((opts.query ?? []).flatMap((q) => Object.keys(q).filter((k) => k !== 'omit')))];
+      const leadingWildcard = (opts.query ?? []).some((q) => Object.entries(q).some(([k, v]) => k !== 'omit' && typeof v === 'string' && /^[=!<>≤≥]*\*/.test(v.trim())));
+      this.findListener({ table: info.table, layout: info.name, fields, sort: (opts.sort ?? []).map((x) => x.fieldName), leadingWildcard,
+        ms: performance.now() - started, found, total: this.recordCount(info.table) });
+    } catch (e) { rethrowExecutionRefusal(e); /* timing is best effort */ }
   }
 
   find(layout: string | LayoutInfo, opts: FindOptions = {}): FindResult {
@@ -10708,6 +10716,92 @@ export class Store {
     return this.withDesignRead(() => this.findIdsCurrent(...args));
   }
 
+  /** Each yielded count is charged before reading that batch. A find holds no SQL cursor across a yield (a stored sort's `iterate()` below does, as it did before). */
+  findIdsProgress(...args: Parameters<Store['findIdsCurrentProgress']>): Generator<number, number[]> {
+    const work = this.findIdsCurrentProgress(...args);
+    const budget = findBudgetScope();
+    const self = this;
+    return (function* (): Generator<number, number[]> {
+      try {
+        for (;;) {
+          const next = budget(() => self.withDesignRead(() => work.next()));
+          if (next.done) return next.value;
+          yield next.value;
+        }
+      } finally { work.return([]); }
+    })();
+  }
+
+  /**
+   * A find on stored fields only, in batches of candidate ids. It writes nothing and keeps no SQL state between
+   * batches. A find on an unstored calculation or a global needs a temporary table of computed values; another
+   * session's rollback on this connection could undo a table that outlives a yield, so such a find runs whole, as
+   * findIds does. Records created or deleted by other sessions while the batches run may or may not be included.
+   */
+  private *findIdsCurrentProgress(layout: string | LayoutInfo, opts: { query?: FindRequest[]; privileges?: Privileges; dateOrder?: DateStyle } = {}): Generator<number, number[]> {
+    const info = this.layoutInfo(layout);
+    this.checkLayout(info, opts.privileges);
+    if (info.owner !== this) return yield* info.owner.findIdsProgress(info, opts);
+    const pv = this.local(opts.privileges);
+    this.checkFieldsVisible(info, pv, (opts.query ?? []).flatMap((r) => Object.keys(r)));
+    const used = new Set((opts.query ?? []).flatMap((r) => Object.keys(r)));
+    if (this.table(info).fields.some((f) => used.has(f.name) && ((f.kind === 'calculation' && f.options?.unstored) || f.options?.global))) {
+      const found = this.findIdsCurrent(info, opts);
+      // A find that ran whole scanned the table: it is charged like the batches would have been, after the fact. An account
+      // with a record rule is charged for the records it got, since the size of the table is not for it to learn.
+      yield !pv || pv.table(info.table).view === true ? this.recordCount(info.table) : found.length;
+      return found;
+    }
+    const source = q(info.table);
+    const started = performance.now();
+    try {
+      let where = '1';
+      let params: SqlValue[] = [];
+      if (opts.query?.length) {
+        try {
+          ({ where, params } = findWhere(opts.query, new Map(info.fields.map((f) => [f.name, f])),
+            (v, t) => this.normalize(v, t, opts.dateOrder), this.relatedCriteria(info, opts.privileges, opts.dateOrder),
+            this.wordIndex(info), () => this.duplicateSource(source, this.table(info), pv), findScope(this, info.table)));
+        } catch (e) {
+          rethrowExecutionRefusal(e);
+          if (e instanceof FindError) throw new StoreError(e.code, e.message);
+          throw e;
+        }
+      }
+      const view = this.viewFilter(info, pv);
+      // Run whole, as findIds does, when each batch would repeat work that does not shrink with the batch: a subquery in
+      // the criteria (a duplicate search, a word index, a related lookup) or an account's record rule, whose allowed ids
+      // are one parameter parsed again by every statement. Batching those finds is slower than the whole find, not faster.
+      if (view.where !== '1' || /\bselect\b/i.test(where)) {
+        const ids: number[] = [];
+        for (const row of this.sql.prepare(`SELECT _fm_record_id AS id FROM ${source} WHERE (${where}) AND ${view.where} ORDER BY _fm_record_id`)
+          .iterate(...params, ...view.params) as Iterable<{ id: number }>) ids.push(Number(row.id));
+        this.reportFind(info, opts, started, ids.length);
+        yield view.where === '1' ? this.recordCount(info.table) : ids.length;
+        return ids;
+      }
+      // Batches are ranges of record ids, cut by a cheap scan of the ids alone: a find with no matches yields too, and each
+      // statement is prepared once, with nothing to parse per batch.
+      const edge = this.sql.prepare(`SELECT max(_fm_record_id) AS last, count(*) AS n FROM (SELECT _fm_record_id FROM ${source} WHERE _fm_record_id > ? ORDER BY _fm_record_id LIMIT ${FIND_BATCH})`);
+      const match = this.sql.prepare(`SELECT _fm_record_id AS id FROM ${source} WHERE _fm_record_id > ? AND _fm_record_id <= ? AND (${where}) ORDER BY _fm_record_id`);
+      const ids: number[] = [];
+      for (let after = -Infinity;;) {
+        const { last, n } = edge.get(after) as { last: number | null; n: number };
+        if (!n) {
+          this.reportFind(info, opts, started, ids.length);
+          return ids;
+        }
+        yield Number(n);
+        for (const row of match.all(after, last as number, ...params) as { id: number }[]) ids.push(Number(row.id));
+        after = Number(last);
+      }
+    } catch (e) {
+      rethrowExecutionRefusal(e);
+      if (e instanceof FindError) throw new StoreError(e.code, e.message);
+      throw e;
+    }
+  }
+
   private findIdsCurrent(layout: string | LayoutInfo, opts: { query?: FindRequest[]; sort?: SortSpec[]; privileges?: Privileges; dateOrder?: DateStyle } = {}): number[] {
     const info = this.layoutInfo(layout);
     this.checkLayout(info, opts.privileges);
@@ -10842,7 +10936,7 @@ export class Store {
   }
 
   private sortIdsCurrent(layout: string | LayoutInfo, ids: number[], sort: SortSpec[], opts: { privileges?: Privileges; valueLists?: { store: Store; recordId?: number } } = {}): number[] {
-    const work = this.sortIdsCurrentProgress(layout, ids, sort, opts);
+    const work = this.sortIdsCurrentProgress(layout, ids, sort, opts, true);
     for (let step = work.next();; step = work.next()) if (step.done) return step.value;
   }
 
@@ -10861,10 +10955,10 @@ export class Store {
     })();
   }
 
-  private *sortIdsCurrentProgress(layout: string | LayoutInfo, ids: number[], sort: SortSpec[], opts: { privileges?: Privileges; valueLists?: { store: Store; recordId?: number } } = {}): Generator<number, number[]> {
+  private *sortIdsCurrentProgress(layout: string | LayoutInfo, ids: number[], sort: SortSpec[], opts: { privileges?: Privileges; valueLists?: { store: Store; recordId?: number } } = {}, whole = false): Generator<number, number[]> {
     const info = this.layoutInfo(layout);
     this.checkLayout(info, opts.privileges);
-    if (info.owner !== this) return yield* info.owner.sortIdsProgress(info, ids, sort, opts);
+    if (info.owner !== this) return whole ? info.owner.sortIds(info, ids, sort, opts) : yield* info.owner.sortIdsProgress(info, ids, sort, opts);
     const pv = this.local(opts.privileges);
     this.checkFieldsVisible(info, pv, sort.map((s) => s.fieldName));
     const view = this.viewFilter(info, pv);
@@ -10923,7 +11017,7 @@ export class Store {
         const y = language === 'unicode' ? String(b) : recordSortKey(String(b), language);
         return Buffer.compare(Buffer.from(x), Buffer.from(y));
       };
-      keyed.sort((a, b) => {
+      const compare = (a: { id: number; values: SqlValue[] }, b: { id: number; values: SqlValue[] }): number => {
         for (let i = 0; i < sort.length; i++) {
           const field = defs[i]!;
           const x = a.values[i], y = b.values[i];
@@ -10941,8 +11035,15 @@ export class Store {
           if (cmp) return sign * cmp;
         }
         return a.id - b.id;
-      });
-      return keyed.map((r) => r.id);
+      };
+      // A whole sort (the Data API, the web client) needs no yields, so it keeps the native sort.
+      if (whole) return keyed.sort(compare).map((r) => r.id);
+      const sorting = sortProgress(keyed, compare);
+      for (;;) {
+        const next = sorting.next();
+        if (next.done) return next.value.map((r) => r.id);
+        yield keyed.length;
+      }
     }
     const sorted: number[] = [];
     for (const r of this.sql.prepare(`SELECT _fm_record_id AS id FROM ${q(info.table)} WHERE _fm_record_id IN (SELECT value FROM json_each(?)) AND ${view.where} ORDER BY ${this.orderBy(info, sort, opts.privileges, opts.valueLists)}`)

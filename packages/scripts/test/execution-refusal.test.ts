@@ -324,3 +324,42 @@ for (const capture of ['On', 'Off']) {
     assert.equal(reads, readsAtIsolation, 'formatting, profiling and tracing must not inspect the isolated child schema');
   });
 }
+
+test('an account disabled while a write step yields at dispatch gets no further step', async (t) => {
+  const { a, options } = setup(t);
+  a.applyDesign([{ op: 'createScript', name: 'Create', text: 'New Record/Request' }]);
+  const before = a.recordCount('T');
+  // The first yield is the one at step dispatch, before the account check; the second is the write step's own checkpoint.
+  let yields = 0;
+  const real = globalThis.setImmediate;
+  t.mock.method(globalThis, 'setImmediate', ((fn: () => void) => {
+    if (++yields === 2) a.setAccountActive('Worker', false);
+    return real(fn);
+  }) as typeof setImmediate);
+  let thrown: unknown;
+  try { await writer.run({ owner: 'caller', account: 'Worker' }, () => runScript(a, 'Create', options)); } catch (e) { thrown = e; }
+  assert.ok(yields >= 2, `yields: ${yields}`);
+  assert.ok(thrown instanceof StoreError, `refused: ${String(thrown)}`);
+  assert.equal(a.recordCount('T'), before);
+});
+
+for (const [name, text] of [
+  ['Replace Field Contents', 'Replace Field Contents [ With dialog: Off ; T::Value ; "changed" ]'],
+  ['Relookup Field Contents', 'Relookup Field Contents [ With dialog: Off ; T::Value ]'],
+]) test(`an account disabled while ${name} yields writes nothing more`, async (t) => {
+  const { a, options } = setup(t);
+  for (let i = 0; i < 40; i++) a.create('T', { Value: 'original' });
+  a.applyDesign([{ op: 'createScript', name: 'Bulk', text }]);
+  // The first yield is at step dispatch; the second is the record loop's first checkpoint, where the account is disabled.
+  let yields = 0;
+  const real = globalThis.setImmediate;
+  t.mock.method(globalThis, 'setImmediate', ((fn: () => void) => {
+    if (++yields === 2) a.setAccountActive('Worker', false);
+    return real(fn);
+  }) as typeof setImmediate);
+  let thrown: unknown;
+  try { await writer.run({ owner: 'caller', account: 'Worker' }, () => runScript(a, 'Bulk', options)); } catch (e) { thrown = e; }
+  assert.ok(yields >= 2, `yields: ${yields}`);
+  assert.ok(thrown instanceof StoreError, `refused: ${String(thrown)}`);
+  assert.equal((a.sql.prepare("SELECT count(*) AS n FROM T WHERE Value <> 'original'").get() as { n: number }).n, 0);
+});

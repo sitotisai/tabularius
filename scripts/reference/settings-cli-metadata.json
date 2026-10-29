@@ -513,6 +513,13 @@
       "restart": "Yes; restart the server after changing its environment.",
       "explainedBy": "docs/pgwire-results.md"
     },
+    "TABULARIUS_PGWIRE_MAX_PARAM_BYTES": {
+      "description": "Total bound parameter bytes that one SQL connection's portals may hold.",
+      "default": "67108864 (64 MiB)",
+      "accepted": "Positive whole number of bytes; 0 or an invalid value keeps the default",
+      "restart": "No; read at each Bind.",
+      "explainedBy": "docs/pgwire-results.md"
+    },
     "TABULARIUS_PGWIRE_MAX_ROWS": {
       "description": "Maximum rows a SQL query may return.",
       "default": "100000",
@@ -632,6 +639,13 @@
       "restart": "Yes for a running server.",
       "explainedBy": "README.md"
     },
+    "TABULARIUS_SCRIPT_MAX_RECORD_OPS": {
+      "description": "Maximum record operations per script run, shared by its steps and synchronous subscripts. Scans and repeated passes count again. The engine also enforces its 60-second default active-time limit and one-million-step limit inside cooperative batches; callers can set timeoutMs and maxSteps.",
+      "default": "50000000",
+      "accepted": "Whole number, decimal digits only, up to 9007199254740991; 0 disables the record budget",
+      "restart": "Restart the server after changing its environment; each new script engine reads the setting. A value that is not a whole number stops `serve` at start, naming the variable.",
+      "explainedBy": "docs/guides/building/scripts-and-triggers.md"
+    },
     "TABULARIUS_SECRETS_KEY": {
       "description": "Passphrase used to seal outside-connection secrets.",
       "default": "TABULARIUS_ENCRYPTION_KEY if set",
@@ -723,6 +737,13 @@
       "restart": "No server restart; a new command reads it on invocation.",
       "explainedBy": "docs/environment-variables.md"
     },
+    "TABULARIUS_TEST_COMMAND_MARKER": {
+      "description": "Internal to `scripts/test-auth-review-round2.ts`: the runner sets a temporary marker path for its forbidden-command stubs (`launchctl`, `systemctl`, `sc`, `git`, `npm`, `curl`, `sudo`). A stub writes the marker if invoked, causing the audit to fail. No manual setting is needed.",
+      "default": "Unset",
+      "accepted": "Temporary marker file path",
+      "restart": "No server restart; a new command reads it on invocation.",
+      "explainedBy": "docs/environment-variables.md"
+    },
     "TABULARIUS_TEST_SMTP": {
       "description": "The SMTP account (`smtps://user:pass@host:465`) that `--test-outbound --mail-redirect` sends its one copy through.",
       "default": "TEST_SMTP_FILE contents if present",
@@ -805,20 +826,6 @@
       "default": "one process",
       "accepted": "auto or a positive whole number; decimal digits only for numbers, within the safe integer range",
       "restart": "Yes for a running server.",
-      "explainedBy": "docs/environment-variables.md"
-    },
-    "TABULARIUS_PGWIRE_MAX_PARAM_BYTES": {
-      "description": "Total bound parameter bytes that one SQL connection's portals may hold.",
-      "default": "67108864 (64 MiB)",
-      "accepted": "Positive whole number of bytes; 0 or an invalid value keeps the default",
-      "restart": "No; read at each Bind.",
-      "explainedBy": "docs/pgwire-results.md"
-    },
-    "TABULARIUS_TEST_COMMAND_MARKER": {
-      "description": "Internal to `scripts/test-auth-review-round2.ts`: the runner sets a temporary marker path for its forbidden-command stubs (`launchctl`, `systemctl`, `sc`, `git`, `npm`, `curl`, `sudo`). A stub writes the marker if invoked, causing the audit to fail. No manual setting is needed.",
-      "default": "Unset",
-      "accepted": "Temporary marker file path",
-      "restart": "No server restart; a new command reads it on invocation.",
       "explainedBy": "docs/environment-variables.md"
     }
   },

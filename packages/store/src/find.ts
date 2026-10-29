@@ -128,6 +128,12 @@ export function beginFindBudget(): () => void {
   return () => matchBudget.enterWith(previous);
 }
 
+/** Keep one find's work cap while restoring the caller's context between generator advances. */
+export function findBudgetScope(): <T>(run: () => T) => T {
+  const budget = matchBudget.getStore() ?? { remaining: MAX_MATCH_WORK, unearned: MAX_FIND_WORK - MAX_MATCH_WORK, seen: new Map() };
+  return (run) => matchBudget.run(budget, run);
+}
+
 const tooComplex = () => new FindError('Find criterion exceeds the supported complexity limit', 400);
 /** The matching budget ran out: the criterion is too heavy for a value or for the records read, which is not the same as one that is too long or has too many parts. */
 const tooMuchWork = () => new FindError('Find criterion exceeds the supported complexity limit for the records it reads: use fewer wildcards or a shorter criterion, or narrow the found set first', 400);

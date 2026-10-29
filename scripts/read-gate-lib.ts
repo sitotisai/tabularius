@@ -32,7 +32,7 @@ export function sqlReads(text: string): 'data' | 'internal-data' | undefined {
 
 /** Store methods that return record data (values, counts, orders, aggregates, file contents) to the caller. */
 export const READ_APIS = [
-  'find', 'get', 'getMany', 'selectIds', 'countIds', 'computeValues', 'findIds', 'groupSummaries', 'sortIds', 'matchIds',
+  'find', 'get', 'getMany', 'selectIds', 'countIds', 'computeValues', 'findIds', 'findIdsProgress', 'groupSummaries', 'sortIds', 'sortIdsProgress', 'matchIds',
   'select', 'foundSetRows', 'portalCounts', 'fieldIndex', 'valueListItems', 'evaluate', 'evaluateEach', 'evaluateRows',
   'recordCount', 'recordAsOf', 'container', 'containerInfo', 'containerRange', 'auditLog', 'query', 'queryWithOrigins',
   'iterateCommitted', 'row', 'previewRow', 'viewableIds', 'viewableSet', 'viewableCount', 'summaryMasked',

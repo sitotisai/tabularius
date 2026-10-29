@@ -41,14 +41,6 @@
  },
  {
   "file": "packages/scripts/src/engine.ts",
-  "within": "ScriptEngine.findRelated",
-  "api": "Store.findIds",
-  "count": 3,
-  "gate": "checked-before",
-  "why": "this.reading carries the session Privileges (elevated only for a full-access script's own file); Store.findIds applies checkLayout, checkFieldsVisible and the record viewFilter - the scanner could not see the type of the spread getter; related hits go through relatedIds (viewableIds filter) and are intersected with the gated `all`."
- },
- {
-  "file": "packages/scripts/src/engine.ts",
   "within": "ScriptEngine.foundSet",
   "api": "Store.findIds",
   "count": 1,
@@ -65,22 +57,6 @@
  },
  {
   "file": "packages/scripts/src/engine.ts",
-  "within": "ScriptEngine.goToList",
-  "api": "Store.findIds",
-  "count": 1,
-  "gate": "checked-before",
-  "why": "this.reading carries the session Privileges (elevated only for a full-access script's own file); Store.findIds applies checkLayout, checkFieldsVisible and the record viewFilter - the scanner could not see the type of the spread getter; caller-supplied ids are intersected with that gated set."
- },
- {
-  "file": "packages/scripts/src/engine.ts",
-  "within": "ScriptEngine.importRecords",
-  "api": "Store.findIds",
-  "count": 1,
-  "gate": "checked-before",
-  "why": "this.reading carries the session Privileges (elevated only for a full-access script's own file); Store.findIds applies checkLayout, checkFieldsVisible and the record viewFilter - the scanner could not see the type of the spread getter; also pv.checkImport and match-field pv.field() checks."
- },
- {
-  "file": "packages/scripts/src/engine.ts",
   "within": "ScriptEngine.lookupNext",
   "api": "Store.row",
   "count": 1,
@@ -94,22 +70,6 @@
   "count": 1,
   "gate": "checked-before",
   "why": "findIds is given this.reading (the running script's privileges; the scan does not see through the getter), so the set holds only records the account may view; it is only compared with other windows' found sets to see which of them show every record, and no value is returned."
- },
- {
-  "file": "packages/scripts/src/engine.ts",
-  "within": "ScriptEngine.performFind",
-  "api": "Store.findIds",
-  "count": 1,
-  "gate": "checked-before",
-  "why": "this.reading carries the session Privileges (elevated only for a full-access script's own file); Store.findIds applies checkLayout, checkFieldsVisible and the record viewFilter - the scanner could not see the type of the spread getter (query fields hidden from the account raise 102)."
- },
- {
-  "file": "packages/scripts/src/engine.ts",
-  "within": "ScriptEngine.quickFind",
-  "api": "Store.findIds",
-  "count": 3,
-  "gate": "checked-before",
-  "why": "this.reading carries the session Privileges (elevated only for a full-access script's own file); Store.findIds applies checkLayout, checkFieldsVisible and the record viewFilter - the scanner could not see the type of the spread getter."
  },
  {
   "file": "packages/scripts/src/engine.ts",
@@ -145,27 +105,11 @@
  },
  {
   "file": "packages/scripts/src/engine.ts",
-  "within": "ScriptEngine.semanticFind",
-  "api": "Store.findIds",
-  "count": 2,
-  "gate": "checked-before",
-  "why": "this.reading carries the session Privileges (elevated only for a full-access script's own file); Store.findIds applies checkLayout, checkFieldsVisible and the record viewFilter - the scanner could not see the type of the spread getter; related scores also limited to `visible` and values read through valueOf (field check + gated get)."
- },
- {
-  "file": "packages/scripts/src/engine.ts",
   "within": "ScriptEngine.sourceValue",
   "api": "Store.container",
   "count": 1,
   "gate": "checked-before",
   "why": "pv.field()==='none' check (covers masked) and gated via(info).get(..., this.privileges, {fields:[field]}) on the record before the container is read."
- },
- {
-  "file": "packages/scripts/src/engine.ts",
-  "within": "ScriptEngine.step",
-  "api": "Store.findIds",
-  "count": 2,
-  "gate": "checked-before",
-  "why": "this.reading carries the session Privileges (elevated only for a full-access script's own file); Store.findIds applies checkLayout, checkFieldsVisible and the record viewFilter - the scanner could not see the type of the spread getter (Show All Records, Show Omitted Only)."
  },
  {
   "file": "packages/scripts/src/engine.ts",
@@ -1969,6 +1913,30 @@
  },
  {
   "file": "packages/store/src/store.ts",
+  "within": "Store.findIdsCurrentProgress",
+  "api": "Store.findIdsProgress",
+  "count": 1,
+  "gate": "store-internal",
+  "why": "Cross-file forward with the same opts (privileges included), as findIdsCurrent does."
+ },
+ {
+  "file": "packages/store/src/store.ts",
+  "within": "Store.findIdsCurrentProgress",
+  "api": "Store.recordCount",
+  "count": 2,
+  "gate": "store-internal",
+  "why": "The table's record count is yielded to the engine to charge a find that ran whole, only when the account views every record of the table (rule true, or view.where \"1\"); an account with a record rule is charged the number of ids it was returned, so the size of the table is not revealed to it."
+ },
+ {
+  "file": "packages/store/src/store.ts",
+  "within": "Store.findIdsCurrentProgress",
+  "api": "sql.prepare",
+  "count": 3,
+  "gate": "store-internal",
+  "why": "The same read as findIdsHere, taken in batches, after checkLayout and checkFieldsVisible. The whole-find statement carries the caller's viewFilter (view.where); the batch statements run only when view.where is \"1\" (the account sees every record of the table). The edge statement reads record ids alone, to cut the batches; the number of ids in a batch is yielded to the engine, which adds it to the run's recordOps and halt message, so for an account that sees every record it is a count of records it may already count, and an account with a record rule never runs batches. A find on computed values runs whole through findIdsCurrent instead."
+ },
+ {
+  "file": "packages/store/src/store.ts",
   "within": "Store.findIdsHere",
   "api": "sql.prepare",
   "count": 1,
@@ -2441,11 +2409,11 @@
  },
  {
   "file": "packages/store/src/store.ts",
-  "within": "Store.timeFind",
+  "within": "Store.reportFind",
   "api": "Store.recordCount",
   "count": 1,
   "gate": "trusted-process",
-  "why": "Total count sent to findListener (server profiler/admin), not to the requesting caller."
+  "why": "Total count sent to findListener (server profiler/admin), not to the requesting caller. The timing report split out of timeFind, unchanged."
  },
  {
   "file": "packages/store/src/store.ts",
@@ -2670,5 +2638,29 @@
   "count": 1,
   "gate": "trusted-process",
   "why": "FTS index maintenance; returns nothing."
+ },
+ {
+  "file": "packages/store/src/store.ts",
+  "within": "Store.sortIdsCurrentProgress",
+  "api": "Store.sortIdsProgress",
+  "count": 1,
+  "gate": "store-internal",
+  "why": "Cross-file forward with the same opts (privileges and value lists), as sortIdsCurrent does."
+ },
+ {
+  "file": "packages/store/src/store.ts",
+  "within": "Store.sortIdsCurrentProgress",
+  "api": "Store.sortIds",
+  "count": 1,
+  "gate": "store-internal",
+  "why": "Cross-file forward with the same opts (privileges and value lists), for a whole sort, as sortIdsCurrent does."
+ },
+ {
+  "file": "packages/scripts/src/engine.ts",
+  "within": "ScriptEngine.findIdsCooperative",
+  "api": "Store.findIdsProgress",
+  "count": 1,
+  "gate": "checked-before",
+  "why": "The default (and the only options any caller passes) is this.reading, or {query, ...this.reading}: the session Privileges, elevated only for a full-access script's own file. findIdsProgress applies checkLayout, checkFieldsVisible and the record viewFilter, as findIds did at each of these call sites on main; the scanner could not see the type of the Parameters<> default."
  }
 ]
