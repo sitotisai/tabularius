@@ -136,9 +136,10 @@ import { isIP } from 'node:net';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { BoundedMap } from './bounded-map.ts';
 import { createHash, randomBytes } from 'node:crypto';
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, extname, join, resolve, sep } from 'node:path';
 import { discardExitBundle, exitBundle, ExitBundleError, webViewerEntryCovers, hashPassword, defaultMinPasswordLength, checkPassword, addressBucket, StoreError, findStaleCalcs, refreshStaleCalcs, undoStaleRefresh, staleRefreshHistory, StaleCalcError, SECURITY_EVENT_CATEGORIES, isFullAccess, ownPrivilegeEntry, setOwn, type AuditEntry, type FieldLevel, type SecurityEvent, type Store } from '../../store/src/index.ts';
+import { atomicWrite } from '../../store/src/durable.ts';
 import { loadAsset, sendAsset } from './static-cache.ts';
 import { inlineScriptSources } from './csp.ts';
 import type { DataApi } from './dataapi.ts';
@@ -363,7 +364,7 @@ export function adminPasswordProblem(password: string): string | undefined {
 
 /** Sets the admin console password for a hosted folder. */
 export function setAdminPassword(folder: string, password: string): void {
-  writeFileSync(join(folder, PASSWORD_FILE), hashPassword(password) + '\n', { mode: 0o600 });
+  atomicWrite(join(folder, PASSWORD_FILE), hashPassword(password) + '\n');
 }
 
 function size(path: string): number {

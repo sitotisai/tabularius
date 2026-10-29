@@ -19,12 +19,13 @@
 
 import { readTlsPair, writeTlsPair } from './tls-pair.ts';
 import { createHash, createPublicKey, generateKeyPairSync, randomBytes, sign, X509Certificate, createPrivateKey, type KeyObject } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { hostname as osHostname, networkInterfaces } from 'node:os';
 import { isIP } from 'node:net';
 import { join } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { pageCss } from './pages.ts';
+import { atomicWrite } from '../../store/src/durable.ts';
 
 const DIR = join('.openhbam-tls', 'local');
 /** Apple devices refuse server certificates valid for longer. */
@@ -182,9 +183,9 @@ export function localCertificate(folder: string, names = localNames()): LocalTls
         extension('2.5.29.30', true, seq(der(0xa0, ...permitted))),
       ],
     });
-    writeFileSync(caKeyPath, caKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 });
-    writeFileSync(caPath, pem('CERTIFICATE', caDer));
-    writeFileSync(permittedPath, JSON.stringify(dns));
+    atomicWrite(caKeyPath, caKey.export({ type: 'pkcs8', format: 'pem' }) as string);
+    atomicWrite(caPath, pem('CERTIFICATE', caDer));
+    atomicWrite(permittedPath, JSON.stringify(dns));
   }
   // Names the authority can vouch for: .local ones, localhost, and the names it was made with.
   const permitted = new Set<string>((() => {
