@@ -2015,15 +2015,24 @@ export class DataApi {
     if (p[2] !== 'layouts') throw new ApiError(3, 'Command is unavailable', 404);
     // A layout-scoped token sees and uses only the layouts it was scoped to.
     const inScope = (name: string) => !session.layoutScope || session.layoutScope.some((l) => l.toLowerCase() === name.toLowerCase());
+    const readableLayout = (name: string) => {
+      const info = store.layout(name);
+      if (info.owner !== store && privileges.in(info.owner).table(info.table).view === false) throw new ApiError(105, `Layout "${name}" is missing`);
+      return info;
+    };
     if (p.length === 3 && method === 'GET') {
       const tables = new Map(store.layouts().map((l) => [l.name, l.table]));
-      return { layouts: catalogTree(store.schema.layoutOrder, [...tables.keys()], (n) => inScope(n) && privileges.layout(n).layout !== 'none', 'folderLayoutNames', false, tables) };
+      return { layouts: catalogTree(store.schema.layoutOrder, [...tables.keys()], (n) => {
+        if (!inScope(n) || privileges.layout(n).layout === 'none') return false;
+        try { readableLayout(n); return true; } catch { return false; }
+      }, 'folderLayoutNames', false, tables) };
     }
     // Only GET lists the layouts; any other method here has no layout to act on.
     if (p.length === 3) throw new ApiError(3, 'Command is unavailable', 404);
     const layout = p[3];
     // To a layout-scoped token, a layout outside its scope is as if it weren't there.
     if (!inScope(layout) || privileges.layout(layout).layout === 'none') throw new ApiError(105, `Layout "${layout}" is missing`);
+    readableLayout(layout);
 
     if (p.length === 4 && method === 'GET') {
       const info = store.layout(layout);
