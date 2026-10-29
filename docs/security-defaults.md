@@ -87,7 +87,7 @@ Sibling-window change notifications use a session digest rather than the bearer 
 | --- | --- | --- | --- | --- |
 | Stop keeping record data on devices | Off: web sign-out sends no Clear-Site-Data header. The forget-device route always sends Clear-Site-Data: "cache", "storage"; never cookies. Data API token logout is unchanged | Admin console, Connected: Stop keeping record data on devices; POST /tabularius/admin/v1/device-storage {on:true}; stopKeepingRecordData in .openhbam-settings.json | When on, web sign-out and web data calls answering 401 (including one with an unrecognised token) request clearing, and web sessions expire 30 days after sign-in (server awake time) despite activity. Clearing is origin-wide and can discard unsent offline edits. Partial: browser writes continue until clearing; clearing depends on browser support in a secure context | probed |
 | Audit trail | On: every record created, changed, deleted or duplicated is logged; reads are not logged; record entries are kept 400 days, then removed (security events are kept without limit) | `logReads`, `redactSensitive`, `excludeFields` and `retentionDays` in the file's audit settings (console) | Logging reads grows the log fast; a retention limit deletes history, so 0 (keep every entry) is the choice for anyone who must keep a complete trail; there is no switch to turn record logging off | probed |
-| Backups | On: every day, the last 7 kept, in `Backups` beside the files, not encrypted (the console reports each one's check; this row probes the schedule, count and encryption only) | `--backup-every`, `--keep`, `--backup-dir`, `--no-backups`; `TABULARIUS_BACKUP_KEY` encrypts; `--backup-s3` copies off-site | A backup folder on the same disk is lost with it; an unencrypted one holds every record and every password hash | probed |
+| Backups | On: every day, the last 7 kept, in `Backups` beside the files, not encrypted (the console reports each one's check; this row probes the schedule, count and encryption only) | `--backup-every`, `--keep`, `--backup-dir`, `--no-backups`; `TABULARIUS_BACKUP_KEY` encrypts (defaults to `TABULARIUS_ENCRYPTION_KEY` when set); `--backup-s3` copies off-site | A backup folder on the same disk is lost with it; an unencrypted one holds every record and every password hash | probed |
 | Encryption at rest for the hosted files | Off: files are ordinary SQLite files | `tabularius encrypt <folder>` with `TABULARIUS_ENCRYPTION_KEY` | Anyone who can read the folder can read the data; passwords are stored as scrypt hashes either way | probed |
 
 ## Client address attribution
@@ -135,3 +135,14 @@ Defaults that are weaker than they could be, left as they are because changing t
 - A crafted `.fmp12` file given to the converter: whether it can harm the server process has not been audited here.
 - The browser: a computer or browser that is already compromised can do what the signed-in person can.
 - How safe a password is. Only the minimum length is checked (the password rules row); nothing checks strength.
+
+## Local file permissions
+
+New stores and their SQLite WAL/SHM sidecars are created owner-only (0600 on POSIX).
+New default data folders are created with mode 0700. Existing stores and folders
+are not chmodded automatically: changing a shared folder's permissions could break
+an intentional deployment. Check their ownership and permissions before hosting;
+Windows permissions depend on the directory ACL. Cross-platform ACL behaviour is
+unverified here. <!-- known-difference: Server operation ;; Cross-platform ACL behaviour for new private store files has not been verified ;; Windows privacy depends on the directory ACL and existing stores are not chmodded automatically ;; Synthetic permissions checks on Linux and Windows --> Encryption of hosted stores does not seal old backups, external
+containers, source files, exports or logs; protect the whole data folder and backup
+disk with operating-system encryption.

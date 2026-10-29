@@ -1,3 +1,5 @@
+import '../../server/test/backup-review-guard.ts';
+import { writePidOwner } from '../../server/test/pid-fixture.ts';
 // Services on each system (tabularius service), and upgrading in place (tabularius upgrade).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -138,7 +140,7 @@ test("a LaunchDaemon's server is stopped by its own process id, for launchd to s
   const exited = new Promise((done) => child.once('exit', (_code, signal) => done(signal)));
   try {
     assert.equal(stopOwnServer(dir), false, 'no server');
-    writeFileSync(join(dir, '.openhbam.pid'), String(child.pid));
+    writePidOwner(dir, child.pid!);
     const serviceUrl = new URL('../src/service.ts', import.meta.url).href;
     const stopper = spawn(process.execPath, ['--input-type=module', '-e', `import { stopOwnServer } from ${JSON.stringify(serviceUrl)}; process.exitCode = stopOwnServer(${JSON.stringify(dir)}) ? 0 : 1;`]);
     const [code, signal] = await Promise.all([
@@ -167,7 +169,7 @@ test('a server too busy to hear the stop signal is stopped outright after the gr
       child.once('error', reject);
       child.once('exit', (code) => reject(new Error(`signal-handler child exited before ready (${code})`)));
     });
-    writeFileSync(join(dir, '.openhbam.pid'), String(child.pid));
+    writePidOwner(dir, child.pid!);
     const started = Date.now();
     assert.equal(stopOwnServer(dir), true);
     assert.ok(Date.now() - started < 5000);

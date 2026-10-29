@@ -47,7 +47,7 @@ test('Windows stop waits for cleanup and refuses force termination on timeout or
   writeFileSync(join(root, '.openhbam.pid'), '12345');
   const signals: unknown[] = [];
   let requested = 0;
-  const control = { kill: (_pid: number, signal?: string | number) => { signals.push(signal); return true as const; }, exited: () => true, request: () => { requested++; } };
+  const control = { owner: () => 12345, kill: (_pid: number, signal?: string | number) => { signals.push(signal); return true as const; }, exited: () => true, request: () => { requested++; } };
   assert.equal(stopOwnServer(root, 'win32', control), true);
   assert.equal(requested, 1);
   assert.deepEqual(signals, [0]);
@@ -64,7 +64,7 @@ test('POSIX listener makes no Windows request file and stop still uses SIGTERM',
   writeFileSync(join(root, '.openhbam.pid'), '12345');
   listenForStop(root, () => assert.fail('unexpected stop'), 'linux')();
   const signals: unknown[] = [];
-  stopOwnServer(root, 'linux', { kill: (_pid, signal) => { signals.push(signal); return true as const; }, exited: () => true, request: () => assert.fail('unexpected request') });
+  stopOwnServer(root, 'linux', { owner: () => 12345, kill: (_pid, signal) => { signals.push(signal); return true as const; }, exited: () => true, request: () => assert.fail('unexpected request') });
   assert.deepEqual(signals, ['SIGTERM']);
 });
 

@@ -8,6 +8,6 @@ Model id for text embeddings at the configured endpoint.
 | Accepted values | Embedding model id |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/local-embeddings.md](../../../local-embeddings.md) |
-| Code | [packages/cli/src/doctor.ts:244](../../../../packages/cli/src/doctor.ts#L244) |
+| Code | [packages/cli/src/doctor.ts:245](../../../../packages/cli/src/doctor.ts#L245) |
 
 [All environment variables](../../../environment-variables.md)

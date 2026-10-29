@@ -73,7 +73,6 @@
   {"file":"packages/server/src/backup-verify.ts","fn":"pageCheck","gate":"OPERATOR","sites":[{"api":"SQLite.all","hash":"b2dbe3fd677431cddda5"},{"api":"SQLite.prepare","hash":"b2dbe3fd677431cddda5"},{"api":"SQLite.get","hash":"a81ff9f9ca9c03dd272a"},{"api":"SQLite.prepare","hash":"a81ff9f9ca9c03dd272a"}]},
   {"file":"packages/server/src/backup-verify.ts","fn":"testRestore","gate":"OPERATOR","sites":[{"api":"Store.recordCount","hash":"d8029d102bf3f25744a1"}]},
   {"file":"packages/server/src/backup.ts","fn":"accountDifferences/read","gate":"OPERATOR","sites":[{"api":"SQLite.all","hash":"ee2a4ba2f2abac1516ff"},{"api":"SQLite.prepare","hash":"ee2a4ba2f2abac1516ff"},{"api":"SQLite.all","hash":"491861d83bde6da750fe"},{"api":"SQLite.prepare","hash":"491861d83bde6da750fe"}]},
-  {"file":"packages/server/src/backup.ts","fn":"backupOnceHeld","gate":"OPERATOR","sites":[{"api":"SQLite.get","hash":"04682c5d802bb08cb9b8"},{"api":"SQLite.prepare","hash":"04682c5d802bb08cb9b8"}]},
   {"file":"packages/server/src/backup.ts","fn":"columnInfo","gate":"OPERATOR","sites":[{"api":"SQLite.all","hash":"e5d17e274f607eb8f9bf"},{"api":"SQLite.prepare","hash":"e5d17e274f607eb8f9bf"}]},
   {"file":"packages/server/src/backup.ts","fn":"credentialsReadable","gate":"OPERATOR","sites":[{"api":"SQLite.all","hash":"4e416d2a7a9fc8f4c5aa"},{"api":"SQLite.prepare","hash":"4e416d2a7a9fc8f4c5aa"}]},
   {"file":"packages/server/src/backup.ts","fn":"readNames","gate":"OPERATOR","sites":[{"api":"SQLite.all","hash":"bdad340182d8a84a8b7c"},{"api":"SQLite.prepare","hash":"bdad340182d8a84a8b7c"}]},
