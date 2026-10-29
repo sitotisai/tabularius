@@ -127,3 +127,38 @@ for (const create of [false, true]) {
     assert.equal(store.mustChangePassword('ClockUser'), true);
   });
 }
+
+test('#144 live background traffic cannot renew session idle time', async (t) => {
+  const { Live } = await import('../src/live.ts');
+  const { api, host, store, jump } = setup(t);
+  store.applyDesign([{ op: 'createTable', name: 'Items', fields: [{ name: 'Text' }] }]);
+  store.create('Items', { Text: 'synthetic' });
+  const token = api.open(store, 'Admin', 'web');
+  const live = new Live(host, api);
+  const request = { headers: { authorization: `Bearer ${token}` }, method: 'GET', socket: {} } as import('node:http').IncomingMessage;
+  let status = 0;
+  const response = { writeHead(n: number) { status = n; }, end() {} } as unknown as import('node:http').ServerResponse;
+  for (let minute = 1; minute <= 16; minute++) {
+    jump(60_000, 60_000);
+    for (const path of ['locks', 'viewers', 'layouts/Items/records/1/lock', 'layouts/Items/records/1/view']) {
+      request.method = path.startsWith('layouts/') ? 'POST' : 'GET';
+      await live.handle(request, response, new URL(`http://localhost/tabularius/live/v1/databases/Clock/${path}`));
+      if (minute < 15) assert.equal(status, 200, path);
+    }
+  }
+  assert.equal(status, 401);
+  assert.equal(api.alive(token), false);
+});
+
+test('#144 background authorization observes idle policy changes; real activity renews it', (t) => {
+  const { api, host, store, jump } = setup(t);
+  const token = api.open(store, 'Admin', 'web');
+  const request = { headers: { authorization: `Bearer ${token}` }, socket: {} } as import('node:http').IncomingMessage;
+  jump(2 * 60_000, 2 * 60_000);
+  api.authorize(request, 'Clock');
+  jump(2 * 60_000, 2 * 60_000);
+  host.config.setWebSessionIdleMinutes(3);
+  assert.doesNotThrow(() => api.authorize(request, 'Clock', false, false));
+  host.config.setWebSessionIdleMinutes(1);
+  assert.throws(() => api.authorize(request, 'Clock', false, false), { code: 952, status: 401 });
+});

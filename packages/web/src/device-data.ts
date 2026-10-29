@@ -9,12 +9,30 @@ import { clearWatches } from './watch-storage.ts';
 const DAY_MS = 86_400_000;
 /** The times the pref copies were last written, by key (JSON), so ones nobody signs out of still go after KEEP_DAYS. */
 const STAMPS = 'tabularius.deviceKept';
-const PREF_KEY = /^tabularius\.(?:finds|sorts|recent)\./;
+export const PREF_KEY = /^tabularius\.(?:(?:finds|sorts|recent)\.|next\.views[.:])/;
 export const PREF_NAMES = ['finds', 'sorts', 'recent'] as const;
 export type PrefName = typeof PREF_NAMES[number];
 
 /** Where a pref of one account in one file is kept in this browser. */
-export const prefStorageKey = (name: PrefName | string, db: string, account: string): string => `tabularius.${name}.${db}.${account}`;
+export const prefStorageKey = (name: PrefName | string, db: string, account: string): string => `tabularius.${name}.${JSON.stringify([db, account])}`;
+
+const legacyPrefKey = (name: string, db: string, account: string): string => name === 'next.views'
+  ? `tabularius.next.views:${db}:${account}` : `tabularius.${name}.${db}.${account}`;
+
+/** Read an old key once. Ambiguous legacy owners cannot safely be inferred. */
+export function readPref(name: string, db: string, account: string): string | null {
+  try {
+    const key = prefStorageKey(name, db, account);
+    const old = legacyPrefKey(name, db, account);
+    const current = localStorage.getItem(key);
+    const legacy = localStorage.getItem(old);
+    const separator = name === 'next.views' ? ':' : '.';
+    const value = current ?? (!db.includes(separator) && !account.includes(separator) ? legacy : null);
+    if (current === null && value !== null) keptSet(key, value);
+    keptRemove(old);
+    return value;
+  } catch { return null; }
+}
 
 function stamps(): Record<string, number> {
   try {
@@ -77,7 +95,10 @@ export function purgeExpiredKept(): void {
 
 /** The account's saved finds, sorts, recent records and watch lists. `keep` names prefs that never reached the server and that an offline copy holds, so they are not lost. */
 export function forgetPrefs(db: string, account: string, keep: readonly string[] = []): void {
-  for (const name of PREF_NAMES) if (!keep.includes(name)) keptRemove(prefStorageKey(name, db, account));
+  for (const name of [...PREF_NAMES, 'next.views']) if (!keep.includes(name)) {
+    keptRemove(prefStorageKey(name, db, account));
+    keptRemove(legacyPrefKey(name, db, account));
+  }
   clearWatches(db, account);
 }
 
