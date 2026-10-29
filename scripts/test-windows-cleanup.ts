@@ -87,4 +87,4 @@ export function install(): void {
   require('node:module').syncBuiltinESMExports();
 }
 
-if (process.platform === 'win32' || process.env.TABULARIUS_TEST_CLEANUP === '1') install();
+if (process.platform === 'win32') install();
