@@ -7,6 +7,12 @@
     "runs": 3
   },
   "tolerance": 0.4,
+  "performanceBudgets": [
+    { "id": "find", "maxMs": 750 },
+    { "id": "import", "maxMs": 27000 },
+    { "id": "backupRestore", "maxMs": 1700 },
+    { "id": "coldStart", "maxMs": 750 }
+  ],
   "operations": [
     {
       "group": "Open",
