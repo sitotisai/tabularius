@@ -67,7 +67,7 @@ For DNS-hosted ambient access, configure `--public-url` or use operator-configur
 
 An independent read-only review by a different model found the missing-provenance case and the cluster HTTPS-origin propagation regression. Both received fixes and regressions. Its remaining native Basic read boundary is disclosed above. No review ran git, contacted another person, opened hosted data or changed files.
 
-Whether the original product has behavior corresponding to these Tabularius-specific origin/cookie policies is **unverified**. This report makes no claim that it documents or implements these policies. <!-- known-difference: Privileges and security ;; Whether the original product applies the same origin and cookie rules to its browser-facing routes is unknown ;; Tabularius refuses cross-site requests that carry saved credentials, whatever the original does ;; A run of the same cross-site requests against the original server -->
+Whether the original product has behavior corresponding to these Tabularius-specific origin/cookie policies is **unverified**. This report makes no claim that it documents or implements these policies. <!-- known-difference: Privileges and security ;; Whether the original product applies the same origin and cookie rules to its browser-facing routes is unknown; comparison unverified ;; Tabularius refuses cross-site requests that carry saved credentials, whatever the original does ;; A run of the same cross-site requests against the original server -->
 
 Public references used for browser semantics:
 

@@ -24,7 +24,7 @@ Warnings are sent when a statement executes, including extended-protocol `Execut
 ErrorResponse uses these mappings to the conditions in
 [PostgreSQL Appendix A](https://www.postgresql.org/docs/current/errcodes-appendix.html).
 These are Tabularius mappings; matching another product's SQL error behavior is
-**unverified** <!-- known-difference: SQL and calculations ;; The SQLSTATE sent for a Store error code is a Tabularius mapping, not confirmed against another product's SQL error behavior ;; A client sees the mapped SQLSTATE and the Store message ;; A comparison of another product's SQL errors for the same conditions -->.
+**unverified** <!-- known-difference: SQL and calculations ;; The SQLSTATE sent for a Store error code is a Tabularius mapping, not confirmed against another product's SQL error behavior; comparison unverified ;; A client sees the mapped SQLSTATE and the Store message ;; A comparison of another product's SQL errors for the same conditions -->.
 
 | Store code | Meaning | SQLSTATE |
 | --- | --- | --- |

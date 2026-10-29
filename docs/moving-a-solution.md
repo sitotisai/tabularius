@@ -395,7 +395,7 @@ access come across, failing closed: a table the set doesn't list gets no
 access, and in a table whose fields the set customises, a field is kept
 only when the file marks it read/write. Any other field of that table,
 view-only ones included, is hidden until you grant it, since
-which value means view-only is inferred. `tabularius report` lists those <!-- known-difference: Reading .fmp12 files ;; Which field byte value means view-only is inferred; in a table whose fields a set customises, a field not marked read/write is hidden until granted ;; Those fields are hidden; tabularius report lists them for each set ;; More sample files with view-only fields, or a Claris statement of the byte -->
+which value means view-only is inferred. `tabularius report` lists those <!-- known-difference: Reading .fmp12 files ;; Which field byte value means view-only is inferred; in a table whose fields a set customises, a field not marked read/write is hidden until granted; comparison unverified ;; Those fields are hidden; tabularius report lists them for each set ;; More sample files with view-only fields, or a Claris statement of the byte -->
 fields for each set.
 
 Still not read from the file:
@@ -411,7 +411,7 @@ Still not read from the file:
   record-access values (everything, view only, nothing). Any other value
   comes across as view only at most, because which bit means create, edit
   or delete is itself inferred, and the report names the set. Check the
-  tables where you used it. <!-- known-difference: Reading .fmp12 files ;; Which record-access bit means create, edit or delete is inferred, and no sample has record access limited by a calculation ;; Only the bytes the samples hold are read in full; any other comes across as view only and is named by tabularius report ;; More sample files with limited or mixed record access -->
+  tables where you used it. <!-- known-difference: Reading .fmp12 files ;; Which record-access bit means create, edit or delete is inferred, and no sample has record access limited by a calculation; comparison unverified ;; Only the bytes the samples hold are read in full; any other comes across as view only and is named by tabularius report ;; More sample files with limited or mixed record access -->
 
 Other things that are not in a form some sample file shows come across the
 careful way and are named by `tabularius report` under the set or account:
@@ -653,14 +653,14 @@ including an export another file's script left there. MBS
 certificate checked) the same way; plain FTP sends the password in the clear, so
 prefer `ftps://`. They never connect to an address the server's reply names, only
 the one the first connection reached. `sftp://` addresses, which run over SSH,
-are not built in <!-- known-difference: Vendor plug-ins ;; BaseElements' FTP functions work over ftp and ftps only: sftp is not built, and the error numbers (curl's 7, 35, 67, 25 and 21) and the upload and delete path rules follow BaseElements' documentation without a run of the plug-in ;; A script that uses an sftp address gets ? and error 3; one that tests for another error number can behave differently ;; A run of the real plug-in against an FTP and an SFTP server -->, and neither are the `ftp`, `ftps` and `sftp` addresses
+are not built in <!-- known-difference: Vendor plug-ins ;; BaseElements' FTP functions work over ftp and ftps only: sftp is not built, and the error numbers (curl's 7, 35, 67, 25 and 21) and the upload and delete path rules follow BaseElements' documentation without a run of the plug-in; comparison unverified ;; A script that uses an sftp address gets ? and error 3; one that tests for another error number can behave differently ;; A run of the real plug-in against an FTP and an SFTP server -->, and neither are the `ftp`, `ftps` and `sftp` addresses
 `BE_HTTP_GET_File` takes in BaseElements: those give "?" and error 3. Shell and
-clipboard calls are not built in either. <!-- known-difference: Vendor plug-ins ;; BaseElements' web calls answer with the body as text (BaseElements answers with a container), and the error number a failed request sets (7) is inferred ;; A script that reads the container or tests for another error number can behave differently ;; A run of the real plug-in against a failing address --> Of MBS, the `Text.*`
+clipboard calls are not built in either. <!-- known-difference: Vendor plug-ins ;; BaseElements' web calls answer with the body as text (BaseElements answers with a container), and the error number a failed request sets (7) is inferred; comparison unverified ;; A script that reads the container or tests for another error number can behave differently ;; A run of the real plug-in against a failing address --> Of MBS, the `Text.*`
 functions run natively, following MBS's own documentation: case, trimming,
 lists and words, Base64, hex, URL, quoted-printable, HTML and XML encoding in
 the text encoding you name (UTF-8, UTF-16, Latin-1, Windows, Mac, Hex,
 Base64; "Native" is Mac Roman on a Mac, Windows-1252 on Windows and UTF-8 on
-Linux), accents, Soundex, string distances and MIME types. Not yet: <!-- known-difference: MBS plug-in functions ;; Text.AddLineNumbers, Text.SoundExGerman, the styled-text, file and container functions and the DOS encoding are not available ;; The call gives ? and error 3 ;; Owner decision on whether to build them, and MBS documentation or samples -->
+Linux), accents, Soundex, string distances and MIME types. Not yet: <!-- known-difference: MBS plug-in functions ;; Text.AddLineNumbers, Text.SoundExGerman, the styled-text, file and container functions and the DOS encoding are not available; comparison unverified ;; The call gives ? and error 3 ;; Owner decision on whether to build them, and MBS documentation or samples -->
 `Text.AddLineNumbers`, `Text.SoundExGerman`, the styled-text, file and
 container ones, and the DOS encoding. MBS's `RegEx.*` functions run too
 (Compile, Execute, Substring, Results, Replace, ReplaceAll, Extract, Match,
@@ -710,7 +710,7 @@ document its numbering, so Tabularius uses large numbers that won't be mistaken
 for values in the data. What a formula builds is kept to a million values and
 512 levels. JSON.Format's
 layout follows MBS's pages; where they show only a flattened example (an array
-holding objects), Tabularius puts each item on its own line. Not yet: JSONPath <!-- known-difference: MBS plug-in functions ;; JSON.Format puts each item of an array of objects on its own line, since MBS's pages show only a flattened example ;; The layout of that output can differ from MBS ;; An MBS run of JSON.Format on an array of objects --> <!-- known-difference: MBS plug-in functions ;; JSONPath and JMESPath (Query, Replace, ReplaceEvaluate, Search), Colorize, the record and import functions and the conversions to CSV, HTML, XML and TOON are not available ;; The call gives ? and error 3 ;; Owner decision on whether to build them -->
+holding objects), Tabularius puts each item on its own line. Not yet: JSONPath <!-- known-difference: MBS plug-in functions ;; JSON.Format puts each item of an array of objects on its own line, since MBS's pages show only a flattened example; comparison unverified ;; The layout of that output can differ from MBS ;; An MBS run of JSON.Format on an array of objects --> <!-- known-difference: MBS plug-in functions ;; JSONPath and JMESPath (Query, Replace, ReplaceEvaluate, Search), Colorize, the record and import functions and the conversions to CSV, HTML, XML and TOON are not available; comparison unverified ;; The call gives ? and error 3 ;; Owner decision on whether to build them -->
 and JMESPath (Query, Replace, ReplaceEvaluate, Search), Colorize, the record
 and import functions, and the conversions to CSV, HTML, XML and TOON. MBS's `Math.*` functions run
 too (sums, averages, minimum, maximum, standard deviation, moving averages,
@@ -720,9 +720,9 @@ checks and the Random distributions), as do `Time.Format`, `Time.Parse`,
 `Time.UnixTimeStamp`, `Time.UnixTimeStampToFileMaker`, `Time.TimeStampToUTC`
 and `Time.TimeZoneOffset`. Times follow the server's time zone and its
 daylight-saving rules; MBS doesn't document every edge, so results around a
-clock change are inferred. `%Z` in Time.Format gives US zones by their <!-- known-difference: MBS plug-in functions ;; Results around a clock change are inferred (MBS does not document every edge), and %Z in Time.Format gives US zones by abbreviation but others by offset ;; Times near a daylight-saving change, and zone names outside the US, can differ from MBS ;; An MBS run of those cases -->
+clock change are inferred. `%Z` in Time.Format gives US zones by their <!-- known-difference: MBS plug-in functions ;; Results around a clock change are inferred (MBS does not document every edge), and %Z in Time.Format gives US zones by abbreviation but others by offset; comparison unverified ;; Times near a daylight-saving change, and zone names outside the US, can differ from MBS ;; An MBS run of those cases -->
 abbreviation ("PST") but others by offset ("GMT+1" where MBS would print "CET").
-Not yet: `Math.Median`, `Math.TextToNumber`, <!-- known-difference: MBS plug-in functions ;; Math.Median, Math.TextToNumber, Math.InsidePolygon, Time.Sleep and Time.Wait are not available ;; The call gives ? and error 3 ;; Owner decision on whether to build them -->
+Not yet: `Math.Median`, `Math.TextToNumber`, <!-- known-difference: MBS plug-in functions ;; Math.Median, Math.TextToNumber, Math.InsidePolygon, Time.Sleep and Time.Wait are not available; comparison unverified ;; The call gives ? and error 3 ;; Owner decision on whether to build them -->
 `Math.InsidePolygon`, `Time.Sleep` and `Time.Wait`. MBS's `XML.*` functions run
 too: GetPathValue, SetPathValue, SetPathXML, SetPathCData and DeletePath (MBS's
 dotted paths), Format, Compact, Query (XPath 1.0), SubTree, ExtractText,
@@ -731,41 +731,41 @@ ApplyStylesheet2 (XSLT 1.0), and Parse with the other reference functions.
 MBS uses libxml2 and its pages don't show every byte, so Tabularius writes what
 libxml2 writes (two spaces for each level, a line feed after the declaration,
 no line break at the end); where several nodes come back from XML.Query, how
-they are laid out is inferred. XML Tabularius can't read is an error even with <!-- known-difference: MBS plug-in functions ;; How several nodes returned by XML.Query are laid out is inferred; XML Tabularius cannot read is an error even with flag 1, a DOCTYPE is left out, and XML.SetSaveNoEmptyTags lasts for the session ;; Output can differ from MBS in those cases ;; An MBS run of those cases -->
+they are laid out is inferred. XML Tabularius can't read is an error even with <!-- known-difference: MBS plug-in functions ;; How several nodes returned by XML.Query are laid out is inferred; XML Tabularius cannot read is an error even with flag 1, a DOCTYPE is left out, and XML.SetSaveNoEmptyTags lasts for the session; comparison unverified ;; Output can differ from MBS in those cases ;; An MBS run of those cases -->
 flag 1, a DOCTYPE is left out of what comes back, and XML.SetSaveNoEmptyTags
 lasts for the session rather than the
-whole server. Not yet: Colorize, Validate, ToJSON, Tidy, ToHTML, exclusive <!-- known-difference: MBS plug-in functions ;; Colorize, Validate, ToJSON, Tidy, ToHTML, exclusive canonical form and the file, container, record and import functions are not available ;; The call gives ? and error 3 ;; Owner decision on whether to build them -->
+whole server. Not yet: Colorize, Validate, ToJSON, Tidy, ToHTML, exclusive <!-- known-difference: MBS plug-in functions ;; Colorize, Validate, ToJSON, Tidy, ToHTML, exclusive canonical form and the file, container, record and import functions are not available; comparison unverified ;; The call gives ? and error 3 ;; Owner decision on whether to build them -->
 canonical form, and the file, container, record and import functions. MBS's
 `Dictionary.*` and `Variable.*` functions run too, keeping each value's type.
 MBS lists keys in no set order; Tabularius lists them in descending order, as
 every example on MBS's pages does. MBS's variables are shared by everyone on
 a server; Tabularius keeps them for the person's session, so no one sees another
 person's values. Dictionary.Serialize writes Tabularius's own form, which only
-Tabularius's Deserialize reads. Not yet: Dictionary.ToXML and the SQL, variable-setting and custom-function ones. MBS's `List.*` functions <!-- known-difference: MBS plug-in functions ;; Dictionary.ToXML and the SQL, variable-setting and custom-function Dictionary functions are not available, and Dictionary.Serialize writes Tabularius's own form that only its Deserialize reads ;; The call gives ? and error 3; serialised text from MBS is not read ;; Owner decision, and an MBS serialised sample -->
+Tabularius's Deserialize reads. Not yet: Dictionary.ToXML and the SQL, variable-setting and custom-function ones. MBS's `List.*` functions <!-- known-difference: MBS plug-in functions ;; Dictionary.ToXML and the SQL, variable-setting and custom-function Dictionary functions are not available, and Dictionary.Serialize writes Tabularius's own form that only its Deserialize reads; comparison unverified ;; The call gives ? and error 3; serialised text from MBS is not read ;; Owner decision, and an MBS serialised sample -->
 run too (values by index, matching, columns, sets, duplicates, sorting, Find,
 BestMatch and the rest). A list ends with a return where MBS's NoReturnEnding
 parameter says so; values compare case-sensitively unless MBS's page says
-otherwise; sorts go by character code (MBS doesn't name its order). Not yet: <!-- known-difference: MBS plug-in functions ;; List.CSVSplit, List.OrColumn, List.XOrColumn and List.SortWithEvaluate are not available, and sorts go by character code because MBS does not name its order ;; The call gives ? and error 3; sorted order can differ from MBS ;; Owner decision, and an MBS run that shows its sort order -->
+otherwise; sorts go by character code (MBS doesn't name its order). Not yet: <!-- known-difference: MBS plug-in functions ;; List.CSVSplit, List.OrColumn, List.XOrColumn and List.SortWithEvaluate are not available, and sorts go by character code because MBS does not name its order; comparison unverified ;; The call gives ? and error 3; sorted order can differ from MBS ;; Owner decision, and an MBS run that shows its sort order -->
 List.CSVSplit, List.OrColumn, List.XOrColumn and List.SortWithEvaluate. MBS's
 `QuickList.*` functions run as well, on lists kept for the session by
 reference (numbered from 12000, as MBS does, or by the name given); the same
-four are not yet available there, nor QuickList.AddSQL. The Hash functions <!-- known-difference: MBS plug-in functions ;; The same four List functions and QuickList.AddSQL are not available ;; The call gives ? and error 3 ;; Owner decision on whether to build them -->
+four are not yet available there, nor QuickList.AddSQL. The Hash functions <!-- known-difference: MBS plug-in functions ;; The same four List functions and QuickList.AddSQL are not available; comparison unverified ;; The call gives ? and error 3 ;; Owner decision on whether to build them -->
 (MD5, SHA1, SHA256 and SHA512 digests and HMACs, `Hash.Digest`, `Hash.CRC16`,
 `Hash.CRC32`) work on text, hex, base64 or container data. A few path and
 container helpers work too, along with `Version`, `IsRegistered` and progress
 dialogs. The following results are inferred and unverified against the vendor:
-<!-- known-difference: MBS plug-in functions ;; IsLinux, IsWindows and IsMac report the server process platform; IsServer reports whether a script runs without a person, including schedules, Perform Script on Server, Data API, MCP and CLI runs, and returns 0 in the web client ;; A script can take a different platform or server branch than with the vendor plug-in ;; A vendor run on each host and client type -->
+<!-- known-difference: MBS plug-in functions ;; IsLinux, IsWindows and IsMac report the server process platform; IsServer reports whether a script runs without a person, including schedules, Perform Script on Server, Data API, MCP and CLI runs, and returns 0 in the web client; comparison unverified ;; A script can take a different platform or server branch than with the vendor plug-in ;; A vendor run on each host and client type -->
 `IsLinux`, `IsWindows` and `IsMac` answer 1 or 0 from the server's platform;
 `IsServer` answers 1 for a script with no person and 0 in the web client.
-<!-- known-difference: MBS plug-in functions ;; Trace silently answers OK and Path.AddPathComponent joins with one separator from the input path style; empty components and trailing separators follow the simplest join rule ;; Vendor logging or path output may differ, especially at path edges ;; A vendor run with logging and empty, trailing-separator and mixed-separator paths -->
+<!-- known-difference: MBS plug-in functions ;; Trace silently answers OK and Path.AddPathComponent joins with one separator from the input path style; empty components and trailing separators follow the simplest join rule; comparison unverified ;; Vendor logging or path output may differ, especially at path edges ;; A vendor run with logging and empty, trailing-separator and mixed-separator paths -->
 `Trace` answers `OK` without writing a log. `Path.AddPathComponent` joins
 with `/` when the path contains `/`, otherwise with `\`, adding one separator;
 empty components and trailing separators use this simple rule.
-<!-- known-difference: MBS plug-in functions ;; CURL.SetUpdateProgressDialog answers OK and ProgressDialog.GetCancel answers 0 because a server has no progress dialog ;; A script relying on dialog cancellation or vendor side effects may behave differently ;; A vendor run of these calls in server and client scripts -->
+<!-- known-difference: MBS plug-in functions ;; CURL.SetUpdateProgressDialog answers OK and ProgressDialog.GetCancel answers 0 because a server has no progress dialog; comparison unverified ;; A script relying on dialog cancellation or vendor side effects may behave differently ;; A vendor run of these calls in server and client scripts -->
 `CURL.SetUpdateProgressDialog` answers `OK`, and
 `ProgressDialog.GetCancel` answers 0; there is no server dialog to cancel.
 `Folders.UserDesktop` remains unavailable because it names a person's
-computer folder. <!-- known-difference: MBS plug-in functions ;; Folders.UserDesktop is unavailable because it names a person's computer folder ;; The call gives an MBS error text and IsError then answers 1 ;; A safe client-folder capability and a vendor run showing its contract -->
+computer folder. <!-- known-difference: MBS plug-in functions ;; Folders.UserDesktop is unavailable because it names a person's computer folder; comparison unverified ;; The call gives an MBS error text and IsError then answers 1 ;; A safe client-folder capability and a vendor run showing its contract -->
 Any other MBS function, including other file-path operations and `Hash.PBKDF2.HMAC`,
 returns an error text saying it isn't available in Tabularius. As in MBS,
 `MBS ( "IsError" )` tells whether the last MBS call gave an error (1) or not (0).
@@ -1110,7 +1110,7 @@ What the lock does not cover, plainly:
 **Not carried.** Summary fields and unstored calculations have no stored value.
 Layout themes, live sessions, schedules, plug-in binaries and credentials are not
 included. Files that a container field stores outside the database are copied
-and checked for size, but anything outside the stored schema is unverified <!-- known-difference: Server operation ;; The portable copy checks a file stored outside the database for size only, and anything outside the stored schema is not checked ;; Such a file is copied and its size is compared; its contents and anything outside the schema are not verified ;; A comparison of a copy and its source for a solution that stores containers outside the database -->.
+and checked for size, but anything outside the stored schema is unverified <!-- known-difference: Server operation ;; The portable copy checks a file stored outside the database for size only, and anything outside the stored schema is not checked; comparison unverified ;; Such a file is copied and its size is compared; its contents and anything outside the schema are not verified ;; A comparison of a copy and its source for a solution that stores containers outside the database -->.
 Repeating container fields keep their ids in `data.sqlite`, and `checks.sql`
 checks only the scalar ones. This is Tabularius' own format; nothing here is
 claimed to match another product's export.

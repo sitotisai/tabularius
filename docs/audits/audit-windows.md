@@ -1,6 +1,6 @@
 # Windows readiness audit
 
-This is an offline source audit and simulated regression check, **not Windows certification**. No Windows machine or PowerShell interpreter was available. Windows execution, filesystem sharing and service-manager behavior remain **unverified**. No behavior of FileMaker was inferred from these tests. The changes preserve existing data names, including `.openhbam-*`, `~/.openhbam`, `<name>.openhbam.sqlite` and the `openhbam` scheduled task. <!-- known-difference: Windows hosting ;; Windows execution, filesystem sharing and service-manager behaviour have only been checked offline and by simulation ;; Windows hosting may behave differently from the simulated tests ;; Run the checklist below on a real Windows machine -->
+This is an offline source audit and simulated regression check, **not Windows certification**. No Windows machine or PowerShell interpreter was available. Windows execution, filesystem sharing and service-manager behavior remain **unverified**. No behavior of FileMaker was inferred from these tests. The changes preserve existing data names, including `.openhbam-*`, `~/.openhbam`, `<name>.openhbam.sqlite` and the `openhbam` scheduled task. <!-- known-difference: Windows hosting ;; Windows execution, filesystem sharing and service-manager behaviour have only been checked offline and by simulation; comparison unverified ;; Windows hosting may behave differently from the simulated tests ;; Run the checklist below on a real Windows machine -->
 
 ## Scope and method
 

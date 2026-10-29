@@ -19,6 +19,16 @@ test('the register is up to date with the markers', () => {
   assert.equal(readFileSync(REGISTER, 'utf8'), render(entries), 'run npm run docs:known-differences');
 });
 
+test('rows without a test reference must say unverified', () => {
+  const missing = pages({ 'a.md': 'Status is inferred. <!-- known-difference: Area ;; uncertain result ;; shows ;; needs a run -->\n' });
+  assert.match(missing.problems[0].why, /test reference or the word unverified/);
+  const labelled = pages({ 'a.md': 'Status is inferred. <!-- known-difference: Area ;; uncertain result; unverified ;; shows ;; needs a run -->\n' });
+  assert.deepEqual(labelled.problems, []);
+  const tested = pages({ 'a.md': 'Status is inferred. <!-- known-difference: Area ;; behavior in packages/calc/test/date.test.ts ;; shows ;; needs a run -->\n' });
+  assert.deepEqual(tested.problems, []);
+  assert.match(render([labelled.entries[0], tested.entries[0]]), /Confirmed: 1; unverified: 1/);
+});
+
 test('source comments are omitted before excerpts are shortened', () => {
   const { entries } = pages({ 'a.md': '# A\n\n| This is unverified <!-- engine.ts writeField --> and documented here | shows | settles | <!-- known-difference: Scripts ;; behavior ;; shows ;; settles -->\n' });
   assert.equal(entries.length, 1);
@@ -39,7 +49,7 @@ function pages(files: Record<string, string>) {
 }
 
 test('the scan flags a statement with no marker, and accepts each way of marking one', () => {
-  const marker = '<!-- known-difference: Area ;; what ;; shows ;; settles -->';
+  const marker = '<!-- known-difference: Area ;; what is unverified ;; shows ;; settles -->';
   const flagged = pages({ 'a.md': '# A\n\nThis is inferred from one sample.\n\nNot yet: a thing.\n' });
   assert.equal(flagged.problems.length, 2);
   assert.equal(flagged.entries.length, 0);
@@ -47,13 +57,13 @@ test('the scan flags a statement with no marker, and accepts each way of marking
   const prose = pages({ 'a.md': `# A\n\nThis is inferred from one sample,\nand the next line carries it. ${marker}\n` });
   assert.deepEqual(prose.problems, []);
   assert.equal(prose.entries.length, 1);
-  assert.deepEqual([prose.entries[0].area, prose.entries[0].what, prose.entries[0].shows, prose.entries[0].settles], ['Area', 'what', 'shows', 'settles']);
+  assert.deepEqual([prose.entries[0].area, prose.entries[0].what, prose.entries[0].shows, prose.entries[0].settles], ['Area', 'what is unverified', 'shows', 'settles']);
 
   const row = pages({ 'a.md': `| a | b |\n| - | - |\n| inferred | x | ${marker}\n| unverified | y |\n` });
   assert.equal(row.problems.length, 1, 'a table row needs its own marker: the one on the row above does not cover it');
   assert.match(row.problems[0].text, /unverified/);
 
-  const wide = pages({ 'a.md': `# A\n\n<!-- known-difference-file: Area ;; what ;; shows ;; settles -->\n\nEverything here is inferred. Not yet decoded: x.\n` });
+  const wide = pages({ 'a.md': `# A\n\n<!-- known-difference-file: Area ;; what is unverified ;; shows ;; settles -->\n\nEverything here is inferred. Not yet decoded: x.\n` });
   assert.deepEqual(wide.problems, []);
   assert.equal(wide.entries.length, 1);
 
@@ -65,6 +75,6 @@ test('a marker needs all four parts, and only a table row or paragraph it sits i
   const short = pages({ 'a.md': 'Not yet built. <!-- known-difference: Area ;; what ;; shows -->\n' });
   assert.equal(short.problems.length, 1);
   assert.match(short.problems[0].why, /four parts/);
-  const far = pages({ 'a.md': 'Not yet built.\n\n<!-- known-difference: Area ;; what ;; shows ;; settles -->\n' });
+  const far = pages({ 'a.md': 'Not yet built.\n\n<!-- known-difference: Area ;; what is unverified ;; shows ;; settles -->\n' });
   assert.equal(far.problems.length, 1, 'a marker in another paragraph does not cover the statement');
 });

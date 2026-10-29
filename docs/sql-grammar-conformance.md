@@ -79,7 +79,7 @@ Each of these is an entry in the file with `known` set to the reason, and the te
 
 ## Not verified
 
-The pages read do not say, so the file marks these entries `unverified` with no expected result (`paths: []`). The test reports current behavior on all three paths: <!-- known-difference: SQL grammar ;; vendor results for six constructs are unspecified in the cited pages ;; the conformance test records current behavior without an expected result ;; compare each construct with FileMaker and record the observed result -->
+The pages read do not say, so the file marks these entries `unverified` with no expected result (`paths: []`). The test reports current behavior on all three paths: <!-- known-difference: SQL grammar ;; vendor results for six constructs are unspecified in the cited pages; comparison unverified ;; the conformance test records current behavior without an expected result ;; compare each construct with FileMaker and record the observed result -->
 
 - `where-13`: whether `LIKE` ignores case. All three paths currently match `smith` to `Smith`.
 - `expr-10b`: whether `6 / 4` is 1 or 1.5. All three paths currently return 1 because SQLite divides two integers as integers. The reference gives no quotient example.

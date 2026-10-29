@@ -31,6 +31,13 @@ export const linkTo = (file: string) => (file.startsWith('docs/') ? file.slice(5
 export interface Entry { area: string; what: string; shows: string; settles: string; file: string; heading: string; excerpt: string }
 export interface Problem { file: string; line: number; text: string; why: string }
 
+/** A row needs either a concrete test location or an explicit uncertainty label. */
+export function evidenceProblems(entries: Entry[]): Problem[] {
+  return entries.filter((e) => !/\bunverified\b/i.test(`${e.what} ${e.shows} ${e.settles}`)
+    && !/\b(?:[\w./-]+\/)?[\w.-]+\.test\.ts(?::\d+)?\b/.test(`${e.what} ${e.shows} ${e.settles}`))
+    .map((e) => ({ file: e.file, line: 0, text: e.what, why: 'known-difference row needs a test reference or the word unverified' }));
+}
+
 function markdownFiles(dir: string): string[] {
   const out: string[] = [];
   for (const e of readdirSync(dir, { withFileTypes: true })) {
@@ -101,6 +108,7 @@ export function scan(files = [...TOP_LEVEL.map((f) => join(ROOT, f)).filter((f) 
       problems.push({ file, line: i + 1, text: line.trim().slice(0, 120), why: 'says what differs or is not settled, but has no <!-- known-difference: ... --> marker' });
     });
   }
+  problems.push(...evidenceProblems(entries));
   return { entries, problems, statements };
 }
 
@@ -133,7 +141,7 @@ export function render(entries: Entry[]): string {
     'marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not',
     'part of it.',
     '',
-    `**${sorted.length} entries in ${areas.length} areas.** Waiting on: ${waiting.join(', ')} (an entry can wait on more than one).`,
+    `**${sorted.length} entries in ${areas.length} areas.** Confirmed: ${sorted.filter((e) => !/\bunverified\b/i.test(`${e.what} ${e.shows} ${e.settles}`)).length}; unverified: ${sorted.filter((e) => /\bunverified\b/i.test(`${e.what} ${e.shows} ${e.settles}`)).length}. Waiting on: ${waiting.join(', ')} (an entry can wait on more than one).`,
     '',
     ...areas.flatMap((area) => [
       `## ${area}`,

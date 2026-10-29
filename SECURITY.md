@@ -494,5 +494,5 @@ a deliberate, separate decision.
   inside a custom function may have its cached allowed-set lag the clock until
   the next write to the file. This is a correctness, not an access, matter — the
   cache is keyed per account and never crosses accounts.
-- Some FileMaker account option flags (print, export, menu level) are not yet <!-- known-difference: Reading .fmp12 files ;; Some account option flags (print, export, menu level) are not decoded from a converted file ;; Those flags are not carried into the converted account ;; Sample files that set them, and a Design Report of the same file -->
+- Some FileMaker account option flags (print, export, menu level) are not yet <!-- known-difference: Reading .fmp12 files ;; Some account option flags (print, export, menu level) are not decoded from a converted file; comparison unverified ;; Those flags are not carried into the converted account ;; Sample files that set them, and a Design Report of the same file -->
   decoded from a converted file.
