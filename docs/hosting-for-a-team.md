@@ -456,7 +456,11 @@ The hosted stores themselves can be encrypted at rest too. Set
 `TABULARIUS_ENCRYPTION_KEY` to a passphrase and each store is kept as
 `<name>.openhbam.sqlite.enc` on disk (AES-256-GCM, scrypt), decrypted into its
 working file only while the server runs and re-encrypted on a clean shutdown,
-so a stolen disk or a copied folder holds no readable data. `serve` unlocks
+protecting the stopped store copies. New database backups use this key too unless
+`TABULARIUS_BACKUP_KEY` supplies a separate key. Existing backups, external containers,
+source files, exports and logs can still contain plaintext; `encrypt` does not seal
+these files. Protect the whole data folder and backup disk with operating-system
+encryption. `serve` unlocks
 them with the key at start; encrypt or decrypt a stopped folder yourself with
 `tabularius encrypt <folder>` / `tabularius decrypt <folder>` (same key in the
 environment). The key is never written to the folder.
