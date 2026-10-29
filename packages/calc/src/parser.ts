@@ -305,7 +305,7 @@ function lex(src: string, names: NameTable, localNames: Iterable<string> = []): 
       // A whole number of more than 15 digits keeps every digit (values.ts: exactIntegerText).
       const exact = exactIntegerText(m[0]);
       const value = Number(m[0]);
-      out.push({ t: 'num', v: value, at: i, ...(m[0] !== String(value) ? { raw: m[0] } : {}), ...(exact !== undefined ? { exact } : {}) });
+      out.push({ t: 'num', v: value, at: i, ...(/[.e]/i.test(m[0]) || m[0] !== String(value) ? { raw: m[0] } : {}), ...(exact !== undefined ? { exact } : {}) });
       i += m[0].length;
     } else if (PLUGIN_ID_ONLY.test(src.slice(i, i + 64)) || UNDECODED.test(src.slice(i, i + 40))) {
       const v = (PLUGIN_ID_ONLY.exec(src.slice(i, i + 64)) ?? UNDECODED.exec(src.slice(i, i + 40)))![0];
