@@ -7,7 +7,7 @@ import { auditJsonLine } from '../../store/src/audit-output.ts';
 // tabularius: inspect and convert FileMaker .fmp12 files.
 
 import '../../store/src/legacy-env.ts';
-import { boolean, checkServeSettings, secret } from '../../store/src/settings.ts';
+import { boolean, checkServeSettings, secret, wholeNumber } from '../../store/src/settings.ts';
 import { isLoopbackHost, plainHttpRefusal } from './loopback.ts';
 import { availableParallelism, homedir, tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
@@ -598,6 +598,13 @@ function flag(args: string[], name: string): string | undefined {
   return v;
 }
 
+function wholeFlag(args: string[], name: string, options: { min?: number; max?: number } = {}): number | undefined {
+  const value = flag(args, name);
+  if (value === undefined) return undefined;
+  try { return wholeNumber(name, { ...options, env: { [name]: value } }); }
+  catch (e) { throw new Error((e as Error).message.replace(/, or unset the variable for the default$/, ', or leave the option out for the default').replace(/^(\S+) is set to /, '$1 is ')); }
+}
+
 /**
  * An option whose value must be there: for restrictions and secrets, where a blank, a missing value or a
  * neighbouring option taken as the value would quietly widen access. Other options keep `flag`'s lenient
@@ -668,8 +675,9 @@ function outboundFlags(args: string[], command: string): { redirectTo?: string; 
   const smtpUrl = process.env.TABULARIUS_TEST_SMTP || (existsSync(smtpFile) ? readSecretFile(smtpFile, 'TABULARIUS_TEST_SMTP_FILE') : undefined);
   if (copyHeld && !redirectTo) throw new Error(`${command}: --capture-only-copies-to-redirect needs --mail-redirect`);
   if (smtpUrl && !redirectTo && process.env.TABULARIUS_TEST_SMTP) throw new Error(`${command}: TABULARIUS_TEST_SMTP is set but no --mail-redirect address was given`);
-  const maxCopies = copies === undefined ? undefined : Number(copies);
-  if (maxCopies !== undefined && !(Number.isInteger(maxCopies) && maxCopies >= 0)) throw new Error(`${command}: --mail-copies takes a whole number`);
+  let maxCopies: number | undefined;
+  try { maxCopies = wholeNumber('--mail-copies', { env: { '--mail-copies': copies } }); }
+  catch (e) { throw new Error(`${command}: ${(e as Error).message.replace(/, or unset the variable for the default$/, ', or leave the option out for the default').replace(/^(\S+) is set to /, '$1 is ')}`); }
   const allowHosts = (hosts ?? '').split(',').map((h) => h.trim()).filter(Boolean);
   const refused = allowHosts.filter(neverAllowed);
   if (refused.length) throw new Error(`${command}: ${refused.join(', ')} can never be allowed in test mode (Amazon Web Services hosts are always blocked)`);
@@ -730,7 +738,7 @@ function hostedRead(cmd: 'schema' | 'records', store: Store, args: string[]): nu
     else printSchema(store.schema);
     return 0;
   }
-  const limit = Number(flag(args, '--limit') ?? Infinity);
+  const limit = wholeFlag(args, '--limit') ?? Infinity;
   const format = flag(args, '--format') ?? 'jsonl';
   if (format !== 'jsonl' && format !== 'csv') throw new Error('records: --format is jsonl or csv');
   const name = args.shift();
@@ -1018,10 +1026,10 @@ function serviceCommand(cmd: string, args: string[]): number {
   };
   if (cmd === 'upgrade') {
     const backup = !bool(args, '--no-backup');
-    const wait = flag(args, '--wait');
+    const wait = wholeFlag(args, '--wait', { min: 1, max: 86400 });
     const from = flag(args, '--from');
     upgrade({
-      ...(wait ? { waitMs: Number(wait) * 1000 } : {}),
+      ...(wait !== undefined ? { waitMs: wait * 1000 } : {}),
       ...(from ? { from } : {}),
       backup: backup ? async (folder, extra) => {
         const i = extra.indexOf('--backup-dir');
@@ -1139,7 +1147,7 @@ function corpusScanCommand(args: string[]): number {
     return 0;
   }
   const out = resolve(flag(args, '--out') ?? 'corpus-report');
-  const jobs = flag(args, '--jobs');
+  const jobs = wholeFlag(args, '--jobs', { min: 1, max: 256 });
   const timeout = flag(args, '--timeout');
   const only = flag(args, '--only');
   const list = flag(args, '--list');
@@ -1152,7 +1160,7 @@ function corpusScanCommand(args: string[]): number {
   }
   later(corpusScan(resolve(dir ?? '.'), {
     out, convert, dedupeOnly, all, only, list: list && resolve(list), entry: process.argv[1],
-    jobs: jobs ? Number(jobs) : undefined,
+    jobs,
     timeoutSeconds: timeout ? Number(timeout) : undefined,
     log: (line) => process.stderr.write(line + '\n'),
   }).then((r) => {
@@ -1744,7 +1752,7 @@ function main(argv: string[]): number {
       if (!existsSync(file)) throw new Error(`sync-log: ${file} doesn't exist`);
       const store = openForPlanning(file);
       try {
-        const rows = readSyncLog(store, { runId: flag(args, '--run'), limit: Number(flag(args, '--limit') ?? 200) });
+        const rows = readSyncLog(store, { runId: flag(args, '--run'), limit: wholeFlag(args, '--limit', { min: 1 }) ?? 200 });
         if (bool(args, '--json')) console.log(JSON.stringify(rows, null, 2));
         else if (!rows.length) console.log('nothing has been sent to FileMaker yet');
         else for (const r of rows) console.log(`${r.at} ${r.runId.slice(0, 8)} ${r.op} ${r.status}${r.table ? ` ${r.table}` : ''}${r.uuid ? ` ${r.uuid}` : ''}${r.remoteRecordId ? ` (FileMaker record ${r.remoteRecordId}${r.modIdBefore ? `, modId ${r.modIdBefore}` : ''}${r.modIdAfter ? ` -> ${r.modIdAfter}` : ''})` : ''}${r.fields ? ` fields: ${r.fields.join(', ')}` : ''}${r.detail ? ` — ${r.detail}` : ''}`);
@@ -1853,7 +1861,7 @@ function main(argv: string[]): number {
     }
     case 'backup': {
       const dest = configuredBackupDir(path, flag(args, '--to'));
-      const keep = Number(flag(args, '--keep') ?? 0);
+      const keep = wholeFlag(args, '--keep') ?? 0;
       backupFolder(path, dest, keep).then((r) => {
         console.log(`backed up ${r.files.length} files to ${r.dir}${backupKey() ? ', encrypted' : ''}`);
         for (const old of r.removed) console.log(`removed old backup ${old}`);
@@ -1950,9 +1958,9 @@ function main(argv: string[]): number {
       for (let v = flag(args, '--script'); v !== undefined; v = flag(args, '--script')) only.push(v);
       const skip: string[] = [];
       for (let v = flag(args, '--skip'); v !== undefined; v = flag(args, '--skip')) skip.push(v);
-      const timeout = Number(flag(args, '--timeout') ?? 10);
-      const loopLimit = Number(flag(args, '--loop-limit') ?? 0);
-      const loopRecordLimit = Number(flag(args, '--loop-records') ?? 0);
+      const timeout = wholeFlag(args, '--timeout', { min: 1, max: 86400 }) ?? 10;
+      const loopLimit = wholeFlag(args, '--loop-limit') ?? 0;
+      const loopRecordLimit = wholeFlag(args, '--loop-records') ?? 0;
       const json = bool(args, '--json');
       const verbose = bool(args, '--verbose');
       const explain = bool(args, '--explain');
@@ -2145,7 +2153,7 @@ function main(argv: string[]): number {
     case 'fidelity': {
       const sqlOnly = bool(args, '--sql');
       const json = bool(args, '--json');
-      const n = Number(flag(args, '--n') ?? 200);
+      const n = wholeFlag(args, '--n', { min: 1 }) ?? 200;
       const [database] = args;
       if (!database) throw new Error('fidelity: give a database');
       const file = join(path, database + STORE_EXT);
@@ -2215,7 +2223,7 @@ function main(argv: string[]): number {
     }
     case 'stale-calcs': {
       const json = bool(args, '--json');
-      const limit = Number(flag(args, '--n') ?? 10_000);
+      const limit = wholeFlag(args, '--n', { min: 1 }) ?? 10_000;
       const table = flag(args, '--table');
       const [database] = args;
       if (!database) throw new Error('stale-calcs: give a database');
@@ -3107,7 +3115,7 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'records': {
-      const limit = Number(flag(args, '--limit') ?? Infinity);
+      const limit = wholeFlag(args, '--limit') ?? Infinity;
       const format = flag(args, '--format') ?? 'jsonl';
       const table = args.shift();
       if (!table) throw new Error(`records: which table? ${tableList(db.schema.tables)}`);
