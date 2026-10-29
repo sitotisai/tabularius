@@ -3,7 +3,7 @@
 // not Node's own words ("options.port should be >= 0 and < 65536", "getaddrinfo ENOTFOUND").
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { cpSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runCli } from './cli-run.ts';
@@ -40,12 +40,18 @@ describe('command line: wrong values are answered in sentences', { concurrency: 
   ];
   for (const c of cases) {
     test(c.name, async () => {
-      const r = await cli(c.args.map((a) => (a === '@' ? made : a)), c.env);
-      assert.equal(r.status, 1, r.stdout + r.stderr);
-      const first = r.stderr.split('\n')[0].replaceAll(made, '<folder>');
-      assert.match(first, c.says);
-      assert.deepEqual(problems(first), [], first);
-      assert.doesNotMatch(r.stderr, /\n\s+at .*:\d+:\d+/, 'no stack trace');
+      // Its own copy of the folder: a serve that fails late (an address that is not there) has claimed the folder by then, and
+      // another case running beside it would be told the folder is already hosted instead of what was wrong with its own value.
+      const folder = mkdtempSync(join(tmpdir(), 'tabularius-newcomer-case-'));
+      try {
+        cpSync(made, folder, { recursive: true });
+        const r = await cli(c.args.map((a) => (a === '@' ? folder : a)), c.env);
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        const first = r.stderr.split('\n')[0].replaceAll(folder, '<folder>');
+        assert.match(first, c.says);
+        assert.deepEqual(problems(first), [], first);
+        assert.doesNotMatch(r.stderr, /\n\s+at .*:\d+:\d+/, 'no stack trace');
+      } finally { rmSync(folder, { recursive: true, force: true }); }
     });
   }
 
