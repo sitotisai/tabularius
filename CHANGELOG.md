@@ -1,8 +1,12 @@
 # Changelog
 
-What changed in each version of Tabularius, newest first. Each area lists its newest changes; work on reading FileMaker files is counted, not listed.
+What changed in each version of Tabularius, newest first. This historical draft preserves selected entries and the original count of 185 merged pull requests; it is not a complete inventory of the current checkout. Entries describe changes at the time, so later changes can supersede them. Work on reading FileMaker files is counted, not listed. Historical PR attribution and the total are unverified without the original PR manifest or history. The reviewed release summary is in `notes/release-notes/v0.1.0.md`.
 
 ## 0.1.0
+
+### Conversion
+
+2 changes to how FileMaker files are read and converted (not listed one by one)
 
 ### Web client
 
@@ -35,10 +39,8 @@ What changed in each version of Tabularius, newest first. Each area lists its ne
 - Privileges: automation conditions run as their account; correct privilege-set names (#5)
 - Heap gate: collect before refusing a request for memory (#7)
 - Add a browser-support self-check page and a no-script message (#8)
-- Harden the fmp12 reader against corrupt blocks, varints and deep layouts (#9)
 - Observability robustness: debugger runs end cleanly, WAL checkpoints are handed back, logs and sync console checks are bounded (#10)
 - CLI folder claim for encrypt/decrypt, stricter option values, mail attachment permission and private secret errors (#12)
-- FileMaker file reader: refuse cut-off formulas and text, infer date order from evidence, compare conversion sources by content (#14)
 - Roll back a failed bulk plug-in state change and replay suspended steps once (#15)
 - Script transactions: cover every window, honour the Open Transaction options at commit, stop cleanly when a paused debugger run is canceled (#16)
 - …and 159 more
