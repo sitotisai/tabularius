@@ -59,17 +59,20 @@ export function tracing(): boolean {
   return traced;
 }
 
-/** The nearest functions of Tabularius's code on the stack, innermost first. */
-function callers(): string {
+/** The nearest functions of Tabularius's code in a stack, innermost first (a Windows location is `file:///D:/a/...`, with a colon after the drive). */
+export function callersIn(stack: string): string {
   const names: string[] = [];
-  for (const line of (new Error().stack ?? '').split('\n').slice(1)) {
-    const m = /at (?:(?:new )?([\w$.<>]+) )?\(?(?:file:\/\/)?([^():]+)/.exec(line.trim());
-    if (!m || !/\/packages\/[\w-]+\/src\//.test(m[2]) || /\/trace\.ts$/.test(m[2])) continue;
+  for (const line of stack.split('\n').slice(1)) {
+    const m = /^at (?:(?:new )?([\w$.<>]+) )?\(?(.*?):\d+:\d+\)?$/.exec(line.trim());
+    const file = m?.[2].replaceAll('\\', '/');
+    if (!m || !file || !/\/packages\/[\w-]+\/src\//.test(file) || /\/trace\.ts$/.test(file)) continue;
     names.push((m[1] ?? '(anonymous)').replace(/^.*\./, ''));
     if (names.length === 4) break;
   }
   return names.join(' < ');
 }
+
+const callers = (): string => callersIn(new Error().stack ?? '');
 
 function log(how: string, sql: string, rows: number | undefined, ms: number, from: string): void {
   if (ms < minMs()) return;
