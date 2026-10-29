@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createStore, Store } from '../src/index.ts';
 import { fileMakerSqlSyntax } from '../src/sql-dates.ts';
-import { anyAllToIn, containerCastsToName, expandStars, fetchToLimit, refuseUnsupportedJoins } from '../src/sql-grammar.ts';
+import { anyAllToIn, castsToTypes, containerCastsToName, expandStars, fetchToLimit, refuseUnsupportedJoins } from '../src/sql-grammar.ts';
 
 let dir: string;
 let store: Store;
@@ -246,6 +246,35 @@ test('container CAST uses the file name and leaves other CASTs, quoted text, and
     "SELECT (SELECT filename FROM _fm_containers WHERE id = Pic), CAST(Pay AS VARCHAR), 'CAST(Pic AS VARCHAR)' FROM P WHERE First = ?");
   assert.equal(containerCastsToName('SELECT CAST("Pic" AS VARCHAR) -- CAST(Pic AS VARCHAR)', (name) => name === 'Pic'),
     'SELECT (SELECT filename FROM _fm_containers WHERE id = "Pic") -- CAST(Pic AS VARCHAR)');
+});
+
+test('character CAST prints numbers as decimal text and keeps at most its stated length', () => {
+  for (const [query, expected] of [
+    ["SELECT CAST(N AS VARCHAR) FROM W WHERE Name = 'a'", [['1']]],
+    ["SELECT CAST(N AS CHAR(5)) FROM W WHERE Name = 'a'", [['1']]],
+    ["SELECT CAST(N * 0.5 AS VARCHAR) FROM W WHERE Name = 'a'", [['0.5']]],
+    ['SELECT CAST(1e20 AS VARCHAR)', [['100000000000000000000']]],
+    ['SELECT CAST(1234567.0 AS CHAR(20))', [['1234567']]],
+    ["SELECT CAST(N AS VARCHAR(0)) FROM W WHERE Name = 'a'", [['']]],
+    ["SELECT CAST('añb' AS VARCHAR(2))", [['añ']]],
+    ["SELECT CAST('abc' AS VARCHAR(2))", [['ab']]],
+    ['SELECT CAST(NULL AS VARCHAR(3))', [[null]]],
+    ['SELECT CAST(CAST(12345 AS VARCHAR(4)) AS VARCHAR(2))', [['12']]],
+    ['SELECT CAST(0.1 + 0.2 AS VARCHAR)', [['0.30000000000000004']]],
+    ['SELECT CAST(12345 AS CHARACTER(3))', [['123']]],
+    ["SELECT CAST('x' AS CHAR(1000001))", [['x']]],
+    ["SELECT 'CAST(1.0 AS VARCHAR)'", [['CAST(1.0 AS VARCHAR)']]],
+  ] as const) assert.deepEqual(rows(query), expected, query);
+  const untouched = 'SELECT CAST(N AS INT), CAST(N AS TEXT) FROM W';
+  assert.equal(castsToTypes(untouched), untouched);
+  const outerUntouched = 'SELECT CAST(CAST(N AS VARCHAR) AS TEXT) FROM W';
+  assert.equal(castsToTypes(outerUntouched), outerUntouched);
+  const hidden = "SELECT 'CAST(1.0 AS VARCHAR)' -- CAST(N AS CHAR(2)";
+  assert.equal(castsToTypes(hidden), hidden);
+  assert.equal(castsToTypes('SELECT CAST(CAST(12345 AS VARCHAR(4)) AS CHAR(2))'),
+    'SELECT fm_cast_text(fm_cast_text(12345 , 4) , 2)');
+  assert.equal(castsToTypes('SELECT CAST(? AS VARCHAR(3))'), 'SELECT fm_cast_text(? , 3)');
+  assert.deepEqual(run('SELECT CAST(? AS VARCHAR(3))', ['abcde']).rows, [['abc']]);
 });
 
 test('OFFSET and FETCH FIRST become LIMIT and OFFSET at the top of the query only', () => {
