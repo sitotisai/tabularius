@@ -10,7 +10,7 @@ letter are *canonically* equal (the same letters); the others are *compatibility
 | Where | Case | Accents | Canonical forms (é and e + accent) | Compatibility forms (ﬁ, full-width) |
 | --- | --- | --- | --- | --- |
 | Find: a plain word, `=word`, `==`, a wildcard (the word index holds the text as a find folds it) | ignored | ignored | equal | equal for the ligatures ﬀ ﬁ ﬂ and for width forms (full-width letters, digits and punctuation, half-width katakana), not for ﬃ ﬄ ﬅ ﬆ |
-| Find, `<`, `>` and ranges | by the field's language ([Languages for sorting](sort-languages.md)) | follows the language | equal | not equal |
+| Find, `<`, `>` and ranges | by the field's language ([Languages for sorting](sort-languages.md)) | follows the language | equal | Japanese fields equate full-width letters and digits with ordinary width, and half-width katakana (including voiced pairs) with full-width; other languages retain their existing order |
 | Unique value | ignored | kept (`e` is not `é`) | equal | not equal |
 | Value-list check ("member of value list") | ignored | kept | equal | not equal |
 | Relationship `=` match | ASCII letters only | kept | not equal | not equal |
@@ -52,7 +52,9 @@ letter are *canonically* equal (the same letters); the others are *compatibility
 - **Finds and width**: Claris says that "normally, finds are not case sensitive or width sensitive", with the example that a
   find with Japanese half-width characters matches the equivalent full-width ones
   ([Finding text and characters](https://help.claris.com/en/pro-help/content/finding-text.html)), so every kind of find here
-  folds the width forms of a character to its normal-width character. The same page says a field whose Default language is
+  folds the width forms of a character to its normal-width character. Japanese text ranges also compare width pairs as
+  equal, including a half-width katakana letter plus dakuten or handakuten and its full-width form. The precise range
+  behavior of the original product remains unverified. The same page says a field whose Default language is
   Unicode is case- and width-sensitive; a find here ignores both for such a field too (not yet done). A dakuten or handakuten
   is dropped like an accent, so **ガ** and **カ** are equal in a find (not checked against FileMaker).
 - **Relationships and OData**: Claris's page on [relationships that use comparative operators](https://help.claris.com/en/pro-help/content/relationships-comparative-operators.html)
