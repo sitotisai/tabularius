@@ -3009,12 +3009,7 @@ async function loadPlugins(fresh) {
   $('plugins-count').textContent = o.plugins.length + o.builtins.length;
   $('plugins-problems').hidden = !o.problems.length;
   $('plugins-problems').textContent = o.problems.join(' ');
-  const asks = (p) => [
-    ...p.permissions.files.map((f) => f.replace(':', ' ')),
-    ...p.permissions.network.map((h) => `web: ${h}`),
-    ...(p.permissions.mail ? ['mail'] : []),
-    ...p.secrets.map((x) => `secret: ${x.name}`),
-  ];
+  const asks = (p) => [p.permissionSummary];
   const toggles = (p) => table(o.files, [
     { label: 'File', get: (f) => f },
     { label: 'Plug-in', html: (f) => p.enabledFor.some((x) => x.toLowerCase() === f.toLowerCase()) ? '<span class="ok">On</span>' : 'Off' },

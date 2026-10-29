@@ -43,7 +43,7 @@ my-plugin/
   declared pure. Any files, network, mail or secrets permission makes every function in that plug-in volatile,
   even one declared pure. Built-in compatibility functions default to volatile; only explicitly audited pure
   BaseElements functions may be cached. MBS calls are volatile because they also update session error state.
-- `permissions` is where it asks for more: `files`, `network` hosts, `mail`, `secrets`, a `timeoutMs` (250 by default)
+- `permissions` is where it asks for more: `files`, `network` hosts, `mail`, `secrets`, a `timeoutMs` (250 by default, at most 5000 milliseconds per synchronous call)
   and `memoryMb` (64 by default). The host uses `min(memoryMb, 64)` MB for the V8 old-space heap, including runtime overhead,
   and WebAssembly linear memory. Accepted requests range from 8 to 1024 MB, but cannot raise this host's 64 MB ceiling.
   The JavaScript budget is not all available for plug-in data: at 8 MB, retaining about 4 MiB can already fail.
@@ -129,7 +129,12 @@ the same as the commands. Tests of your own can load a plug-in folder with `read
 `tabularius plugins <data folder> keygen key.pem` makes a signing key and `pack my-plugin --key key.pem` makes a
 `.ohplugin` file other people install with `plugins <data folder> install`. They are shown the publisher's
 fingerprint and must trust it first. See [Plug-in packages and signing](moving-a-solution.md#plug-in-packages-and-signing).
-A package is installed whole or not at all: it is unpacked beside the plug-ins and swapped in, the old version is put
-back if the swap fails, and the publisher is trusted only once the install has finished, so an install that stops
-(a package signed by someone other than the publisher of the plug-in already there needs `--replace`, say) trusts nobody. A newer package from the same
-publisher replaces the old version without it; `--replace` is for another publisher's package, or a folder that was copied into `plugins/` by hand. `pack` takes a folder of files only, so pack a folder with `plugin.json` and the code file, not the Rust project.
+A package is staged beside the plug-ins and swapped in. Startup recovers an interrupted swap before loading
+plug-ins. Publisher trust is recorded after validation and staging, before the swap; a swap failure can therefore
+leave an explicitly approved publisher trusted. Failure to clean up the old copy does not undo a successful install.
+A newer package from the same publisher replaces the old version without `--replace` only when its permissions
+are no wider. Equal or older versions, wider permissions (including resource budgets), another publisher's package,
+and a hand-copied destination require the admin's `--replace` approval. Script installs cannot supply this approval.
+Duplicate IDs in separate folders are refused; remove the extra folders before loading or uninstalling.
+Disabled plug-in functions fall through to hosted custom functions; vendor precedence is unverified. <!-- known-difference: Vendor plug-ins ;; Disabled plug-in functions fall through to hosted custom functions; vendor precedence is unverified ;; A custom function remains callable when a plug-in with the same function name is disabled ;; A vendor run with conflicting function names -->
+`pack` takes a folder of files only, so pack a folder with `plugin.json` and the code file, not the Rust project.

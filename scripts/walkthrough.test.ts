@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
 import { chromium } from 'playwright-core';
+import { serverCommit } from '../packages/server/src/version.ts';
 import { serve } from '../packages/server/src/index.ts';
 import { findChromium } from './chromium.ts';
 import { assembleWalkthrough, recordWalkthrough, SVG_SIZE_BUDGET, type Walkthrough } from './walkthrough.ts';
@@ -14,9 +15,30 @@ import { assembleWalkthrough, recordWalkthrough, SVG_SIZE_BUDGET, type Walkthrou
 const sample = JSON.parse(readFileSync(join(import.meta.dirname, 'walkthrough-sample.json'), 'utf8')) as Walkthrough;
 const browser = findChromium();
 
-test('synthetic walkthrough records twice to identical accessible SVG bytes; missing target names its step', { timeout: 100_000, skip: browser ? false : 'no Chromium: set TABULARIUS_CHROMIUM' }, async () => {
+test('synthetic walkthrough records twice to identical accessible SVG bytes; missing target names its step', { timeout: 100_000, skip: browser ? false : 'no Chromium: set TABULARIUS_CHROMIUM' }, async (t) => {
   assert.ok(browser, 'Chromium is required for this test');
   const root = mkdtempSync(join(tmpdir(), 'tabularius-walkthrough-test-'));
+  const oldPath = process.env.PATH;
+  const bin = join(root, 'bin'), marker = join(root, 'forbidden-command');
+  mkdirSync(bin);
+  for (const command of ['launchctl', 'systemctl', 'sc', 'git', 'npm', 'curl', 'sudo']) {
+    const file = join(bin, command);
+    writeFileSync(file, '#!/bin/sh\nprintf forbidden > "$WALKTHROUGH_TEST_MARKER"\nexit 99\n');
+    chmodSync(file, 0o755);
+  }
+  // Prime optional checkout metadata as unavailable, without invoking git in this offline browser test.
+  process.env.PATH = '';
+  try { serverCommit(); } finally { process.env.PATH = oldPath; }
+  const oldMarker = process.env.WALKTHROUGH_TEST_MARKER;
+  process.env.PATH = bin;
+  process.env.WALKTHROUGH_TEST_MARKER = marker;
+  t.after(() => {
+    if (oldPath === undefined) delete process.env.PATH; else process.env.PATH = oldPath;
+    if (oldMarker === undefined) delete process.env.WALKTHROUGH_TEST_MARKER; else process.env.WALKTHROUGH_TEST_MARKER = oldMarker;
+    const attempted = existsSync(marker);
+    rmSync(root, { recursive: true, force: true });
+    assert.equal(attempted, false, 'forbidden subprocess attempted');
+  });
   mkdirSync(join(root, 'hosted'));
   const server = await serve({ dir: join(root, 'hosted'), port: 0, watch: false, log: () => {} });
   server.host.create('Sample'); // empty synthesised solution; no fixture or personal data

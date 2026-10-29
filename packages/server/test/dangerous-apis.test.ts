@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { allowlistErrors, collectDangerousApis, validateAllowlist, type DangerousFinding } from '../../../scripts/dangerous-apis.ts';
 
 function fixture(source: string) {
@@ -42,4 +43,10 @@ test('allowed findings pass, new findings fail, stale entries and blank reasons 
   assert.match(allowlistErrors([finding], [])[0], /packages\/server\/src\/probe\.ts:2: dynamic-code in run/);
   assert.equal(validateAllowlist([], allowed).stale.length, 1);
   assert.equal(validateAllowlist([finding], [{ ...allowed[0], reason: '' }]).withoutReason.length, 1);
+});
+
+test('the real server tree passes the dangerous API allowlist', () => {
+  const root = new URL('../../../', import.meta.url);
+  const allowed = JSON.parse(readFileSync(new URL('scripts/dangerous-apis-allowlist.json', root), 'utf8'));
+  assert.deepEqual(allowlistErrors(collectDangerousApis(fileURLToPath(root)), allowed), []);
 });

@@ -95,3 +95,20 @@ test('installing and enabling refuse what would be ambiguous', () => {
   assert.throws(() => reg.enable('Invoices', 'org.other.troi'), /clashes.*⟨trfl:12⟩/);
   assert.throws(() => reg.enable('Invoices', 'org.none'), /isn't installed/);
 });
+
+test('disabled plug-ins do not shadow hosted custom functions', () => {
+  const reg = new PluginRegistry();
+  reg.install(troi(), code);
+  reg.enable('Other', troi().id);
+  const ctx = { plugin: reg.lookup('Shop'), customFunction: (name: string) => name === 'TrFile_Exists' ? { parameters: ['p'], formula: '"custom"' } : undefined };
+  assert.equal(evaluateText('TrFile_Exists ( "a" )', ctx), 'custom');
+  reg.enable('Shop', troi().id);
+  assert.equal(evaluateText('TrFile_Exists ( "a" )', ctx), '1');
+  reg.disable('Shop', troi().id);
+  assert.equal(evaluateText('TrFile_Exists ( "a" )', ctx), 'custom');
+});
+
+test('manifest refuses synchronous timeouts above five seconds', () => {
+  assert.equal(parseManifest({ ...troi(), permissions: { timeoutMs: 60000 } }).ok, false);
+  assert.equal(parseManifest({ ...troi(), permissions: { timeoutMs: 5000 } }).ok, true);
+});

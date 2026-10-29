@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { permissionSummary } from '../../plugins/src/manifest.ts';
 import { encryptionKeyFromEnv, positiveWholeNumber } from '../../server/src/setting-values.ts';
 import { checkSqlExportPath } from '../../store/src/portable-path.ts';
 import { listenForStop } from './stop-request.ts';
@@ -2580,8 +2581,8 @@ function main(argv: string[]): number {
         // The permissions are shown first, so the admin sees what is being asked for.
         const info = readPackage(bytes);
         const perms = info.manifest.permissions;
-        const asked = [...perms.files, ...perms.network.map((h) => `web: ${h}`), ...(perms.mail ? ['mail'] : []), ...perms.secrets.map((n) => `secret: ${n}`)];
-        console.log(`${info.manifest.name} ${info.manifest.version} by ${info.manifest.publisher}: ${info.manifest.functions.length} function${info.manifest.functions.length === 1 ? '' : 's'}; asks for ${asked.length ? asked.join(', ') : 'nothing beyond calculating'}`);
+        const asked = permissionSummary(perms);
+        console.log(`${info.manifest.name} ${info.manifest.version} by ${info.manifest.publisher}: ${info.manifest.functions.length} function${info.manifest.functions.length === 1 ? '' : 's'}; asks for ${asked}`);
         const done = installPackage(path, bytes, { allowUnsigned: args.includes('--allow-unsigned'), trust, replace: args.includes('--replace') });
         console.log(`Installed ${done.manifest.id} ${done.manifest.version}${done.signer ? `, signed by ${done.signer}` : ' (unsigned)'}${done.replaced ? `, replacing ${done.replaced}` : ''}. Turn it on for a file with: tabularius plugins ${path} enable <database> ${done.manifest.id}`);
         return 0;

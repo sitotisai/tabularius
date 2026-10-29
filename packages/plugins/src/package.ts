@@ -8,7 +8,7 @@ import { renameCheckedSync as renameSync, removeFileSync as rmSync } from '../..
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync } from 'node:fs';
 import { cleanupPath, readFileSync, writeFileSync } from '../../store/src/fs-boundary.ts';
-import { readJsonStateSync, updateJsonStateSync } from '../../store/src/durable.ts';
+import { readJsonStateSync, updateJsonStateSync, withStateLock, type Synchronous } from '../../store/src/durable.ts';
 import { basename, join } from 'node:path';
 import { ARCHIVE_MAX_ENTRIES, ARCHIVE_MAX_RATIO, unzip, zip, type ZipEntry } from '../../calc/src/zip.ts';
 import { JSON_SEGMENT, parseManifest, type PluginManifest } from './manifest.ts';
@@ -163,9 +163,63 @@ export interface InstallOptions {
   allowUnsigned?: boolean;
   /** The fingerprint of a publisher not trusted yet, typed by the admin who has looked at it: it is then trusted. */
   trust?: string;
-  /** Replace an installed plug-in the same publisher didn't sign. */
+  /** Admin approval to replace the signer, roll back a version, or widen permissions. */
   replace?: boolean;
   now?: Date;
+}
+
+/** Serialize installs and discovery so recovery never removes an active staging directory. */
+export function withPluginInstallLock<T>(dataDir: string, action: () => Synchronous<T>): T {
+  mkdirSync(pluginsDir(dataDir), { recursive: true });
+  return withStateLock(join(pluginsDir(dataDir), 'install-state.json'), action);
+}
+
+/** Recover only our exact temporary directory format. A crash before the second rename restores the old copy. */
+export function recoverPluginInstalls(dataDir: string): void {
+  const root = pluginsDir(dataDir);
+  const entries = readdirSync(root, { withFileTypes: true });
+  const previous = entries.filter((e) => e.isDirectory()).flatMap((e) => {
+    const match = /^\.installing-([a-z0-9][a-z0-9.-]*)-[A-Za-z0-9]{6}\.previous$/.exec(e.name);
+    return match && !JSON_SEGMENT.test(match[1]) ? [{ name: e.name, id: match[1] }] : [];
+  });
+  // More than one old copy can survive repeated cleanup failures. Never guess which one to restore.
+  for (const entry of previous) {
+    if (!existsSync(join(root, entry.id)) && previous.filter((p) => p.id === entry.id).length > 1) {
+      throw new Error(`${entry.id}: multiple interrupted installation backups; an administrator must restore the intended copy`);
+    }
+  }
+  for (const entry of previous) {
+    const aside = join(root, entry.name), dest = join(root, entry.id);
+    if (!existsSync(dest)) renameSync(aside, dest);
+    else cleanupPath(aside, { recursive: true, force: true })();
+  }
+  for (const entry of entries) {
+    if (entry.isDirectory() && /^\.installing-[a-z0-9][a-z0-9.-]*-[A-Za-z0-9]{6}$/.test(entry.name)) {
+      cleanupPath(join(root, entry.name), { recursive: true, force: true })();
+    }
+  }
+}
+
+// Compare numeric components without floating-point rounding. Pre-release ordering follows SemVer.
+function newerVersion(next: string, old: string): boolean {
+  const split = (v: string) => { const i = v.indexOf('-'); return [i < 0 ? v : v.slice(0, i), i < 0 ? undefined : v.slice(i + 1)] as const; };
+  const [a, ap] = split(next), [b, bp] = split(old);
+  const aa = a.split('.').map(BigInt), bb = b.split('.').map(BigInt);
+  for (let i = 0; i < 3; i++) if (aa[i] !== bb[i]) return aa[i] > bb[i];
+  if (ap === undefined || bp === undefined) return ap === undefined && bp !== undefined;
+  const as = ap.split('.'), bs = bp.split('.');
+  for (let i = 0; i < Math.max(as.length, bs.length); i++) {
+    if (as[i] === undefined || bs[i] === undefined) return bs[i] === undefined;
+    if (as[i] === bs[i]) continue;
+    const an = /^\d+$/.test(as[i]), bn = /^\d+$/.test(bs[i]);
+    return an && bn ? BigInt(as[i]) > BigInt(bs[i]) : an !== bn ? !an : as[i] > bs[i];
+  }
+  return false;
+}
+
+function widensPermissions(next: PluginManifest['permissions'], old: PluginManifest['permissions']): boolean {
+  return (['files', 'network', 'secrets'] as const).some((key) => next[key].some((v) => !(old[key] as readonly string[]).includes(v)))
+    || (next.mail && !old.mail) || next.timeoutMs > old.timeoutMs || next.memoryMb > old.memoryMb;
 }
 
 /**
@@ -174,7 +228,14 @@ export interface InstallOptions {
  * installed isn't replaced by one signed by someone else (or unsigned) unless `replace` is set.
  */
 export function installPackage(dataDir: string, bytes: Uint8Array, opts: InstallOptions = {}): { manifest: PluginManifest; signer?: string; replaced?: string } {
-  const info = readPackage(bytes);
+  const info = readPackage(bytes); // Reject invalid archives before creating any state.
+  return withPluginInstallLock(dataDir, () => {
+    recoverPluginInstalls(dataDir);
+    return installPackageLocked(dataDir, info, opts);
+  });
+}
+
+function installPackageLocked(dataDir: string, info: ReturnType<typeof readPackage>, opts: InstallOptions): { manifest: PluginManifest; signer?: string; replaced?: string } {
   const { manifest } = info;
   if (!/^[a-z0-9][a-z0-9.-]*$/.test(manifest.id) || JSON_SEGMENT.test(manifest.id)) throw new Error(`${manifest.id} can't be a folder name`);
   let newlyTrusted: Record<string, string> | undefined;
@@ -184,7 +245,7 @@ export function installPackage(dataDir: string, bytes: Uint8Array, opts: Install
       if (opts.trust?.toLowerCase() !== info.signer) {
         throw new Error(`${manifest.name} is signed by a publisher you haven't trusted: ${info.signer}. Check that fingerprint with the publisher, then install again with --trust ${info.signer}`);
       }
-      // Recorded once the plug-in is in place: an install that stops for any other reason trusts nobody.
+      // Record after validation and staging, before making approved code live.
       newlyTrusted = { ...trusted, [info.signer]: manifest.publisher };
     }
   } else if (!opts.allowUnsigned) {
@@ -195,6 +256,12 @@ export function installPackage(dataDir: string, bytes: Uint8Array, opts: Install
   if (existsSync(join(dest, INSTALL))) {
     const old = readJsonFile(join(dest, INSTALL)) as InstallRecord;
     replaced = old.version;
+    if (!opts.replace) {
+      const parsed = parseManifest(readJsonFile(join(dest, 'plugin.json')));
+      if (!parsed.ok || !newerVersion(manifest.version, old.version) || widensPermissions(manifest.permissions, parsed.manifest.permissions)) {
+        throw new Error(`${manifest.id}: replacing an equal or older version or widening permissions needs admin approval. Install again with --replace`);
+      }
+    }
     if (old.signer !== info.signer && !opts.replace) {
       throw new Error(`${manifest.id} ${old.version} is installed${old.signer ? `, signed by ${old.signer}` : ' unsigned'}, and this package is ${info.signer ? `signed by ${info.signer}` : 'unsigned'}. Install again with --replace to replace it`);
     }
@@ -221,6 +288,13 @@ export function installPackage(dataDir: string, bytes: Uint8Array, opts: Install
     cleanupStaging();
     throw err;
   }
+  // Persist approved trust before any live code changes, so a process exit after rename cannot lose it.
+  try {
+    if (newlyTrusted) updateJsonStateSync<Record<string, string>>(trustedPath(dataDir), {}, (latest) => ({ ...latest, ...newlyTrusted }), { mode: 0o600 });
+  } catch (err) {
+    cleanupStaging();
+    throw err;
+  }
   // The old plug-in is moved aside, not deleted, until the new one is in its place: if the swap fails, it comes back.
   const hadOld = existsSync(dest);
   try {
@@ -234,11 +308,7 @@ export function installPackage(dataDir: string, bytes: Uint8Array, opts: Install
     if (hadOld && !existsSync(dest) && existsSync(aside)) renameSync(aside, dest);
     throw err;
   }
-  cleanupAside({ throwOnError: true });
-  if (newlyTrusted) {
-    mkdirSync(pluginsDir(dataDir), { recursive: true });
-    updateJsonStateSync<Record<string, string>>(trustedPath(dataDir), {}, (latest) => ({ ...latest, ...newlyTrusted }), { mode: 0o600 });
-  }
+  cleanupAside();
   return { manifest, ...(info.signer ? { signer: info.signer } : {}), ...(replaced ? { replaced } : {}) };
 }
 
@@ -258,13 +328,22 @@ export function checkInstalled(dir: string, loaded: ReadonlyMap<string, Uint8Arr
 
 /** Removes an installed plug-in's folder (and its secrets) once no file has it enabled. */
 export function uninstallPlugin(dataDir: string, id: string, enabledFor: string[]): void {
+  if (!existsSync(pluginsDir(dataDir))) throw new Error(`${id} isn't installed in ${pluginsDir(dataDir)}`);
+  return withPluginInstallLock(dataDir, () => {
+    recoverPluginInstalls(dataDir);
+    uninstallPluginLocked(dataDir, id, enabledFor);
+  });
+}
+
+function uninstallPluginLocked(dataDir: string, id: string, enabledFor: string[]): void {
   if (enabledFor.length) throw new Error(`${id} is enabled for ${enabledFor.join(', ')}; turn it off first`);
   const root = pluginsDir(dataDir);
-  const folder = existsSync(root) ? readdirSync(root, { withFileTypes: true }).find((e) => {
+  const folder = existsSync(root) ? readdirSync(root, { withFileTypes: true }).filter((e) => {
     if (!e.isDirectory() || !discoverablePluginFolder(e.name) || !existsSync(join(root, e.name, 'plugin.json'))) return false;
     try { return (JSON.parse(readFileSync(join(root, e.name, 'plugin.json'), 'utf8')) as { id?: unknown }).id === id; } catch { return false; }
-  }) : undefined;
-  if (!folder) throw new Error(`${id} isn't installed in ${root}`);
-  rmSync(join(root, folder.name), { recursive: true, force: true });
+  }) : [];
+  if (folder.length > 1) throw new Error(`Duplicate plug-in id ${id}; remove the extra folders before uninstalling`);
+  if (!folder.length) throw new Error(`${id} isn't installed in ${root}`);
+  rmSync(join(root, folder[0].name), { recursive: true, force: true });
   rmSync(join(root, 'secrets', `${id}.json`), { force: true });
 }

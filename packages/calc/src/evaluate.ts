@@ -247,6 +247,8 @@ export interface InstalledPlugin { name: string; id: string; version: string; st
 
 /** A function a plug-in provides: it gets its arguments evaluated, never the formula. */
 export interface PluginFunction {
+  /** Disabled plug-in placeholder: a hosted custom function takes precedence over it. */
+  unavailable?: boolean;
   /** Same arguments always give the same result, without host calls. Defaults to volatile. */
   pure?: boolean;
   /** Changes when the implementation or manifest changes, for shared calculation caches. */
@@ -265,9 +267,9 @@ export function resolveFunction<C>(name: string, context: {
   const builtin = FUNCTIONS.get(name.toLowerCase());
   if (builtin) return { kind: 'builtin', fn: builtin };
   const plugin = context.plugin?.(name);
-  if (plugin) return { kind: 'plugin', fn: plugin };
+  if (plugin && !plugin.unavailable) return { kind: 'plugin', fn: plugin };
   const custom = context.customFunction?.(name);
-  return custom ? { kind: 'custom', fn: custom } : undefined;
+  return custom ? { kind: 'custom', fn: custom } : plugin ? { kind: 'plugin', fn: plugin } : undefined;
 }
 
 export interface PluginFiles {
