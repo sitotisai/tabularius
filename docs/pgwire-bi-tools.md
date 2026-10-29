@@ -110,5 +110,6 @@ These are in the `notVerified` list of the data file with the reason for each:
 - Power BI beyond Npgsql's type loading: closed source.
 - SQLAlchemy's reflection (Superset's table and column lists): built at run time, and SQLAlchemy was not run.
 - Which columns DBeaver reads by name from `SELECT c.*`: the classes that read them were not fetched.
+- psql 18's `\d table`: it calls `pg_partition_ancestors`, which now answers with no rows (no table here is partitioned), and may read `pg_constraint.conenforced`, which now exists. No psql 18 was run; the test sends the queries as `describe.c` is remembered to write them.
 - The exact driver and tool versions: sources are from their main branches on the day of the work. Only psql was a real client.
 - Whether Npgsql loads types from the `numeric` columns above: it was not run.
