@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**178 entries in 23 areas.** Waiting on: 22 on a sample file, 90 on a FileMaker run or Design Report, 14 on a Claris answer, 18 on a decision by the owner (an entry can wait on more than one).
+**179 entries in 23 areas.** Waiting on: 22 on a sample file, 91 on a FileMaker run or Design Report, 14 on a Claris answer, 18 on a decision by the owner (an entry can wait on more than one).
 
 ## Data API
 
@@ -234,6 +234,7 @@ part of it.
 
 | What differs or is unknown | How it shows | What would settle it | Where it is written |
 | --- | --- | --- | --- |
+| zero-percent result and OFFSET basis for PERCENT are not stated by the cited page | Tabularius returns no rows for zero percent and counts the rows after OFFSET | compare both cases with FileMaker and record the observed results | [docs/sql-grammar-conformance.md › Not verified](sql-grammar-conformance.md) — “…percentage count; those FileMaker outcomes are unverified.” |
 | vendor results for six constructs are unspecified in the cited pages | the conformance test records current behavior without an expected result | compare each construct with FileMaker and record the observed result | [docs/sql-grammar-conformance.md › Not verified](sql-grammar-conformance.md) — “…read do not say, so the file marks these entries unverified with no expected result (paths: []). The test…” |
 
 ## Standby servers
