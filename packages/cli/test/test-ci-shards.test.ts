@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { allTests, gateTests, plan, ROOT, shardFiles } from '../../../scripts/test-plan.ts';
+import { allTests, BROWSER_SCRIPT_TESTS, gateTests, plan, ROOT, shardFiles } from '../../../scripts/test-plan.ts';
 
 test('the gates and the shards together cover every test file exactly once', () => {
   const tests = allTests();
@@ -31,7 +31,7 @@ test('shards are filled longest file first, so their loads come out nearly even'
 
 test('repository scripts tests are selected exactly once and npm test includes them', () => {
   const selected = [...plan(4).gates, ...plan(4).shards.flat()];
-  for (const file of readdirSync(join(ROOT, 'scripts')).filter((f) => f.endsWith('.test.ts'))) {
+  for (const file of readdirSync(join(ROOT, 'scripts')).filter((f) => f.endsWith('.test.ts') && !BROWSER_SCRIPT_TESTS.has(f))) {
     assert.equal(selected.filter((f) => f === `scripts/${file}`).length, 1, file);
   }
   assert.match(JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).scripts.test, /scripts\/\*\.test\.ts/);
