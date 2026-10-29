@@ -722,6 +722,16 @@ function castTemporal(kind: 'date' | 'time' | 'timestamp', value: SQLOutputValue
   throw new CalcError(ERR.calculation, `Invalid ${kind} value '${String(value)}'`);
 }
 
+/** Decimal-text rounding shared by ROUND and parameterized numeric CASTs. */
+function roundSqlNumber(x: number, n: number, maxDigits = 30): number {
+  if (!Number.isFinite(x) || n > maxDigits) return x;
+  if (n < -300) return 0;
+  const abs = Math.abs(x);
+  // Through the decimal text where it can be, so 1.005 rounds to 1.01.
+  const rounded = Math.round(/e/i.test(String(abs)) ? abs * 10 ** n : Number(`${abs}e${n}`));
+  return Math.sign(x) * (/e/i.test(String(rounded)) ? rounded / 10 ** n : Number(`${rounded}e${-n}`));
+}
+
 /** The date, time, string and number functions of FileMaker SQL (and ODBC), for SQLite functions of the same names. */
 export const sqlDateFunctions = (now: () => Date = () => new Date()): Record<string, (...args: SQLOutputValue[]) => SQLInputValue> => ({
   YEAR: field('y'), MONTH: field('m'), DAY: field('d'), HOUR: field('h'), MINUTE: field('mi'), SECOND: field('s'),
@@ -765,6 +775,30 @@ export const sqlDateFunctions = (now: () => Date = () => new Date()): Record<str
     const value = String(v);
     return length === -1 ? value : [...value].slice(0, Number(length)).join('');
   },
+  // Vendor behavior for parameterized numeric casts is unverified offline; apply the SQL standard's precision and scale.
+  fm_cast_decimal: (v, precision, scale) => {
+    const p = Number(precision);
+    const s = Number(scale);
+    if (!Number.isInteger(p) || p < 1 || p > 38 || !Number.isInteger(s) || s < 0 || s > p) {
+      throw new CalcError(ERR.calculation, 'DECIMAL needs a precision from 1 to 38 and a scale from 0 up to it');
+    }
+    if (v === null) return null;
+    let x: number;
+    if (typeof v === 'string') {
+      const t = v.trim();
+      if (!t) return null;
+      if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(t)) {
+        throw new CalcError(ERR.calculation, `Invalid number '${v}' in CAST`);
+      }
+      x = Number(t);
+    } else if (typeof v === 'number') x = v;
+    else throw new CalcError(ERR.calculation, `Invalid number '${String(v)}' in CAST`);
+    const rounded = roundSqlNumber(x, s, 38);
+    if (Math.abs(rounded) >= 10 ** (p - s)) {
+      throw new CalcError(ERR.calculation, `Numeric value out of range for DECIMAL(${p},${s})`);
+    }
+    return rounded;
+  },
   // The argument of a STRVAL that is a condition (see withBooleanStrval): SQLite's 0 and 1 as FileMaker's False and True.
   fm_strbool: (v) => (v === null ? null : v === 0 || v === 0n ? 'False' : v === 1 || v === 1n ? 'True' : String(v)),
   NUMVAL: (v) => {
@@ -783,12 +817,7 @@ export const sqlDateFunctions = (now: () => Date = () => new Date()): Record<str
     const x = Number(v);
     if (Number.isNaN(x)) return 0;
     const n = digits === undefined || digits === null || Number.isNaN(Number(digits)) ? 0 : Math.trunc(Number(digits));
-    if (!Number.isFinite(x) || n > 30) return x;
-    if (n < -300) return 0;
-    const abs = Math.abs(x);
-    // Through the decimal text where it can be, so 1.005 rounds to 1.01.
-    const rounded = Math.round(/e/i.test(String(abs)) ? abs * 10 ** n : Number(`${abs}e${n}`));
-    return Math.sign(x) * (/e/i.test(String(rounded)) ? rounded / 10 ** n : Number(`${rounded}e${-n}`));
+    return roundSqlNumber(x, n);
   },
   // `+` and `-` on strings (see withOperators); a missing operand gives a missing result.
   fm_cat: (a, b) => (a === null || b === null ? null : String(a) + String(b)),

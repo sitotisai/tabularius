@@ -44,6 +44,7 @@ The first run disagreed with the pages on 42 entries. Some were mistakes in the 
 | `FETCH FIRST n ROWS WITH TIES` | "Not supported" | The first n rows and every row that sorts equal to the last one (below) |
 | `2 ^ 3`, `2 ** 3` | A syntax error | Exponent, with the unary minus above it (`-2 ^ 2` is 4) |
 | `ROUND(123.456, -2)` | 123 | 100; rounds half away from zero, in decimal (`ROUND(1.005, 2)` is 1.01) |
+| `CAST(x AS DECIMAL(p,s))` | The value unchanged | Rounded to s places (half away from zero), with an error when it does not fit in p digits; forms without brackets remain SQLite casts |
 | `NUMVAL('abc')` | NULL | An error; the page says the function fails |
 | `DATE '2020-13-45'` and the other constants | Kept as the text it was given | An error when the query runs |
 | `'a' + 'b'`, `first + ' ' + last`, `'a' - 'b'` | `0` (SQLite adds the numbers) | Joined; `-` moves the first string's trailing blanks to the end |
