@@ -660,6 +660,7 @@ export async function restoreBackup(folder: string, set: string, only?: string, 
       signal?.throwIfAborted();
       const target = join(folder, plain(f));
       retainCurrentCredentials(target, target + '.restoring');
+      retainCurrentRecordIdMarks(target, target + '.restoring');
       giveLiveMode(target + '.restoring', target);
       differences.push(...accountDifferences(plain(f), target, target + '.restoring'));
       const newer = changedSince(target, finishedTimes(src)[plain(f)]);
@@ -1082,6 +1083,46 @@ function credentialsReadable(source: string): boolean {
   }
 }
 
+/**
+ * Carry forward the current file's record-id marks, so a restore does not take them back to the backup's: an id the file gave
+ * after the backup was taken stays spent, and the next record is numbered after it (a gap in the numbers, not a reused id).
+ * Only a mark for a table the restored file has is carried, and only higher than its own. A current file that is missing or
+ * damaged, or either file from before the marks (format 1, which seeds them when opened), has nothing to carry.
+ */
+export function retainCurrentRecordIdMarks(source: string, restored: string): void {
+  if (!existsSync(source) || statSync(source).size === 0) return;
+  let current: DatabaseSync | undefined;
+  let marks: { tbl: string; id: number | bigint }[];
+  try {
+    current = new DatabaseSync(source, { readOnly: true });
+    current.exec('PRAGMA busy_timeout = 2000');
+    const read = current.prepare('SELECT tbl, id FROM _fm_record_id_high_water');
+    read.setReadBigInts(true);
+    marks = read.all() as unknown as typeof marks;
+  } catch (e) {
+    if (isDamageError(e) || /no such table/i.test((e as Error).message)) return;
+    throw e;
+  } finally {
+    try { current?.close(); } catch { /* nothing more to do */ }
+  }
+  const db = new DatabaseSync(restored);
+  try {
+    if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '_fm_record_id_high_water'").get()) return;
+    const present = new Set((db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map((r) => r.name.toLowerCase()));
+    const lift = db.prepare('INSERT INTO _fm_record_id_high_water (tbl, id) VALUES (?, ?) ON CONFLICT(tbl) DO UPDATE SET id = max(id, excluded.id)');
+    db.exec('BEGIN');
+    try {
+      for (const m of marks) if (present.has(m.tbl.toLowerCase())) lift.run(m.tbl, m.id);
+      db.exec('COMMIT');
+    } catch (e) {
+      try { db.exec('ROLLBACK'); } catch { /* the transaction may already have ended */ }
+      throw e;
+    }
+  } finally {
+    db.close();
+  }
+}
+
 interface ColumnInfo { name: string; type: string; notnull: number; dflt_value: string | null }
 
 const columnInfo = (conn: DatabaseSync, table: string): ColumnInfo[] => conn.prepare(`PRAGMA table_info("${table}")`).all() as unknown as ColumnInfo[];
@@ -1308,6 +1349,7 @@ async function stageRestorePoint(point: { copy: string; logs: SavedLog[] }, targ
     throw e;
   }
   retainCurrentCredentials(securitySource, work);
+  retainCurrentRecordIdMarks(securitySource, work);
   // Not whatever permissions the backup copy carried (a set on a shared drive can hold world-writable files).
   giveLiveMode(work, target);
   crashPoint('restore-copy:after-verify');
