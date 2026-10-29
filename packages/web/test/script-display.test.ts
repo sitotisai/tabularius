@@ -1491,3 +1491,24 @@ test('the window name scripts select by does not follow the tab title', () => {
   const frontWindow = Object.getPrototypeOf(s).frontWindow as () => { name: string };
   assert.equal(frontWindow.call(s).name, 'A');
 });
+
+
+test('interactive card geometry reaches the next script request in window state, including zoom', async () => {
+  const s = display({ actions: [] });
+  s.front = { id: 'C', name: 'Card', style: 'card' };
+  s.frame = { style: {} };
+  s.showRun = async () => undefined;
+  s.effectiveZoom = () => 2;
+  s.placeWindow({ left: 80, top: 60, width: 420, height: 260 });
+  assert.deepEqual({ ...s.front }, { id: 'C', name: 'Card', style: 'card', left: 80, top: 60, width: 210, height: 130 });
+  assert.equal(s.frame.style.width, '420px');
+  let sent = false;
+  s.api.button = async (_layout: string, body: any) => {
+    sent = true;
+    assert.equal(body.window, s.front);
+    assert.equal(body.windows.at(-1), s.front);
+    return { actions: [] };
+  };
+  await s.runScriptCall(undefined);
+  assert.equal(sent, true);
+});
