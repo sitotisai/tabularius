@@ -125,7 +125,7 @@ export async function testRestore(setDir: string, passphrase = backupKey()): Pro
   try {
     const inventory = backupInventory(setDir);
     copies = inventory.copies;
-    Object.assign(files, inventory.problems);
+    for (const [name, problem] of Object.entries(inventory.problems)) Object.defineProperty(files, name, { value: problem, enumerable: true, writable: true, configurable: true });
   } catch (e) {
     return { at: new Date().toISOString(), ok: false, files: { 'backup.json': (e as Error).message }, ms: Date.now() - started };
   }
@@ -239,7 +239,7 @@ export async function verifySet(setDir: string, passphrase = backupKey(), option
   try {
     const inventory = backupInventory(setDir);
     copies = inventory.copies;
-    Object.assign(files, inventory.problems);
+    for (const [name, problem] of Object.entries(inventory.problems)) Object.defineProperty(files, name, { value: problem, enumerable: true, writable: true, configurable: true });
   } catch (e) {
     return { at: new Date().toISOString(), ok: false, files: { 'backup.json': (e as Error).message }, ms: Date.now() - started };
   }
