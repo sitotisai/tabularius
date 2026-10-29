@@ -95,7 +95,10 @@ test('external Data API reads use B privileges and require a corresponding B acc
   assert.equal(good.data.response.data[0].fieldData.Value, 'SENTINEL_1');
   const onlyA = await m.login(0, 'Only0', 'only-0');
   const denied = await m.request(path, onlyA);
-  assert.equal(denied.data.messages[0].code, '200', denied.text);
+  const absent = await m.request(rest(encodeURIComponent(m.stores[0].name)) + '/layouts/Absent/records', onlyA);
+  assert.equal(denied.status, absent.status);
+  assert.equal(denied.data.messages[0].code, '105', denied.text);
+  assert.equal(denied.text.replace('External', 'TARGET'), absent.text.replace('Absent', 'TARGET'));
   const write = await m.request(path + '/1', m.sessions[0], 'PATCH', { fieldData: { Value: 'changed' } });
   assert.equal(write.data.messages[0].code, '200', write.text);
   assert.equal(m.stores[1].get('Items', 1).fieldData.Value, 'SENTINEL_1');
