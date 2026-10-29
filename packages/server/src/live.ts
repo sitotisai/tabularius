@@ -137,7 +137,8 @@ export class Live {
     };
     try {
       const db = decodeURIComponent(m[1]);
-      const session = this.api.authorize(req, db);
+      // Live renewals, polls and reconnects are background traffic, not user activity.
+      const session = this.api.authorize(req, db, false, false);
       const store = this.host.get(db);
       if (!store) throw new ApiError(802, 'Unable to open file', 404);
       const method = req.method ?? 'GET';
