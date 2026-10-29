@@ -710,9 +710,19 @@ document its numbering, so Tabularius uses large numbers that won't be mistaken
 for values in the data. What a formula builds is kept to a million values and
 512 levels. JSON.Format's
 layout follows MBS's pages; where they show only a flattened example (an array
-holding objects), Tabularius puts each item on its own line. Not yet: JSONPath <!-- known-difference: MBS plug-in functions ;; JSON.Format puts each item of an array of objects on its own line, since MBS's pages show only a flattened example ;; The layout of that output can differ from MBS ;; An MBS run of JSON.Format on an array of objects --> <!-- known-difference: MBS plug-in functions ;; JSONPath and JMESPath (Query, Replace, ReplaceEvaluate, Search), Colorize, the record and import functions and the conversions to CSV, HTML, XML and TOON are not available ;; The call gives ? and error 3 ;; Owner decision on whether to build them -->
-and JMESPath (Query, Replace, ReplaceEvaluate, Search), Colorize, the record
-and import functions, and the conversions to CSV, HTML, XML and TOON. MBS's `Math.*` functions run
+holding objects), Tabularius puts each item on its own line. <!-- known-difference: MBS plug-in functions ;; JSON.Format puts each item of an array of objects on its own line, since MBS's pages show only a flattened example ;; The layout of that output can differ from MBS ;; An MBS run of JSON.Format on an array of objects -->
+
+`JSON.Query` supports JSONPath root `$`, child `.name` and `['name']`, wildcard `*`, array index and negative index, slices `[a:b:c]`, recursive descent `..`, union `[0,1]`, and filters `[?(@.price < 10)]` with literal comparisons, `&&`, `||`, `!`, and parentheses. The existing `contains`, `keys`, and guarded regex forms also run. It gives matching values as a JSON array, or `[]` for none; flags other than 0 are unavailable. This result is inferred and unverified against MBS. <!-- known-difference: MBS plug-in functions ;; JSON.Query's matching-value array and supported JSONPath dialect are inferred and unverified against MBS ;; A query can return different values or reject a vendor-supported expression ;; An MBS run of each listed JSONPath form and its result -->
+
+`JSON.Replace` uses that JSONPath dialect and puts the supplied JSON value at every match; unmatched paths leave the document alone. Changes to a JSON reference are atomic. This result is inferred and unverified against MBS. <!-- known-difference: MBS plug-in functions ;; JSON.Replace's every-match replacement and no-match result are inferred and unverified against MBS ;; The replacement result can differ from MBS ;; An MBS run of multi-match and no-match replacement -->
+
+`JSON.ReplaceEvaluate` uses that JSONPath dialect to select values, evaluates a bounded JMESPath expression with each old value as `@`, and replaces each match with its JSON result. This expression choice and result are inferred and unverified against MBS. <!-- known-difference: MBS plug-in functions ;; JSON.ReplaceEvaluate's JMESPath expression on each old value and its result are inferred and unverified against MBS ;; An expression can mean something different in MBS ;; An MBS run of expressions on several matches -->
+
+`JSON.Search` retains its JMESPath result for expressions that do not start with `$`. For a JSONPath expression starting with `$`, it gives a JSON array of canonical paths such as `$['items'][0]`; no match gives `[]`. This path result is inferred and unverified against MBS. <!-- known-difference: MBS plug-in functions ;; JSON.Search's JSONPath result as an array of canonical paths is inferred and unverified against MBS ;; Path strings or results can differ from MBS ;; An MBS run of a JSONPath search with multiple and no matches -->
+
+Colorize, the record and import functions, and the conversions to CSV, HTML, XML and TOON are not available. <!-- known-difference: MBS plug-in functions ;; Colorize, the record and import functions, and the conversions to CSV, HTML, XML and TOON are not available ;; The call gives ? and error 3 ;; Owner decision on whether to build them -->
+
+MBS's `Math.*` functions run
 too (sums, averages, minimum, maximum, standard deviation, moving averages,
 bitwise operations on 64-bit integers, hex and binary conversion, unit
 conversion, polylines, NormInv, Rate, FormatNumber, NumberToText, card-number
