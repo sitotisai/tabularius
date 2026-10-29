@@ -10,6 +10,13 @@ import { CLIENT_ADDRESS_POLICY, OWNER_DECISIONS, ROWS, type Section } from '../p
 
 const SECTIONS: Section[] = ['Network and transport', 'Sign-in and accounts', 'What can reach outside', 'Limits', 'Data at rest'];
 
+/** Notes that follow the sign-in table: what is true of every surface, not of one setting. */
+const SIGN_IN_NOTES: string[] = [
+  "Basic sign-ins to SQL, OData, XML and `/mcp` honor `blockNewUsers`, including cached passwords; existing bearer sessions continue. Operator-supplied MCP administrator tokens must contain at least 16 characters, and incorrect bearer guesses use an address budget, including localhost. Prefer the automatically generated administrator token.",
+  "Web and AI-app OIDC callbacks require the cookie issued to the initiating browser. Web tabs also require their own sessionStorage nonce before accepting a session fragment. Form-post sign-in requires HTTPS; its cookie uses `SameSite=None; Secure`. Cross-site browser behavior with live providers remains unverified by the synthetic tests. <!-- known-difference: Server operation ;; Live-provider browser behavior for OIDC state-binding cookies is unverified ;; Provider sign-in may need browser or proxy configuration changes, especially for form_post ;; Exercise redirects and form_post with a live provider in supported browsers over HTTPS -->",
+  "Sibling-window change notifications use a session digest rather than the bearer token. On an insecure origin without Web Crypto, sibling relays are unavailable; server live updates still work.",
+];
+
 /** A table cell: no line breaks, and a pipe would end the cell. */
 const cell = (text: string) => text.replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ');
 
@@ -29,6 +36,7 @@ export function securityDefaultsPage(): string {
     lines.push(`## ${section}`, '', '| Setting | Default | What changes it | If you change it | Checked by |', '| --- | --- | --- | --- | --- |');
     for (const r of rows) lines.push(`| ${cell(r.setting)} | ${cell(r.default)} | ${cell(r.changedBy)} | ${cell(r.risk)} | ${r.how} |`);
     lines.push('');
+    if (section === 'Sign-in and accounts') for (const note of SIGN_IN_NOTES) lines.push(note, '');
   }
   lines.push(CLIENT_ADDRESS_POLICY, '');
   lines.push('## Owner decisions', '');
