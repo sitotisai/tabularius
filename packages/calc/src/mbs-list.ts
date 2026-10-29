@@ -8,12 +8,12 @@ import { checkTextSize, joinText, jsonStringArray, textLength } from './text-bud
 // - Values compare case-sensitively unless MBS's page says otherwise, and in the order of their character codes.
 // - Where several values come back in "no set order" (CountValues), they come in descending order, as MBS's examples do.
 // Not here: List.CSVSplit (MBS doesn't describe how rows are told apart), List.OrColumn and List.XOrColumn (MBS's
-// example doesn't follow from its description), List.SortWithEvaluate. They give an "isn't available" MBS error.
+// example doesn't follow from its description). They give an "isn't available" MBS error.
 
 import { MbsError, jaroWinkler, levenshtein } from './mbs-text.ts';
 import { compileRegex, optionsOf, regexMatchesEach } from './mbs-regex.ts';
 
-type MbsList = (t: string[]) => string | number;
+type MbsList = (t: string[], evaluate?: (formula: string) => string) => string | number;
 
 const fail = (msg: string): never => {
   throw new MbsError(msg);
@@ -134,6 +134,32 @@ export function sortOrder(v: string[], flags: number): number[] {
   // Descending keeps equal values in their order too.
   const dir = flags & 2 ? -1 : 1;
   return v.map((_, i) => i).sort((p, q) => dir * cmp(v[p], v[q]) || p - q);
+}
+
+/** Inferred: evaluate a formula once per value; each unquoted ? is replaced by that value as a text literal. */
+export function sortWithEvaluate(v: string[], expression: string, evaluate: (formula: string) => string): string[] {
+  const formulaFor = (value: string) => {
+    const literal = `"${value.replace(/"/g, '""')}"`;
+    let formula = '';
+    let quoted = false;
+    let replaced = false;
+    for (let i = 0; i < expression.length; i++) {
+      const c = expression[i];
+      if (c === '"') {
+        formula += c;
+        if (quoted && expression[i + 1] === '"') formula += expression[++i];
+        else quoted = !quoted;
+      } else if (c === '?' && !quoted) {
+        formula += literal;
+        replaced = true;
+      } else formula += c;
+    }
+    if (!replaced) fail('SortWithEvaluate needs a ? value placeholder in its expression');
+    return formula;
+  };
+  formulaFor(''); // Validate even for an empty list.
+  const keys = v.map((value) => evaluate(formulaFor(value)));
+  return v.map((_, i) => i).sort((a, b) => codeOrder(keys[a], keys[b]) || a - b).map((i) => v[i]);
 }
 
 // --- duplicates --------------------------------------------------------------------------------------
@@ -353,6 +379,8 @@ export const MBS_LIST: Record<string, MbsList> = {
   'list.reverse': ([list = '', nre]) => listOut(valuesOf(list).reverse(), nre),
   'list.shuffle': ([list = '']) => plain(shuffle(valuesOf(list))),
   'list.sort': ([list = '', flags, nre]) => listOut(sortValues(valuesOf(list), int(flags, 'flags', 0)), nre),
+  // Inferred: expression is evaluated once per value with each unquoted ? replaced by that value; text keys sort ascending.
+  'list.sortwithevaluate': ([list = '', expression = ''], evaluate) => listOut(sortWithEvaluate(valuesOf(list), expression, evaluate ?? (() => fail('SortWithEvaluate is not available here')))),
   'list.sublist': ([list = '', i, count, nre]) => listOut(subList(valuesOf(list), int(i, 'index'), int(count, 'count')), nre),
   // Spaces and tabs at either end of each value (inferred).
   'list.trim': ([list = '', nre]) => listOut(valuesOf(list).map(trimValue), nre),
