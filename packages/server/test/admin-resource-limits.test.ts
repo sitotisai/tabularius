@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { serve, setAdminPassword } from '../src/index.ts';
 import { readJson, ApiError, lenient } from '../src/dataapi.ts';
+import { MAX_JSON_DEPTH } from '../src/request-json.ts';
 
 const basic = (account: string) => ({ authorization: 'Basic ' + btoa(`${account}:secret`) });
 const nested = (levels: number) => '['.repeat(levels) + '0' + ']'.repeat(levels);
@@ -25,7 +26,7 @@ async function start(t: TestContext) {
   const store = s.host.create('Shop');
   store.applyDesign([{ op: 'createTable', name: 'Items', fields: [{ name: 'Name', type: 'text' }] }, { op: 'createScript', name: 'Echo', text: 'Exit Script [ Get ( ScriptParameter ) ]' }]);
   const full = store.privilegeSets().find((p) => p.id === 1)!;
-  store.savePrivilegeSet({ ...full, extendedPrivileges: [...full.extendedPrivileges, 'fmodata', 'fmmcp', 'fmrest'] });
+  store.savePrivilegeSet({ ...full, extendedPrivileges: [...full.extendedPrivileges, 'fmodata', 'fmmcp', 'fmrest', 'fmxdbc'] });
   store.setPassword('Ann', 'secret', full.name);
   store.setPassword('Bob', 'secret', full.name);
   const login = async () => {
@@ -49,10 +50,40 @@ async function start(t: TestContext) {
 }
 
 test('shared JSON reader rejects more than 64 container levels', async () => {
-  const read = (body: string) => readJson(Object.assign(Readable.from([Buffer.from(body)]), { headers: {} }) as IncomingMessage);
-  assert.ok(await read(`{"extra":${nested(63)}}`));
-  await assert.rejects(read(`{"extra":${nested(64)}}`), (e) => e instanceof ApiError && e.status === 400 && e.code === 960);
+  const read = (body: string, native: boolean) => readJson(Object.assign(Readable.from([Buffer.from(body)]), { headers: {} }) as IncomingMessage, native);
+  for (const native of [false, true]) {
+    assert.ok(await read(`{"extra":${nested(MAX_JSON_DEPTH - 1)}}`, native));
+    await assert.rejects(read(`{"extra":${nested(MAX_JSON_DEPTH)}}`, native), (e) => e instanceof ApiError && e.status === 400 && e.code === 960 && e.message === `Invalid JSON: nesting exceeds ${MAX_JSON_DEPTH} levels`);
+  }
 });
+
+for (const surface of [
+  { name: 'Data API', path: '/fmi/data/vLatest/databases/Shop/globals', method: 'PATCH', auth: 'web', body: '{"globalFields":{},"extra":' },
+  { name: 'SQL', path: '/tabularius/sql/v1/databases/Shop', method: 'POST', auth: 'basic', body: '{"sql":"SELECT Name FROM Items","extra":' },
+  { name: 'live', path: '/tabularius/live/v1/databases/Shop/design', method: 'POST', auth: 'web', body: '{"layout":0,"extra":' },
+  { name: 'dashboards', path: '/tabularius/dashboards/v1/databases/Shop', method: 'POST', auth: 'web', body: '{"name":"Depth test","widgets":[{"kind":"number","layout":"Items"}],"extra":' },
+] as const) {
+  test(`${surface.name}: shared JSON body accepts 64 levels and rejects 65 with the nesting error`, async (t) => {
+    const s = await start(t);
+    const headers = surface.auth === 'basic' ? basic('Ann') : s.surfaces.find((v) => v.name === 'web client')!.headers;
+    const send = (depth: number) => fetch(s.url + surface.path, {
+      method: surface.method, headers: { ...headers, 'content-type': 'application/json' },
+      body: surface.body + nested(depth) + '}',
+    });
+    const allowed = await send(MAX_JSON_DEPTH - 1);
+    assert.ok(allowed.ok, `${surface.name} at the limit: ${allowed.status} ${await allowed.text()}`);
+    const denied = await send(MAX_JSON_DEPTH);
+    assert.equal(denied.status, 400, await denied.clone().text());
+    const error = await denied.json();
+    if (surface.name === 'Data API') {
+      assert.equal(error.messages[0].code, '960');
+      assert.equal(error.messages[0].message, `Invalid JSON: nesting exceeds ${MAX_JSON_DEPTH} levels`);
+    } else {
+      assert.equal(error.error.code, 960);
+      assert.equal(error.error.message, `Invalid JSON: nesting exceeds ${MAX_JSON_DEPTH} levels`);
+    }
+  });
+}
 
 test('optional JSON bodies cannot swallow a nesting-limit violation', async () => {
   const req = Object.assign(Readable.from([Buffer.from(`{"extra":${nested(64)}}`)]), { headers: {} }) as IncomingMessage;
