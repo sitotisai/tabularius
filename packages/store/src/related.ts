@@ -106,13 +106,18 @@ export function relationPath(schema: Schema, from: number, to: number): Hop[] | 
 
 const fieldName = (t: Table, id: number) => t.fields.find((f) => f.id === id)?.name;
 
+// Design creates columns for every field except summaries. Unstored calculations
+// and globals still have columns, even though their displayed values are worked out.
+const hasColumn = (table: Table, name: string) => name === '_fm_record_id' || name === '_fm_mod_id'
+  || table.fields.some((f) => f.name === name && f.kind !== 'summary');
+
 /** A schema-ordered projection. Unknown or runtime-selected fields require the full row. */
 function projection(table: Table, names?: string[]): string {
   const wanted = new Set(names === undefined
     ? ['_fm_record_id', '_fm_mod_id', ...table.fields.map((f) => f.name)]
     : ['_fm_record_id', ...names]);
   return [...wanted]
-    .filter((name) => name === '_fm_record_id' || name === '_fm_mod_id' || table.fields.some((f) => f.name === name))
+    .filter((name) => hasColumn(table, name))
     .map(q).join(', ');
 }
 
@@ -182,6 +187,7 @@ export function relatedRows(
   const path = relationPath(store.schema, fromId, toId);
   const target = occurrence(store, toId);
   if (!path || !target) return undefined;
+  if (opts.cols) opts = { ...opts, cols: opts.cols.filter((name) => hasColumn(target.table, name)) };
   const offset = Math.max(0, opts.offset ?? 0);
   const limit = Math.max(0, opts.limit ?? MAX_ROWS);
   let from = occurrence(store, fromId);

@@ -7419,7 +7419,11 @@ export class Store {
       const t0 = performance.now();
       const ran = statements;
       const computed = f.kind === 'calculation' && f.options?.unstored;
-      let v = f.options?.global
+      // A related row has no found-set summary context; like a missing value,
+      // its summary is displayed empty. The main record computes its own summaries.
+      // Compatibility of this empty display with FileMaker is unverified.
+      let v = f.kind === 'summary' ? null
+        : f.options?.global
         ? occ.store.calc.globalValue(occ.table, f) as SqlValue
         : computed
           ? occ.store.calc.unstoredValue({ store: occ.store, table: occ.table, row: row as Row }, f, pass) as SqlValue
