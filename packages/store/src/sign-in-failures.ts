@@ -156,6 +156,12 @@ export class SignInFailures extends Map<string, Failure> {
     }
   }
 
+  /** Whether nothing is counted: every counter has run out. */
+  idle(): boolean {
+    this.sweep(elapsed());
+    return this.size === 0;
+  }
+
   /** Remember a successful directory identity independently of its failure counter. */
   confirmDirectory(key: string): void {
     this.sweep(elapsed());

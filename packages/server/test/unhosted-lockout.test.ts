@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { createStore, Store } from '../../store/src/index.ts';
 import { serve } from '../src/index.ts';
 import { SignInFailures } from '../../store/src/sign-in-failures.ts';
+import { UnhostedSignIns } from '../src/unhosted-sign-ins.ts';
 
 let dir: string;
 let served: Awaited<ReturnType<typeof serve>>;
@@ -127,4 +128,45 @@ test('a file name as long as a request line allows keeps the key short', () => {
   assert.ok(key.length < 400, `${key.length} characters`);
   assert.notEqual(key, failures.accountKey('Ann', '198.51.100.1', 'x'.repeat(59_999)));
   assert.equal(failures.accountKey('Ann', '198.51.100.1', 'Name'), failures.accountKey('Ann', '198.51.100.1', 'NAME'));
+});
+
+test('recovery codes: once an account\'s code counter is locked the failures still count against the address, and a code counter is apart from a password counter', { timeout: 180_000 }, async () => {
+  const proxied = await serve({ dir, port: 0, hostname: '127.0.0.1', watch: false, log: () => {}, proxyHeader: 'x-forwarded-for', trustedProxies: ['127.0.0.1'] });
+  try {
+    const recovery = async (db: string, address: string, account?: string) => {
+      const res = await fetch(`${proxied.url}/fmi/data/vLatest/databases/${db}/sessions/recovery`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': address }, body: JSON.stringify({ ...(account ? { account } : {}), code: 'wrong' }) });
+      return `${res.status} wait=${res.headers.has('retry-after')} ${(await res.text()).replaceAll(db, '<file>').replace(/\d{4}-\d\d-\d\dT[\d:.]+Z/, '<time>')}`;
+    };
+    const run = async (db: string, address: string, account?: string) => { const seen: string[] = []; for (let i = 0; i < 34; i++) seen.push(await recovery(db, address, account)); return seen; };
+    const hosted = await run('Real', '203.0.113.20', 'alice');
+    assert.ok(hosted.at(-1)!.includes('wait=true'));
+    assert.deepEqual(await run('GoneForGood', '203.0.113.21', 'alice'), hosted);
+    const noAccount = await run('Real', '203.0.113.22');
+    assert.ok(noAccount.at(-1)!.includes('wait=true'));
+    assert.deepEqual(await run('GoneForGood', '203.0.113.23'), noAccount);
+    // Five wrong codes for alice do not lock a password sign-in as an account that is named like the counter was.
+    const odata = async (db: string, address: string, user: string) => { const res = await fetch(`${proxied.url}/fmi/odata/v4/${db}/T`, { headers: { authorization: basic(user, 'wrong'), 'x-forwarded-for': address } }); return `${res.status} wait=${res.headers.has('retry-after')}`; };
+    for (let i = 0; i < 6; i++) await recovery('Gone2', '203.0.113.24', 'alice');
+    assert.equal(await odata('Gone2', '203.0.113.24', 'recovery code of alice'), '401 wait=false');
+  } finally { await new Promise<void>((resolve) => proxied.server.close(() => resolve())); }
+});
+
+test('flooding the server with invented names erases no lock', () => {
+  const names = new UnhostedSignIns();
+  const from = '198.51.100.30';
+  const locked = names.table('Target');
+  const key = locked.accountKey('bob', from, 'Target');
+  for (let i = 0; i < 5; i++) locked.record(key, from, false);
+  assert.ok(locked.lockedOut(key, from));
+  for (let i = 0; i < 5000; i++) {
+    const t = names.table(`Invented${i}`);
+    t.record(t.accountKey('x', `192.0.2.${i % 250}`, `Invented${i}`), `192.0.2.${i % 250}`, false);
+  }
+  const again = names.table('Target');
+  assert.ok(again.lockedOut(again.accountKey('bob', from, 'Target'), from), 'the lock is still there');
+  // A name that found no room is counted in the shared table, which still locks its accounts.
+  const late = names.table('Late');
+  const lateKey = late.accountKey('bob', from, 'Late');
+  for (let i = 0; i < 5; i++) late.record(lateKey, from, false);
+  assert.ok(names.table('Late').lockedOut(lateKey, from));
 });
