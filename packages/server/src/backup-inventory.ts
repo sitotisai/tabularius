@@ -10,6 +10,7 @@ export function backupInventory(setDir: string, allowLegacy = false): { copies: 
   const present = readdirSync(setDir).filter((f) => f.endsWith(STORE_EXT) || f.endsWith(STORE_EXT + ENCRYPTED_EXT));
   const plain = (f: string) => f.endsWith(ENCRYPTED_EXT) ? f.slice(0, -ENCRYPTED_EXT.length) : f;
   const expected = new Set<string>();
+  const spelling = new Map<string, string>();
   let recorded = false;
   for (const field of ['finished', 'sha256'] as const) {
     if (info[field] === undefined) continue;
@@ -20,10 +21,18 @@ export function backupInventory(setDir: string, allowLegacy = false): { copies: 
       if (basename(name) !== name || win32.basename(name) !== name || name.includes(':') || name.includes('\0') || !name.endsWith(STORE_EXT)) {
         throw new Error(`invalid database name in backup.json: ${name}`);
       }
+      const prior = spelling.get(name.toLowerCase());
+      if (prior && prior !== name) throw new Error(`duplicate database name in backup.json: ${prior} and ${name}`);
+      spelling.set(name.toLowerCase(), name);
       expected.add(name);
     }
   }
-  const problems: Record<string, string> = {};
+  const problems: Record<string, string> = Object.create(null);
+  for (const name of readdirSync(setDir)) {
+    if (name === 'backup.json' || name === 'backup.json.lock.db' || name === 'backup.json.lock.db-wal' || name === 'backup.json.lock.db-shm' ||
+        name === 'progressive' || name === 'Files' || name === 'RC_Data_FMS' || present.includes(name)) continue;
+    problems[name] = 'not listed in the backup set';
+  }
   if (!recorded) {
     if (!allowLegacy || !present.length) problems['backup.json'] = 'missing database inventory';
     for (const f of present) expected.add(plain(f));
@@ -48,7 +57,7 @@ export function backupInventory(setDir: string, allowLegacy = false): { copies: 
 /** The copies of a set, refusing one with any problem; with `only` (a file's name), just that file's copy has to check out, which is how what is left of a damaged set is restored by naming it. */
 export function checkedBackupCopies(setDir: string, only?: string): string[] {
   const inventory = backupInventory(setDir, true);
-  const mine = (name: string) => !only || name === 'backup.json' || name.toLowerCase() === only.toLowerCase();
+  const mine = (name: string) => !only || name === 'backup.json' || inventory.problems[name] === 'not listed in the backup set' || name.toLowerCase() === only.toLowerCase();
   const errors = Object.entries(inventory.problems).filter(([name]) => mine(name));
   if (errors.length) throw new Error(errors.map(([file, problem]) => `${file}: ${problem}`).join('; '));
   return inventory.copies;
