@@ -591,6 +591,7 @@ const list = (a: Value): Json[] => (asJson(a) as Json & { t: 'arr' }).items;
 
 const FUNCTIONS: Record<string, Fn> = {
   abs: { params: [N], run: ([a]) => num(Math.abs(Number((asJson(a) as Json & { t: 'num' }).raw))) },
+  // Inferred: avg of an empty numeric array is JSON null.
   avg: { params: [['array-number']], run(this: Run, [a]) {
     const n = nums(a);
     this.tick(n.length);
@@ -598,6 +599,7 @@ const FUNCTIONS: Record<string, Fn> = {
   } },
   ceil: { params: [N], run: ([a]) => num(Math.ceil(Number((asJson(a) as Json & { t: 'num' }).raw))) },
   floor: { params: [N], run: ([a]) => num(Math.floor(Number((asJson(a) as Json & { t: 'num' }).raw))) },
+  // Inferred: contains uses substring matching for text and exact JSON value matching for arrays.
   contains: { params: [['array', 'string'], ANY], run(this: Run, [s, x]) {
     const subject = asJson(s);
     const search = asJson(x);
@@ -607,8 +609,11 @@ const FUNCTIONS: Record<string, Fn> = {
     }
     return bool((subject as Json & { t: 'arr' }).items.some((y) => this.equal(y, search)));
   } },
+  // Inferred: ends_with compares case-sensitive Unicode text.
   ends_with: { params: [S, S], run(this: Run, [a, b]) { this.tick(text((asJson(a) as Json & { t: 'str' }).v)); return bool((asJson(a) as Json & { t: 'str' }).v.endsWith((asJson(b) as Json & { t: 'str' }).v)); } },
+  // Inferred: starts_with compares case-sensitive Unicode text.
   starts_with: { params: [S, S], run(this: Run, [a, b]) { this.tick(text((asJson(a) as Json & { t: 'str' }).v)); return bool((asJson(a) as Json & { t: 'str' }).v.startsWith((asJson(b) as Json & { t: 'str' }).v)); } },
+  // Inferred: join inserts the separator only between string items.
   join: { params: [S, ['array-string']], run(this: Run, [g, a]) {
     const items = list(a);
     const glue = (asJson(g) as Json & { t: 'str' }).v;
@@ -618,24 +623,29 @@ const FUNCTIONS: Record<string, Fn> = {
     this.tick(items.length + (total >> 6));
     return str(items.map((x) => (x as Json & { t: 'str' }).v).join(glue));
   } },
+  // Inferred: keys keeps the input object's member order.
   keys: { params: [O], run(this: Run, [a]) {
     const entries = (asJson(a) as Json & { t: 'obj' }).entries;
     this.tick(entries.length);
     return { t: 'arr', items: entries.map(([k]) => str(k)) };
   } },
+  // Inferred: values keeps the input object's member order.
   values: { params: [O], run(this: Run, [a]) {
     const entries = (asJson(a) as Json & { t: 'obj' }).entries;
     this.tick(entries.length);
     return { t: 'arr', items: entries.map(([, x]) => x) };
   } },
+  // Inferred: length counts Unicode code points for text and top-level members for arrays and objects.
   length: { params: [['string', 'array', 'object']], run(this: Run, [a]) {
     const j = asJson(a);
     if (j.t === 'str') this.tick(text(j.v));
     return num(j.t === 'str' ? codePoints(j.v) : j.t === 'arr' ? j.items.length : (j as Json & { t: 'obj' }).entries.length);
   } },
+  // Inferred: map preserves one result per input item, including JSON null.
   map: { params: [REF, A], run(this: Run, [r, a]) {
     return { t: 'arr', items: list(a).map((x) => this.eval((r as Ref).ref, x)) };
   } },
+  // Inferred: max returns null for an empty array and compares strings by code point.
   max: { params: [['array-number', 'array-string']], run(this: Run, [a]) {
     const items = list(a);
     this.tick(items.length + this.textCost(items));
@@ -643,6 +653,7 @@ const FUNCTIONS: Record<string, Fn> = {
     if (items[0].t === 'num') return items.reduce((m, x) => (Number((x as Json & { t: 'num' }).raw) > Number((m as Json & { t: 'num' }).raw) ? x : m));
     return items.reduce((m, x) => (compareText((x as Json & { t: 'str' }).v, (m as Json & { t: 'str' }).v) > 0 ? x : m));
   } },
+  // Inferred: min returns null for an empty array and compares strings by code point.
   min: { params: [['array-number', 'array-string']], run(this: Run, [a]) {
     const items = list(a);
     this.tick(items.length + this.textCost(items));
@@ -661,18 +672,22 @@ const FUNCTIONS: Record<string, Fn> = {
     }
     return { t: 'obj', entries: [...merged] };
   } },
+  // Inferred: not_null takes the first non-null value, including false and empty values.
   not_null: { params: [ANY], rest: ANY, run: (args) => args.map(asJson).find((x) => x.t !== 'null') ?? NULL },
+  // Inferred: reverse preserves Unicode code points in text and reverses array item order.
   reverse: { params: [['array', 'string']], run(this: Run, [a]) {
     const j = asJson(a);
     this.tick(j.t === 'str' ? text(j.v) : j.t === 'arr' ? j.items.length : 1);
     return j.t === 'str' ? str([...j.v].reverse().join('')) : { t: 'arr', items: [...(j as Json & { t: 'arr' }).items].reverse() };
   } },
+  // Inferred: sort orders homogeneous numbers numerically and strings by code point.
   sort: { params: [['array-number', 'array-string']], run(this: Run, [a]) {
     const items = [...list(a)];
     this.tick(items.length * Math.max(1, Math.ceil(Math.log2(items.length + 1))) + this.textCost(items));
     items.sort((x, y) => (x.t === 'num' ? Number(x.raw) - Number((y as Json & { t: 'num' }).raw) : compareText((x as Json & { t: 'str' }).v, (y as Json & { t: 'str' }).v)));
     return { t: 'arr', items };
   } },
+  // Inferred: sort_by uses homogeneous numeric or text keys and keeps ties in input order.
   sort_by: { params: [A, REF], run(this: Run, [a, r]) {
     const items = list(a);
     const keys = this.keys(items, r as Ref, 'either');
@@ -685,12 +700,14 @@ const FUNCTIONS: Record<string, Fn> = {
     });
     return { t: 'arr', items: order.map((i) => items[i]) };
   } },
+  // Inferred: sum of an empty numeric array is zero.
   sum: { params: [['array-number']], run(this: Run, [a]) {
     const n = nums(a);
     this.tick(n.length);
     return num(n.reduce((x, y) => x + y, 0));
   } },
   to_array: { params: [ANY], run: ([a]) => (asJson(a).t === 'arr' ? asJson(a) : { t: 'arr', items: [asJson(a)] }) },
+  // Inferred: to_number returns null for text that is not a finite decimal number.
   to_number: { params: [ANY], run([a]) {
     const j = asJson(a);
     if (j.t === 'num') return j;
@@ -700,10 +717,12 @@ const FUNCTIONS: Record<string, Fn> = {
     }
     return NULL;
   } },
+  // Inferred: to_string preserves text and serializes other values as compact JSON.
   to_string: { params: [ANY], run(this: Run, [a]) {
     const j = asJson(a);
     return j.t === 'str' ? j : str(this.text(j));
   } },
+  // Inferred: type returns a lowercase JMESPath type name.
   type: { params: [ANY], run: ([a]) => str(typeOf(asJson(a))) },
 };
 
