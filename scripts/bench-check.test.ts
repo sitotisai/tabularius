@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { CONFIG, TOLERANCE, compare, confirmedRegressions, median, medianRatios, ratios, wideElapsed, type Baseline, type BenchOutput } from './bench-check-lib.ts';
+import { CONFIG, TOLERANCE, checkPerformance, compare, confirmedRegressions, median, medianRatios, ratios, wideElapsed, type Baseline, type BenchOutput } from './bench-check-lib.ts';
 
 const row = (ratio: number) => [{ group: 'Find', operation: 'sample', ratio }];
 const baseline: Baseline = { version: 1, config: CONFIG, tolerance: TOLERANCE, operations: row(10) };
@@ -44,4 +44,16 @@ test('wide budget checks full workload and finite elapsed time; three runs suppr
   assert.throws(() => wideElapsed({ ...output, counts: { records: 100, tables: 3 } }, budget), /configuration/);
   for (const firstUseTotalMs of [NaN, Infinity, -1, 0]) assert.throws(() => wideElapsed({ ...output, timings: { firstUseTotalMs } }, budget), /timing/);
   assert.throws(() => wideElapsed(output, { ...budget, maxMs: 0 }), /budget/);
+});
+
+test('four absolute budgets require the exact workload list and positive timings', () => {
+  const ids = ['find', 'import', 'backupRestore', 'coldStart'] as const;
+  const measures = ids.map((id) => ({ id, ms: 30 }));
+  const budgets = ids.map((id) => ({ id, maxMs: 30 }));
+  assert.equal(checkPerformance(measures, budgets).every((row) => !row.over), true);
+  assert.equal(checkPerformance([{ id: 'find', ms: 31 }, ...measures.slice(1)], budgets)[0].over, true);
+  assert.throws(() => checkPerformance(measures.slice(1), budgets), /performance budget/);
+  assert.throws(() => checkPerformance(measures, [...budgets].reverse()), /performance budget/);
+  assert.throws(() => checkPerformance([{ id: 'find', ms: NaN }, ...measures.slice(1)], budgets), /performance budget/);
+  assert.throws(() => checkPerformance(measures, [{ id: 'find', maxMs: 0 }, ...budgets.slice(1)]), /performance budget/);
 });
