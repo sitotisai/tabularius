@@ -804,9 +804,11 @@ function params(ctx: Ctx, name: string, parts: string[]): StepParams | undefined
         const using = labelled(part, 'Using layout');
         const window = labelled(part, 'New window');
         if (/^match all records in (the|current) found set$/i.test(part.trim())) p.matchFoundSet = true;
+        else if (/^match current record only$/i.test(part.trim())) continue;
+        else if (/^show only related records$/i.test(part.trim())) p.showOnlyRelated = true;
+        else if (/^show only related records\s*:\s*(on|off)$/i.test(part.trim())) p.showOnlyRelated = onOff(part.trim().split(':').slice(1).join(':').trim());
         else if (/^new window$/i.test(part.trim())) p.newWindow = true;
         else if (window !== undefined) Object.assign(p, { newWindow: true, slots: { 128: window } });
-        else if (/^(show only related records|match current record only)$/i.test(part.trim())) continue;
         else if (from !== undefined) p.tableOccurrence = ref(ctx, ctx.schema.tableOccurrences, from, 'table occurrence');
         else if (using !== undefined && !/^<current layout>$/i.test(using)) {
           p.layout = ref(ctx, ctx.schema.layouts, using, 'layout');
