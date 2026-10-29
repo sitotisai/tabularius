@@ -1,3 +1,4 @@
+import { permissionSummary } from '../../plugins/src/manifest.ts';
 import { clientAddress } from './client-address.ts';
 import { auditCsvField } from '../../store/src/audit-output.ts';
 // The admin console, like FileMaker Server's: who is connected, records
@@ -1991,7 +1992,8 @@ export class Admin {
       plugins: st.installed.map((m) => ({
         id: m.id, name: m.name, version: m.version, publisher: m.publisher, runtime: m.runtime,
         functions: m.functions.map((f) => f.name),
-        permissions: { files: m.permissions.files, network: m.permissions.network, mail: m.permissions.mail },
+        permissionSummary: permissionSummary(m.permissions),
+        permissions: { timeoutMs: m.permissions.timeoutMs, memoryMb: m.permissions.memoryMb, files: m.permissions.files, network: m.permissions.network, mail: m.permissions.mail },
         // From a package (signer null when unsigned); null for a plug-in put in the folder by hand.
         package: st.installs[m.id] ? { signer: st.installs[m.id].signer ?? null, installedAt: st.installs[m.id].installedAt } : null,
         enabledFor: Object.entries(st.enabled).filter(([, ids]) => ids.includes(m.id)).map(([file]) => file),

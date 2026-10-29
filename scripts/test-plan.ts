@@ -23,7 +23,7 @@ export function allTests(root = ROOT): string[] {
   return readdirSync(packages).flatMap((name) => {
     const dir = join(packages, name, 'test');
     return existsSync(dir) ? readdirSync(dir).filter((file) => file.endsWith('.test.ts')).map((file) => `packages/${name}/test/${file}`) : [];
-  }).sort();
+  }).concat(readdirSync(join(root, 'scripts')).filter((file) => file.endsWith('.test.ts')).map((file) => `scripts/${file}`)).sort();
 }
 
 export function gateTests(): string[] {
