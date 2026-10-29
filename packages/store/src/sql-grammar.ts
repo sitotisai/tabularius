@@ -53,39 +53,55 @@ export function containerCastsToName(sql: string, isContainer: (name: string) =>
   });
 }
 
-/** Character CASTs use decimal text for numbers and honor an optional character length. */
+/**
+ * Rewrite the CASTs SQLite would answer differently from FileMaker's SQL, after rewriting their operands: a character
+ * type (numbers print as decimal text, an optional length keeps that many characters), DATE, TIME and TIMESTAMP (the
+ * value or an error), and DECIMAL or NUMERIC with a precision (rounded to the scale, an error on overflow). Every
+ * other type name is left to SQLite.
+ */
 export function castsToTypes(sql: string): string {
-  if (!/\bCAST\s*\(/i.test(sql)) return sql;
   const plain = blanked(sql);
+  if (!/\bCAST\s*\(/i.test(plain)) return sql;
   const cast = /\bCAST\s*\(/gi;
+  let at = 0;
   let result = '';
-  let cursor = 0;
   for (const match of plain.matchAll(cast)) {
     const start = match.index;
-    if (start < cursor) continue;
-    const open = start + match[0].lastIndexOf('(');
+    if (start < at) continue;
+    const open = start + match[0].length - 1;
     const end = closing(plain, open + 1);
     if (end < 0) continue;
-    let as = -1;
+    result += sql.slice(at, start);
+    const body = sql.slice(open + 1, end);
+    const inside = plain.slice(open + 1, end);
     let depth = 0;
-    for (let i = open + 1; i < end; i++) {
-      if (plain[i] === '(') depth++;
-      else if (plain[i] === ')') depth--;
-      else if (depth === 0 && (plain[i] === 'A' || plain[i] === 'a')
-        && /^AS\b/i.test(plain.slice(i, end)) && (i === open + 1 || !/\w/.test(plain[i - 1]))) as = i;
+    let as = -1;
+    for (let i = 0; i < inside.length - 1; i++) {
+      if (inside[i] === '(') depth++;
+      else if (inside[i] === ')') depth--;
+      else if (depth === 0 && inside.slice(i, i + 2).toUpperCase() === 'AS'
+        && (i === 0 || !/\w/.test(inside[i - 1])) && (i + 2 === inside.length || !/\w/.test(inside[i + 2]))) as = i;
     }
-    const type = as < 0 ? null : /^(\w+)(?:\s*\(\s*(\d+)(?:\s*,\s*(\d+))?\s*\))?\s*$/i.exec(sql.slice(as + 2, end).trim());
-    const name = type?.[1].toUpperCase();
-    if (name !== 'VARCHAR' && name !== 'CHAR' && name !== 'CHARACTER' || type?.[3] !== undefined) {
-      result += sql.slice(cursor, end + 1);
-      cursor = end + 1;
-      continue;
+    if (as < 0) {
+      result += sql.slice(start, end + 1);
+    } else {
+      const operand = castsToTypes(body.slice(0, as));
+      const type = /^(\w+)(?:\s*\(\s*(\d+)(?:\s*,\s*(\d+))?\s*\))?\s*$/i.exec(body.slice(as + 2).trim());
+      const kind = type?.[1].toUpperCase();
+      const digits = type ? type.slice(2).filter((digit): digit is string => digit !== undefined) : [];
+      if (type && (kind === 'VARCHAR' || kind === 'CHAR' || kind === 'CHARACTER') && type[3] === undefined) {
+        result += `fm_cast_text(${operand}, ${type[2] ?? '-1'})`;
+      } else if (kind === 'DATE' || kind === 'TIME' || kind === 'TIMESTAMP') {
+        result += `fm_cast_${kind.toLowerCase()}(${operand}${digits.map((digit) => `, ${digit}`).join('')})`;
+      } else if (type && (kind === 'DECIMAL' || kind === 'NUMERIC') && type[2] !== undefined) {
+        result += `fm_cast_decimal(${operand}, ${type[2]}, ${type[3] ?? '0'})`;
+      } else {
+        result += sql.slice(start, open + 1) + operand + body.slice(as) + ')';
+      }
     }
-    const operand = castsToTypes(sql.slice(open + 1, as));
-    result += sql.slice(cursor, start) + `fm_cast_text(${operand}, ${type?.[2] ?? '-1'})`;
-    cursor = end + 1;
+    at = end + 1;
   }
-  return result + sql.slice(cursor);
+  return result + sql.slice(at);
 }
 
 const unsupported = (what: string) => new CalcError(ERR.calculation, `${what} is not supported`);
