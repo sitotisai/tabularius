@@ -3181,6 +3181,46 @@
   "note": "The SQL standard requires a valid date; the cited page gives no CAST example."
  },
  {
+  "id": "cond-15",
+  "area": "CAST",
+  "construct": "DECIMAL(p,s) rounds to its scale",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-numbers.html",
+  "sql": "SELECT CAST(2.567 AS DECIMAL(5,2)) FROM emp WHERE emp_id = 'E1'",
+  "rows": [["2.57"]],
+  "expected": "derived",
+  "note": "The SQL standard supplies this precision and scale rule; the cited page gives no example of this cast."
+ },
+ {
+  "id": "cond-16",
+  "area": "CAST",
+  "construct": "DECIMAL(p) defaults to scale zero",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-numbers.html",
+  "sql": "SELECT CAST(2.5 AS DECIMAL(5)) FROM emp WHERE emp_id = 'E1'",
+  "rows": [["3"]],
+  "expected": "derived",
+  "note": "The SQL standard supplies the default scale and rounding rule; the cited page gives no example of this cast."
+ },
+ {
+  "id": "cond-17",
+  "area": "CAST",
+  "construct": "NUMERIC(p,s) rounds negative halves away from zero",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-numbers.html",
+  "sql": "SELECT CAST(-2.5 AS NUMERIC(5,0)) FROM emp WHERE emp_id = 'E1'",
+  "rows": [["-3"]],
+  "expected": "derived",
+  "note": "The SQL standard supplies this scale rule; the cited page gives no example of this cast."
+ },
+ {
+  "id": "cond-18",
+  "area": "CAST",
+  "construct": "DECIMAL(p,s) reports numeric overflow",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-numbers.html",
+  "sql": "SELECT CAST(12.5 AS DECIMAL(3,2)) FROM emp WHERE emp_id = 'E1'",
+  "error": true,
+  "expected": "derived",
+  "note": "The SQL standard supplies this precision overflow rule; the cited page gives no example of this cast."
+ },
+ {
   "id": "cast-02",
   "area": "CAST",
   "construct": "CAST of an embedded container as VARCHAR returns its filename",
