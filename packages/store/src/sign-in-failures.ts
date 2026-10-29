@@ -92,8 +92,12 @@ export class SignInFailures extends Map<string, Failure> {
   // order. Their failures remain charged to an address counter until its window expires.
   private readonly evictable = new Set<string>();
 
-  constructor(onLock?: (key: string, address?: string) => void, onExpire?: (key: string, endedAt: number) => void) {
+  private readonly capacity: number;
+
+  /** `capacity` is how many counters the table keeps; a hosted file keeps LOCKOUT.maxFailures. */
+  constructor(onLock?: (key: string, address?: string) => void, onExpire?: (key: string, endedAt: number) => void, capacity = LOCKOUT.maxFailures) {
     super();
+    this.capacity = capacity;
     this.onLock = onLock;
     this.onExpire = onExpire;
   }
@@ -176,7 +180,7 @@ export class SignInFailures extends Map<string, Failure> {
   }
 
   private ordinaryCapacityFull(): boolean {
-    return this.size - this.knownSharedKeys.size - this.directorySharedKeys.size >= LOCKOUT.maxFailures;
+    return this.size - this.knownSharedKeys.size - this.directorySharedKeys.size >= this.capacity;
   }
 
   private canRecord(key: string, shared: boolean, knownAccount = false): boolean {
