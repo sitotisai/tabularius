@@ -8,6 +8,6 @@ API key sent to the configured embedding endpoint when it requires authenticatio
 | Accepted values | API key text |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/features.md](../../../features.md) |
-| Code | [packages/cli/src/doctor.ts:246](../../../../packages/cli/src/doctor.ts#L246) |
+| Code | [packages/cli/src/doctor.ts:247](../../../../packages/cli/src/doctor.ts#L247) |
 
 [All environment variables](../../../environment-variables.md)
