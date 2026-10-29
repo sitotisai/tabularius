@@ -123,7 +123,7 @@ const RELATIONS: Record<string, Relation> = {
   },
   // Empty: the file has no indexes, constraints, views or the like to show.
   pg_index: { cols: [...I('indexrelid', 'indrelid', 'indnatts', 'indnkeyatts'), ...B('indisunique', 'indisprimary', 'indisexclusion', 'indimmediate', 'indisclustered', 'indisvalid', 'indcheckxmin', 'indisready', 'indislive', 'indisreplident', 'indnullsnotdistinct'), ...T('indkey', 'indcollation', 'indclass', 'indoption', 'indexprs', 'indpred')] },
-  pg_constraint: { cols: [...I('oid', 'connamespace', 'conrelid', 'contypid', 'conindid', 'conparentid', 'confrelid', 'coninhcount'), ...B('condeferrable', 'condeferred', 'convalidated', 'conislocal', 'connoinherit'), ...T('conname', 'contype', 'confupdtype', 'confdeltype', 'confmatchtype', 'conkey', 'confkey', 'conpfeqop', 'conppeqop', 'conffeqop', 'conexclop', 'conbin')] },
+  pg_constraint: { cols: [...I('oid', 'connamespace', 'conrelid', 'contypid', 'conindid', 'conparentid', 'confrelid', 'coninhcount'), ...B('condeferrable', 'condeferred', 'convalidated', 'conenforced', 'conislocal', 'connoinherit'), ...T('conname', 'contype', 'confupdtype', 'confdeltype', 'confmatchtype', 'conkey', 'confkey', 'conpfeqop', 'conppeqop', 'conffeqop', 'conexclop', 'conbin')] },
   pg_inherits: { cols: [...I('inhrelid', 'inhparent', 'inhseqno'), ...B('inhdetachpending')] },
   pg_description: { cols: [...I('objoid', 'classoid', 'objsubid'), ...T('description')] },
   pg_attrdef: { cols: [...I('oid', 'adrelid', 'adnum'), ...T('adbin')] },
@@ -678,7 +678,7 @@ export function pgSyntax(sql: string): string {
     (_, side: string | undefined, chars: string, value: string) => `${{ LEADING: 'ltrim', TRAILING: 'rtrim' }[side?.toUpperCase() ?? ''] ?? 'trim'}(${value}, ${chars})`);
   out = arrayAgg(out);
   if (catalog) {
-    out = orderByOutputNames(out)
+    out = partitionAncestors(orderByOutputNames(out))
       .replace(/=\s*ANY\s*\(\s*ARRAY\s*\[([^\]]*)\]\s*\)/gi, 'IN ($1)')
       .replace(/=\s*ANY\s*\(/gi, 'IN (')
       .replace(GENERATE_SERIES,
@@ -819,6 +819,30 @@ function unnest(sql: string): string {
   return sql;
 }
 
+/**
+ * `FROM pg_partition_ancestors(oid) [AS] [a[(col)]]` (psql 18's \\d) as a table with no rows: no table here is partitioned, so none has
+ * an ancestor. Called anywhere else, in a list of columns or a condition, it is the function that answers NULL (see `define` below).
+ */
+function partitionAncestors(sql: string): string {
+  const re = /\bpg_partition_ancestors\s*\(/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(sql))) {
+    const before = sql.slice(0, m.index);
+    // A table position: after FROM or JOIN, or after a comma of a FROM list (the last clause word before it is FROM).
+    const fromList = /\b(?:FROM|JOIN|LATERAL)\s+(?:ONLY\s+)?$/i.test(before)
+      || (/,\s*(?:LATERAL\s+)?$/i.test(before) && /\b(SELECT|FROM|WHERE|GROUP|ORDER|HAVING|LIMIT|ON)\b(?![\s\S]*\b(?:SELECT|FROM|WHERE|GROUP|ORDER|HAVING|LIMIT|ON)\b)/i.exec(before)?.[1].toUpperCase() === 'FROM');
+    if (!fromList) continue;
+    let depth = 1;
+    let end = re.lastIndex;
+    for (; end < sql.length && depth; end++) depth += sql[end] === '(' ? 1 : sql[end] === ')' ? -1 : 0;
+    const alias = /^\s+(?:AS\s+)?(?!(?:WHERE|JOIN|ON|ORDER|GROUP|LIMIT|UNION|LEFT|INNER|CROSS|RIGHT|FULL|NATURAL|HAVING|EXCEPT|INTERSECT)\b)(\w+)(?:\s*\(\s*(\w+)\s*\))?/i.exec(sql.slice(end));
+    const table = `(SELECT NULL AS ${alias?.[2] ?? 'relid'} WHERE 0) AS ${alias?.[1] ?? 'pg_partition_ancestors'}`;
+    sql = sql.slice(0, m.index) + table + sql.slice(end + (alias?.[0].length ?? 0));
+    re.lastIndex = m.index + table.length;
+  }
+  return sql;
+}
+
 const defined = new WeakSet<Store>();
 
 /** One element of an array's text: quoted when it is empty, says NULL, or holds a comma, brace, quote, backslash or space. */
@@ -914,6 +938,8 @@ export function catalogFunctions(store: Store, data: () => CatalogData): void {
   for (const nothing of ['obj_description', 'col_description', 'shobj_description', 'pg_get_expr', 'pg_get_indexdef', 'pg_get_constraintdef', 'pg_get_viewdef', 'pg_get_triggerdef', 'pg_get_partkeydef', 'pg_get_statisticsobjdef_columns', 'pg_get_function_arguments', 'pg_get_function_result', 'pg_get_functiondef', 'pg_get_function_identity_arguments', 'pg_get_serial_sequence', 'pg_get_ruledef', 'pg_tablespace_location', 'pg_describe_object']) {
     define(nothing, () => null);
   }
+  // A function cannot return no rows in SQLite; where a query calls it as one (not after FROM), it gets one NULL, which matches nothing.
+  define('pg_partition_ancestors', () => null);
   for (const zero of ['pg_database_size', 'pg_indexes_size', 'pg_stat_get_numscans', 'pg_stat_get_tuples_returned', 'pg_stat_get_tuples_fetched', 'pg_stat_get_live_tuples', 'pg_stat_get_dead_tuples']) define(zero, () => 0);
   define('pg_encoding_to_char', () => 'UTF8');
   define('getdatabaseencoding', () => 'UTF8');

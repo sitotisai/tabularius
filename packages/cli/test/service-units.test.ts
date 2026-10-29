@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir, userInfo } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { refuseUnsafe, serviceFile, winArg, type Platform, type ServiceOptions } from '../src/service.ts';
 import { parseUnit, readPlist, systemdWords, validatePlist, validateSystemdUnit, validateTaskXml, parseXml } from './service-validators.ts';
 
@@ -293,7 +293,47 @@ test('install refuses unsafe input before it writes anything or asks a service m
 
 const have = (cmd: string, arg: string) => spawnSync(cmd, [arg], { encoding: 'utf8' }).error === undefined;
 
-test('systemd-analyze verify accepts the unit (when systemd-analyze is installed)', { skip: have('systemd-analyze', '--version') ? false : 'systemd-analyze is not installed' }, () => {
+const noSystemdAnalyze = have('systemd-analyze', '--version') ? false : 'systemd-analyze is not installed';
+
+/**
+ * What `systemd-analyze verify` says about this unit file. It also prints what it finds wrong in other units on the machine
+ * (a runner image that still sets an option a newer systemd dropped), which says nothing about ours: every message about a
+ * unit names it, by path or by file name, so only the lines that name this file are kept.
+ */
+const aboutUnit = (output: string, file: string): string[] => output.split('\n').filter((line) => line.includes(basename(file)));
+function verifyMessages(file: string): string[] {
+  const r = spawnSync('systemd-analyze', ['verify', file], { encoding: 'utf8' });
+  return aboutUnit(`${r.stdout}${r.stderr}`, file);
+}
+
+test('the messages of systemd-analyze about other units are not about ours', () => {
+  const file = '/tmp/tabularius-verify-x/openhbam-system-space.service';
+  const output = [
+    '/usr/lib/systemd/system/xfs_scrub_all.service:26: Support for option CPUAccounting= has been removed and it is ignored',
+    "/usr/lib/systemd/system/system-xfs_scrub.slice:9: Unknown key name 'Bogus' in section 'Slice', ignoring.",
+    `${file}:5: Unknown key name 'Bogus' in section 'Service', ignoring.`,
+    'openhbam-system-space.service: Command /nonexistent is not executable: No such file or directory',
+    '',
+  ].join('\n');
+  assert.deepEqual(aboutUnit(output, file), [output.split('\n')[2], output.split('\n')[3]]);
+  assert.deepEqual(aboutUnit(output.split('\n').slice(0, 2).join('\n'), file), []);
+});
+
+test('a problem in the unit is found among the messages of systemd-analyze, and a sound unit has none (when systemd-analyze is installed)', { skip: noSystemdAnalyze }, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-verify-'));
+  try {
+    const bad = join(dir, 'openhbam-broken.service');
+    writeFileSync(bad, '[Service]\nExecStart=/bin/true\nNoSuchOption=1\n');
+    const said = verifyMessages(bad);
+    assert.ok(said.some((l) => l.includes('NoSuchOption')), `a problem in the unit is kept: ${said.join('\n')}`);
+    assert.ok(said.every((l) => l.includes('openhbam-broken.service')));
+    const fine = join(dir, 'openhbam-fine.service');
+    writeFileSync(fine, '[Service]\nExecStart=/bin/true\n');
+    assert.deepEqual(verifyMessages(fine), []);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('systemd-analyze verify accepts the unit (when systemd-analyze is installed)', { skip: noSystemdAnalyze }, () => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-verify-'));
   try {
     const folder = join(dir, 'My Data');
@@ -307,9 +347,7 @@ test('systemd-analyze verify accepts the unit (when systemd-analyze is installed
       const o = { ...options('linux', system, { folder, main, node: process.execPath, user: userInfo().username, home: join(dir, 'home'), extra: ['--https', 'db.example.org', '--workers', 'auto'] }) };
       const file = join(dir, `openhbam-${system ? 'system' : 'user'}-${folder.endsWith('Data') ? 'space' : 'quote'}.service`);
       writeFileSync(file, serviceFile(o).text);
-      const r = spawnSync('systemd-analyze', ['verify', file], { encoding: 'utf8' });
-      assert.equal(`${r.stdout}${r.stderr}`.trim(), '', `${system ? 'system' : 'user'} unit: ${r.stdout}${r.stderr}`);
-      assert.equal(r.status, 0);
+      assert.deepEqual(verifyMessages(file), [], `${system ? 'system' : 'user'} unit`);
     }
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
