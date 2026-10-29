@@ -12,6 +12,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fakeS3 } from '../../server/test/fake-s3.ts';
 
+// Git Bash reads C:\a\b as C:ab; it takes C:/a/b.
+const bash = (path: string): string => path.replaceAll('\\', '/');
+
 const root = join(import.meta.dirname, '..', '..', '..');
 const main = join(root, 'packages', 'cli', 'src', 'main.ts');
 const page = readFileSync(join(root, 'docs', 'tutorials', 'connect-an-s3-bucket.md'), 'utf8');
@@ -29,7 +32,7 @@ test('the connect-an-S3-bucket tutorial works as written', { skip: !hasCurl && '
   const s3 = await fakeS3({ bucket: 'invoices', accessKey: 'minioadmin', secretKey: 'tutorial-secret-key-1234' });
   // The page's own text, with the throwaway home, port and S3 in place of the ones it shows (applied once: a stand-in port
   // that happened to hold the digits 8080 would be rewritten by a second pass).
-  const adapt = (s: string) => s.replaceAll('~/Databases', join(work, 'Databases')).replace(/\b8080\b/g, String(port)).replaceAll('http://localhost:9000', s3.endpoint);
+  const adapt = (s: string) => s.replaceAll('~/Databases', bash(join(work, 'Databases'))).replace(/\b8080\b/g, String(port)).replaceAll('http://localhost:9000', s3.endpoint);
   const blocks = [...page.matchAll(/^```(\w*)( run)?\n([\s\S]*?)^```$/gm)].map((m) => ({ lang: m[1], run: !!m[2], code: m[3] }));
   const runnable = blocks.filter((b) => b.lang === 'sh' && b.run).map((b) => adapt(b.code));
   const serve = blocks.find((b) => b.lang === 'sh' && !b.run && /tabularius serve/.test(b.code));
