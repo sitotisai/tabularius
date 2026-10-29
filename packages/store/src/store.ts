@@ -2725,7 +2725,7 @@ export class Store {
         // Making the record again is a create: the same checks as a create (layout, every field written, an agent's approval).
         const data = Object.fromEntries(Object.entries(row).filter(([k]) => !k.startsWith('_fm_'))) as FieldData;
         this.checkLayout(info, opts.privileges);
-        this.checkWriteFields(info, opts.privileges, fieldNames(data));
+        this.checkWrite(info, this.local(opts.privileges), fieldNames(data));
         this.checkLayout(info, opts.privileges, true);
         this.gateAgentWrite(opts, 'create', info, undefined, data, undefined);
         this.restoreDeletedRow(info.table, row, write);

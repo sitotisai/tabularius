@@ -28,7 +28,7 @@ import { accessDenialContext, type AccessDenial } from '../../store/src/access-d
 import { PASSKEY_SECOND_FACTOR_REQUIRED } from '../../store/src/error-codes.ts';
 import { atomicWrites, explainAccessDenial, PrivilegeError, StoreError, PendingApprovalError, checkRecord, explainField, explainRelated, ExplainRelatedError, lintFormula, findStaleCalcs, refreshStaleCalcs, undoStaleRefresh, staleRefreshHistory, type FieldExplanation, type RecordCheck, type RelatedExplanation, type Privileges, Store } from '../../store/src/index.ts';
 import { scriptText } from '../../fmp12/src/index.ts';
-import { PORTAL_ROWS, auditForModel, compactPortals, containsSecret, dashboardForModel, fieldValueForModel, recordForModel, redactSecrets, redactStep, rowsForModel, secretName, secretText, secretValues, scriptOutputForModel, storedSecretValues, summaryForModel } from './ai-output.ts';
+import { PORTAL_ROWS, auditForModel, compactPortals, containsSecret, dashboardForModel, fieldValueForModel, recordForModel, redactSecretCopies, redactSecrets, redactStep, rowsForModel, secretName, secretText, secretValues, scriptOutputForModel, storedSecretValues, summaryForModel } from './ai-output.ts';
 import { ScriptDebugger, ScriptError, ScriptSession, captureOnly, runScript, scriptDenial, offlineScriptOptions } from '../../scripts/src/index.ts';
 import { registerDesignTools } from './mcp-design.ts';
 import { registerSyncTools } from './mcp-sync.ts';
@@ -57,7 +57,7 @@ import { summarizeRecords } from './summarize.ts';
 import { cleanAutomation, describeTrigger, dryRunAutomation, dryRunForModel, listAutomations, automationRuns, deleteAutomation, saveAutomation, scriptOf, tableOf, AutomationError } from './automations.ts';
 import { INPUT_HINTS, toolTitle } from './mcp-hints.ts';
 import { applyCleanup, cleanupHistory, scanData, undoCleanup, updateMany, CHECKS, type Check } from './cleanup.ts';
-import { Dashboards, DashboardError, cleanDashboard, computeDashboard, mayChange, type Dashboard } from './dashboards.ts';
+import { Dashboards, DashboardError, cleanDashboard, computeDashboard, mayChange, mayRead, type Dashboard } from './dashboards.ts';
 import { docsSection, documentSolution } from './docs.ts';
 import { whoCan } from './who-can.ts';
 import { SCRATCH_MAX_BYTES, dropScratch, scratchCopy } from './debug.ts';
@@ -425,8 +425,8 @@ function privilegesIn(store: Store, who: McpIdentity, via = 'MCP'): Privileges |
  */
 function describe(store: Store, p?: Privileges, detail: string[] = []) {
   const s = store.schema;
-  // Formulas and script steps are design: only for sets that can modify scripts.
-  const design = !p || p.set.scripts === 'modifiable';
+  // Match designAccess: scoped tokens and partially readable sets cannot see formulas.
+  const design = !p || (!p.ceiling && (p.full || (p.set.scripts === 'modifiable' && p.readsEverything)));
   const full = new Set(detail.map((d) => d.toLowerCase()));
   const clipped = (text: string, max: number) => (text.length > max ? text.slice(0, max) + '…' : text);
   const dataSource = (id: number) => s.dataSources.find((d) => d.id === id)?.name;
@@ -445,7 +445,7 @@ function describe(store: Store, p?: Privileges, detail: string[] = []) {
           ...(f.options?.unstored && f.kind === 'calculation' ? { unstored: true } : {}),
           ...(f.options?.repetitions && f.options.repetitions > 1 ? { repetitions: f.options.repetitions } : {}),
           ...(f.comment ? { comment: whole ? f.comment : clipped(f.comment, 160) } : {}),
-          ...(f.calculation !== undefined && design && whole ? { [f.kind === 'calculation' ? 'formula' : 'autoEnter']: f.calculation } : {}),
+          ...(f.calculation !== undefined && design && whole ? { [f.kind === 'calculation' ? 'formula' : 'autoEnter']: redactStep(f).calculation } : {}),
           ...(p && p.fieldAccess(t.name, f.name) === 'masked' ? { masked: true, readOnly: true } : {}),
           ...(p && p.field(t.name, f.name) === 'viewOnly' ? { readOnly: true } : {}),
         })),
@@ -462,7 +462,7 @@ function describe(store: Store, p?: Privileges, detail: string[] = []) {
     ...(design ? {
       customFunctions: s.customFunctions.map((c) => ({
         signature: `${c.name} ( ${c.parameters.join(' ; ')} )`, ...(c.language ? { language: c.language } : {}),
-        ...(full.has(c.name.toLowerCase()) ? { formula: c.formula } : {}),
+        ...(full.has(c.name.toLowerCase()) ? { formula: redactStep(c).formula } : {}),
       })),
     } : {}),
     privilegeSets: p && !p.full ? [p.name] : s.privilegeSets.map((x) => x.name),
@@ -1327,7 +1327,7 @@ export function createMcpServer(host: Host, who: McpIdentity = { admin: true }, 
     if (!store) return fail(`No hosted database named "${database}". Hosted: ${aiHostedNames(host, canSee(who))}`);
     try {
       designAccess(store);
-      return { content: [{ type: 'text' as const, text: item ? explainItem(store, item) : solutionOverview(store) }] };
+      return { content: [{ type: 'text' as const, text: redactStep(item ? explainItem(store, item) : solutionOverview(store)) }] };
     } catch (e) {
       return failError(e);
     }
@@ -1368,7 +1368,7 @@ export function createMcpServer(host: Host, who: McpIdentity = { admin: true }, 
     if (!store) return fail(`No hosted database named "${database}". Hosted: ${aiHostedNames(host, canSee(who))}`);
     try {
       designAccess(store);
-      const md = documentSolution(store);
+      const md = redactStep(documentSolution(store));
       return { content: [{ type: 'text' as const, text: section ? docsSection(md, section) : md }] };
     } catch (e) {
       return failError(e);
@@ -1402,7 +1402,7 @@ export function createMcpServer(host: Host, who: McpIdentity = { admin: true }, 
     annotations: { readOnlyHint: true },
   }, async ({ database, text, limit }) => withStore(database, (s, p) => {
     designAccess(s, p);
-    return searchSolution(s, text, limit);
+    return redactStep(searchSolution(s, text, limit));
   }));
 
   server.registerTool('describe_layout', {
@@ -1461,7 +1461,7 @@ export function createMcpServer(host: Host, who: McpIdentity = { admin: true }, 
     if (p && recordId !== undefined) s.get(layout, recordId, 'iso', undefined, p, { fields: [] });
     const rec = recordId === undefined ? undefined : { store: owner, table, row: owner.row(info, recordId) };
     if (recordId !== undefined) noteRead(s, layout, [recordId], p);
-    return redactExplanation(explainField(owner, table, f, rec, { account: p?.account, privileges: p?.in(owner) }));
+    return redactSecretCopies(redactExplanation(explainField(owner, table, f, rec, { account: p?.account, privileges: p?.in(owner) })), storedSecretValues(owner));
   }));
 
   server.registerTool('check_record', {
@@ -1662,11 +1662,11 @@ export function createMcpServer(host: Host, who: McpIdentity = { admin: true }, 
   });
 
   server.registerTool('list_dashboards', {
-    description: 'Dashboards saved in a file: charts, summary tables and numbers worked out live from finds. get_dashboard shows one with its numbers.',
+    description: 'Dashboards owned by this account (all for full access): charts, summary tables and numbers worked out live from finds. get_dashboard shows one with its numbers.',
     inputSchema: { database: db },
     annotations: { readOnlyHint: true },
-  }, async ({ database }) => withStore(database, (s) => ({
-    dashboards: new Dashboards(s).list().map((d) => ({ id: d.id, name: d.name, description: d.description, widgets: d.widgets.length, account: d.account, updated: d.updated })),
+  }, async ({ database }) => withStore(database, (s, p) => ({
+    dashboards: new Dashboards(s).list().filter((d) => mayRead(d, p)).map((d) => ({ id: d.id, name: d.name, description: d.description, widgets: d.widgets.length, account: d.account, updated: d.updated })),
   })));
 
   server.registerTool('get_dashboard', {
@@ -1676,7 +1676,7 @@ export function createMcpServer(host: Host, who: McpIdentity = { admin: true }, 
     annotations: { readOnlyHint: true },
   }, async ({ database, dashboard }) => withStore(database, (s, p) => {
     const d = new Dashboards(s).find(dashboard);
-    if (!d) throw new Error(`No dashboard "${dashboard}". Saved: ${new Dashboards(s).list().map((x) => x.name).join(', ') || 'none'}`);
+    if (!d || !mayRead(d, p)) throw new Error('No such dashboard');
     return { dashboard: d, data: dashboardForModel(d.widgets, computeDashboard(s, d.widgets, p, undefined,
       (layout, ids) => noteRead(s, layout, ids, p), true)) };
   }));
@@ -1813,7 +1813,7 @@ export function createMcpServer(host: Host, who: McpIdentity = { admin: true }, 
     inputSchema: { database: db, id: z.string().optional() },
     annotations: { destructiveHint: true },
   }, async ({ database, id }) => withStore(database, (s, p) =>
-    id ? undoImport(s, id, { privileges: p, account: p?.account ?? ('account' in who ? who.account : undefined) }) : importHistory(s)));
+    id ? undoImport(s, id, { privileges: p, account: p?.account ?? ('account' in who ? who.account : undefined) }) : importHistory(s, 20, { privileges: p, account: p?.account ?? ('account' in who ? who.account : undefined) })));
 
   server.registerTool('undo_data_fix', {
     description: 'Undo a batch fix_data_problems applied (by its id), all or none: values set back and merged records put back. ' +
@@ -2220,7 +2220,7 @@ function describeLayout(s: Store, layout: string, p: Privileges | undefined, sam
   if (p?.layout(layout).records === 'none') throw new StoreError(200, 'Record access is denied through this layout');
   // Resources use the same argument policy as the tool wrapper, including isolation inherited from another file.
   const args = piiFile(s) ? piiArgs('describe_layout', { sample }) : { sample };
-  return { ...layoutProfile(s, layout, { sample: args.sample as boolean, privileges: p }), findSyntax: FIND_SYNTAX };
+  return { ...redactSecretCopies(layoutProfile(s, layout, { sample: args.sample as boolean, privileges: p }), storedSecretValues(s.layout(layout).owner)), findSyntax: FIND_SYNTAX };
 }
 
 function describeAutomations(s: Store) {

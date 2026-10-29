@@ -878,10 +878,25 @@ export async function importMappedRows(store: Store, layout: string, rows: Itera
 }
 
 /** Imports kept in the file, newest first. */
-export function importHistory(store: Store, limit = 20): ImportRecord[] {
+export function importHistory(store: Store, limit = 20, opts: { account?: string; privileges?: Privileges } = {}): ImportRecord[] {
   journal(store);
-  return (store.sql.prepare('SELECT id, at, account, layout, file, ids, undone FROM _fm_imports ORDER BY at DESC, rowid DESC LIMIT ?').all(limit) as Record<string, string | null>[])
-    .map((r) => ({ id: r.id!, at: r.at!, ...(r.account ? { account: r.account } : {}), layout: r.layout!, ...(r.file ? { file: r.file } : {}), imported: (JSON.parse(r.ids!) as number[]).length, ...(r.undone ? { undone: r.undone } : {}) }));
+  const rows = store.sql.prepare('SELECT id, at, account, layout, file, ids, undone FROM _fm_imports WHERE (? OR account = ?) ORDER BY at DESC, rowid DESC')
+    .iterate(!opts.privileges || opts.privileges.full ? 1 : 0, opts.account ?? null);
+  const out: ImportRecord[] = [];
+  for (const row of rows) {
+    if (out.length >= limit) break;
+    const r = row as Record<string, string | null>;
+    if (opts.privileges) {
+      try {
+        opts.privileges.checkLayout(r.layout!);
+        if (opts.privileges.layout(r.layout!).records === 'none') continue;
+        const info = store.layout(r.layout!);
+        if (opts.privileges.in(info.owner).table(info.table).view === false) continue;
+      } catch { continue; }
+    }
+    out.push({ id: r.id!, at: r.at!, ...(r.account ? { account: r.account } : {}), layout: r.layout!, ...(r.file ? { file: r.file } : {}), imported: (JSON.parse(r.ids!) as number[]).length, ...(r.undone ? { undone: r.undone } : {}) });
+  }
+  return out;
 }
 
 /** Takes an import back: deletes the records it made, except ones changed since, which are left and named. */
