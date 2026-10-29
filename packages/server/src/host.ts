@@ -33,7 +33,7 @@ import type { ConversionGuide } from './conversion-guide.ts';
 import { loadPlugins, PluginRegistry } from '../../plugins/src/index.ts';
 import { installPackage, readPackage, trustedPublishers } from '../../plugins/src/package.ts';
 import { ServerConfig } from './server-config.ts';
-import { SignInFailures } from '../../store/src/sign-in-failures.ts';
+import { UnhostedSignIns } from './unhosted-sign-ins.ts';
 import { Notifier } from './notifications.ts';
 import { compactInWorker, compactionDue, fileBytes, type CompactionReport } from './compaction.ts';
 import { BoundedMap } from './bounded-map.ts';
@@ -86,7 +86,7 @@ export class Host {
   /** Whether the file lists (the Data API's, OData's and the root's) show every hosted file to callers who haven't signed in (file-list.ts). */
   listFilesPublicly = false;
   /** Wrong passwords for names that aren't hosted, counted like a hosted file's so a lockout does not tell the two apart (file-list.ts). */
-  readonly unhostedSignInFailures = new SignInFailures();
+  readonly unhostedSignIns = new UnhostedSignIns();
   /** Whether scripts may reach the network (Insert from URL) in every hosted file (--allow-script-network). Otherwise each file has its own switch (Store.scriptNetwork), off until an administrator turns it on. */
   scriptNetwork = false;
   /** Hosts, addresses and ranges on the machine's own network that scripts' web requests may reach (--allow-script-network-to). */
