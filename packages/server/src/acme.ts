@@ -13,8 +13,9 @@ import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sig
 import type { Server } from 'node:http';
 import { createEdgeServer } from './edge-limits.ts';
 import { guardedFetch } from '../../scripts/src/net-guard.ts';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { atomicWrite } from '../../store/src/durable.ts';
 import { readTlsPair, writeTlsPair } from './tls-pair.ts';
 import { urlHostname } from './public-origin.ts';
 
@@ -229,11 +230,10 @@ export interface CertificateState {
   readonly problem?: string;
 }
 
-function readKey(path: string): KeyObject {
+export function readKey(path: string): KeyObject {
   if (existsSync(path)) return createPrivateKey(readFileSync(path));
   const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
-  writeFileSync(path + '.tmp', privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 });
-  renameSync(path + '.tmp', path);
+  atomicWrite(path, privateKey.export({ type: 'pkcs8', format: 'pem' }) as string);
   return privateKey;
 }
 

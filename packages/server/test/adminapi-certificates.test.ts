@@ -3,7 +3,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { request } from 'node:https';
 import { connect } from 'node:tls';
 import { tmpdir } from 'node:os';
@@ -87,6 +87,48 @@ test('where the certificate comes from decides whether one may be imported', () 
     assert.equal(certificateManaged({ dir: d, tlsCert: join(d, 'x.pem') }), undefined, 'the settings name it');
   } finally {
     rmSync(d, { recursive: true });
+  }
+});
+
+test('a pending request and its key are written through private temp names', { skip: process.platform === 'win32' }, () => {
+  const d = mkdtempSync(join(tmpdir(), 'tabularius-certs-request-'));
+  try {
+    const folder = join(d, '.openhbam-tls', 'imported');
+    mkdirSync(folder, { recursive: true });
+    const victim = join(d, 'victim');
+    writeFileSync(victim, 'keep');
+    for (const name of ['request-key.pem', 'request.csr']) symlinkSync(victim, join(folder, name + '.tmp'));
+
+    const csr = new ImportedCertificates(d).createRequest('/CN=files.example.com', 'key-pass');
+    assert.match(csr, /^-----BEGIN CERTIFICATE REQUEST-----/);
+    assert.equal(readFileSync(victim, 'utf8'), 'keep');
+    for (const name of ['request-key.pem', 'request.csr']) {
+      const file = join(folder, name);
+      assert.equal(lstatSync(file).isSymbolicLink(), false);
+      assert.ok(lstatSync(file).isFile());
+      if (process.platform !== 'win32') assert.equal(statSync(file).mode & 0o777, 0o600);
+      assert.ok(lstatSync(file + '.tmp').isSymbolicLink());
+    }
+    assert.match(readFileSync(join(folder, 'request-key.pem'), 'utf8'), /^-----BEGIN ENCRYPTED PRIVATE KEY-----/);
+    assert.equal(readFileSync(join(folder, 'request.csr'), 'utf8'), csr);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test('a failed request write leaves the final directory intact and no temporary file', () => {
+  const d = mkdtempSync(join(tmpdir(), 'tabularius-certs-request-failure-'));
+  try {
+    const folder = join(d, '.openhbam-tls', 'imported');
+    const file = join(folder, 'request.csr');
+    mkdirSync(file, { recursive: true });
+
+    assert.throws(() => new ImportedCertificates(d).createRequest('/CN=files.example.com', 'key-pass'));
+    assert.ok(lstatSync(file).isDirectory());
+    assert.deepEqual(readdirSync(file), []);
+    assert.deepEqual(readdirSync(folder).filter((name) => name.startsWith('request.csr.') && name.endsWith('.tmp')), []);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
   }
 });
 
