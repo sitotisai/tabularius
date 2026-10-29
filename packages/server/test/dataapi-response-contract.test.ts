@@ -103,6 +103,7 @@ async function call(path: string, method = 'GET', auth?: string, body?: unknown)
 }
 
 function check(reply: Awaited<ReturnType<typeof call>>, code: string, endpoint?: string): any {
+  assert.equal(reply.headers.get('content-type'), 'application/json; charset=utf-8');
   validate(reply.body, contract.envelope);
   assert.equal(reply.body.messages.length, 1);
   assert.equal(reply.body.messages[0].code, code, JSON.stringify(reply.body));
