@@ -69,7 +69,8 @@ export function* readRecords(file: FmpFile, tableId: number, fieldIds: Set<numbe
     seenTable = true;
     if (path.length < 3 || pathValue(path[1]) !== 5) continue;
     const recordId = pathInt(path[2]);
-    if (recordId === undefined) continue;
+    // Longer path-integer forms in genuine files are unverified; do not drop the row silently.
+    if (recordId === undefined) throw new Error(`table ${tableId}: unsupported record id path ${Buffer.from(path[2]).toString('hex')}`);
 
     if (!current || current.id !== recordId) {
       flushLong();

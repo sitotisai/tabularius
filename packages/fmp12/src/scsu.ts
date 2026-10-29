@@ -41,7 +41,19 @@ export function decodeScsu(src: Uint8Array): string {
 export function scsu(src: Uint8Array, maxUnits: number, xorMask = 0): { text: string; end: number } {
   xorMask &= 0xff;
   const dyn = DEFAULT_DYNAMIC.slice();
-  const units: number[] = [];
+  // Keep only one small UTF-16 page in memory while constructing the result.
+  const units = new Uint16Array(8192);
+  const pages: string[] = [];
+  let used = 0;
+  let count = 0;
+  const push = (unit: number) => {
+    units[used++] = unit;
+    count++;
+    if (used === units.length) {
+      pages.push(String.fromCharCode(...units));
+      used = 0;
+    }
+  };
   let active = 0;
   let unicodeMode = false;
   let i = 0;
@@ -53,12 +65,13 @@ export function scsu(src: Uint8Array, maxUnits: number, xorMask = 0): { text: st
   const emit = (cp: number) => {
     if (cp > 0xffff) {
       cp -= 0x10000;
-      units.push(0xd800 + (cp >> 10), 0xdc00 + (cp & 0x3ff));
+      push(0xd800 + (cp >> 10));
+      push(0xdc00 + (cp & 0x3ff));
     } else {
-      units.push(cp);
+      push(cp);
     }
   };
-  while (i < n && units.length < maxUnits) {
+  while (i < n && count < maxUnits) {
     const c = byte(i++);
     if (unicodeMode) {
       if (c >= UC0 && c <= UC7) {
@@ -77,11 +90,11 @@ export function scsu(src: Uint8Array, maxUnits: number, xorMask = 0): { text: st
         unicodeMode = false;
       } else if (c === UQU) {
         requireBytes(2);
-        units.push((byte(i) << 8) | byte(i + 1));
+        push((byte(i) << 8) | byte(i + 1));
         i += 2;
       } else {
         requireBytes(1);
-        units.push((c << 8) | byte(i++));
+        push((c << 8) | byte(i++));
       }
       continue;
     }
@@ -94,7 +107,7 @@ export function scsu(src: Uint8Array, maxUnits: number, xorMask = 0): { text: st
       unicodeMode = true;
     } else if (c === SQU) {
       requireBytes(2);
-      units.push((byte(i) << 8) | byte(i + 1));
+      push((byte(i) << 8) | byte(i + 1));
       i += 2;
     } else if (c >= SC0 && c <= SC7) {
       active = c - SC0;
@@ -110,15 +123,11 @@ export function scsu(src: Uint8Array, maxUnits: number, xorMask = 0): { text: st
     } else if (c >= 0x80) {
       emit(dyn[active] + (c - 0x80));
     } else {
-      units.push(c); // ASCII, TAB, CR, LF and NUL pass through
+      push(c); // ASCII, TAB, CR, LF and NUL pass through
     }
   }
-  // String.fromCharCode has an argument limit; chunk large values.
-  let out = '';
-  for (let k = 0; k < units.length; k += 8192) {
-    out += String.fromCharCode(...units.slice(k, k + 8192));
-  }
-  return { text: out, end: i };
+  if (used) pages.push(String.fromCharCode(...units.subarray(0, used)));
+  return { text: pages.join(''), end: i };
 }
 
 /**
