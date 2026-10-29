@@ -25,6 +25,12 @@ test('serial numbers past 2^53 keep every digit', () => {
   assert.equal(serialNext('9007199254740993', 2), '9007199254740995');
 });
 
+test('prefixed and suffixed serial digit runs past 2^53 increment exactly', () => {
+  assert.equal(serialNext('ID-9007199254740992', 1), 'ID-9007199254740993');
+  assert.equal(serialNext('ID-12345678901234567890', 1), 'ID-12345678901234567891');
+  assert.equal(serialNext('A009007199254740992B', 1), 'A009007199254740993B');
+});
+
 test('text with digits and numbers with leading zeros keep their width', () => {
   assert.equal(serialNext('INV0099', 1), 'INV0100');
   assert.equal(serialNext('007', 1), '008');

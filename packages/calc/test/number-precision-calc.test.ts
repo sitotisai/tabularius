@@ -87,6 +87,47 @@ test('#121: decimalSum does not round a long whole number plus decimals to a wro
   assert.equal(decimalSum([1e15, 0.5]), 1000000000000000.5);
 });
 
+test('#121: Sum and Average retain decimal digits beyond the fifteenth significant digit', () => {
+  assert.equal(e('Sum ( 0.1234567890123456 )'), '0.1234567890123456');
+  assert.equal(e('Sum ( 1234.5678901234567 )'), '1234.5678901234567');
+  assert.equal(e('Average ( 0.1234567890123456 ; 0.1234567890123456 )'), '0.1234567890123456');
+});
+
+test('#121: decimalSum agrees with a BigInt scaled-decimal reference over seeded inputs', () => {
+  let state = 0x5eed1234;
+  const random = () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state;
+  };
+  const asScaled = (n: number, places: number): bigint => {
+    const scaled = Math.round(n * 10 ** places);
+    return BigInt(scaled);
+  };
+  const fromScaled = (scaled: bigint, places: number): number => {
+    const negative = scaled < 0n;
+    const digits = (negative ? -scaled : scaled).toString().padStart(places + 1, '0');
+    return Number(`${negative ? '-' : ''}${digits.slice(0, -places)}.${digits.slice(-places)}`);
+  };
+  for (let i = 0; i < 2000; i++) {
+    const places = 1 + random() % 12;
+    const values = Array.from({ length: 1 + random() % 6 }, () => {
+      const magnitude = random() % 100000000;
+      const sign = random() & 1 ? 1 : -1;
+      return sign * magnitude / 10 ** places;
+    });
+    const expectedScaled = values.reduce((sum, n) => sum + asScaled(n, places), 0n);
+    const expected = fromScaled(expectedScaled, places);
+    assert.equal(decimalSum(values), expected, `seeded case ${i}`);
+  }
+});
+
+test('#114: Variance and StDev use decimal-clean aggregate arithmetic', () => {
+  assert.equal(e('Variance ( 0.1 ; 0.2 ; 0.3 )'), '0.01');
+  assert.equal(e('VarianceP ( 0.1 ; 0.2 ; 0.3 )'), '0.006666666666666667');
+  assert.equal(e('StDev ( 0.1 ; 0.2 ; 0.3 )'), '0.1');
+  assert.equal(e('StDevP ( 0.1 ; 0.2 ; 0.3 )'), '0.08164965809277261');
+});
+
 test('#121: sums of ordinary values are unchanged', () => {
   assert.equal(decimalSum([0.1, 0.2, 0.3]), 0.6);
   assert.equal(decimalSum(Array.from({ length: 1000 }, () => 0.1)), 100);
