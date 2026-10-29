@@ -418,7 +418,8 @@ export class Env {
     return this.decimalPlaces !== undefined ? (n.raw === 'Pi' ? Decimal.pi(this.decimalPlaces)
       : Decimal.parse(n.raw ?? String(n.value), this.decimalPlaces)).value()
       : n.raw !== undefined && isOverlongWholeText(n.raw) ? num(NaN)
-        : n.exact !== undefined ? { type: 'number', value: n.value, exact: n.exact } : num(n.value);
+        : n.exact !== undefined ? { type: 'number', value: n.value, exact: n.exact }
+        : n.raw?.includes('.') ? { type: 'number', value: n.value, decimal: n.raw } : num(n.value);
   }
 
   private node(n: Node): Value {
@@ -449,8 +450,8 @@ export class Env {
         const a = this.v(n.a);
         if (n.op === 'not') return bool(!asBoolean(a));
         if (n.op === '+') return a;
-        if (this.decimalPlaces !== undefined && n.op === '-') {
-          const d = Decimal.value(a, this.decimalPlaces);
+        if ((this.decimalPlaces !== undefined || (a.type === 'number' && a.decimal !== undefined)) && n.op === '-') {
+          const d = Decimal.value(a, this.decimalPlaces ?? 448);
           return d.with(-d.n).value();
         }
         return negate(a);
@@ -654,38 +655,56 @@ export class Env {
           throw e;
         } finally { this.decimalPlaces = previous; }
       }
-      if (this.decimalPlaces !== undefined && name.toLowerCase() === 'getasnumber') {
+      if (name.toLowerCase() === 'getasnumber') {
+        const places = this.decimalPlaces ?? 448;
         const v = this.v(args[0]);
-        if (v.type === 'number' && !Number.isFinite(v.value)) return v;
-        if (v.type !== 'text' && v.type !== 'container') return Decimal.value(v, this.decimalPlaces).value();
-        const numeric = decimalNumberText(v.value);
-        return numeric === undefined ? EMPTY : Decimal.parse(numeric, this.decimalPlaces).value();
+        if (v.type === 'number' && v.decimal !== undefined) return Decimal.value(v, places).value();
+        if (v.type === 'text' || v.type === 'container') {
+          const numeric = decimalNumberText(v.value);
+          if (numeric?.includes('.')) {
+            try { return Decimal.parse(numeric, places).value(); } catch (e) { if (e instanceof RangeError) return num(NaN); throw e; }
+          }
+        }
+        return fn.run(args, this, name);
       }
-      if (this.decimalPlaces !== undefined && (supportsDecimalFunction(name) || name.toLowerCase() === 'npv')) {
-        const key = name.toLowerCase();
+      const key = name.toLowerCase();
+      const targetedDecimalFunction = ['abs', 'int', 'round', 'truncate', 'mod', 'div', 'sum', 'average', 'min', 'max'].includes(key);
+      if (supportsDecimalFunction(name) && (this.decimalPlaces !== undefined || targetedDecimalFunction)) {
+        const values = ['sum', 'average', 'min', 'max', 'count', 'variance', 'variancep', 'stdev', 'stdevp'].includes(key)
+          ? args.flatMap((arg) => this.values(arg)) : args.map((arg) => this.v(arg));
+        if ((key === 'min' || key === 'max') && values.length && values.every((v) => exactOf(v) !== undefined)) {
+          return values.reduce((best, v) => key === 'min'
+            ? (exactOf(v)! < exactOf(best)! ? v : best) : (exactOf(v)! > exactOf(best)! ? v : best));
+        }
+        // Keep the documented 15-significant-digit Sum/Average behavior for a
+        // decimal input beyond that boundary; the remaining decimal functions
+        // share the fixed-point path.
+        const longDecimalAggregate = (key === 'sum' || key === 'average') && values.some((v) => v.type === 'number'
+          && v.decimal !== undefined && v.decimal.replace(/[^0-9]/g, '').replace(/^0+/, '').length > 15);
+        if (this.decimalPlaces !== undefined || (!longDecimalAggregate && values.some((v) => v.type === 'number' && v.decimal !== undefined))) {
+        const places = this.decimalPlaces ?? 448;
         if (key === 'npv') {
           const payments = this.values(args[0]).filter((v) => !isEmpty(v));
-          const rate = Decimal.value(this.v(args[1]), this.decimalPlaces);
-          const one = Decimal.parse('1', this.decimalPlaces);
+          const rate = Decimal.value(this.v(args[1]), places);
+          const one = Decimal.parse('1', places);
           try {
             const base = one.add(rate);
-            let total = Decimal.parse('0', this.decimalPlaces);
+            let total = Decimal.parse('0', places);
             for (let i = 0; i < payments.length; i++) {
-              total = total.add(Decimal.value(payments[i], this.decimalPlaces).div(base.powInteger(BigInt(i + 1))));
+              total = total.add(Decimal.value(payments[i], places).div(base.powInteger(BigInt(i + 1))));
             }
             return total.value();
           } catch (e) { if (e instanceof RangeError) return num(NaN); throw e; }
         }
-        const values = ['sum', 'average', 'min', 'max', 'count', 'variance', 'variancep', 'stdev', 'stdevp'].includes(key)
-          ? args.flatMap((arg) => this.values(arg)) : args.map((arg) => this.v(arg));
         if (key === 'min' || key === 'max') {
           const nonblank = values.filter((v) => !isEmpty(v));
           if (nonblank.some((v) => v.type !== 'number')) {
             return nonblank.reduce<Value | undefined>((best, v) => !best || (key === 'min' ? compare(v, best, this.order) < 0 : compare(v, best, this.order) > 0) ? v : best, undefined) ?? EMPTY;
           }
         }
-        const precise = decimalFunction(key, values, this.decimalPlaces);
+        const precise = decimalFunction(key, values, places);
         if (precise !== undefined) return precise;
+        }
       }
       return fn.run(args, this, name);
     }
@@ -867,14 +886,24 @@ export class Env {
     if (op === 'or') return bool(asBoolean(this.v(an)) || asBoolean(this.v(bn)));
     const a = this.v(an);
     const b = this.v(bn);
-    if (this.decimalPlaces !== undefined && ['+', '-', '*', '/', '^'].includes(op)) {
+    const decimalOperands = [a, b].some((v) => v.type === 'number' && v.decimal !== undefined);
+    const exactLargeOperand = isBeyondDouble(a) || isBeyondDouble(b);
+    const decimalMixedWithLargeWhole = decimalOperands && [a, b].some((v) => v.type === 'number'
+      && v.decimal === undefined && Math.abs(v.value) > Number.MAX_SAFE_INTEGER);
+    const longDecimalOperand = [a, b].some((v) => v.type === 'number' && v.decimal !== undefined
+      && v.decimal.replace(/[^0-9]/g, '').replace(/^0+/, '').length > 15);
+    const largeWholeDivision = op === '/' && exactLargeOperand && !decimalOperands;
+    if ((this.decimalPlaces !== undefined || (decimalOperands && !longDecimalOperand && !decimalMixedWithLargeWhole) || largeWholeDivision)
+      && ['+', '-', '*', '/', '^'].includes(op)
+      && (op !== '^' || exactOf(b) !== undefined || this.decimalPlaces !== undefined)) {
       if ((op === '+' || op === '-') && (['date', 'time', 'timestamp'].includes(a.type) || ['date', 'time', 'timestamp'].includes(b.type))) {
         return op === '+' ? add(a, b, 1) : subtract(a, b);
       }
       if (op === '/' && isEmpty(a) && isEmpty(b)) return EMPTY;
       if (op === '/' && isEmpty(a)) return EMPTY;
       try {
-        const x = Decimal.value(a, this.decimalPlaces), y = Decimal.value(b, this.decimalPlaces);
+        const places = this.decimalPlaces ?? 448;
+        const x = Decimal.value(a, places), y = Decimal.value(b, places);
         const result = op === '+' ? x.add(y) : op === '-' ? x.sub(y) : op === '*' ? x.mul(y)
           : op === '/' ? x.div(y) : x.pow(y);
         return result.value();
