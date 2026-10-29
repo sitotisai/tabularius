@@ -15,8 +15,8 @@ import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, appendFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { checkHealth, healthUrl, waitForRestart } from '../packages/cli/src/service.ts';
-import { backupFolder } from '../packages/server/src/backup.ts';
 
 const repo = resolve(import.meta.dirname, '..');
 // Not under /tmp: a systemd system unit gets a private one. On Windows, under Program Files: the boot task runs as the system
@@ -127,7 +127,8 @@ try {
   else sh('schtasks', ['/Query', '/TN', 'openhbam', '/V', '/FO', 'LIST'], { ok: true });
   // The backup an upgrade takes first, run here so a failure shows where it came from (the command prints only a sentence).
   step('a backup by hand');
-  await backupFolder(folder, join(base, 'diagnostic-backups'), 0).then((r) => console.log(`backup ok: ${r.dir}`), (err: NodeJS.ErrnoException) => console.log(`backup failed: ${err.code} ${err.syscall ?? ''} ${err.path ?? ''}\n${err.stack}`));
+  // Loaded here: the workflow installs no dependencies in this checkout, and the server's modules need them.
+  await import(pathToFileURL(join(app, 'packages', 'server', 'src', 'backup.ts')).href).then(({ backupFolder }) => backupFolder(folder, join(base, 'diagnostic-backups'), 0)).then((r) => console.log(`backup ok: ${r.dir}`), (err: NodeJS.ErrnoException) => console.log(`backup failed: ${err.code} ${err.syscall ?? ''} ${err.path ?? ''}\n${err.stack}`));
   throw e;
 } finally {
   if (installed) cli('service', 'uninstall');
