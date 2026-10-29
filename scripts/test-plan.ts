@@ -17,6 +17,7 @@ const SCANNING_SLOW_GATES = [
 /** Tests under scripts/ that need a browser: like the other browser tests they are not part of test:ci. */
 export const BROWSER_SCRIPT_TESTS = new Set(['walkthrough.test.ts']);
 const WEIGHTS_FILE = 'scripts/test-weights.json';
+const WINDOWS_SKIP_FILE = 'scripts/windows-skip.json';
 
 const readJson = <T>(file: string): T => JSON.parse(readFileSync(join(ROOT, file), 'utf8')) as T;
 
@@ -32,6 +33,9 @@ export function gateTests(): string[] {
   const gates = readJson<{ file: string }[]>('scripts/precheck-gates.json').map((gate) => gate.file);
   return [...new Set([...gates, ...SCANNING_SLOW_GATES])].sort();
 }
+
+/** Test files that are not run on Windows, each with the reason. */
+export const windowsSkips = (): Record<string, string> => readJson<Record<string, string>>(WINDOWS_SKIP_FILE);
 
 export type Weights = Record<string, number>;
 export const loadWeights = (): Weights => (existsSync(join(ROOT, WEIGHTS_FILE)) ? readJson<Weights>(WEIGHTS_FILE) : {});
