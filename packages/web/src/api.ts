@@ -23,6 +23,8 @@ export class ApiError extends Error {
   readonly code: number;
   readonly denial?: AccessDenialExplanation;
   readonly status?: number;
+  /** Seconds a 429 or 503 asks to wait (its Retry-After header), when it gave a number; never more than a minute. */
+  retryAfter?: number;
   constructor(code: number, message: string, denial?: AccessDenialExplanation, status?: number) {
     super(message);
     this.code = code;
@@ -361,6 +363,8 @@ export class Api {
     if (path.startsWith('/tabularius/')) {
       if (!r.ok) {
         const err = new ApiError(json.error?.code ?? -1, json.error?.message ?? httpProblem(r.status), json.error?.denial, r.status);
+        const wait = Number(r.headers.get('retry-after'));
+        if (Number.isFinite(wait) && wait > 0) err.retryAfter = Math.min(60, Math.ceil(wait));
         if (err.code === 952) this.onExpired();
         throw err;
       }

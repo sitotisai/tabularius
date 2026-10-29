@@ -50,3 +50,48 @@ export function signInProblem(err: unknown, code: string): { ask?: 'code'; text:
 export function mustChangeText(): string {
   return 'This account must change its password before it can sign in. Change it in the classic client at /app/, then come back here.';
 }
+
+/** What this browser kept of a sign-in, if it is something that can be tried: the file and the session token. */
+export function parseSession(saved: string): { db: string; token: string } | undefined {
+  let value: unknown;
+  try { value = JSON.parse(saved); } catch { return undefined; }
+  if (typeof value !== 'object' || value === null) return undefined;
+  const { db, token } = value as { db?: unknown; token?: unknown };
+  return typeof db === 'string' && db && typeof token === 'string' && token ? { db, token } : undefined;
+}
+
+/**
+ * What to say when opening the file with a saved session fails, and whether the session is over. Only an answer
+ * that says the session ended clears it; everything else keeps it, says what happened (not always "could not
+ * reach the server") and has a Retry.
+ */
+export function sessionFailure(error: unknown): { clear: boolean; retry: boolean; text: string; /** Seconds the server asked to wait before another try (at most a minute). */ wait?: number } {
+  if (error instanceof ApiError && (error.code === 952 || error.code === 212 || error.status === 401)) {
+    return { clear: true, retry: false, text: 'Your session ended. Sign in again to carry on.' };
+  }
+  const detail = error instanceof Error ? error.message : String(error);
+  const say = (text: string) => ({ clear: false, retry: true, text });
+  if (error instanceof ApiError && error.status !== undefined && error.status < 500) {
+    if (error.status === 429) {
+      const wait = error.retryAfter && Number.isFinite(error.retryAfter) && error.retryAfter > 0 ? Math.min(60, Math.ceil(error.retryAfter)) : undefined;
+      return { ...say(`Too many requests. Wait ${wait ? `${wait} seconds` : 'a moment'}, then press Retry. ${detail}`), wait };
+    }
+    if (error.status === 404 || error.code === 802) return say(`That file could not be opened: ${detail}. It may have been closed or renamed. Press Retry, or sign in again to pick a file.`);
+    if (error.status === 403) return say(`This account may not open the file: ${detail}. Sign in again with another account.`);
+    return say(`The server did not accept the request: ${detail}. Press Retry, or sign in again.`);
+  }
+  if (error instanceof ApiError || isNetworkError(error)) return say(`Could not reach the server. Press Retry. ${detail}`);
+  return say(`Something went wrong opening the file: ${detail}. Press Retry, or sign in again.`);
+}
+
+/** A request that never got an answer (a browser's fetch fails with a TypeError, a timeout or an abort with its own name). */
+function isNetworkError(error: unknown): boolean {
+  if (error instanceof TypeError) return /fetch|network|load failed|connection|timed? ?out/i.test(error.message);
+  return error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError');
+}
+
+/** A deliberately hidden file list is normal; an outage needs an explanation. */
+export function listProblem(error: unknown): string {
+  if (error === undefined || error instanceof ApiError && error.code === 3 && error.status === 404) return '';
+  return `Could not list files. Check the file name and retry. ${error instanceof Error ? error.message : String(error)}`;
+}

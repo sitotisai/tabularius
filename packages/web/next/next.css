@@ -350,6 +350,8 @@ select.editor { height: 36px; cursor: pointer; }
 .related-add:hover { color: var(--accent); }
 .mini-new { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: var(--s2); padding: var(--s2) 0; }
 .mini-new.busy { opacity: 0.55; pointer-events: none; }
+.mini-note { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); padding-bottom: var(--s2); font-size: var(--t-sm); color: var(--bad); }
+.mini-note .ghost { height: 28px; padding: 0 var(--s2); font-size: var(--t-sm); }
 .mini-editor { width: 100%; margin: 0; font-size: var(--t-sm); min-height: 32px; }
 .mini-editor.num { text-align: right; }
 .related h3 { font-size: var(--t-md); font-weight: 600; display: flex; gap: var(--s2); align-items: baseline; }

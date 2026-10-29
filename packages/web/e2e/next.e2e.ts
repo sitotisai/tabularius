@@ -16,7 +16,7 @@ const PASSWORD = 'ann-secret-1';
 
 before(async () => {
   if (skip) return;
-  hosted = await host({ stores: ['Town', 'Shop', 'Gallery'] });
+  hosted = await host({ stores: ['Town', 'Shop', 'Gallery', 'Dated'] });
   const store = hosted.store('Town');
   store.applyDesign([
     { op: 'createTable', name: 'People', fields: [{ name: 'id', type: 'number' }, { name: 'Name' }, { name: 'City' }, { name: 'Age', type: 'number' }] },
@@ -27,6 +27,7 @@ before(async () => {
   }
   store.setPassword('Ann', PASSWORD, '[Full Access]');
   shop();
+  dated();
   const gallery = hosted.store('Gallery');
   gallery.applyDesign([{ op: 'createTable', name: 'Parks', fields: [{ name: 'Name' }, { name: 'Photo', type: 'container' }, { name: 'Leaflet', type: 'container' }] }] as DesignOp[]);
   gallery.create('Parks', { Name: 'Roundhay' });
@@ -85,6 +86,35 @@ function shop(): void {
   store.setPassword('Ann', PASSWORD, '[Full Access]');
 }
 
+/** Customers with an Orders portal whose columns are text, a value the file works out, a date and a time. */
+function dated(): void {
+  const store = hosted.store('Dated');
+  store.applyDesign([
+    { op: 'createTable', name: 'Customers', fields: [{ name: 'Id', type: 'number' }, { name: 'Name' }] },
+    { op: 'createTable', name: 'Orders', fields: [
+      { name: 'CustomerId', type: 'number' }, { name: 'Item' }, { name: 'Code', calculation: 'Upper ( Item )', options: { autoEnter: { calculation: true, replaceExisting: true } } },
+      { name: 'Due', type: 'date' }, { name: 'At', type: 'time' }] },
+    { op: 'createRelationship', left: 'Customers', right: 'Orders', predicates: [{ left: 'Id', right: 'CustomerId' }], rightCreate: true },
+  ] as DesignOp[]);
+  const design = store.design('Customers')!;
+  const orders = store.schema.tableOccurrences.find((t) => t.name === 'Orders')!;
+  const fieldId = (name: string) => store.schema.tables.find((t) => t.name === 'Orders')!.fields.find((f) => f.name === name)!.id;
+  const anchors = { left: true, top: true, right: false, bottom: false };
+  const cell = (id: number, name: string, left: number, right: number): LayoutObject => ({
+    id, kind: 'field', type: 1, anchors, style: {}, bounds: { top: 222, left, bottom: 244, right },
+    field: { tableOccurrenceId: orders.id, fieldId: fieldId(name), tableOccurrence: 'Orders', field: name, display: 'edit', repetitions: 1 },
+  } as LayoutObject);
+  const portal = {
+    id: 900, kind: 'portal', type: 9, anchors, style: {}, bounds: { top: 220, left: 160, bottom: 324, right: 620 },
+    portal: { tableOccurrenceId: orders.id, tableOccurrence: 'Orders', rows: 4, initialRow: 1 },
+    children: [cell(901, 'Item', 162, 260), cell(902, 'Code', 264, 340), cell(903, 'Due', 344, 450), cell(904, 'At', 454, 616)],
+  } as LayoutObject;
+  const parts = design.parts.map((p) => p.kind === 'body' ? { ...p, height: 280 } : p.kind === 'footer' ? { ...p, top: 340 } : p);
+  store.applyDesign([{ op: 'updateLayout', layout: 'Customers', design: { parts, objects: [...design.objects, portal] } }] as DesignOp[]);
+  store.create('Customers', { Id: 1, Name: 'Eve' });
+  store.setPassword('Ann', PASSWORD, '[Full Access]');
+}
+
 async function open(file = 'Town'): Promise<Page & { errors: string[] }> {
   const page = await window(await browser.newContext());
   await page.goto(hosted.url + '/next/');
@@ -119,6 +149,12 @@ test('the alternative client signs in on a server that keeps its list of files o
       const file = page.locator('input[name="db"]');
       if (typedByHand) await file.fill('Town'); else assert.equal(await file.inputValue(), 'Town');
       await page.locator('input[name="account"]').fill('Ann');
+      await page.locator('input[name="password"]').fill('wrong-password');
+      await page.getByRole('button', { name: 'Open', exact: true }).click();
+      await until(() => page.locator('.signin-error').textContent(), (text) => !!text);
+      assert.equal(await file.inputValue(), 'Town');
+      assert.equal(await page.locator('input[name="account"]').inputValue(), 'Ann');
+      assert.equal(await page.locator('input[name="password"]').inputValue(), 'wrong-password');
       await page.locator('input[name="password"]').fill(PASSWORD);
       await page.getByRole('button', { name: 'Open', exact: true }).click();
       await page.locator('.rail-item').first().waitFor();
@@ -494,4 +530,597 @@ test('a page is edited beside a preview and saved to the layout; a new page star
   await until(() => page.frameLocator('.page-frame iframe').locator('li').first().textContent(), (t) => !!t);
   // The preview has no data calls, so the first page (which calls tabularius without checking) says so there, and only there.
   assert.deepEqual([...new Set(page.errors)], ['tabularius is not defined']);
+});
+
+/** Lets the request through to the server, then drops the answer, as a network drop or a proxy timeout does. */
+async function loseResponses(page: Page, counted: { patches: number }, times = 1): Promise<void> {
+  let left = times;
+  await page.route(/\/records\/\d+$/, async (route) => {
+    if (route.request().method() !== 'PATCH') return route.continue();
+    counted.patches++;
+    if (left-- > 0) { await route.fetch(); return route.abort('failed'); }
+    return route.continue();
+  });
+}
+/**
+ * Lets whatever a click or key started in the page run its course: two frames, then one round trip to the server, so
+ * a request the page was going to send is already on its way (and counted) when this returns.
+ */
+const settle = (page: Page) => page.evaluate(async () => {
+  await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  await fetch('/next/', { method: 'HEAD' });
+});
+const rowsOf = (store: string, table: string, field: string, value: string) => hosted.store(store).find(table, { limit: 100 }).records.filter((x) => String(x.fieldData[field]).toUpperCase() === value.toUpperCase()).length;
+
+test('a related row with a date, a time and a worked-out column is not added twice after a lost answer', { skip }, async () => {
+  const page = await open('Dated');
+  await page.locator('.row:not(.head)', { hasText: 'Eve' }).click();
+  await page.locator('.sheet .record-title', { hasText: 'Eve' }).waitFor();
+  const counted = { patches: 0 };
+  await loseResponses(page, counted);
+  await page.getByRole('button', { name: 'Add to orders' }).click();
+  await page.keyboard.type('Jam');
+  await page.locator('.sheet .mini-new input[type="date"]').fill('2026-03-05');
+  await page.locator('.sheet .mini-new input[aria-label$="At"]').fill('10:00');
+  await page.keyboard.press('Enter');
+  await until(() => page.locator('.sheet .saved').first().textContent(), (t) => !!t && t !== 'Saving…');
+  assert.equal(rowsOf('Dated', 'Orders', 'Item', 'Jam'), 1, 'the first try reached the server');
+  const made = hosted.store('Dated').find('Orders', { limit: 10 }).records[0].fieldData;
+  assert.equal(made['Due'], '03/05/2026', 'the file presents the date padded, the draft is not');
+  assert.equal(made['Code'], 'JAM', 'the file worked a column out of what was typed');
+  // Leaving the row sends nothing; Check again looks at the list and, finding a row it did not have, still sends nothing.
+  await page.locator('.sheet .sheet-crumb').click();
+  await settle(page);
+  assert.equal(counted.patches, 1);
+  await page.getByRole('button', { name: 'Check again' }).click();
+  await page.locator('.sheet .mini-note', { hasText: /probably added|may be the one/ }).waitFor();
+  assert.equal(counted.patches, 1, 'Check again did not send it again');
+  assert.equal(rowsOf('Dated', 'Orders', 'Item', 'Jam'), 1);
+  assert.match(await page.locator('.sheet .mini-note').textContent() ?? '', /probably added|may be the one/);
+  // Enter does not add it either, and says so; only Add anyway does.
+  await page.locator('.sheet .mini-new input').first().focus();
+  await page.keyboard.press('Enter');
+  await settle(page);
+  assert.equal(counted.patches, 1);
+  assert.match(await page.locator('.toast').textContent() ?? '', /Add anyway/);
+  await page.getByRole('button', { name: 'Add anyway' }).click();
+  await until(async () => rowsOf('Dated', 'Orders', 'Item', 'Jam'), (n) => n === 2);
+  assert.equal(counted.patches, 2);
+  await until(async () => page.locator('.sheet .mini-new').count(), (n) => n === 0);
+});
+
+test('a related row that the list shows after a lost answer can be discarded', { skip }, async () => {
+  hosted.store('Dated').create('Customers', { Id: 2, Name: 'Fay' });
+  const page = await open('Dated');
+  await page.locator('.row:not(.head)', { hasText: 'Fay' }).click();
+  await page.locator('.sheet .record-title', { hasText: 'Fay' }).waitFor();
+  const counted = { patches: 0 };
+  await loseResponses(page, counted);
+  await page.getByRole('button', { name: 'Add to orders' }).click();
+  await page.keyboard.type('Tea');
+  await page.keyboard.press('Enter');
+  await until(() => page.locator('.sheet .saved').first().textContent(), (t) => !!t && t !== 'Saving…');
+  await page.getByRole('button', { name: 'Check again' }).click();
+  await page.getByRole('button', { name: 'Discard' }).click();
+  await until(async () => page.locator('.sheet .mini-new').count(), (n) => n === 0);
+  assert.equal(rowsOf('Dated', 'Orders', 'Item', 'Tea'), 1);
+  assert.equal(counted.patches, 1);
+});
+
+test('a related row whose answer was lost is not sent again by leaving it; Check again looks first, so nothing is added twice', { skip }, async () => {
+  hosted.store('Shop').create('Customers', { Id: 2, Name: 'Bob' });
+  const page = await open('Shop');
+  await page.locator('.row:not(.head)', { hasText: 'Bob' }).click();
+  await page.locator('.sheet .record-title', { hasText: 'Bob' }).waitFor();
+  const counted = { patches: 0 };
+  await loseResponses(page, counted);
+  await page.getByRole('button', { name: 'Add to orders' }).click();
+  await page.keyboard.type('Marmalade');
+  await page.keyboard.press('Enter');
+  await until(() => page.locator('.sheet .saved').first().textContent(), (t) => !!t && t !== 'Saving…');
+  assert.equal(rowsOf('Shop', 'Orders', 'Item', 'Marmalade'), 1, 'the first try reached the server');
+  assert.equal(await page.locator('.sheet .mini-new').count(), 1, 'the typed row is kept');
+  await page.locator('.sheet .sheet-crumb').click();
+  await settle(page);
+  assert.equal(counted.patches, 1, 'no automatic resend');
+  await page.getByRole('button', { name: 'Check again' }).click();
+  await page.getByRole('button', { name: 'Add anyway' }).waitFor();
+  assert.equal(counted.patches, 1, 'Check again did not send it again');
+  assert.equal(rowsOf('Shop', 'Orders', 'Item', 'Marmalade'), 1);
+  // The list now shows the row the first try made.
+  await until(() => page.locator('.sheet .related .mini-row .cell:first-child').allTextContents(), (n) => n.filter((x) => x === 'Marmalade').length === 1);
+  assert.deepEqual(page.errors.filter((e) => !/Failed to load resource/.test(e)), []);
+});
+
+test('a related row the server refused is kept, not sent on leaving it, and Retry sends it once', { skip }, async () => {
+  hosted.store('Shop').create('Customers', { Id: 3, Name: 'Cleo' });
+  const page = await open('Shop');
+  await page.locator('.row:not(.head)', { hasText: 'Cleo' }).click();
+  await page.locator('.sheet .record-title', { hasText: 'Cleo' }).waitFor();
+  let refuse = true;
+  let patches = 0;
+  await page.route(/\/records\/\d+$/, (route) => {
+    if (route.request().method() !== 'PATCH') return route.continue();
+    patches++;
+    if (refuse) return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ messages: [{ code: '500', message: 'Refused' }], response: {} }) });
+    return route.continue();
+  });
+  await page.getByRole('button', { name: 'Add to orders' }).click();
+  await page.keyboard.type('Pickle');
+  await page.keyboard.press('Enter');
+  await until(() => page.locator('.sheet .saved').first().textContent(), (t) => !!t && t !== 'Saving…');
+  await page.locator('.sheet .sheet-crumb').click();
+  await settle(page);
+  assert.equal(patches, 1);
+  assert.equal(rowsOf('Shop', 'Orders', 'Item', 'Pickle'), 0);
+  refuse = false;
+  await page.getByRole('button', { name: 'Retry' }).click();
+  await until(async () => rowsOf('Shop', 'Orders', 'Item', 'Pickle'), (n) => n === 1);
+  await until(async () => page.locator('.sheet .mini-new').count(), (n) => n === 0);
+  await settle(page);
+  assert.equal(rowsOf('Shop', 'Orders', 'Item', 'Pickle'), 1);
+});
+
+test('after a gateway error a related row may still be committed late: nothing is sent again until Add anyway', { skip }, async () => {
+  hosted.store('Shop').create('Customers', { Id: 12, Name: 'Lou' });
+  const page = await open('Shop');
+  await page.locator('.row:not(.head)', { hasText: 'Lou' }).click();
+  await page.locator('.sheet .record-title', { hasText: 'Lou' }).waitFor();
+  let patches = 0;
+  let gateway = true;
+  await page.route(/\/records\/\d+$/, (route) => {
+    if (route.request().method() !== 'PATCH') return route.continue();
+    patches++;
+    // The proxy answers 502 and the server finishes the request after the client has looked at the list.
+    if (gateway) return route.fulfill({ status: 502, contentType: 'text/plain', body: 'Bad gateway' });
+    return route.continue();
+  });
+  await page.getByRole('button', { name: 'Add to orders' }).click();
+  await page.keyboard.type('Chutney');
+  await page.keyboard.press('Enter');
+  await until(() => page.locator('.sheet .saved').first().textContent(), (t) => !!t && t !== 'Saving…');
+  await page.locator('.sheet .sheet-crumb').click();
+  await settle(page);
+  assert.equal(patches, 1, 'leaving the row sends nothing');
+  assert.equal(await page.getByRole('button', { name: 'Retry' }).count(), 0, 'it is not offered as a plain Retry');
+  // The list shows nothing yet; looking again still sends nothing.
+  await page.getByRole('button', { name: 'Check again' }).click();
+  await page.locator('.sheet .mini-note', { hasText: /late|still/ }).waitFor();
+  await settle(page);
+  assert.equal(patches, 1);
+  assert.equal(rowsOf('Shop', 'Orders', 'Item', 'Chutney'), 0);
+  gateway = false;
+  await page.getByRole('button', { name: 'Add anyway' }).click();
+  await until(async () => rowsOf('Shop', 'Orders', 'Item', 'Chutney'), (n) => n === 1);
+  assert.equal(patches, 2);
+});
+
+test('a refused save keeps its draft, and neither another field saving nor clicking away sends it again or loses it', { skip }, async () => {
+  hosted.store('Shop').create('Customers', { Id: 6, Name: 'Gus', City: 'Leeds' });
+  const page = await open('Shop');
+  await page.locator('.row:not(.head)', { hasText: 'Gus' }).click();
+  await page.locator('.sheet .record-title', { hasText: 'Gus' }).waitFor();
+  let refuse = true;
+  const sent: string[] = [];
+  await page.route(/\/records\/\d+$/, (route) => {
+    if (route.request().method() !== 'PATCH') return route.continue();
+    const fields = Object.keys(JSON.parse(route.request().postData() ?? '{}').fieldData ?? {});
+    sent.push(fields.join());
+    if (refuse && fields.includes('Name')) return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ messages: [{ code: '500', message: 'Refused' }], response: {} }) });
+    return route.continue();
+  });
+  await page.locator('.sheet .record-title').click();
+  await page.locator('.sheet input.editor').fill('Gustav');
+  await page.keyboard.press('Enter');
+  await until(() => page.locator('.sheet .saved').first().textContent(), (t) => !!t && t !== 'Saving…');
+  // Clicking another field blurs the failed one: nothing is retried.
+  await page.locator('.sheet dd .value', { hasText: 'Leeds' }).click();
+  await settle(page);
+  assert.deepEqual(sent, ['Name'], 'no retry on blur');
+  // The other field saves; the panel is drawn again but the draft stays.
+  await page.locator('.sheet select.editor').selectOption('Paris');
+  await until(async () => sent.length, (n) => n === 2);
+  await page.locator('.sheet dd .value', { hasText: 'Paris' }).waitFor();
+  assert.equal(await page.locator('.sheet input.editor.record-title').inputValue(), 'Gustav', 'the draft survived the other save');
+  refuse = false;
+  await page.locator('.sheet input.editor.record-title').press('Enter');
+  await page.locator('.sheet .record-title', { hasText: 'Gustav' }).waitFor();
+  assert.deepEqual(sent, ['Name', 'City', 'Name']);
+  assert.equal(hosted.store('Shop').find('Customers', { limit: 50 }).records.find((x) => x.fieldData['Name'] === 'Gustav')?.fieldData['City'], 'Paris');
+});
+
+test('a failed related row survives another field saving, and an editor opened meanwhile is not torn down', { skip }, async () => {
+  hosted.store('Shop').create('Customers', { Id: 7, Name: 'Hal', City: 'Leeds' });
+  const page = await open('Shop');
+  await page.locator('.row:not(.head)', { hasText: 'Hal' }).click();
+  await page.locator('.sheet .record-title', { hasText: 'Hal' }).waitFor();
+  let refuse = true;
+  const sent: string[] = [];
+  await page.route(/\/records\/\d+$/, (route) => {
+    if (route.request().method() !== 'PATCH') return route.continue();
+    const body = JSON.parse(route.request().postData() ?? '{}');
+    sent.push(body.portalData ? 'portal' : Object.keys(body.fieldData ?? {}).join());
+    if (refuse && body.portalData) return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ messages: [{ code: '500', message: 'Refused' }], response: {} }) });
+    return route.continue();
+  });
+  await page.getByRole('button', { name: 'Add to orders' }).click();
+  await page.keyboard.type('Relish');
+  await page.keyboard.press('Enter');
+  await page.locator('.sheet .mini-note').waitFor();
+  await page.locator('.sheet dd .value', { hasText: 'Leeds' }).click();
+  await page.locator('.sheet select.editor').selectOption('York');
+  await page.locator('.sheet dd .value', { hasText: 'York' }).waitFor();
+  assert.equal(await page.locator('.sheet .mini-new input').first().inputValue(), 'Relish', 'the row stayed with what was typed');
+  assert.equal(await page.locator('.sheet .mini-note').count(), 1);
+  assert.deepEqual(sent, ['portal', 'City']);
+  refuse = false;
+  await page.getByRole('button', { name: 'Retry' }).click();
+  await until(async () => rowsOf('Shop', 'Orders', 'Item', 'Relish'), (n) => n === 1);
+  await until(async () => page.locator('.sheet .mini-new').count(), (n) => n === 0);
+});
+
+test('a field edit whose answer was lost is found saved from the record, with no false conflict', { skip }, async () => {
+  hosted.store('Shop').create('Customers', { Id: 4, Name: 'Cy' });
+  const page = await open('Shop');
+  await page.locator('.row:not(.head)', { hasText: 'Cy' }).click();
+  await page.locator('.sheet .record-title', { hasText: 'Cy' }).waitFor();
+  const counted = { patches: 0 };
+  await loseResponses(page, counted);
+  await page.locator('.sheet .record-title').click();
+  await page.locator('.sheet input.editor').fill('Cyrus');
+  await page.keyboard.press('Enter');
+  await page.locator('.sheet .record-title', { hasText: 'Cyrus' }).waitFor();
+  assert.equal(await page.locator('.sheet input.editor').count(), 0, 'the edit counts as saved');
+  assert.equal(counted.patches, 1);
+  await page.locator('.sheet .record-title').click();
+  await page.locator('.sheet input.editor').fill('Cyrus II');
+  await page.keyboard.press('Enter');
+  await page.locator('.sheet .record-title', { hasText: 'Cyrus II' }).waitFor();
+  assert.equal(await page.locator('.toast.error').count(), 0);
+});
+
+test('a field edit whose answer was lost does not overwrite what someone else wrote meanwhile', { skip }, async () => {
+  hosted.store('Shop').create('Customers', { Id: 8, Name: 'Orig' });
+  const page = await open('Shop');
+  await page.locator('.row:not(.head)', { hasText: 'Orig' }).click();
+  await page.locator('.sheet .record-title', { hasText: 'Orig' }).waitFor();
+  const id = hosted.store('Shop').find('Customers', { limit: 50 }).records.find((x) => x.fieldData['Name'] === 'Orig')!.recordId;
+  const name = () => hosted.store('Shop').find('Customers', { limit: 50 }).records.find((x) => x.recordId === id)!.fieldData['Name'];
+  let renamed = false;
+  await page.route(/\/records\/\d+$/, async (route) => {
+    if (route.request().method() === 'PATCH' && !renamed) {
+      renamed = true;
+      hosted.store('Shop').update('Customers', id, { Name: 'Theirs' });
+      return route.abort('failed');
+    }
+    return route.continue();
+  });
+  await page.locator('.sheet .record-title').click();
+  await page.locator('.sheet input.editor').fill('Mine');
+  await page.keyboard.press('Enter');
+  await page.locator('.sheet .toast, .toast.error').first().waitFor();
+  assert.match(await page.locator('.toast').textContent() ?? '', /Theirs/, 'their value is shown');
+  assert.equal(await page.locator('.sheet input.editor').inputValue(), 'Mine', 'the draft is kept');
+  await page.keyboard.press('Enter');
+  await until(() => page.locator('.sheet .saved').first().textContent(), (t) => !!t && t !== 'Saving…');
+  assert.equal(name(), 'Theirs', 'their change was not overwritten');
+  assert.match(await page.locator('.toast').textContent() ?? '', /Someone else/);
+});
+
+test('a kept conflict draft is not sent after another save moved the record on', { skip }, async () => {
+  hosted.store('Shop').create('Customers', { Id: 50, Name: 'Rex' });
+  const page = await open('Shop');
+  await page.locator('.row:not(.head)', { hasText: 'Rex' }).click();
+  await page.locator('.sheet .record-title', { hasText: 'Rex' }).waitFor();
+  const id = hosted.store('Shop').find('Customers', { limit: 80 }).records.find((x) => x.fieldData['Name'] === 'Rex')!.recordId;
+  const name = () => hosted.store('Shop').find('Customers', { limit: 80 }).records.find((x) => x.recordId === id)!.fieldData['Name'];
+  let renamed = false;
+  const sent: string[] = [];
+  await page.route(/\/records\/\d+$/, async (route) => {
+    if (route.request().method() === 'PATCH') {
+      const body = JSON.parse(route.request().postData() ?? '{}');
+      sent.push(body.portalData ? 'portal' : Object.keys(body.fieldData ?? {}).join());
+      if (!renamed && !body.portalData) {
+        renamed = true;
+        hosted.store('Shop').update('Customers', id, { Name: 'Theirs' });
+        return route.abort('failed');
+      }
+    }
+    return route.continue();
+  });
+  await page.locator('.sheet .record-title').click();
+  await page.locator('.sheet input.editor').fill('Mine');
+  await page.keyboard.press('Enter');
+  await until(async () => page.locator('.toast').textContent(), (t) => /Theirs/.test(t ?? ''));
+  // Another save on the same record refreshes it, and with it the modId.
+  await page.getByRole('button', { name: 'Add to orders' }).click();
+  await page.keyboard.type('Jam');
+  await page.keyboard.press('Enter');
+  await until(() => page.locator('.sheet .related .mini-row .cell:first-child').allTextContents(), (n) => n.includes('Jam'));
+  assert.equal(await page.locator('.sheet input.editor.record-title').inputValue(), 'Mine', 'the draft is kept');
+  await page.locator('.sheet input.editor.record-title').press('Enter');
+  await settle(page);
+  assert.equal(name(), 'Theirs', 'their change was not overwritten');
+  assert.deepEqual(sent, ['Name', 'portal'], 'the draft was not sent again');
+  assert.match(await page.locator('.toast').textContent() ?? '', /Someone else/);
+});
+
+test('a draft is not sent over someone else\'s value when the read after a related add failed', { skip }, async () => {
+  hosted.store('Shop').create('Customers', { Id: 52, Name: 'Rox' });
+  const page = await open('Shop');
+  await page.locator('.row:not(.head)', { hasText: 'Rox' }).click();
+  await page.locator('.sheet .record-title', { hasText: 'Rox' }).waitFor();
+  const id = hosted.store('Shop').find('Customers', { limit: 80 }).records.find((x) => x.fieldData['Name'] === 'Rox')!.recordId;
+  const name = () => hosted.store('Shop').find('Customers', { limit: 80 }).records.find((x) => x.recordId === id)!.fieldData['Name'];
+  let refuse = true, failGet = false;
+  const sent: string[] = [];
+  await page.route(/\/records\/\d+$/, async (route) => {
+    const method = route.request().method();
+    if (method === 'GET' && failGet) { failGet = false; return route.abort('failed'); }
+    if (method === 'PATCH') {
+      const body = JSON.parse(route.request().postData() ?? '{}');
+      sent.push(body.portalData ? 'portal' : 'Name');
+      if (body.portalData) { const answer = await route.fetch(); failGet = true; return route.fulfill({ response: answer }); }
+      if (refuse) { refuse = false; return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ messages: [{ code: '500', message: 'Refused' }], response: {} }) }); }
+    }
+    return route.continue();
+  });
+  await page.locator('.sheet .record-title').click();
+  await page.locator('.sheet input.editor').fill('Mine');
+  await page.keyboard.press('Enter');
+  await until(() => page.locator('.sheet .saved').first().textContent(), (t) => !!t && t !== 'Saving…');
+  hosted.store('Shop').update('Customers', id, { Name: 'Theirs' });
+  await page.getByRole('button', { name: 'Add to orders' }).click();
+  await page.keyboard.type('Jam');
+  await page.keyboard.press('Enter');
+  await until(async () => sent.includes('portal'), (v) => v);
+  await settle(page);
+  await page.locator('.sheet input.editor.record-title').press('Enter');
+  await settle(page);
+  assert.equal(name(), 'Theirs', 'their change was not overwritten');
+  assert.equal(await page.locator('.sheet input.editor.record-title').inputValue(), 'Mine', 'the draft is kept');
+});
+
+test('text that only looks like a number is not taken for what was saved after a lost answer', { skip }, async () => {
+  hosted.store('Shop').create('Customers', { Id: 51, Name: '1234' });
+  const page = await open('Shop');
+  await page.locator('.row:not(.head)', { hasText: '1234' }).click();
+  await page.locator('.sheet .record-title', { hasText: '1234' }).waitFor();
+  let dropped = false;
+  await page.route(/\/records\/\d+$/, async (route) => {
+    if (route.request().method() === 'PATCH' && !dropped) { dropped = true; return route.abort('failed'); }
+    return route.continue();
+  });
+  await page.locator('.sheet .record-title').click();
+  await page.locator('.sheet input.editor').fill('01234');
+  await page.keyboard.press('Enter');
+  await until(() => page.locator('.sheet .saved').first().textContent(), (t) => !!t && t !== 'Saving…');
+  assert.equal(await page.locator('.sheet input.editor').count(), 1, 'nothing was saved, so the draft stays');
+  assert.notEqual(await page.locator('.sheet .saved').first().textContent(), 'Saved');
+  assert.equal(hosted.store('Shop').find('Customers', { limit: 80 }).records.find((x) => String(x.fieldData['Id']) === '51')!.fieldData['Name'], '1234');
+});
+
+test('a date edit whose answer was lost is found saved though the file pads the date', { skip }, async () => {
+  hosted.store('Dated').create('Orders', { CustomerId: 99, Item: 'Seed', Due: '01/02/2026' });
+  const page = await open('Dated');
+  await page.locator('.rail-item', { hasText: 'Orders' }).click();
+  await page.locator('.row:not(.head)', { hasText: 'Seed' }).click();
+  await page.locator('.sheet .record-title', { hasText: 'Seed' }).waitFor();
+  const counted = { patches: 0 };
+  await loseResponses(page, counted);
+  await page.locator('.sheet dt', { hasText: 'Due' }).locator('xpath=following-sibling::dd[1]').locator('.value').click();
+  await page.locator('.sheet input.editor').fill('2026-04-07');
+  await page.keyboard.press('Enter');
+  await until(async () => hosted.store('Dated').find('Orders', { limit: 10 }).records.find((x) => x.fieldData['Item'] === 'Seed')?.fieldData['Due'], (v) => v === '04/07/2026');
+  await until(async () => page.locator('.sheet input.editor').count(), (n) => n === 0);
+  await settle(page);
+  assert.equal(counted.patches, 1);
+  assert.equal(await page.locator('.toast.error').count(), 0, 'saved, not "could not confirm"');
+});
+
+test('a field edit that did not reach the server keeps its draft, and Enter saves it', { skip }, async () => {
+  hosted.store('Shop').create('Customers', { Id: 5, Name: 'Dot' });
+  const page = await open('Shop');
+  await page.locator('.row:not(.head)', { hasText: 'Dot' }).click();
+  await page.locator('.sheet .record-title', { hasText: 'Dot' }).waitFor();
+  let drop = true;
+  let patches = 0;
+  await page.route(/\/records\/\d+$/, (route) => {
+    if (route.request().method() !== 'PATCH') return route.continue();
+    patches++;
+    return drop ? route.abort('failed') : route.continue();
+  });
+  await page.locator('.sheet .record-title').click();
+  await page.locator('.sheet input.editor').fill('Dorothy');
+  await page.keyboard.press('Enter');
+  await until(() => page.locator('.sheet .saved').first().textContent(), (t) => !!t && t !== 'Saving…');
+  assert.equal(await page.locator('.sheet input.editor').inputValue(), 'Dorothy', 'the draft is kept');
+  drop = false;
+  await page.keyboard.press('Enter');
+  await page.locator('.sheet .record-title', { hasText: 'Dorothy' }).waitFor();
+  assert.equal(patches, 2);
+});
+
+test('an in-flight save does not redraw the panel while another record is opening', { skip }, async () => {
+  hosted.store('Shop').create('Customers', { Id: 10, Name: 'Jo' });
+  hosted.store('Shop').create('Customers', { Id: 11, Name: 'Kim' });
+  const page = await open('Shop');
+  await page.locator('.row:not(.head)', { hasText: 'Jo' }).click();
+  await page.locator('.sheet .record-title', { hasText: 'Jo' }).waitFor();
+  const kimId = hosted.store('Shop').find('Customers', { limit: 50 }).records.find((x) => x.fieldData['Name'] === 'Kim')!.recordId;
+  let freePatch!: () => void, freeKim!: () => void;
+  const patchHeld = new Promise<void>((resolve) => { freePatch = resolve; });
+  const kimHeld = new Promise<void>((resolve) => { freeKim = resolve; });
+  let patched = false;
+  await page.route(/\/records\/\d+$/, async (route) => {
+    const request = route.request();
+    if (request.method() === 'PATCH') { await patchHeld; const answer = await route.fetch(); patched = true; return route.fulfill({ response: answer }); }
+    if (request.method() === 'GET' && request.url().endsWith(`/records/${kimId}`)) { await kimHeld; }
+    return route.continue();
+  });
+  await page.locator('.sheet .record-title').click();
+  await page.locator('.sheet input.editor').fill('Joanna');
+  await page.keyboard.press('Enter');
+  await page.locator('.row:not(.head)', { hasText: 'Kim' }).click();
+  freePatch();
+  await until(async () => patched, (v) => v);
+  await settle(page);
+  // Jo's save is done, but the panel was not drawn again for Jo: Kim is the record being opened.
+  assert.equal(await page.locator('.sheet .saved.ok').count(), 0);
+  freeKim();
+  await page.locator('.sheet .record-title', { hasText: 'Kim' }).waitFor();
+});
+
+test('an address with a broken escape opens the default collection', { skip }, async () => {
+  const page = await open('Town');
+  await page.goto(hosted.url + '/next/#/%E0%A4%A/%');
+  await page.reload();
+  await page.locator('.rail-item').first().waitFor();
+  await page.locator('.row:not(.head)').first().waitFor();
+  assert.deepEqual(page.errors, []);
+});
+
+test('Escape in the page editor asks about a draft every time, and a closed editor leaves the page', { skip }, async () => {
+  const page = await open('Gallery');
+  await page.locator('.rail-pages .rail-item', { hasText: 'Welcome' }).click();
+  await page.locator('.page-frame iframe').waitFor();
+  let asked = 0;
+  let accept = false;
+  page.on('dialog', (d) => { asked++; void (accept ? d.accept() : d.dismiss()); });
+  await page.getByRole('button', { name: 'Edit page' }).click();
+  const code = page.getByRole('textbox', { name: 'Page HTML, CSS and JavaScript' });
+  await until(() => code.inputValue(), (v) => v.includes('<h1'));
+  await code.fill('<h1>A draft</h1>');
+  // Escape in the code leaves the code (it never closes the editor, nor asks).
+  await page.keyboard.press('Escape');
+  assert.equal(asked, 0);
+  assert.equal(await page.locator('dialog.page-editor[open]').count(), 1);
+  await page.getByRole('button', { name: 'Cancel' }).focus();
+  for (let i = 1; i <= 4; i++) {
+    await page.keyboard.press('Escape');
+    await until(async () => asked, (n) => n === i);
+    assert.equal(await page.locator('dialog.page-editor[open]').count(), 1, `still open after Escape ${i}`);
+  }
+  accept = true;
+  await page.keyboard.press('Escape');
+  await page.locator('dialog.page-editor').waitFor({ state: 'detached' });
+  assert.equal(asked, 5);
+  // Nothing was changed: Escape closes it without asking, and it leaves the page.
+  await page.getByRole('button', { name: 'Edit page' }).click();
+  await page.locator('dialog.page-editor[open]').waitFor();
+  await page.getByRole('button', { name: 'Cancel' }).focus();
+  await page.keyboard.press('Escape');
+  await page.locator('dialog.page-editor').waitFor({ state: 'detached' });
+  assert.equal(asked, 5);
+});
+
+test('a saved session that cannot be read is dropped, and the sign-in does not call it an outage', { skip }, async () => {
+  const page = await window(await browser.newContext());
+  for (const bad of ['{bad', 'null', '{"db":"Town"}']) {
+    await page.goto(hosted.url + '/next/');
+    await page.evaluate((v) => sessionStorage.setItem('tabularius.session', v), bad);
+    await page.reload();
+    await page.locator('form.signin').waitFor();
+    assert.equal(await page.evaluate(() => sessionStorage.getItem('tabularius.session')), null, bad);
+    assert.doesNotMatch(await page.locator('.signin-error').textContent() ?? '', /reach the server|Expected property/, bad);
+    await page.reload();
+    await page.locator('form.signin').waitFor();
+    assert.doesNotMatch(await page.locator('.signin-error').textContent() ?? '', /reach the server|Expected property/, bad);
+  }
+});
+
+test('a saved session the server answers with an error says what happened, keeps the session, and has a Retry that works', { skip }, async () => {
+  const page = await open('Town');
+  const saved = await page.evaluate(() => sessionStorage.getItem('tabularius.session'));
+  let status = 0;
+  let code = -1;
+  await page.route(/\/tabularius\/app\/v1\/databases\/[^/]+\/layouts$/, (route) => status
+    ? route.fulfill({ status, contentType: 'application/json', body: JSON.stringify({ error: { code, message: `status ${status}` } }) })
+    : route.continue());
+  for (const [s, c, text] of [[503, -1, /Could not reach the server/], [429, -1, /Too many requests/], [404, 802, /could not be opened/], [400, -1, /status 400/]] as const) {
+    status = s; code = c;
+    await page.evaluate((v) => sessionStorage.setItem('tabularius.session', v!), saved);
+    await page.reload();
+    await page.locator('form.signin').waitFor();
+    const message = await page.locator('.signin-error').textContent() ?? '';
+    assert.match(message, text, String(s));
+    if (s !== 503) assert.doesNotMatch(message, /reach the server/, String(s));
+    assert.notEqual(await page.evaluate(() => sessionStorage.getItem('tabularius.session')), null, `${s} keeps the session`);
+    assert.equal(await page.getByRole('button', { name: 'Retry' }).count(), 1, `${s} has a Retry`);
+  }
+  status = 0;
+  await page.getByRole('button', { name: 'Retry' }).click();
+  await page.locator('.rail-item').first().waitFor();
+});
+
+test('the sign-in Retry waits out a 429, is off while a try runs, and does not race the Open form', { skip }, async () => {
+  const page = await open('Town');
+  const saved = await page.evaluate(() => sessionStorage.getItem('tabularius.session'));
+  let mode: 'wait' | 'busy' | 'hold' | 'pass' = 'wait';
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  await page.route(/\/tabularius\/app\/v1\/databases\/[^/]+\/layouts$/, async (route) => {
+    if (mode === 'wait') return route.fulfill({ status: 429, headers: { 'retry-after': '3' }, contentType: 'application/json', body: JSON.stringify({ error: { code: -1, message: 'Slow down' } }) });
+    if (mode === 'busy') return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: { code: -1, message: 'Busy' } }) });
+    if (mode === 'hold') { await held; return route.continue(); }
+    return route.continue();
+  });
+  await page.evaluate((v) => sessionStorage.setItem('tabularius.session', v!), saved);
+  await page.reload();
+  await page.locator('form.signin').waitFor();
+  const retry = page.getByRole('button', { name: 'Retry' });
+  assert.match(await page.locator('.signin-error').textContent() ?? '', /3 seconds/);
+  assert.equal(await retry.isDisabled(), true, 'Retry is off while the server asks to wait');
+  await until(() => retry.isEnabled(), (on) => on);
+  // A try that is running locks the Open form.
+  mode = 'hold';
+  await retry.click();
+  assert.equal(await retry.isDisabled(), true, 'one try at a time');
+  assert.equal(await page.getByRole('button', { name: 'Open', exact: true }).isDisabled(), true, 'Open waits for the Retry');
+  release();
+  await page.locator('.rail-item').first().waitFor();
+  // And a sign-in that is running locks Retry.
+  mode = 'busy';
+  await page.evaluate((v) => sessionStorage.setItem('tabularius.session', v!), saved);
+  await page.reload();
+  await page.locator('form.signin').waitFor();
+  let freeLogin!: () => void;
+  const login = new Promise<void>((resolve) => { freeLogin = resolve; });
+  await page.route(/\/sessions$/, async (route) => { if (route.request().method() === 'POST') await login; return route.continue(); });
+  await page.locator('input[name="account"]').fill('Ann');
+  await page.locator('input[name="password"]').fill(PASSWORD);
+  if (await page.locator('select[name="db"]').count()) await page.locator('select[name="db"]').selectOption('Town');
+  await page.getByRole('button', { name: 'Open', exact: true }).click();
+  assert.equal(await page.getByRole('button', { name: 'Retry' }).isDisabled(), true, 'Retry waits for the sign-in');
+  mode = 'pass';
+  freeLogin();
+  await page.locator('.rail-item').first().waitFor();
+});
+
+test('text typed in the page editor while it saves is kept, not closed over', { skip }, async () => {
+  const page = await open('Gallery');
+  await page.locator('.rail-pages .rail-item', { hasText: 'Welcome' }).click();
+  await page.locator('.page-frame iframe').waitFor();
+  await page.getByRole('button', { name: 'Edit page' }).click();
+  const code = page.getByRole('textbox', { name: 'Page HTML, CSS and JavaScript' });
+  await until(() => code.inputValue(), (v) => v.includes('<h1'));
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  let saves = 0;
+  await page.route(/\/tabularius\/design\/v1\/databases\/[^/]+$/, async (route) => {
+    if (route.request().method() === 'POST') { saves++; await held; }
+    return route.continue();
+  });
+  await code.fill('<h1 id=t>First</h1>');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await until(async () => saves, (n) => n === 1);
+  await code.press('End');
+  await page.keyboard.type('<!-- typed while saving -->');
+  release();
+  await until(() => page.locator('.page-error').textContent(), (t) => /typed while saving|unsaved/i.test(t ?? ''));
+  assert.equal(await page.locator('dialog.page-editor[open]').count(), 1);
+  assert.match(await code.inputValue(), /typed while saving/);
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.locator('dialog.page-editor').waitFor({ state: 'detached' });
+  await until(async () => pageSource(hosted.store('Gallery').design('Welcome')!.objects[0].webUrl), (h) => /typed while saving/.test(h ?? ''));
 });
