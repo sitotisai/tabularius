@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { commandStubEnv } from '../../../scripts/test-command-stubs.ts';
 import { runCli } from './cli-run.ts';
+import { notOnWindows } from '../../store/test/windows.ts';
 
 const main = join(import.meta.dirname, '..', 'src', 'main.ts');
 
@@ -16,7 +17,7 @@ test('serve help documents accepting partial standby files', async (t) => {
 });
 
 for (const [accept, workers] of [[false, 1], [true, 1], [false, 2], [true, 2]] as const) {
-  test(`serve CLI ${accept ? 'accepts partial standby files only with the flag' : 'refuses partial standby files by default'}${workers > 1 ? ` with --workers ${workers}` : ''}`, async (t) => {
+  test(`serve CLI ${accept ? 'accepts partial standby files only with the flag' : 'refuses partial standby files by default'}${workers > 1 ? ` with --workers ${workers}` : ''}`, { skip: accept && notOnWindows('a stop signal ends a Windows process at once, without its clean exit') }, async (t) => {
     const dir = mkdtempSync(join(tmpdir(), 'tabularius-takeover-cli-'));
     const path = join(dir, '.openhbam-standby.json');
     const state = JSON.stringify({
