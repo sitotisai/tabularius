@@ -1,9 +1,10 @@
 // Approval memory for files in a hosted folder. It is local state, never a backup input.
-import { closeSync, constants, existsSync, fstatSync, fsyncSync, lstatSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeSync } from 'node:fs';
+import { closeSync, constants, existsSync, fstatSync, fsyncSync, lstatSync, openSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
+import { cleanupPath, openSync as openChecked, renameSync as renameChecked, writeSync as writeChecked } from '../../store/src/fs-boundary.ts';
 
 export const HOSTED_RECORD_FILE = '.openhbam-hosted.json';
 export type ApprovalHow = 'first-start' | 'admin' | 'upload' | 'create' | 'restore';
@@ -135,20 +136,29 @@ function writeRecord(dir: string, record: HostedRecord): void {
   // could publish the other's half-written record.
   const temp = `${path}.${process.pid}.${randomUUID()}.tmp`;
   let fd: number | undefined;
-  let created = false;
+  let removeTemp: (() => void) | undefined;
   sweepTemps(dir, path);
   try {
-    fd = openSync(temp, 'wx', 0o600);
-    created = true;
-    writeSync(fd, JSON.stringify(record) + '\n');
+    fd = openChecked(temp, 'wx', 0o600);
+    removeTemp = cleanupPath(temp);
+    writeChecked(fd, JSON.stringify(record) + '\n');
     fsyncSync(fd);
     closeSync(fd);
     fd = undefined;
     recordWriteHook.run?.();
-    renameSync(temp, path);
+    publish(temp, path);
   } finally {
     if (fd !== undefined) closeSync(fd);
-    if (created) rmSync(temp, { force: true });
+    removeTemp?.();
+  }
+}
+
+function publish(temp: string, path: string): void {
+  // Another process may replace the record between the boundary's two looks; try again with our own temp.
+  // A swapped temp is refused every time.
+  for (let attempt = 0; attempt < 50; attempt++) {
+    try { renameChecked(temp, path); return; }
+    catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ESTALE' || attempt === 49) throw e; }
   }
 }
 
