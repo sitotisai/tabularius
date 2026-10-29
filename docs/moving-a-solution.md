@@ -745,11 +745,18 @@ Tabularius's Deserialize reads. Not yet: Dictionary.ToXML and the SQL, variable-
 run too (values by index, matching, columns, sets, duplicates, sorting, Find,
 BestMatch and the rest). A list ends with a return where MBS's NoReturnEnding
 parameter says so; values compare case-sensitively unless MBS's page says
-otherwise; sorts go by character code (MBS doesn't name its order). Not yet: <!-- known-difference: MBS plug-in functions ;; List.CSVSplit, List.OrColumn, List.XOrColumn and List.SortWithEvaluate are not available, and sorts go by character code because MBS does not name its order ;; The call gives ? and error 3; sorted order can differ from MBS ;; Owner decision, and an MBS run that shows its sort order -->
-List.CSVSplit, List.OrColumn, List.XOrColumn and List.SortWithEvaluate. MBS's
+otherwise; sorts go by character code (MBS doesn't name its order). List.CSVSplit <!-- known-difference: MBS plug-in functions ;; List.CSVSplit parses RFC 4180 CSV records, joins cells with tabs and returns them as list rows; this result is inferred and unverified ;; Row endings, malformed CSV handling and the returned cell separator may differ from MBS ;; An MBS run covering quotes, embedded line breaks and malformed input -->
+parses RFC 4180 CSV records, joins cells with tabs and returns them as list
+rows. QuickList.CSVSplit <!-- known-difference: MBS plug-in functions ;; QuickList.CSVSplit parses RFC 4180 CSV records into a new QuickList, joining cells with tabs; this result is inferred and unverified ;; Row endings, malformed CSV handling, cell separators and return type may differ from MBS ;; An MBS run covering quotes, embedded line breaks and malformed input -->
+does the same into a new QuickList. List.OrColumn <!-- known-difference: MBS plug-in functions ;; List.OrColumn treats a numeric non-zero value in the selected zero-based column as true, and returns 1 if any row is true; this result is inferred and unverified ;; Numeric parsing, missing cells and the result type may differ from MBS ;; An MBS run covering non-numeric and missing cells -->
+returns 1 if any selected zero-based column cell is a non-zero number.
+List.XOrColumn <!-- known-difference: MBS plug-in functions ;; List.XOrColumn treats a numeric non-zero value in the selected zero-based column as true, and returns 1 for an odd count of true rows; this result is inferred and unverified ;; Numeric parsing, missing cells and the result type may differ from MBS ;; An MBS run covering non-numeric and missing cells -->
+returns 1 when an odd number of selected cells are non-zero numbers. The
+QuickList versions <!-- known-difference: MBS plug-in functions ;; QuickList.OrColumn treats a numeric non-zero value in the selected zero-based column as true, and returns 1 if any row is true; this result is inferred and unverified ;; Numeric parsing, missing cells and the result type may differ from MBS ;; An MBS run covering non-numeric and missing cells --><!-- known-difference: MBS plug-in functions ;; QuickList.XOrColumn treats a numeric non-zero value in the selected zero-based column as true, and returns 1 for an odd count of true rows; this result is inferred and unverified ;; Numeric parsing, missing cells and the result type may differ from MBS ;; An MBS run covering non-numeric and missing cells --> use the same rule.
+Not yet: List.SortWithEvaluate. MBS's
 `QuickList.*` functions run as well, on lists kept for the session by
 reference (numbered from 12000, as MBS does, or by the name given); the same
-four are not yet available there, nor QuickList.AddSQL. The Hash functions <!-- known-difference: MBS plug-in functions ;; The same four List functions and QuickList.AddSQL are not available ;; The call gives ? and error 3 ;; Owner decision on whether to build them -->
+sort function is not yet available there, nor QuickList.AddSQL. The Hash functions <!-- known-difference: MBS plug-in functions ;; QuickList.AddSQL is not available ;; The call gives ? and error 3 ;; Owner decision on whether to build it -->
 (MD5, SHA1, SHA256 and SHA512 digests and HMACs, `Hash.Digest`, `Hash.CRC16`,
 `Hash.CRC32`) work on text, hex, base64 or container data. A few path and
 container helpers work too, along with `Version`, `IsRegistered` and progress

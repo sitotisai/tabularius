@@ -120,7 +120,7 @@ test('MBS QuickList: sets, sorting with other lists and references', () => {
 test('MBS QuickList through MBS ( … ): lists last for the calculation context', () => {
   const c = {};
   assert.equal(evaluateText('Let ( q = MBS ( "QuickList.New" ; "b¶a" ) ; MBS ( "QuickList.Sort" ; q ) & MBS ( "QuickList.GetList" ; q ; 1 ) )', c), 'OKa\rb');
-  assert.match(evaluateText('MBS ( "QuickList.CSVSplit" ; "a,b" )', c), /not available/);
+  assert.equal(evaluateText('Let ( q = MBS ( "QuickList.CSVSplit" ; "a,b" ) ; MBS ( "QuickList.GetList" ; q ) )', c), 'a\tb\r');
 });
 
 test('MBS Dictionary.SetQuickList reads key and value lines from a QuickList', () => {
