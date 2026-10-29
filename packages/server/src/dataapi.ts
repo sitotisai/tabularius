@@ -1852,10 +1852,13 @@ export class DataApi {
           const blocked = failures.addressLockedOut(from);
           if (blocked) throw lockedOutError(blocked);
           const account = typeof body.account === 'string' ? body.account : '';
-          const key = failures.accountKey('recovery code of ' + account, from);
-          if (failures.lockedOut(key, from) === undefined) {
+          if (!account) failures.countAddressFailure(from);
+          else {
+            // A code has a counter of its own, apart from the account's passwords; once it is locked the failure still counts against the address, and only the check is spared.
+            const key = failures.accountKey(account, from, db) + '\0recovery';
+            const wasLocked = failures.lockedOut(key, from) !== undefined;
             failures.record(key, from, false);
-            if (account) await spendRecoveryCodeCheck(typeof body.code === 'string' ? body.code : '');
+            if (!wasLocked) await spendRecoveryCodeCheck(typeof body.code === 'string' ? body.code : '');
           }
           throw new ApiError(212, 'That recovery code is not valid', 401);
         }
