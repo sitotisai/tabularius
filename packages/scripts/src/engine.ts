@@ -1218,8 +1218,7 @@ function unbalancedQuote(text: string): boolean {
 
 const redactorCaches = new WeakMap<Store, { schema: Store['schema']; cache: CredentialRedactorCache; builds: number }>();
 
-function redactorCacheFor(store: Store): CredentialRedactorCache {
-  const schema = store.schema;
+function redactorCacheFor(store: Store, schema: Store['schema']): CredentialRedactorCache {
   const old = redactorCaches.get(store);
   if (old?.schema === schema) return old.cache;
   const fields = schema.tables.flatMap((t) => t.fields.map((f) => f.name));
@@ -1569,8 +1568,9 @@ export class ScriptEngine {
       this.identityVia = this.opts.executionVia;
     }
     this.enforceExecution(store);
-    this.diagnostics = redactorCacheFor(store).forRun(s, () => store.schema.scripts);
-    this.diagnosedSchemas = new Map([[store, store.schema]]);
+    const schema = store.schema;
+    this.diagnostics = redactorCacheFor(store, schema).forRun(s, () => schema.scripts);
+    this.diagnosedSchemas = new Map([[store, schema]]);
     this.diagnosticLiterals = new WeakMap();
     const start = this.opts.startWindow;
     // The person's other windows in this file, behind the start one (frontmost last).
@@ -3645,11 +3645,12 @@ export class ScriptEngine {
     // Every script of the file is inspected before its first call, as at a run's start: a callee's credential
     // use must hide the caller's inputs even when it is reached by a computed name or another call. The root
     // file's list is already in this run's redactor; another file's list is added once per schema object.
-    const functions = store.schema.customFunctions.map((cf) => cf.name);
-    if (this.diagnosedSchemas.get(store) === store.schema) this.diagnostics.inspect([script], functions);
+    const schema = store.schema;
+    const functions = schema.customFunctions.map((cf) => cf.name);
+    if (this.diagnosedSchemas.get(store) === schema) this.diagnostics.inspect([script], functions);
     else {
-      this.diagnostics.inspect([...store.schema.scripts, script], functions);
-      this.diagnosedSchemas.set(store, store.schema);
+      this.diagnostics.inspect([...schema.scripts, script], functions);
+      this.diagnosedSchemas.set(store, schema);
     }
     this.diagnostics.scriptState(asText(parameter, store.dateOrder), asText(this.lastResult, store.dateOrder));
     const frame: Frame = {
