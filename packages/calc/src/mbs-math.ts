@@ -1,7 +1,6 @@
 // MBS ( "Math.…" ) and ( "Time.…" ): MonkeyBread's number and time functions, following MBS's own function pages
 // (mbsplugins.eu). Where a page leaves something out, the comment says what Tabularius does and that it's inferred.
-// Not here: Math.Median (its page's one example disagrees with a median), Math.TextToNumber (its comma or dot
-// detection isn't described), Math.InsidePolygon (deprecated, no result described), Time.Sleep and Time.Wait
+// Not here: Time.Sleep and Time.Wait
 // (they would hold up the server). They give an "isn't available" MBS error.
 
 import { MbsError } from './mbs-text.ts';
@@ -29,6 +28,67 @@ function valuesOf(texts: string[]): number[] {
   const out: number[] = [];
   for (const t of texts) for (const line of t.split(/\r\n|\r|\n/)) if (line.trim() !== '') out.push(numberOf(line));
   return out;
+}
+/** Inferred: conventional numeric median, with the same line-delimited values as Math.Average. */
+function median(texts: string[]): Value {
+  const values = valuesOf(texts);
+  if (values.length > 200_000) throw new MbsError('Too many values (maximum 200000)');
+  if (!values.length) return text('');
+  values.sort((a, b) => a - b);
+  const mid = Math.floor(values.length / 2);
+  return num(values.length % 2 ? values[mid] : (values[mid - 1] + values[mid]) / 2);
+}
+/** Inferred: accept a single decimal mark, or grouped thousands plus a decimal mark; grouping is 3 digits. */
+function textToNumber(input: string): Value {
+  const s = input.trim();
+  if (s.length > 10_000) throw new MbsError('Text is too long to parse as a number');
+  const match = /^([+-]?)(.*)$/.exec(s)!;
+  const body = match[2];
+  if (!body || !/^\d[\d.,]*$/.test(body)) throw new MbsError(`"${input}" is not a number`);
+  let normalized: string;
+  const dots = (body.match(/\./g) ?? []).length;
+  const commas = (body.match(/,/g) ?? []).length;
+  if (dots && commas) {
+    const decimal = body.lastIndexOf('.') > body.lastIndexOf(',') ? '.' : ',';
+    const thousands = decimal === '.' ? ',' : '.';
+    const [whole, fraction] = body.split(decimal);
+    if (!fraction || !/^\d+$/.test(fraction) || !validGroupedInteger(whole, thousands)) throw new MbsError(`"${input}" is not a number`);
+    normalized = whole.split(thousands).join('') + '.' + fraction;
+  } else {
+    const separator = dots ? '.' : commas ? ',' : '';
+    if (separator && (dots + commas > 1)) {
+      if (!validGroupedInteger(body, separator)) throw new MbsError(`"${input}" is not a number`);
+      normalized = body.split(separator).join('');
+    } else normalized = body.replace(',', '.');
+  }
+  const value = Number(match[1] + normalized);
+  if (!Number.isFinite(value)) throw new MbsError(`"${input}" is not a finite number`);
+  return num(value);
+}
+function validGroupedInteger(s: string, separator: string): boolean {
+  const parts = s.split(separator);
+  return parts.length > 1 && /^\d{1,3}$/.test(parts[0]) && parts.slice(1).every((part) => /^\d{3}$/.test(part));
+}
+/** Inferred: ray casting over newline-separated x,y vertices; boundary points are inside. */
+function insidePolygon(x: number, y: number, raw: string): number {
+  if (raw.length > 1_000_000) throw new MbsError('Polygon text is too large');
+  const rows = raw.trim() ? raw.split(/\r\n|\r|\n/) : [];
+  if (rows.length < 3) throw new MbsError('A polygon needs at least 3 points');
+  if (rows.length > 10_000) throw new MbsError('A polygon can have at most 10000 points');
+  const points = rows.map((row) => {
+    const pair = row.split(',');
+    if (pair.length !== 2) throw new MbsError('Each polygon point must be x,y');
+    return [numberOf(pair[0], 'x coordinate'), numberOf(pair[1], 'y coordinate')] as const;
+  });
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const [xi, yi] = points[i];
+    const [xj, yj] = points[j];
+    const cross = (x - xi) * (yj - yi) - (y - yi) * (xj - xi);
+    if (Math.abs(cross) < 1e-12 && x >= Math.min(xi, xj) && x <= Math.max(xi, xj) && y >= Math.min(yi, yj) && y <= Math.max(yi, yj)) return 1;
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside ? 1 : 0;
 }
 const list = (ns: number[]) => text(ns.map((n) => numText(n)).join('\r'));
 /** A number as text, as FileMaker writes it (dot, no exponent for ordinary sizes). */
@@ -531,6 +591,12 @@ const units = (f: (v: number, dpi: number) => number): MbsMath => ({ texts: [v =
 };
 
 export const MBS_MATH: Record<string, MbsMath> = {
+  // Inferred: ordinary statistical median; the vendor's one disagreeing example is deliberately not followed.
+  'math.median': ({ texts }) => median(texts),
+  // Inferred: comma or dot is decimal when alone; when both occur, the final mark is decimal and the other groups thousands.
+  'math.texttonumber': ({ texts: [value = ''] }) => textToNumber(value),
+  // Inferred: point is x,y and polygon is newline-separated x,y vertices; edges count as inside.
+  'math.insidepolygon': ({ texts: [x = '', y = '', polygon = ''] }) => num(insidePolygon(numberOf(x, 'x coordinate'), numberOf(y, 'y coordinate'), polygon)),
   'math.sum': ({ texts }) => {
     const v = valuesOf(texts);
     return v.length ? num(decimalSum(v)) : text('');
