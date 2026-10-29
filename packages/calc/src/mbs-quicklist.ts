@@ -6,15 +6,14 @@ import { ENTRY_BYTES, LIST_SLOT_BYTES, RetainedMap, retainedBudget, stringBytes 
 // change the list they're given, or with ReturnNewList give a new one. References start at 12000 for each session
 // (MBS: "Reference numbers start at 12000 and increase with each new list"), or take the name given to QuickList.New.
 // Where a page leaves something out the comment says what Tabularius does and that it's inferred.
-// Not here: QuickList.CSVSplit, OrColumn and XOrColumn (as for List), SortWithEvaluate and AddSQL. They give an
-// "isn't available" MBS error.
+// Not here: SortWithEvaluate and AddSQL. They give an "isn't available" MBS error.
 
 import { MbsError } from './mbs-text.ts';
 import { compileRegex, optionsOf, regexMatchesEach } from './mbs-regex.ts';
 import { parseJson } from './mbs-json.ts';
 import {
-  and, andColumn, bestMatch, crossProduct, deCombine, deleteColumn, deserialize, duplicates, listOut, matcher,
-  matchesPostfix, matchesPrefix, matchesSubString, not, notColumn, or, removeFix, serialize, shuffle, sortOrder, sortValues, subList,
+  and, andColumn, bestMatch, crossProduct, csvSplit, deCombine, deleteColumn, deserialize, duplicates, listOut, matcher,
+  matchesPostfix, matchesPrefix, matchesSubString, not, notColumn, or, orColumn, removeFix, serialize, shuffle, sortOrder, sortValues, subList, xorColumn,
   trimValue, unique, valuesOf, xor,
 } from './mbs-list.ts';
 
@@ -171,6 +170,12 @@ export const MBS_QUICKLIST: Record<string, MbsQuickList> = {
     changed(scope, a, (flag(notFromSecond) ? not : xor)(listOf(scope, a), listOf(scope, b)), flag(nl)),
   'quicklist.andcolumn': columnOp(andColumn),
   'quicklist.notcolumn': columnOp(notColumn),
+  // Inferred: CSVSplit creates and returns a new QuickList containing one tab-joined value per CSV record.
+  'quicklist.csvsplit': ([text = ''], scope) => keep(scope, csvSplit(text)),
+  // Inferred: return 1 if any selected zero-based column cell is a non-zero number; use AndColumn's arguments.
+  'quicklist.orcolumn': ([ref, sep = '', col], scope) => orColumn(listOf(scope, ref), sep, int(col, 'column')),
+  // Inferred: XOR is true for an odd number of non-zero numeric cells in that column.
+  'quicklist.xorcolumn': ([ref, sep = '', col], scope) => xorColumn(listOf(scope, ref), sep, int(col, 'column')),
   'quicklist.bestmatch': ([ref, search = '', flags], scope) => bestMatch(listOf(scope, ref), search, int(flags, 'flags', 0)),
   'quicklist.clear': ([ref], scope) => changed(scope, ref, (listOf(scope, ref), []), false),
   'quicklist.clone': ([ref], scope) => keep(scope, [...listOf(scope, ref)]),
