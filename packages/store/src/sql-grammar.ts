@@ -53,6 +53,46 @@ export function containerCastsToName(sql: string, isContainer: (name: string) =>
   });
 }
 
+/** Rewrite parameterized numeric CASTs after rewriting their operands, leaving other type names to SQLite. */
+export function castsToTypes(sql: string): string {
+  if (!/\bCAST\s*\(/i.test(blanked(sql))) return sql;
+  const plain = blanked(sql);
+  const cast = /\bCAST\s*\(/gi;
+  let at = 0;
+  let result = '';
+  for (const match of plain.matchAll(cast)) {
+    const start = match.index;
+    if (start < at) continue;
+    const open = start + match[0].length - 1;
+    const end = closing(plain, open + 1);
+    if (end < 0) continue;
+    result += sql.slice(at, start);
+    const body = sql.slice(open + 1, end);
+    const unquoted = blanked(body);
+    let depth = 0;
+    let asAt = -1;
+    for (let i = 0; i < unquoted.length; i++) {
+      if (unquoted[i] === '(') depth++;
+      else if (unquoted[i] === ')') depth--;
+      else if (depth === 0 && unquoted.slice(i, i + 2).toUpperCase() === 'AS'
+        && (i === 0 || !/\w/.test(unquoted[i - 1])) && !/\w/.test(unquoted[i + 2] ?? '')) asAt = i;
+    }
+    if (asAt < 0) {
+      result += sql.slice(start, end + 1);
+    } else {
+      const operand = castsToTypes(body.slice(0, asAt));
+      const type = /^(\w+)(?:\s*\(\s*(\d+)(?:\s*,\s*(\d+))?\s*\))?\s*$/i.exec(body.slice(asAt + 2).trim());
+      if (type && /^(?:DECIMAL|NUMERIC)$/i.test(type[1]) && type[2] !== undefined) {
+        result += `fm_cast_decimal(${operand}, ${type[2]}, ${type[3] ?? '0'})`;
+      } else {
+        result += sql.slice(start, open + 1) + operand + body.slice(asAt) + ')';
+      }
+    }
+    at = end + 1;
+  }
+  return result + sql.slice(at);
+}
+
 const unsupported = (what: string) => new CalcError(ERR.calculation, `${what} is not supported`);
 
 /** RIGHT OUTER JOIN and FULL OUTER JOIN: FileMaker's SQL has only INNER and LEFT OUTER, and SQLite would accept these. */

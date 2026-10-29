@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**181 entries in 23 areas.** Waiting on: 22 on a sample file, 91 on a FileMaker run or Design Report, 14 on a Claris answer, 18 on a decision by the owner (an entry can wait on more than one).
+**182 entries in 23 areas.** Waiting on: 22 on a sample file, 92 on a FileMaker run or Design Report, 14 on a Claris answer, 18 on a decision by the owner (an entry can wait on more than one).
 
 ## Data API
 
@@ -236,6 +236,7 @@ part of it.
 
 | What differs or is unknown | How it shows | What would settle it | Where it is written |
 | --- | --- | --- | --- |
+| vendor results for parameterized DECIMAL and NUMERIC casts are unspecified in the cited pages | the conformance test uses the SQL standard for these four derived expectations | compare the casts with FileMaker and record the observed result | [docs/sql-grammar-conformance.md › What was checked](sql-grammar-conformance.md) — “…come from the SQL standard; the vendor result is unverified. Six other entries are marked unverified because…” |
 | vendor results for six constructs are unspecified in the cited pages | the conformance test records current behavior without an expected result | compare each construct with FileMaker and record the observed result | [docs/sql-grammar-conformance.md › Not verified](sql-grammar-conformance.md) — “…read do not say, so the file marks these entries unverified with no expected result (paths: []). The test…” |
 
 ## Standby servers
