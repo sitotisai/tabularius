@@ -136,12 +136,16 @@ export function validateServeOptions(args: readonly string[], service = false): 
   for (let i = 0; i < args.length; i++) {
     const option = args[i];
     if (service && /^(--host|--port)(=|$)/.test(option)) throw new Error(`service: ${option} belongs before "--", with the install options`);
-    if (!serveSwitches.has(option) && !serveValues.has(option)) throw new Error(`serve: unknown option ${option.split('=')[0]}; write options and their values as separate words`);
+    const name = option.split('=')[0];
+    if (name !== option && (serveSwitches.has(name) || serveValues.has(name))) throw new Error(`serve: ${name}=value is not read; write the option and its value as two words (${name} VALUE)`);
+    if (!serveSwitches.has(option) && !serveValues.has(option)) throw new Error(`serve: unknown option ${name}; write options and their values as separate words`);
     if (seen.has(option) && option !== '--mcp-origin') throw new Error(`serve: ${option} was given more than once`);
     seen.add(option);
     if (serveValues.has(option)) {
       const value = args[++i];
-      if (value === undefined || value.startsWith('--')) throw new Error(`serve: ${option} needs a value`);
+      // A value may begin with dashes (a secret can); only another of serve's own options in its place means the value was left out.
+      if (value === undefined) throw new Error(option === '--mcp-origin' ? 'serve: --mcp-origin needs an address like https://files.example.com' : `serve: ${option} needs a non-empty value`);
+      if (serveSwitches.has(value) || serveValues.has(value)) throw new Error(`serve: ${option} needs a value, found the option ${value}`);
     }
   }
 }
@@ -149,7 +153,8 @@ export function validateServeOptions(args: readonly string[], service = false): 
 function normalizedPaths(extra: readonly string[]): string[] {
   validateServeOptions(extra, true);
   const paths = new Set(['--tls-cert', '--tls-key', '--backup-dir', '--ai-key-file', '--oidc-config', '--mcp-token-file', '--replication-token-file']);
-  return extra.map((value, i) => i > 0 && paths.has(extra[i - 1]) ? resolve(value) : value);
+  // A path already absolute on either platform stays as written: a Windows service can be printed from another system.
+  return extra.map((value, i) => i > 0 && paths.has(extra[i - 1]) && !win32.isAbsolute(value) ? resolve(value) : value);
 }
 
 /** The service's command line, as arguments. */
@@ -690,7 +695,9 @@ export async function checkPort(o: Pick<ServiceOptions, 'port' | 'host' | 'home'
 
 /** The service's health check address. */
 export function serviceTls(s: { extra: string[]; folder?: string }): boolean {
-  return !!(serveOption(s.extra, '--https') ?? process.env.TABULARIUS_HTTPS) || !!serveOption(s.extra, '--tls-cert') || !!(s.folder && readSettings(s.folder).tlsCert);
+  // Only the spelling serve reads counts (`--https name`, not `--https=name`), so what install accepts is what the service starts with.
+  const word = (name: string) => { const i = s.extra.indexOf(name); return i >= 0 ? s.extra[i + 1] : undefined; };
+  return !!(word('--https') ?? process.env.TABULARIUS_HTTPS) || s.extra.includes('--tls-cert') || !!(s.folder && readSettings(s.folder).tlsCert);
 }
 
 export function healthUrl(s: Pick<Installed, 'port' | 'host' | 'extra'> & { folder?: string }): string {

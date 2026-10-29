@@ -123,7 +123,7 @@ test('serve option registry covers help, preserves repeated origins and forwarde
   for (const flag of Object.keys(metadata.serveFlags)) {
     // A recognized value option can reject only a missing value, never its name.
     try { service.validateServeOptions([flag]); }
-    catch (error) { assert.match((error as Error).message, /needs a value/); }
+    catch (error) { assert.match((error as Error).message, /needs (a non-empty value|a value|an address)/); }
   }
   service.validateServeOptions(['--mcp-origin', 'https://one.example', '--mcp-origin', 'https://two.example']);
   const text = service.serviceFile({ ...service.defaults('linux'), folder: '/tmp/data', port: 8080, host: '127.0.0.1', system: false, extra: ['--capture-only', 'Staging', '--ai-exclude', 'Payroll', '--allow-plain-http'] }).text;
