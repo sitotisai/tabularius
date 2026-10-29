@@ -8,6 +8,6 @@ A JSON file describing several providers.
 | Accepted values | JSON file path |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1418](../../../../packages/cli/src/main.ts#L1418) |
+| Code | [packages/cli/src/main.ts:1419](../../../../packages/cli/src/main.ts#L1419) |
 
 [All environment variables](../../../environment-variables.md)
