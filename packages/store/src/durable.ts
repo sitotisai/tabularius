@@ -1,4 +1,4 @@
-import { chmodSync, closeSync, existsSync, fsyncSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync, unlinkSync } from 'node:fs';
+import { chmodSync, closeSync, existsSync, fstatSync, fsyncSync, lstatSync, openSync as openRaw, readFileSync, readdirSync, realpathSync, statSync, unlinkSync } from 'node:fs';
 import { cleanupPath, openSync, renameSync, writeFileSync } from './fs-boundary.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import { basename, dirname, join, resolve, win32, posix } from 'node:path';
@@ -13,7 +13,17 @@ export interface DurableFs {
   closeSync(fd: number): void;
   renameSync(from: string, to: string): void;
 }
-const disk: DurableFs = { statSync, openSync, fsyncSync, closeSync, renameSync };
+// A flush opens for writing only because Windows needs it, and writes nothing: the guarded open's rules for writers
+// (one link, mode set to private) do not apply, and a published store has two links until its temporary one is removed.
+function openToFlush(path: string, flags: string): number {
+  if (flags !== 'r+') return openSync(path, flags);
+  const fd = openRaw(path, flags);
+  try {
+    if (!fstatSync(fd).isFile()) throw Object.assign(new Error('Filesystem path changed or is not a safe regular file'), { code: 'ESTALE' });
+    return fd;
+  } catch (error) { closeSync(fd); throw error; }
+}
+const disk: DurableFs = { statSync, openSync: openToFlush, fsyncSync, closeSync, renameSync };
 
 export function syncPath(path: string, fs: DurableFs = disk, platform: NodeJS.Platform = process.platform): void {
   const directory = fs.statSync(path).isDirectory();

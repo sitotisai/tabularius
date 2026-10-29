@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { calledFromTest, retryDeletes, trackDatabases } from './test-windows-cleanup.ts';
+import { calledFromTest, retryDeletes, tearsDownFolder, trackDatabases } from './test-windows-cleanup.ts';
 
 class FakeDatabase {
   isOpen = true;
@@ -9,6 +9,8 @@ class FakeDatabase {
   constructor(location: string) { this.location = location; }
   close() { this.isOpen = false; }
 }
+
+const RECURSIVE = { recursive: true };
 
 function inUse(): NodeJS.ErrnoException {
   return Object.assign(new Error('EBUSY: resource busy or locked, unlink'), { code: 'EBUSY' });
@@ -22,12 +24,12 @@ function setup() {
   const opened: FakeDatabase[] = [];
   const open = (path: string) => { const db = new sqlite.DatabaseSync(path); opened.push(db); return db; };
   const fs = {
-    rmSync(path: string) {
+    rmSync(path: string, _options?: unknown) {
       if (opened.some((db) => db.isOpen && (db.location === path || db.location.startsWith(path + '/')))) throw inUse();
       removed.push(path);
     },
     promises: {
-      async rm(path: string) { return fs.rmSync(path); },
+      async rm(path: string, options?: unknown) { return fs.rmSync(path, options); },
     },
   };
   retryDeletes(fs, closeUnder);
@@ -37,7 +39,7 @@ function setup() {
 test('a delete that fails because a database is open closes it and succeeds', () => {
   const { fs, open, removed } = setup();
   const db = open('/tmp/a/x.sqlite');
-  fs.rmSync('/tmp/a');
+  fs.rmSync('/tmp/a', RECURSIVE);
   assert.equal(db.isOpen, false);
   assert.deepEqual(removed, ['/tmp/a']);
 });
@@ -46,7 +48,7 @@ test('only the databases under the deleted path are closed', () => {
   const { fs, open, removed } = setup();
   const inside = open('/tmp/a/x.sqlite');
   const beside = open('/tmp/b/y.sqlite');
-  fs.rmSync('/tmp/a');
+  fs.rmSync('/tmp/a', RECURSIVE);
   assert.equal(inside.isOpen, false);
   assert.equal(beside.isOpen, true);
   assert.deepEqual(removed, ['/tmp/a']);
@@ -55,7 +57,7 @@ test('only the databases under the deleted path are closed', () => {
 test('the async delete retries the same way', async () => {
   const { fs, open, removed } = setup();
   const db = open('/tmp/c/z.sqlite');
-  await fs.promises.rm('/tmp/c');
+  await fs.promises.rm('/tmp/c', RECURSIVE);
   assert.equal(db.isOpen, false);
   assert.deepEqual(removed, ['/tmp/c']);
 });
@@ -72,6 +74,16 @@ test('a delete that fails with nothing open there, or for another reason, still 
   retryDeletes(server, () => ++closed, () => false);
   assert.throws(() => server.rmSync(), { code: 'EBUSY' });
   assert.equal(closed, 0, 'nothing is closed for a delete the server made');
+});
+
+test('only a recursive delete is a teardown: a file deleted on purpose is left to fail', () => {
+  assert.equal(tearsDownFolder({ recursive: true, force: true }), true);
+  for (const options of [undefined, {}, { force: true }, { recursive: false }, 'recursive']) assert.equal(tearsDownFolder(options), false);
+  const { fs, open, removed } = setup();
+  const db = open('/tmp/f/x.sqlite');
+  assert.throws(() => fs.rmSync('/tmp/f/x.sqlite'), { code: 'EBUSY' });
+  assert.equal(db.isOpen, true);
+  assert.deepEqual(removed, []);
 });
 
 test('only a delete made by test code is retried, not one made by the server', () => {
