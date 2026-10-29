@@ -599,7 +599,8 @@ class Connection {
       return;
     }
     // Protocol 3 of any minor version: a newer minor or an option (_pq_.name) this server does not know is answered
-    // with NegotiateProtocolVersion, and the connection goes on at 3.0.
+    // with NegotiateProtocolVersion, and the connection goes on at 3.0. The message carries the whole version number, as
+    // PostgreSQL sends it: libpq 18 asking for 3.2 refuses a bare minor of 0 as "pre-3.0".
     if (code >>> 16 !== PROTOCOL_3 >>> 16) {
       this.send(errorMsg('08P01', 'only protocol 3.0 is spoken'));
       this.socket.end();
@@ -609,7 +610,7 @@ class Connection {
     const parts = body.subarray(4).toString('utf8').split('\0');
     for (let i = 0; i + 1 < parts.length && parts[i]; i += 2) params[parts[i]] = parts[i + 1];
     const options = Object.keys(params).filter((k) => k.startsWith('_pq_.'));
-    if (code !== PROTOCOL_3 || options.length) this.send(message('v', i32(PROTOCOL_3 & 0xffff), i32(options.length), ...options.map(cstr)));
+    if (code !== PROTOCOL_3 || options.length) this.send(message('v', i32(PROTOCOL_3), i32(options.length), ...options.map(cstr)));
     this.user = params.user ?? '';
     const db = params.database || this.user;
     this.settings = { application_name: params.application_name ?? '', client_encoding: 'UTF8', DateStyle: 'ISO, MDY' };
