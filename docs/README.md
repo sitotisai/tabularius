@@ -120,4 +120,5 @@ To read these pages offline with search, build the site: `npm run docs:build` wr
 - [Secret taint tracking](research/secret-taint-tracking.md) — Explore a defense-in-depth design for preventing AI tools from returning values derived from secret fields.
 - [Encryption with a standby](research/encryption-standby.md) — Review the storage and protocol decisions needed before an encrypted standby can be supported.
 - [Script step privileges](research/r17b-01-script-step-privileges.md) — Review which script steps check privileges like their non-script paths, and the deliberate exceptions.
+- [Progressive backups and replication with workers](research/progressive-with-workers.md) — Review the worker ownership and WAL coordination needed to combine these modes safely.
 - [Hosted file lifecycle tests](file-lifecycle-concurrency.md) — See what the file open, close and replace races are tested against, and how to run those tests.
