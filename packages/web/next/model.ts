@@ -207,6 +207,7 @@ export interface Page {
   viewer: number;
   /** "Allow JavaScript to perform FileMaker scripts": the page gets window.tabularius and FileMaker.PerformScript. */
   bridge: boolean;
+  hosts?: string[];
 }
 
 /**
@@ -219,7 +220,7 @@ export function pages(metas: { meta: LayoutMeta; hidden: boolean }[]): Page[] {
     const objects = meta.design?.objects ?? [];
     const viewers = objects.filter((o) => o.kind === 'web-viewer');
     if (hidden || viewers.length !== 1 || objects.some((o) => o.field || o.portal || o.kind === 'portal')) continue;
-    out.push({ layout: meta.layout.name, table: meta.layout.table, viewer: viewers[0].id, bridge: viewers[0].webOptions?.jsBridge === true });
+    out.push({ layout: meta.layout.name, table: meta.layout.table, viewer: viewers[0].id, bridge: viewers[0].webOptions?.jsBridge === true, ...(meta.webViewerHosts ? { hosts: meta.webViewerHosts } : {}) });
   }
   return out;
 }

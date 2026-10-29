@@ -37,7 +37,7 @@ function editor(title: string, html: string, save: (html: string) => Promise<voi
   // Tab types a tab in the code, as code editors do; Escape then Tab moves on.
   let escaped = false;
   code.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { escaped = true; return; }
+    if (e.key === 'Escape') { e.preventDefault(); escaped = true; return; }
     if (e.key === 'Tab' && !e.shiftKey && !escaped) {
       e.preventDefault();
       code.setRangeText('  ', code.selectionStart, code.selectionEnd, 'end');
@@ -45,13 +45,22 @@ function editor(title: string, html: string, save: (html: string) => Promise<voi
     }
     escaped = false;
   });
-  const close = () => { clearTimeout(wait); dialog.close(); dialog.remove(); };
+  // Closed for good (Save, or a discard that was confirmed): the dialog leaves the page and its preview timer stops.
+  let leaving = false;
+  const close = () => { leaving = true; clearTimeout(wait); if (dialog.open) dialog.close(); dialog.remove(); };
+  const cancel = () => { if (code.value === html || confirm('Discard unsaved page changes?')) close(); };
   const go = h('button', { class: 'primary', type: 'button', onclick: async () => {
     go.disabled = true;
     error.textContent = '';
     try {
-      await save(code.value);
-      close();
+      const sent = code.value;
+      await save(sent);
+      // What was typed while the save ran is not in it: keep the editor open on that, as unsaved.
+      if (code.value !== sent) {
+        html = sent;
+        error.textContent = 'Saved, but text typed while saving is not saved yet. Save again.';
+        go.disabled = false;
+      } else close();
     } catch (e) {
       error.textContent = (e as Error).message;
       go.disabled = false;
@@ -62,9 +71,22 @@ function editor(title: string, html: string, save: (html: string) => Promise<voi
     h('p', { class: 'page-note' }, 'HTML, CSS and JavaScript. The page reads and changes records with window.tabularius and runs scripts with FileMaker.PerformScript, as the signed-in account.'),
     h('div', { class: 'page-body' }, code, preview),
     size, error,
-    h('div', { class: 'page-actions' }, h('button', { class: 'ghost', type: 'button', onclick: close }, 'Cancel'), go),
+    h('div', { class: 'page-actions' }, h('button', { class: 'ghost', type: 'button', onclick: cancel }, 'Cancel'), go),
   );
-  dialog.addEventListener('cancel', (e) => { e.preventDefault(); close(); });
+  // Escape outside the code (inside it, Escape only leaves the code) asks before a draft is dropped. It is handled
+  // here, as a key, because a browser makes the `cancel` event after a dismissed prompt impossible to refuse: the
+  // dialog would close the second time without asking.
+  dialog.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.target === code) return;
+    e.preventDefault();
+    cancel();
+  });
+  dialog.addEventListener('cancel', (e) => { if (e.cancelable) e.preventDefault(); cancel(); });
+  // Closed any other way while a draft is unsaved: open again, with the draft. Otherwise the dialog is cleaned up.
+  dialog.addEventListener('close', () => {
+    if (!leaving && code.value !== html) { dialog.showModal(); return; }
+    close();
+  });
   document.body.append(dialog);
   dialog.showModal();
   show();

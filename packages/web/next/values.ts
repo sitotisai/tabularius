@@ -7,7 +7,8 @@ const DATE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
 const STAMP = /^(\d{1,2})\/(\d{1,2})\/(\d{4}) (\d{1,2}):(\d{2})(?::(\d{2}))?$/;
 
 function date(m: RegExpExecArray): Date {
-  const d = new Date(Number(m[3]), Number(m[1]) - 1, Number(m[2]));
+  const d = new Date(2000, 0, 1);
+  d.setFullYear(Number(m[3]), Number(m[1]) - 1, Number(m[2]));
   if (m[4] !== undefined) d.setHours(Number(m[4]), Number(m[5]), Number(m[6] ?? 0));
   return d;
 }
@@ -26,7 +27,10 @@ export function show(v: Value | undefined, c?: Pick<Column, 'type'>): string {
     if (m) return date(m).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   }
   if (type === 'number' && typeof v === 'number') return v.toLocaleString(undefined, { maximumFractionDigits: 10 });
-  if (type === 'number' && /^-?\d+(\.\d+)?$/.test(s)) return Number(s).toLocaleString(undefined, { maximumFractionDigits: 10 });
+  if (type === 'number' && /^-?\d+(\.\d+)?$/.test(s)) {
+    if (s.replace(/[-.]/g, '').replace(/^0+/, '').length > 15 || (s.split('.')[1]?.length ?? 0) > 10) return s;
+    return Number(s).toLocaleString(undefined, { maximumFractionDigits: 10 });
+  }
   return s;
 }
 

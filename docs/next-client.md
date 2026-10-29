@@ -36,7 +36,9 @@ panel beside it. Every command goes through one bar (⌘K / Ctrl K).
 - **Pages.** A layout that is one web viewer (a modern layout: a page in HTML, CSS and JavaScript, see
   [web-client.md](web-client.md)) is listed above the collections as a page, and fills the window under its
   name. With "Allow JavaScript to perform FileMaker scripts" on, it gets `window.tabularius` and
-  `FileMaker.PerformScript`, answered as the signed-in account, exactly as in `/app/`. **Edit page** (or ⌘K,
+  `FileMaker.PerformScript`, answered as the signed-in account. The bridge supports `context`, `records`, `find`, `record`,
+  `create`, `update`, `remove`, `summarize` and `performScript`. Unlike `/app/`, `layouts`,
+  `goToLayout`, `valueList` and `print` are not supported here; pages using them must use `/app/`. **Edit page** (or ⌘K,
   Edit this page…) opens its code beside a preview that follows the typing; Save keeps it in the layout, in the
   web viewer's address formula (`packages/web/src/page-source.ts`, shared with the classic client's page
   editor), so FileMaker Pro opens the same layout. ⌘K, **New page…** makes one on the open table that lists
@@ -47,6 +49,27 @@ panel beside it. Every command goes through one bar (⌘K / Ctrl K).
 - **The look.** Its own small system in `packages/web/next/next.css` (one system sans, tinted neutrals,
   one accent), following the Operate mode of Impeccable. Each file wears its own hue, picked from its name.
 
-Not there yet: saved views shared between people or browsers.
+Not there yet: saved views shared between people or browsers. Sign-in accepts a typed file name
+when the server hides its file list, and supports authenticator codes. Passkey second factors and
+required password changes must be completed in `/app/`.
+
+**When a save fails.** A value that did not save stays in its box, and so does a related row you were adding;
+the panel keeps them when another field of the same record saves, and leaving a box after a failure does not try
+again: press Enter (or Retry) to try again. A value is never written over a change someone else made: if the file
+holds a value that is neither what the box showed when you opened it nor your draft, or a save ran into a
+conflict, the draft is kept and Enter says so again until you close the box (Esc) and reopen the record.
+
+Adding a related row is not safe to repeat, because the server cannot tell a second request from the first. After
+a failure whose outcome is unknown (no answer, a dropped connection, a timeout, or a 5xx such as a gateway error)
+nothing is sent again by itself: **Check again** reads the record and says what the list shows, and only **Add
+anyway** adds the row again. A server can finish a request late, after a gateway gave up, so an empty list does not
+prove the first try failed. The check sees the portal rows the server returns with the record (the first 50 by
+default) and, beyond them, only the count of related records the server reports; in a longer portal a row the
+first try added is seen through the count alone, so it is missed if someone else deleted one meanwhile. A server
+refusal (a 4xx) is not in doubt, and Retry sends it again. Follow-up, not done here: an idempotency key on the add.
+
+Known limits: a draft is dropped when the record is replaced by a new copy (a script, a board move or a bulk
+change that reloads it, or reopening the record). A saved session that the server answers with a 429 waits out the
+Retry-After it gave, up to a minute, before Retry can be pressed.
 
 Tests: `packages/web/test/next-client.test.ts` and `packages/web/e2e/next.e2e.ts`.
