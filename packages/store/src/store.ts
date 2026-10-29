@@ -3595,13 +3595,16 @@ export class Store {
     const update = this.sql.prepare(`UPDATE ${q(table.name)} SET ${q(field.name)} = ? WHERE _fm_record_id = ?`);
     // A stored text calculation keeps its result's formatting, as it does when a record is written.
     const styled = field.kind === 'calculation' && this.keepsFormatting(field);
-    const kept: [number, string, StyleRun[] | undefined][] = [];
+    const kept: [number, string, StyleRun[] | undefined, number][] = [];
     for (const row of this.sql.prepare(`SELECT * FROM ${q(table.name)}`).iterate() as Iterable<Row>) {
-      const { value: v, runs } = this.calc.computeStoredStyled({ store: this, table, row }, field, false, privileges);
+      const { value: v, runs, repetitionRuns } = this.calc.computeStoredStyled({ store: this, table, row }, field, false, privileges);
       if (v !== row[field.name]) update.run(v as string | number | null, row._fm_record_id as number);
-      if (styled && (runs || this.textStyles.has(table.id))) kept.push([row._fm_record_id as number, String(v ?? ''), runs]);
+      if (styled) for (let rep = 1; rep <= repetitionsOf(field); rep++) {
+        const one = repetitionRuns ? repetitionRuns[rep - 1] : rep === 1 ? runs : undefined;
+        if (one || this.textStyles.has(table.id)) kept.push([row._fm_record_id as number, this.keptText(field, v, rep) ?? '', one, rep]);
+      }
     }
-    for (const [id, text, runs] of kept) this.textStyles.write(table.id, id, field.id, text, runs);
+    for (const [id, text, runs, rep] of kept) this.textStyles.write(table.id, id, field.id, text, runs, rep);
   }
 
   // --- accounts ---------------------------------------------------------
@@ -7441,13 +7444,13 @@ export class Store {
   /** Formatting kept with a related record's text fields, keyed "TO::Field": it shows in portals and related fields too. */
   private relatedStyles(occ: Occurrence, row: Record<string, SqlValue>, fields: string[]): Record<string, StyleRun[]> | undefined {
     const wanted = new Set(fields);
-    // A related field's first repetition only: the one a portal row or related field shows unless it names another.
+    // Each repetition uses the same stored style source, with its own text hash.
     const kept = occ.store.textStyles.read(occ.table.id, Number(row._fm_record_id), (id, r) => {
       const def = occ.table.fields.find((x) => x.id === id);
-      return r === 1 && def && wanted.has(def.name) && occ.store.keepsFormatting(def) ? occ.store.keptText(def, row[def.name], 1) : undefined;
+      return def && wanted.has(def.name) && occ.store.keepsFormatting(def) ? occ.store.keptText(def, row[def.name], r) : undefined;
     });
     if (!kept?.length) return undefined;
-    return Object.fromEntries(kept.map((k) => [`${occ.to.name}::${occ.table.fields.find((x) => x.id === k.field)!.name}`, k.runs]));
+    return Object.fromEntries(kept.map((k) => [`${occ.to.name}::${repKey(occ.table.fields.find((x) => x.id === k.field)!.name, k.rep)}`, k.runs]));
   }
 
   private copyRelatedValues(out: Record<string, unknown>, values: Record<string, unknown>, to: string, fields: string[]): void {
@@ -9717,20 +9720,21 @@ export class Store {
     if (!calcRuns.size) return out;
     const has = this.textStyles.has(table.id);
     for (const [name, runs] of calcRuns) {
-      const f = table.fields.find((x) => x.name === name);
+      const { name: base, rep } = table.fields.some((x) => x.name === name) ? { name, rep: 1 } : splitRep(name);
+      const f = table.fields.find((x) => x.name === base);
       if (!f || !this.keepsFormatting(f) || (!runs?.length && !has)) continue;
-      this.textStyles.write(table.id, recordId, f.id, String(row[name] ?? ''), runs);
-      out.push(name);
+      this.textStyles.write(table.id, recordId, f.id, this.keptText(f, row[base], rep) ?? '', runs, rep);
+      out.push(base);
     }
     return out;
   }
 
   /** Fields whose formatting is kept with the record: formattable text fields, and stored text calculations. */
   private keepsFormatting(f: Table['fields'][number]): boolean {
-    return this.formattable(f) || (f.kind === 'calculation' && f.type === 'text' && !f.options?.unstored && !f.options?.global && (f.options?.repetitions ?? 1) <= 1);
+    return this.formattable(f) || (f.kind === 'calculation' && f.type === 'text' && !f.options?.unstored && !f.options?.global);
   }
 
-  /** Text fields formatting can be kept for: stored, one repetition. */
+  /** Editable stored text fields, including repetitions. */
   private formattable(f: Table['fields'][number]): boolean {
     return f.kind === 'normal' && f.type === 'text' && !f.options?.global;
   }

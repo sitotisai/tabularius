@@ -2456,13 +2456,14 @@ export class Calculations {
             if (skipWhenEmpty(f, c, ctx, this.containerRef(toId))) {
               if (f.kind === 'normal') { results.length = 0; break; }
               results.push(null);
+              opts.calcRuns?.set(rep === 1 ? f.name : `${f.name}(${rep})`, undefined);
               continue;
             }
             const r = c.evaluate(ctx, valueType(f));
             const one = storedForm(r, f, this.store.dateOrder);
             results.push(one);
-            // A single stored text result can carry formatting. Repeating values are stored as an array.
-            if (f.kind === 'calculation' && repetitions === 1) opts.calcRuns?.set(f.name, r.type === 'text' && r.runs?.length && typeof one === 'string' && one.length === r.value.length ? r.runs : undefined);
+            // Keep each stored result's runs under the same repetition key as its value.
+            if (f.kind === 'calculation') opts.calcRuns?.set(rep === 1 ? f.name : `${f.name}(${rep})`, r.type === 'text' && r.runs?.length && typeof one === 'string' && one.length === r.value.length ? r.runs : undefined);
           }
           if (!results.length) continue;
           v = repetitions > 1 ? JSON.stringify(results) : results[0];
@@ -2472,7 +2473,7 @@ export class Calculations {
           if (!(e instanceof CalcError)) throw e;
           v = null;
         }
-        if (f.kind === 'calculation' && v === null) opts.calcRuns?.set(f.name, undefined);
+        if (f.kind === 'calculation' && v === null) for (let rep = 1; rep <= (f.options?.repetitions ?? 1); rep++) opts.calcRuns?.set(rep === 1 ? f.name : `${f.name}(${rep})`, undefined);
         if (v !== row[f.name]) assign(f, v);
       }
       if (!progressed) throw new Error(`Cyclic calculation dependencies: ${pending.map((f) => f.name).join(', ')}`);
@@ -2507,7 +2508,7 @@ export class Calculations {
   }
 
   /** The same, with the formatting a text result carries, for the store to keep beside the value. */
-  computeStoredStyled(rec: Rec, f: Field, strict = false, privileges?: Privileges): { value: SqlValue; runs?: StyleRun[] } {
+  computeStoredStyled(rec: Rec, f: Field, strict = false, privileges?: Privileges): { value: SqlValue; runs?: StyleRun[]; repetitionRuns?: (StyleRun[] | undefined)[] } {
     const c = this.formula(rec.table, f);
     const toId = f.calculationContextId ?? this.defaultOccurrence(rec.table);
     if (!c || toId === undefined) return { value: null };
@@ -2516,6 +2517,7 @@ export class Calculations {
       // With privileges (design mode working out a formula its author just wrote), reads of other files are theirs.
       const pass = newPass(privileges?.account, privileges);
       const results: SqlValue[] = [];
+      const repetitionRuns: (StyleRun[] | undefined)[] = [];
       let styled: { value: SqlValue; runs?: StyleRun[] } | undefined;
       for (let rep = 1; rep <= repetitions; rep++) {
         const ctx = this.context(rec, toId, pass, { calculationRepetition: rep });
@@ -2523,9 +2525,10 @@ export class Calculations {
         const r = c.evaluate(ctx, valueType(f));
         const value = storedForm(r, f, this.store.dateOrder);
         results.push(value);
-        if (repetitions === 1) styled = r.type === 'text' && r.runs?.length && typeof value === 'string' && value.length === r.value.length ? { value, runs: r.runs } : { value };
+        styled = r.type === 'text' && r.runs?.length && typeof value === 'string' && value.length === r.value.length ? { value, runs: r.runs } : { value };
+        repetitionRuns[rep - 1] = styled.runs;
       }
-      return repetitions > 1 ? { value: JSON.stringify(results) } : styled ?? { value: null };
+      return repetitions > 1 ? { value: JSON.stringify(results), repetitionRuns } : styled ?? { value: null };
     } catch (e) {
       rethrowExecutionRefusal(e);
       if (e instanceof CalcNestingError) throw e;
