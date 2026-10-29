@@ -353,12 +353,17 @@ export function validateTaskXml(text: string, system: boolean): string[] {
   const triggers = child('Triggers');
   if (!triggers) problems.push('Triggers is needed or the task never starts by itself');
   else {
-    if (triggers.children.length !== 1) problems.push('Triggers holds one trigger');
+    // The start trigger (boot or logon) and the TimeTrigger that starts it again within a minute when it has died.
+    const names = triggers.children.map((t) => t.name).sort().join(', ');
+    if (names !== [system ? 'BootTrigger' : 'LogonTrigger', 'TimeTrigger'].sort().join(', ')) problems.push(`Triggers holds ${system ? 'BootTrigger' : 'LogonTrigger'} and TimeTrigger, not ${names || 'nothing'}`);
     for (const t of triggers.children) {
-      if (!['BootTrigger', 'LogonTrigger'].includes(t.name)) problems.push(`<${t.name}> is not a trigger this generator may write`);
-      if (system && t.name !== 'BootTrigger') problems.push('a boot task uses BootTrigger');
-      if (!system && t.name !== 'LogonTrigger') problems.push('a logon task uses LogonTrigger');
+      if (!['BootTrigger', 'LogonTrigger', 'TimeTrigger'].includes(t.name)) problems.push(`<${t.name}> is not a trigger this generator may write`);
       once(t, ['Enabled', 'UserId', 'Delay', 'StartBoundary', 'EndBoundary', 'Repetition', 'ExecutionTimeLimit', 'Id'], t.name, problems);
+      if (t.name === 'TimeTrigger') {
+        if (!t.children.some((c) => c.name === 'StartBoundary')) problems.push('TimeTrigger needs a StartBoundary');
+        const rep = t.children.find((c) => c.name === 'Repetition');
+        if (!rep || !rep.children.some((c) => c.name === 'Interval')) problems.push('TimeTrigger repeats: it needs a Repetition with an Interval');
+      }
       for (const e of t.children.filter((c) => c.name === 'Enabled')) bool(leaf(e, problems, 'Enabled'), problems);
     }
   }

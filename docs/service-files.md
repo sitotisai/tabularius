@@ -45,7 +45,8 @@ Left out on purpose:
 | --- | --- |
 | `LogonTrigger` or `BootTrigger` | At sign-in, or at boot as the system account (`--system`, from an administrator prompt). `--system` is refused unless Node and the program can only be changed by administrators, and the task file is kept where only they can change it: see below. |
 | `LogonType` `InteractiveToken`, `RunLevel` `LeastPrivilege` | Runs as you with no stored password and no elevation. |
-| `RestartOnFailure` 1 minute, 255 times | Starts again a minute after it stops unexpectedly. Microsoft's schema allows 1 to 255 for the count (an earlier version of this file said 999, which the schema does not allow). |
+| `TimeTrigger` every minute, with `MultipleInstancesPolicy` `IgnoreNew` | Starts the server again within a minute when it has been killed or has crashed, and does nothing while it is running. Task Scheduler's own `RestartOnFailure` did not restart it in the Windows test (scripts/service-e2e.ts), so this is what does it. |
+| `RestartOnFailure` 1 minute, 255 times | Kept, but not relied on: see the line above. Microsoft's schema allows 1 to 255 for the count (an earlier version of this file said 999, which the schema does not allow). |
 | `ExecutionTimeLimit` `PT0S`, `MultipleInstancesPolicy` `IgnoreNew` | A server runs for good, and never twice. |
 
 ### `--system` and who can change the code it runs
