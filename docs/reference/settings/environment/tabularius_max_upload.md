@@ -5,9 +5,9 @@ Largest file accepted by the server upload route, in bytes.
 | Setting | Value |
 | --- | --- |
 | Default | 10 GiB |
-| Accepted values | Nonnegative bytes; 0 removes the per-file cap |
+| Accepted values | Whole number of bytes, 0 or more, digits only; 0 removes the per-file cap |
 | Restart needed | Yes for a running server. |
 | Explained in | [ADMIN.md](../../../../ADMIN.md) |
-| Code | [packages/server/src/uploads.ts:45](../../../../packages/server/src/uploads.ts#L45) |
+| Code | [packages/server/src/admin.ts:1209](../../../../packages/server/src/admin.ts#L1209) |
 
 [All environment variables](../../../environment-variables.md)
