@@ -7,6 +7,7 @@ import { StyleSheet, elementOf } from './styles.ts';
 import { formatValue } from './format.ts';
 import { ownGet } from './own-keys.ts';
 import { editRuns, styledNodes } from './styled.ts';
+import { fieldStyles } from './field-styles.ts';
 import { rotationOf, turnedBox } from './rotation.ts';
 import type { DataFormat, DataRecord, FieldMeta, FieldRef, LayoutMeta, LayoutObject, LayoutPart, PortalRow, Value, FormulaState } from './types.ts';
 
@@ -535,7 +536,7 @@ export class LayoutRenderer {
         box.setAttribute('autocomplete', 'off');
       }
       // Formatting kept with the data shows wherever the field does: on the record, in related fields and in portal rows.
-      const runs = host.mode !== 'browse' ? undefined : row ? (row.row.recordId ? host.record?.portalStyles?.[row.portal]?.[row.row.recordId]?.[key] : undefined) : host.record?.styles?.[key];
+      const runs = fieldStyles(host.record, key, host.mode, row ? { portal: row.portal, recordId: row.row.recordId } : undefined);
       const styled = runs?.length && box === input && box.matches('input.fm-input, textarea.fm-input') ? this.showStyled(box as HTMLInputElement, runs) : undefined;
       if (!styled && host.mode === 'browse' && box?.matches('input.fm-input, textarea.fm-input')) this.showFormatted(box as HTMLInputElement, meta?.type, f.format);
       if (placeholder && box) (box as HTMLInputElement).placeholder = placeholder;

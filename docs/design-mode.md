@@ -96,6 +96,12 @@ same formula on `Self`), with the text color, fill, bold, italic, underline,
 strikethrough and size to use when it's true. Tab Control Setup sets the tabs'
 justification, width (fixed, or each as wide as its label) and height.
 
+Inline text formatting kept with record values is separate from these object
+conditions. Each displayed repetition uses its own stored styles, including
+related fields, portal rows and repeating stored text calculations. See
+[Browse mode](web-client.md#browse-mode) for binary import and Format menu
+limits.
+
 Arranging, as in FileMaker's Arrange menu and Inspector:
 
 - **Align** left, centre, right, top, middle or bottom; **distribute** three or
