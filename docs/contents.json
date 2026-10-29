@@ -660,6 +660,7 @@
         "docs/research/write-back.md",
         "docs/research/n3-uuid-record-ids.md",
         "docs/research/secret-taint-tracking.md",
+        "docs/research/encryption-standby.md",
         "docs/research/r17b-01-script-step-privileges.md"
       ]
     },
