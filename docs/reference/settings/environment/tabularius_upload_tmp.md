@@ -8,6 +8,6 @@ The folder files wait in while they arrive in a container upload (the system's t
 | Accepted values | Directory path |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/hosting-and-connecting.md](../../../hosting-and-connecting.md) |
-| Code | [packages/server/src/container-uploads.ts:190](../../../../packages/server/src/container-uploads.ts#L190) |
+| Code | [packages/server/src/container-uploads.ts:195](../../../../packages/server/src/container-uploads.ts#L195) |
 
 [All environment variables](../../../environment-variables.md)
