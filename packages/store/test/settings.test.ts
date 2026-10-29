@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { boolean, wholeNumber, secret, checkSettingNames, checkServeSettings, NOT_SECRET_SETTINGS, SECRET_SETTINGS } from '../src/settings.ts';
-import { tracing } from '../src/trace.ts';
+import { minMs, tracing } from '../src/trace.ts';
 
 const root = join(import.meta.dirname, '../../..');
 const N = 'TABULARIUS_EXAMPLE';
@@ -87,6 +87,15 @@ test('TABULARIUS_TRACE_SQL: false, off, no and 0 turn tracing off; true turns it
   }
 });
 
+test('SQL trace threshold follows the raw environment value and rejects invalid settings', () => {
+  assert.equal(minMs({}), 0);
+  assert.equal(minMs({ TABULARIUS_TRACE_SQL_MIN_MS: '10' }), 10);
+  assert.equal(minMs({ TABULARIUS_TRACE_SQL_MIN_MS: '20' }), 20);
+  assert.equal(minMs({ TABULARIUS_TRACE_SQL_MIN_MS: '10' }), 10);
+  assert.throws(() => minMs({ TABULARIUS_TRACE_SQL_MIN_MS: '1e3' }), /TABULARIUS_TRACE_SQL_MIN_MS.*whole number/);
+  assert.equal(minMs({}), 0);
+});
+
 test('checkServeSettings refuses an empty key, a bad number or switch, and a near-miss name, all at once with each named', () => {
   assert.doesNotThrow(() => checkServeSettings({}));
   assert.doesNotThrow(() => checkServeSettings({ TABULARIUS_ENCRYPTION_KEY: 'k', TABULARIUS_CONVERT_MEMORY: '2048', TABULARIUS_CONVERT_TIMEOUT: '0', TABULARIUS_TRACE_SQL: 'off', TABULARIUS_WORKERS: 'auto' }));
@@ -108,4 +117,23 @@ test('checkServeSettings refuses an empty key, a bad number or switch, and a nea
   const both = message({ TABULARIUS_ENCRYPTION_KEY: '', TABULARIUS_SQL_PORT: 'x' });
   assert.match(both, /TABULARIUS_ENCRYPTION_KEY/);
   assert.match(both, /TABULARIUS_SQL_PORT/);
+});
+
+test('serve checks every server and store whole-number setting at both bounds', () => {
+  const settings: [string, number, number | undefined][] = [
+    ['TABULARIUS_UPLOAD_IDLE_HOURS', 0, 87600],
+    ['TABULARIUS_REQUEST_QUEUE', 0, 100000],
+    ['TABULARIUS_CONTAINER_TTL', 1, 3600],
+    ['TABULARIUS_MAX_UPLOAD', 0, undefined],
+    ['TABULARIUS_PGWIRE_MAX_PARAM_BYTES', 1, undefined],
+    ['TABULARIUS_MAX_SESSION_LOCKS', 1, undefined],
+    ['TABULARIUS_TRACE_SQL_MIN_MS', 0, 86400000],
+  ];
+  for (const [name, min, max] of settings) {
+    for (const value of ['1e3', '', '1.5', '-1', max === undefined ? '99999999999999999999' : String(max + 1)]) {
+      assert.throws(() => checkServeSettings({ [name]: value }), new RegExp(`${name} .*whole number`), `${name}=${value}`);
+    }
+    assert.doesNotThrow(() => checkServeSettings({ [name]: String(min) }), `${name} minimum`);
+    if (max !== undefined) assert.doesNotThrow(() => checkServeSettings({ [name]: String(max) }), `${name} maximum`);
+  }
 });
