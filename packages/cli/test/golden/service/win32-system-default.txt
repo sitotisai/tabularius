@@ -3,6 +3,7 @@
   <RegistrationInfo><Description>tabularius server: hosts C:\Data</Description></RegistrationInfo>
   <Triggers>
     <BootTrigger><Enabled>true</Enabled></BootTrigger>
+    <TimeTrigger><Repetition><Interval>PT1M</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition><StartBoundary>2020-01-01T00:00:00</StartBoundary><Enabled>true</Enabled></TimeTrigger>
   </Triggers>
   <Principals>
     <Principal id="Author">
