@@ -236,7 +236,8 @@ part of it.
 
 | What differs or is unknown | How it shows | What would settle it | Where it is written |
 | --- | --- | --- | --- |
-| vendor results for six constructs are unspecified in the cited pages | the conformance test records current behavior without an expected result | compare each construct with FileMaker and record the observed result | [docs/sql-grammar-conformance.md › Not verified](sql-grammar-conformance.md) — “…read do not say, so the file marks these entries unverified with no expected result (paths: []). The test…” |
+| CHAR(n) padding required by the SQL standard | short values remain unpadded after CAST | compare with ExecuteSQL on short text and add padding if needed | [docs/sql-grammar-conformance.md › What the check found and what changed](sql-grammar-conformance.md) — “…by this rewrite, and their product behavior is unverified.” |
+| vendor results for five constructs are unspecified in the cited pages | the conformance test records current behavior without an expected result | compare each construct with FileMaker and record the observed result | [docs/sql-grammar-conformance.md › Not verified](sql-grammar-conformance.md) — “…read do not say, so the file marks these entries unverified with no expected result (paths: []). The test…” |
 
 ## Standby servers
 

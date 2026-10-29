@@ -6,7 +6,7 @@ The grammar is in [`packages/server/test/data/sql-grammar.json`](../packages/ser
 
 ## What was checked
 
-227 entries, 221 with an expectation and 6 recorded as not verified (below). Each entry with an expectation runs on the applicable paths.
+229 entries, 224 with an expectation and 5 recorded as not verified (below). Each entry with an expectation runs on the applicable paths.
 
 | Area | Constructs |
 | --- | --- |
@@ -18,13 +18,13 @@ The grammar is in [`packages/server/test/data/sql-grammar.json`](../packages/ser
 | UNION, ORDER BY (names, ordinals, `ASC`/`DESC`, binary order) | 13 |
 | OFFSET, FETCH FIRST (`ROW`/`ROWS`, count omitted, `WITH TIES`, `PERCENT`, subqueries, count under 1) | 23 |
 | Constants and operators (strings, scientific notation, `DATE`/`TIME`/`TIMESTAMP`, `{D '...'}`, `^`, `**`, precedence, string `+` and `-`, date arithmetic) | 26 |
-| Functions: string, numeric, date, `CASE`, `COALESCE`, `NULLIF`, `CAST`, container `GetAs` | 66 |
+| Functions: string, numeric, date, `CASE`, `COALESCE`, `NULLIF`, `CAST`, container `GetAs` | 68 |
 | `FOR UPDATE` cursor clause | 1 |
 | System tables and columns (`FileMaker_Tables`, `FileMaker_Fields`, `FileMaker_BaseTables`, `ROWID`, `ROWMODID`) | 6 |
 | Statements that write (`INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`, `ALTER TABLE`, `CREATE`/`DROP INDEX`, `TRUNCATE`) | 8 |
 | `?` parameters (one, multiple in order, a value containing a quote) | 3 |
 
-99 results are ones the Claris page states, with the example it gives. 122 are worked out from the rule the page states (marked `derived` in the file), for example the result of a function the page names but gives no example for. Six entries are marked `unverified` because the vendor result is not stated. Every entry names its page. The `?` cases follow [Claris's ExecuteSQL help](https://help.claris.com/en/pro-help/content/executesql.html), which specifies argument binding order; the quoted-name cases follow its `"Last Name"` example and the [reserved keyword rule](https://help.claris.com/en/sql-reference/content/reserved-sql-keywords.html). <!-- known-difference-ok: describes evidence categories rather than a product behavior difference -->
+99 results are ones the Claris page states, with the example it gives. 125 are worked out from a stated rule or the SQL standard (marked `derived` in the file); the three character CAST cases follow the standard because the cited page does not state their results. Five entries are marked `unverified` because the vendor result is not stated. Every entry names its page. The `?` cases follow [Claris's ExecuteSQL help](https://help.claris.com/en/pro-help/content/executesql.html), which specifies argument binding order; the quoted-name cases follow its `"Last Name"` example and the [reserved keyword rule](https://help.claris.com/en/sql-reference/content/reserved-sql-keywords.html). <!-- known-difference-ok: describes evidence categories rather than a product behavior difference -->
 
 ## What the check found and what changed
 
@@ -54,6 +54,8 @@ The first run disagreed with the pages on 42 entries. Some were mistakes in the 
 | `FileMaker_BaseTables`, `FileMaker_BaseTableFields` | No such table | Provided, one row per base table, scoped by the account's privileges as `FileMaker_Tables` is |
 | `CAST(container AS VARCHAR)` for an embedded file | Returned the internal container ID | Returns its filename, as the [container example](https://help.claris.com/en/sql-reference/content/for-update-clause.html) says; a query under record or field scoped privileges retains the ordinary CAST to avoid reading the container catalog through a derived alias |
 
+- **Character CAST** prints numbers the way `STRVAL` does and keeps the first `n` Unicode characters for `VARCHAR(n)`, `CHAR(n)` and `CHARACTER(n)`. This follows the SQL standard; the cited Claris page does not state numeric or length results, so these entries are derived. `CHAR(n)` does not pad short values here, a known difference from the standard. `CHAR VARYING` and `CHARACTER VARYING` are not handled by this rewrite, and their product behavior is unverified. <!-- known-difference: SQL grammar ;; CHAR(n) padding required by the SQL standard ;; short values remain unpadded after CAST ;; compare with ExecuteSQL on short text and add padding if needed -->
+
 The two rewrites with the widest reach are the string and date operators and the star.
 
 - **`+` and `-`** are rewritten only where an operand shows what it is. A string constant or the result of a string function (`UPPER`, `LEFT`, `STRVAL`...) joins with anything. A text field joins only a string or another text field, so a number kept in a text field still adds (`Code + 0`). A date constant, date function or date field makes it date arithmetic, which falls back to ordinary arithmetic when the value is not a date. Two numbers, or a number and a field of unknown type, keep SQLite's arithmetic. An operand that is followed or preceded by `*`, `/` or `%` takes the whole product (`'n=' + Pay * 2`). Fields are told apart by name across the file's tables, and a name that two tables give different types is not rewritten. A name the account cannot read is not looked up. An alias or derived column that shares a text field's name is read as that field.
@@ -79,11 +81,10 @@ Each of these is an entry in the file with `known` set to the reason, and the te
 
 ## Not verified
 
-The pages read do not say, so the file marks these entries `unverified` with no expected result (`paths: []`). The test reports current behavior on all three paths: <!-- known-difference: SQL grammar ;; vendor results for six constructs are unspecified in the cited pages ;; the conformance test records current behavior without an expected result ;; compare each construct with FileMaker and record the observed result -->
+The pages read do not say, so the file marks these entries `unverified` with no expected result (`paths: []`). The test reports current behavior on all three paths: <!-- known-difference: SQL grammar ;; vendor results for five constructs are unspecified in the cited pages ;; the conformance test records current behavior without an expected result ;; compare each construct with FileMaker and record the observed result -->
 
 - `where-13`: whether `LIKE` ignores case. All three paths currently match `smith` to `Smith`.
 - `expr-10b`: whether `6 / 4` is 1 or 1.5. All three paths currently return 1 because SQLite divides two integers as integers. The reference gives no quotient example.
-- `cond-07`: `CAST(number AS VARCHAR)` currently returns `20000.0` on all three paths. The [Claris container example](https://help.claris.com/en/sql-reference/content/for-update-clause.html) documents `CAST(container AS VARCHAR)`, but does not specify numeric casting.
 - `getas-01`: `GetAs(container, 'FILE')` currently errors on all three paths because the SQL function is absent. The reference says it returns binary data, but gives no representation for `ExecuteSQL`'s text result or these connections.
 - `for-update-01`: `FOR UPDATE OF salary` currently gives a syntax error on all three paths. The reference specifies cursor locking for ODBC/JDBC; it does not say whether `ExecuteSQL` accepts this clause. The SQL connections here have no positioned update cursor.
 - `sys-02b`: `FieldType` currently returns `decimal` for Payroll's numeric field on all three paths. The reference does not list the names `FieldType` holds; `FieldName` is checked.
