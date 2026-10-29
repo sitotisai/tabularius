@@ -963,7 +963,7 @@ export class ODataEndpoint {
     }
     const store = this.host.get(parts[0]);
     if (!store) {
-      await refuseUnknownFile(this.host, req);
+      await refuseUnknownFile(this.host, req, parts[0]);
       throw new ODataError(404, '802', `Unable to open file "${parts[0]}"`);
     }
     const ieee = ieeeContext.getStore();
