@@ -32,19 +32,21 @@ function basicAccount(req: IncomingMessage): string {
 
 /**
  * A wrong password for a file that isn't hosted, counted as a hosted file counts one: five in a row from one address for one
- * account lock that account and name for a while, with the same refusal. Without the count, a guesser could tell a hosted name
- * from an invented one by whether the lockout ever came. It costs one password check, as a hosted file's does. When the
- * refusal should say how long to wait, the end of the lock is returned.
+ * account lock that account and name for a while, and thirty from one address lock the address at that name, with the same
+ * refusal. Without the count, a guesser could tell a hosted name from an invented one by whether the lock ever came. As at a
+ * hosted file, the password is only checked (at its cost) while the caller is not locked out. When the refusal should say how
+ * long to wait, the end of the lock is returned.
  */
 export async function unhostedPasswordFailure(host: Host, req: IncomingMessage, db: string): Promise<number | undefined> {
   const account = basicAccount(req);
   if (!account) return undefined;
   const from = clientAddress(req);
-  const failures = host.unhostedSignInFailures;
-  const key = failures.accountKey(account, from, db);
+  const failures = host.unhostedSignIns.table(db);
+  const key = failures.accountKey(account, from);
+  const wasLocked = failures.lockedOut(key, from) !== undefined;
   failures.record(key, from, false);
   const until = failures.lockedOut(key, from);
-  await spendPasswordCheck(basicPassword(req) ?? '');
+  if (!wasLocked) await spendPasswordCheck(basicPassword(req) ?? '');
   return publicPasswordLockout(until, from);
 }
 
