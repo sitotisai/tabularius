@@ -25,7 +25,7 @@ const TYPES: [oid: number, name: string, len: number, category: string][] = [
   [16, 'bool', 1, 'B'], [17, 'bytea', -1, 'U'], [18, 'char', 1, 'S'], [19, 'name', 64, 'S'], [20, 'int8', 8, 'N'], [21, 'int2', 2, 'N'],
   [23, 'int4', 4, 'N'], [25, 'text', -1, 'S'], [26, 'oid', 4, 'N'], [700, 'float4', 4, 'N'], [701, 'float8', 8, 'N'],
   [1042, 'bpchar', -1, 'S'], [1043, 'varchar', -1, 'S'], [1082, 'date', 4, 'D'], [1083, 'time', 8, 'D'], [1114, 'timestamp', 8, 'D'],
-  [1184, 'timestamptz', 8, 'D'], [1700, 'numeric', -1, 'N'],
+  [1184, 'timestamptz', 8, 'D'], [1700, 'numeric', -1, 'N'], [2950, 'uuid', 16, 'U'], [3802, 'jsonb', -1, 'U'],
 ];
 /** format_type's names, which differ from typname for a few. */
 const FORMATTED: Record<number, string> = {
@@ -118,8 +118,9 @@ const RELATIONS: Record<string, Relation> = {
     rows: (c) => c.tables.map((t) => ({ schemaname: 'public', tablename: t.name, tableowner: c.user, hasindexes: 0, hasrules: 0, hastriggers: 0, rowsecurity: 0 })),
   },
   pg_settings: {
-    cols: T('name', 'setting', 'unit', 'category', 'short_desc', 'context', 'vartype', 'source'),
-    rows: () => Object.entries(SETTINGS).map(([name, setting]) => ({ name, setting, context: 'internal', vartype: /^\d+$/.test(setting) ? 'integer' : 'string', source: 'default' })),
+    cols: T('name', 'setting', 'unit', 'category', 'short_desc', 'context', 'vartype', 'source', 'boot_val', 'reset_val'),
+    // Every setting is at its default, so boot_val is the setting and psql's \dconfig lists none as changed.
+    rows: () => Object.entries(SETTINGS).map(([name, setting]) => ({ name, setting, boot_val: setting, reset_val: setting, context: 'internal', vartype: /^\d+$/.test(setting) ? 'integer' : 'string', source: 'default' })),
   },
   // Empty: the file has no indexes, constraints, views or the like to show.
   pg_index: { cols: [...I('indexrelid', 'indrelid', 'indnatts', 'indnkeyatts'), ...B('indisunique', 'indisprimary', 'indisexclusion', 'indimmediate', 'indisclustered', 'indisvalid', 'indcheckxmin', 'indisready', 'indislive', 'indisreplident', 'indnullsnotdistinct'), ...T('indkey', 'indcollation', 'indclass', 'indoption', 'indexprs', 'indpred')] },
@@ -136,12 +137,14 @@ const RELATIONS: Record<string, Relation> = {
   pg_publication_namespace: { cols: I('oid', 'pnpubid', 'pnnspid') },
   pg_foreign_table: { cols: [...I('ftrelid', 'ftserver'), ...T('ftoptions')] },
   pg_partitioned_table: { cols: [...I('partrelid', 'partnatts', 'partdefid'), ...T('partstrat', 'partattrs', 'partclass', 'partcollation', 'partexprs')] },
-  pg_proc: { cols: [...I('oid', 'pronamespace', 'proowner', 'prolang', 'prorettype', 'pronargs'), ...B('proretset'), ...T('proname', 'prokind', 'proargtypes', 'proargnames', 'prosrc')] },
+  pg_proc: { cols: [...I('oid', 'pronamespace', 'proowner', 'prolang', 'prorettype', 'pronargs'), ...B('proretset', 'prosecdef', 'proleakproof'), ...T('proname', 'prokind', 'proargtypes', 'proargnames', 'prosrc', 'provolatile', 'proparallel', 'proacl')] },
   pg_collation: { cols: [...I('oid', 'collnamespace', 'collowner', 'collencoding'), ...B('collisdeterministic'), ...T('collname', 'collprovider', 'collcollate', 'collctype')] },
   pg_tablespace: { cols: [...I('oid', 'spcowner'), ...T('spcname', 'spcacl', 'spcoptions')] },
   pg_depend: { cols: [...I('classid', 'objid', 'objsubid', 'refclassid', 'refobjid', 'refobjsubid'), ...T('deptype')] },
   pg_sequence: { cols: [...I('seqrelid', 'seqtypid', 'seqstart', 'seqincrement', 'seqmax', 'seqmin', 'seqcache'), ...B('seqcycle')] },
   pg_enum: { cols: [...I('oid', 'enumtypid'), ['enumsortorder', 'REAL'], ...T('enumlabel')] },
+  // Empty: no extension is installed or available.
+  pg_available_extensions: { cols: T('name', 'default_version', 'installed_version', 'comment') },
   pg_extension: { cols: [...I('oid', 'extowner', 'extnamespace'), ...B('extrelocatable'), ...T('extname', 'extversion', 'extconfig', 'extcondition')] },
   pg_views: { cols: T('schemaname', 'viewname', 'viewowner', 'definition') },
   pg_matviews: { cols: [...T('schemaname', 'matviewname', 'matviewowner', 'tablespace', 'definition'), ...B('hasindexes', 'ispopulated')] },
@@ -204,7 +207,8 @@ export function namesCatalogRelation(sql: string): boolean {
 
 /** Whether a query uses anything with a catalog's name, a table or a function, so the catalog's functions are defined for it. */
 export function readsCatalog(sql: string): boolean {
-  return /\b(pg_\w+|information_schema__\w+)\b/i.test(sql);
+  // The pg_catalog prefix is gone by now; format_type and current_setting are the catalog's functions that need none (psql's \\gdesc sends format_type alone).
+  return /\b(pg_\w+|information_schema__\w+|format_type|current_setting|quote_ident)\b/i.test(sql);
 }
 
 /**
@@ -678,7 +682,7 @@ export function pgSyntax(sql: string): string {
     (_, side: string | undefined, chars: string, value: string) => `${{ LEADING: 'ltrim', TRAILING: 'rtrim' }[side?.toUpperCase() ?? ''] ?? 'trim'}(${value}, ${chars})`);
   out = arrayAgg(out);
   if (catalog) {
-    out = partitionAncestors(orderByOutputNames(out))
+    out = valuesColumnNames(availableExtensions(partitionAncestors(orderByOutputNames(out))))
       .replace(/=\s*ANY\s*\(\s*ARRAY\s*\[([^\]]*)\]\s*\)/gi, 'IN ($1)')
       .replace(/=\s*ANY\s*\(/gi, 'IN (')
       .replace(GENERATE_SERIES,
@@ -838,6 +842,38 @@ function partitionAncestors(sql: string): string {
     const alias = /^\s+(?:AS\s+)?(?!(?:WHERE|JOIN|ON|ORDER|GROUP|LIMIT|UNION|LEFT|INNER|CROSS|RIGHT|FULL|NATURAL|HAVING|EXCEPT|INTERSECT)\b)(\w+)(?:\s*\(\s*(\w+)\s*\))?/i.exec(sql.slice(end));
     const table = `(SELECT NULL AS ${alias?.[2] ?? 'relid'} WHERE 0) AS ${alias?.[1] ?? 'pg_partition_ancestors'}`;
     sql = sql.slice(0, m.index) + table + sql.slice(end + (alias?.[0].length ?? 0));
+    re.lastIndex = m.index + table.length;
+  }
+  return sql;
+}
+
+/**
+ * `LEFT JOIN pg_available_extensions() ae(name, default_version, comment) ON ...` (psql 18's \\dx) as a table with no rows and
+ * those column names: SQLite has no column list after an alias, and nothing is available to install.
+ */
+function availableExtensions(sql: string): string {
+  return sql.replace(/\bpg_available_extensions\s*\(\s*\)(?:\s+(?:AS\s+)?(?!(?:WHERE|JOIN|ON|ORDER|GROUP|LIMIT|UNION|LEFT|INNER|CROSS|RIGHT|FULL|NATURAL|HAVING|EXCEPT|INTERSECT)\b)(\w+)(?:\s*\(\s*(\w+(?:\s*,\s*\w+)*)\s*\))?)?/gi, (_, alias?: string, names?: string) => {
+    const columns = names ? names.split(/\s*,\s*/) : ['name', 'default_version', 'installed_version', 'comment'];
+    return `(SELECT ${columns.map((c) => `NULL AS ${c}`).join(', ')} WHERE 0) AS ${alias ?? 'pg_available_extensions'}`;
+  });
+}
+
+/**
+ * `(VALUES (...), (...)) s(name, tp, tpm)` (psql's \\gdesc): SQLite has no column list after an alias, so the rows are selected
+ * from the VALUES list under the names given.
+ */
+function valuesColumnNames(sql: string): string {
+  const re = /\(\s*VALUES\b/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(sql))) {
+    let depth = 1;
+    let end = m.index + 1;
+    for (; end < sql.length && depth; end++) depth += sql[end] === '(' ? 1 : sql[end] === ')' ? -1 : 0;
+    const alias = /^\s+(?:AS\s+)?(\w+)\s*\(\s*(\w+(?:\s*,\s*\w+)*)\s*\)/i.exec(sql.slice(end));
+    if (depth || !alias) continue;
+    const names = alias[2].split(/\s*,\s*/);
+    const table = `(SELECT ${names.map((n, i) => `column${i + 1} AS ${n}`).join(', ')} FROM ${sql.slice(m.index, end)}) AS ${alias[1]}`;
+    sql = sql.slice(0, m.index) + table + sql.slice(end + alias[0].length);
     re.lastIndex = m.index + table.length;
   }
   return sql;

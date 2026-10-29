@@ -394,12 +394,12 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/server/src/optimization.ts:316](../../packages/server/src/optimization.ts#L316) `sizes` | `SQLite.all` (316); `SQLite.prepare` (316); `Store.sql` (316) | DESIGN |
 | [packages/server/src/optimization.ts:312](../../packages/server/src/optimization.ts#L312) `sizes/one` | `SQLite.get` (312); `SQLite.prepare` (312); `Store.sql` (312) | DESIGN |
 | [packages/server/src/optimization.ts:449](../../packages/server/src/optimization.ts#L449) `speedFindings` | `Store.recordCount` (449, 492, 510) | DESIGN |
-| [packages/server/src/pgwire.ts:989](../../packages/server/src/pgwire.ts#L989) `Connection/bareNames` | `Store.describe` (989) | SQL |
-| [packages/server/src/pgwire.ts:1005](../../packages/server/src/pgwire.ts#L1005) `Connection/catalog` | `Store.describeTyped` (1005) | SQL |
-| [packages/server/src/pgwire.ts:1448](../../packages/server/src/pgwire.ts#L1448) `Connection/describe` | `Store.describeTyped` (1448) | SQL |
-| [packages/server/src/pgwire.ts:1016](../../packages/server/src/pgwire.ts#L1016) `Connection/run` | `Store.selectIn` (1016); `Store.describeTyped` (1020) | SQL |
-| [packages/server/src/pgwire.ts:966](../../packages/server/src/pgwire.ts#L966) `Connection/translate` | `Calculations.translateSQL` (966) | SQL |
-| [packages/server/src/pgwire.ts:1214](../../packages/server/src/pgwire.ts#L1214) `Connection/validateSyntax` | `SQLite.prepare` (1214); `Store.sql` (1214) | SQL |
+| [packages/server/src/pgwire.ts:990](../../packages/server/src/pgwire.ts#L990) `Connection/bareNames` | `Store.describe` (990) | SQL |
+| [packages/server/src/pgwire.ts:1006](../../packages/server/src/pgwire.ts#L1006) `Connection/catalog` | `Store.describeTyped` (1006) | SQL |
+| [packages/server/src/pgwire.ts:1449](../../packages/server/src/pgwire.ts#L1449) `Connection/describe` | `Store.describeTyped` (1449) | SQL |
+| [packages/server/src/pgwire.ts:1017](../../packages/server/src/pgwire.ts#L1017) `Connection/run` | `Store.selectIn` (1017); `Store.describeTyped` (1021) | SQL |
+| [packages/server/src/pgwire.ts:967](../../packages/server/src/pgwire.ts#L967) `Connection/translate` | `Calculations.translateSQL` (967) | SQL |
+| [packages/server/src/pgwire.ts:1215](../../packages/server/src/pgwire.ts#L1215) `Connection/validateSyntax` | `SQLite.prepare` (1215); `Store.sql` (1215) | SQL |
 | [packages/server/src/pgwrite.ts:431](../../packages/server/src/pgwrite.ts#L431) `executeWrite/reader` | `Store.selectIn` (431) | SQL |
 | [packages/server/src/pgwrite.ts:404](../../packages/server/src/pgwrite.ts#L404) `returningColumns` | `Store.describe` (404) | SQL |
 | [packages/server/src/pii.ts:347](../../packages/server/src/pii.ts#L347) `PiiMasker/constructor` | `SQLite.get` (347); `SQLite.prepare` (347); `Store.sql` (347) | REDACTION |
