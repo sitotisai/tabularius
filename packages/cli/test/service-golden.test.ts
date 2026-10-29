@@ -155,10 +155,12 @@ for (const platform of platforms) {
       } : platform === 'darwin' ? {
         Umask: '63', KeepAlive: 'true', RunAtLoad: 'true', ThrottleInterval: '10', ExitTimeOut: '40',
       } : {
-        RunLevel: system ? 'HighestAvailable' : 'LeastPrivilege', Interval: 'PT1M', Count: '255',
+        RunLevel: system ? 'HighestAvailable' : 'LeastPrivilege', Count: '255',
         ExecutionTimeLimit: 'PT0S', MultipleInstancesPolicy: 'IgnoreNew',
       };
       for (const [key, value] of Object.entries(expected)) assert.deepEqual(values.get(key), [value], key);
+      // The minute-by-minute start (TimeTrigger) and the restart-on-failure policy each carry the interval.
+      if (platform === 'win32') assert.deepEqual(values.get('Interval'), ['PT1M', 'PT1M'], 'Interval');
       if (platform === 'linux') {
         assert.deepEqual(values.get('User'), system ? [o.user] : undefined);
         assert.deepEqual(values.get('AmbientCapabilities'), system ? ['CAP_NET_BIND_SERVICE'] : undefined);
