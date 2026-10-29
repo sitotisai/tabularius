@@ -40,6 +40,25 @@ function setup() {
 
 const field = (name: string) => ({ tableOccurrence: { id: 0, name: 'Tasks' }, field: { id: 0, name } });
 
+test('Set Field reports denied record edits at the step and keeps the stored value', async () => {
+  const s = setup();
+  try {
+    const result = await s.run('Set Field [ Tasks::Title ; "changed" ]\nSet Variable [ $denied ; Value: Get ( LastError ) ]\nExit Script [ Text Result: $denied ]', false, { foundSet: [1] });
+    assert.equal(result.result, '200');
+    assert.equal(s.rows()[0].Title, 'one');
+  } finally { s.close(); }
+});
+
+test('Set Field reports a view-only field at the step and keeps the stored value', async () => {
+  const s = setup();
+  try {
+    s.store.savePrivilegeSet({ ...s.reader, records: { view: true, edit: true, create: false, delete: false, fields: { Title: 'viewOnly' } } });
+    const result = await s.run('Set Field [ Tasks::Title ; "changed" ]\nSet Variable [ $denied ; Value: Get ( LastError ) ]\nExit Script [ Text Result: $denied ]', false, { foundSet: [1] });
+    assert.equal(result.result, '201');
+    assert.equal(s.rows()[0].Title, 'one');
+  } finally { s.close(); }
+});
+
 test('Truncate Table refuses a Reader with error 200 and preserves every row', async () => {
   const s = setup();
   try {

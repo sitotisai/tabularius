@@ -367,6 +367,17 @@ test('Import Records normalizes time and timestamp match keys and retains blank 
   } finally { s.close(); }
 });
 
+test('Import Records reports an out-of-range Excel date as a script error before writing rows', async () => {
+  const s = setup();
+  try {
+    s.store.applyDesign([{ op: 'createField', table: 'People', name: 'Date', type: 'date' }]);
+    writeFileSync(join(s.dir, 'data.xlsx'), xlsx([[46307], [1e15]]));
+    const result = await s.run({ filePaths: ['data.xlsx'], importAction: 'add', fieldMapping: s.mapping(['Date']) });
+    assert.equal(result.error, 700);
+    assert.deepEqual(s.store.findIds('People'), []);
+  } finally { s.close(); }
+});
+
 test('Import Records applies serial date conversion to Excel source keys only', async () => {
   const s = setup();
   let source: Store | undefined;
