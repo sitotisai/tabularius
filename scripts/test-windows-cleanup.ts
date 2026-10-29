@@ -4,7 +4,8 @@
 // temporary folder while the store they opened in it is still open (Linux and macOS allow it). Rather
 // than touch a thousand tests, this keeps a list of the SQLite files opened in the process and, when a
 // delete fails because the file is in use, closes the ones under that path and tries once more.
-// It changes nothing about what a test asserts, and does nothing when the delete works.
+// It changes nothing about what a test asserts, and does nothing when the delete works. Only a delete made by test code
+// is retried: the server's own deletes must keep failing as they would for a person (some are meant to, and are handled).
 import { createRequire } from 'node:module';
 import { resolve, sep } from 'node:path';
 
@@ -19,6 +20,12 @@ const ASYNC_DELETES = ['rm', 'unlink', 'rmdir'];
 const normal = (path: string, caseBlind: boolean): string => {
   const full = resolve(path);
   return caseBlind ? full.toLowerCase() : full;
+};
+
+/** True when the first caller outside this file is a test file or a helper in a test folder. */
+export const calledFromTest = (stack = new Error().stack ?? ''): boolean => {
+  const caller = stack.split('\n').slice(1).find((line) => line.includes(' at ') && !line.includes('test-windows-cleanup.ts') && !line.includes('node:'));
+  return !!caller && (/[\\/]test[\\/]/.test(caller) || /\.test\.ts/.test(caller));
 };
 
 /** Wraps the SQLite class so that every file it opens is remembered, and returns what closes them. */
@@ -51,15 +58,16 @@ export function trackDatabases(sqlite: { DatabaseSync: DatabaseClass }, caseBlin
 }
 
 /** Makes a delete that fails because a file is in use close the databases under it and retry once. */
-export function retryDeletes(fs: FsLike, closeUnder: (path: unknown) => number): void {
+export function retryDeletes(fs: FsLike, closeUnder: (path: unknown) => number, allowed: () => boolean = calledFromTest): void {
   for (const name of SYNC_DELETES) {
     const original = fs[name];
     if (typeof original !== 'function') continue;
     fs[name] = function (this: unknown, path: unknown, ...rest: unknown[]) {
+      const mine = allowed();
       try {
         return original.call(this, path, ...rest);
       } catch (error) {
-        if (!IN_USE.has((error as NodeJS.ErrnoException)?.code ?? '') || closeUnder(path) === 0) throw error;
+        if (!mine || !IN_USE.has((error as NodeJS.ErrnoException)?.code ?? '') || closeUnder(path) === 0) throw error;
         return original.call(this, path, ...rest);
       }
     };
@@ -68,10 +76,11 @@ export function retryDeletes(fs: FsLike, closeUnder: (path: unknown) => number):
     const original = fs.promises?.[name];
     if (typeof original !== 'function') continue;
     fs.promises![name] = async function (this: unknown, path: unknown, ...rest: unknown[]) {
+      const mine = allowed();
       try {
         return await original.call(this, path, ...rest);
       } catch (error) {
-        if (!IN_USE.has((error as NodeJS.ErrnoException)?.code ?? '') || closeUnder(path) === 0) throw error;
+        if (!mine || !IN_USE.has((error as NodeJS.ErrnoException)?.code ?? '') || closeUnder(path) === 0) throw error;
         return original.call(this, path, ...rest);
       }
     };
