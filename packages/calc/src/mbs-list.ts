@@ -7,8 +7,7 @@ import { checkTextSize, joinText, jsonStringArray, textLength } from './text-bud
 //   easily concat lists"); an empty result is empty. Those without it end without one, as MBS's examples show.
 // - Values compare case-sensitively unless MBS's page says otherwise, and in the order of their character codes.
 // - Where several values come back in "no set order" (CountValues), they come in descending order, as MBS's examples do.
-// Not here: List.CSVSplit (MBS doesn't describe how rows are told apart), List.OrColumn and List.XOrColumn (MBS's
-// example doesn't follow from its description), List.SortWithEvaluate. They give an "isn't available" MBS error.
+// Not here: List.SortWithEvaluate. It gives an "isn't available" MBS error.
 
 import { MbsError, jaroWinkler, levenshtein } from './mbs-text.ts';
 import { compileRegex, optionsOf, regexMatchesEach } from './mbs-regex.ts';
@@ -66,6 +65,78 @@ export function andColumn(a: string[], b: string[], sep: string, col: number): s
 export function notColumn(a: string[], b: string[], sep: string, col: number): string[] {
   const keys = new Set(b.map((l) => column(l, sep, col)));
   return a.filter((l) => !keys.has(column(l, sep, col)));
+}
+
+/** Inferred: parse comma-separated RFC 4180 rows, allowing CR/LF row endings, then retain embedded breaks in cells. */
+export function csvSplit(text: string): string[] {
+  checkTextSize(text.length);
+  if (text === '') return [];
+  const rows: string[] = [];
+  let cells: string[] = [];
+  let cell = '';
+  let quoted = false;
+  let afterQuote = false;
+  let outputSize = 0;
+  const addSize = (n: number) => { outputSize += n; checkTextSize(outputSize); };
+  const finishCell = () => {
+    addSize(cell.length + (cells.length ? 1 : 0));
+    cells.push(cell);
+    cell = '';
+  };
+  const finishRow = () => {
+    finishCell();
+    addSize(cells.length ? 1 : 0);
+    rows.push(cells.join('\t'));
+    cells = [];
+  };
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { cell += '"'; i++; }
+        else { quoted = false; afterQuote = true; }
+      } else cell += ch;
+      continue;
+    }
+    if (afterQuote) {
+      if (ch === ',') { finishCell(); afterQuote = false; }
+      else if (ch === '\r' || ch === '\n') {
+        finishRow(); afterQuote = false;
+        if (ch === '\r' && text[i + 1] === '\n') i++;
+      } else fail('Invalid CSV: expected a comma or line break after a quoted cell');
+      continue;
+    }
+    if (ch === '"') {
+      if (cell !== '') fail('Invalid CSV: quote inside an unquoted cell');
+      quoted = true;
+    } else if (ch === ',') finishCell();
+    else if (ch === '\r' || ch === '\n') {
+      finishRow();
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+    } else cell += ch;
+  }
+  if (quoted) fail('Invalid CSV: unterminated quoted cell');
+  // A final record separator terminates the preceding row; it does not add another row.
+  if (text.at(-1) !== '\r' && text.at(-1) !== '\n') finishRow();
+  return rows;
+}
+
+const truthyNumber = (value: string): boolean => {
+  const t = value.trim();
+  if (t === '') return false;
+  const n = Number(t);
+  return Number.isFinite(n) && n !== 0;
+};
+/** Inferred: parse the selected 0-based cell as a number; non-numbers and missing cells are false. */
+export function orColumn(rows: string[], sep: string, col: number): number {
+  for (const row of rows) if (truthyNumber(column(row, sep, col))) return 1;
+  return 0;
+}
+/** Inferred: XOR is true when an odd number of selected cells parse as non-zero numbers. */
+export function xorColumn(rows: string[], sep: string, col: number): number {
+  let result = false;
+  for (const row of rows) if (truthyNumber(column(row, sep, col))) result = !result;
+  return result ? 1 : 0;
 }
 
 // --- matching ----------------------------------------------------------------------------------------
@@ -274,6 +345,12 @@ export const MBS_LIST: Record<string, MbsList> = {
     listOut(flag(notFromSecond) ? not(valuesOf(a), valuesOf(b)) : xor(valuesOf(a), valuesOf(b)), nre),
   'list.andcolumn': ([a = '', b = '', sep = '', col, nre]) => listOut(andColumn(valuesOf(a), valuesOf(b), sep, int(col, 'column')), nre),
   'list.notcolumn': ([a = '', b = '', sep = '', col, nre]) => listOut(notColumn(valuesOf(a), valuesOf(b), sep, int(col, 'column')), nre),
+  // Inferred: CSVSplit returns one list value per CSV record and joins cells with tabs.
+  'list.csvsplit': ([text = '']) => listOut(csvSplit(text)),
+  // Inferred: return 1 if any selected zero-based column cell is a non-zero number; use other column functions' arguments.
+  'list.orcolumn': ([list = '', sep = '', col]) => { checkTextSize(list.length); return orColumn(valuesOf(list), sep, int(col, 'column')); },
+  // Inferred: XOR is true for an odd number of non-zero numeric cells in that column.
+  'list.xorcolumn': ([list = '', sep = '', col]) => { checkTextSize(list.length); return xorColumn(valuesOf(list), sep, int(col, 'column')); },
   'list.intersection': ([first = '', ...others]) => listOut(others.reduce((acc, o) => and(acc, valuesOf(o)), unique(valuesOf(first), false, false)), false),
   'list.bestmatch': ([list = '', search = '', flags]) => bestMatch(valuesOf(list), search, int(flags, 'flags', 0)),
   'list.columnmatchesprefix': columnMatches((x, t) => x.startsWith(t)),
