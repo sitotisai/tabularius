@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { retryDeletes, trackDatabases } from './test-windows-cleanup.ts';
+import { calledFromTest, retryDeletes, trackDatabases } from './test-windows-cleanup.ts';
 
 class FakeDatabase {
   isOpen = true;
@@ -67,6 +67,20 @@ test('a delete that fails with nothing open there, or for another reason, still 
   const denied = { rmSync() { throw Object.assign(new Error('EACCES'), { code: 'EACCES' }); } };
   retryDeletes(denied, () => 1);
   assert.throws(() => denied.rmSync(), { code: 'EACCES' });
+  const server = { rmSync() { throw inUse(); } };
+  let closed = 0;
+  retryDeletes(server, () => ++closed, () => false);
+  assert.throws(() => server.rmSync(), { code: 'EBUSY' });
+  assert.equal(closed, 0, 'nothing is closed for a delete the server made');
+});
+
+test('only a delete made by test code is retried, not one made by the server', () => {
+  const test = '    at TestContext.<anonymous> (file:///D:/a/tabularius/tabularius/packages/store/test/passkeys.test.ts:35:28)';
+  const server = '    at Host.sweep (file:///D:/a/tabularius/tabularius/packages/server/src/host.ts:90:7)';
+  assert.equal(calledFromTest(['Error', '    at wrapper (file:///D:/a/tabularius/tabularius/scripts/test-windows-cleanup.ts:60:9)', test].join('\n')), true);
+  assert.equal(calledFromTest(['Error', '    at wrapper (file:///D:/a/tabularius/tabularius/scripts/test-windows-cleanup.ts:60:9)', server, test].join('\n')), false);
+  assert.equal(calledFromTest(['Error', '    at helper (C:\\work\\packages\\store\\test\\forge.ts:3:1)'].join('\n')), true);
+  assert.equal(calledFromTest(''), false);
 });
 
 test('the database -wal file and the folder it is in are both covered, and :memory: is ignored', () => {

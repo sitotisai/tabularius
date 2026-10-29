@@ -80,7 +80,7 @@ function soleExpression(s: ts.Statement): ts.Expression | undefined {
 export function collectKeyedEntries(root = resolve(import.meta.dirname, '..'), overrides = new Map<string, string>()): KeyedWriteFinding[] {
   const findings: KeyedWriteFinding[] = [];
   for (const file of sourceFiles(root)) {
-    const rel = relative(root, file);
+    const rel = relative(root, file).replaceAll('\\', '/');
     const sf = ts.createSourceFile(file, overrides.get(rel) ?? readFileSync(file, 'utf8'), ts.ScriptTarget.ESNext, true);
     const add = (node: ts.Node) => findings.push({ file: rel, line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1, fn: functionName(node), kind: KIND, hash: digest(node.getText(sf)) });
     const same = (a: ts.Node, b: ts.Node) => a.getText(sf) === b.getText(sf);
