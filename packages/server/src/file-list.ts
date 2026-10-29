@@ -7,8 +7,10 @@
 import { createHmac, randomBytes } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { spendPasswordCheck } from '../../store/src/index.ts';
-import { ApiError } from './dataapi.ts';
+import { ApiError, lockedOutError } from './dataapi.ts';
+import { clientAddress } from './client-address.ts';
 import type { Host } from './host.ts';
+import { publicPasswordLockout } from './password-login-policy.ts';
 
 /** The files to list: all of them when the server lists files publicly, else none, and undefined to refuse the request. */
 export function listedFiles(host: Host): string[] | undefined {
@@ -29,11 +31,29 @@ function basicAccount(req: IncomingMessage): string {
 }
 
 /**
+ * A wrong password for a file that isn't hosted, counted as a hosted file counts one: five in a row from one address for one
+ * account lock that account and name for a while, with the same refusal. Without the count, a guesser could tell a hosted name
+ * from an invented one by whether the lockout ever came. It costs one password check, as a hosted file's does. When the
+ * refusal should say how long to wait, the end of the lock is returned.
+ */
+export async function unhostedPasswordFailure(host: Host, req: IncomingMessage, db: string): Promise<number | undefined> {
+  const account = basicAccount(req);
+  if (!account) return undefined;
+  const from = clientAddress(req);
+  const failures = host.unhostedSignInFailures;
+  const key = failures.accountKey(account, from, db);
+  failures.record(key, from, false);
+  const until = failures.lockedOut(key, from);
+  await spendPasswordCheck(basicPassword(req) ?? '');
+  return publicPasswordLockout(until, from);
+}
+
+/**
  * Refuses a request for a file that isn't hosted the way a hosted file refuses a caller with the same kind of credential
  * (none, a password, a token), at the same cost, so a guessed name is not confirmed by the answer. Only when the server
  * doesn't list its files; with --list-files-publicly the names aren't secret and "no such file" stays.
  */
-export async function refuseUnknownFile(host: Host, req: IncomingMessage): Promise<void> {
+export async function refuseUnknownFile(host: Host, req: IncomingMessage, db: string): Promise<void> {
   if (host.listFilesPublicly) return;
   const auth = req.headers.authorization ?? '';
   const bearer = /^Bearer\s+(.+)$/i.exec(auth)?.[1] ?? req.headers['x-fm-data-access-token'] as string | undefined;
@@ -42,7 +62,8 @@ export async function refuseUnknownFile(host: Host, req: IncomingMessage): Promi
   const password = basicPassword(req);
   if (password === undefined) throw new ApiError(212, 'Sign in with an account name and password', 401);
   // A hosted file's check is skipped when no account is named.
-  if (basicAccount(req)) await spendPasswordCheck(password);
+  const until = await unhostedPasswordFailure(host, req, db);
+  if (until) throw lockedOutError(until);
   throw new ApiError(212, 'Invalid user account and/or password', 401);
 }
 
