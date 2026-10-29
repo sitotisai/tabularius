@@ -738,7 +738,7 @@ function catalogRef(sqlText: string): string | undefined {
       while (tokens[before]?.text === '(') before--;
       if (!/^(?:FROM|JOIN)$/i.test(tokens[before]?.text ?? '') && tokens[i + 1]?.text !== '(') continue;
     }
-    if (/^(?:sqlite_(?:temp_)?(?:master|schema)|dbstat)$/.test(name)) return name;
+    if (/^(?:sqlite_(?:(?:temp_)?(?:master|schema)|sequence|stat\w*)|dbstat)$/.test(name)) return name;
   }
   return undefined;
 }
@@ -2859,11 +2859,9 @@ export class Store {
    */
   logQuery(sqlText: string, rows: number, opts: WriteOptions = {}): void {
     if (!this.auditSettings().logReads) return;
-    // Names inside string literals are values, not tables.
-    const text = sqlText.replace(/'(?:[^']|'')*'/g, "''");
+    const names = new Set(sqlTokens(sqlText).filter((token) => token.kind === 'word' || token.kind === 'identifier').map((token) => sqlName(token).toLowerCase()));
     for (const t of this.schema?.tables ?? []) {
-      const name = t.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      if (new RegExp(`(?<![\\w$])"?${name}"?(?![\\w$])`, 'i').test(text)) this.audit('read', t.name, undefined, { query: true, rows }, opts);
+      if (names.has(t.name.toLowerCase())) this.audit('read', t.name, undefined, { query: true, rows }, opts);
     }
   }
 
@@ -11315,18 +11313,21 @@ export class Store {
    * of sql-result.ts: `unbounded` is for the server's own queries over its own data (an export), never for SQL a person wrote.
    */
   private rowsOf(db: DatabaseSync, statement: StatementSync, text: string, columns: { name: string }[], params: SqlValue[], limit: number, unbounded: boolean): SqlValue[][] {
+    const ordinaryIntegers = (row: SqlValue[]) => row.map((value) => typeof value === 'bigint' && value <= BigInt(Number.MAX_SAFE_INTEGER) && value >= BigInt(Number.MIN_SAFE_INTEGER) ? Number(value) : value);
     if (unbounded) {
       statement.setReturnArrays(true);
+      statement.setReadBigInts(true);
       const rows: SqlValue[][] = [];
       for (const r of statement.iterate(...params) as Iterable<SqlValue[]>) {
-        rows.push(r);
+        rows.push(ordinaryIntegers(r));
         if (rows.length >= limit) break;
       }
       return rows;
     }
     const st = boundedStatement(db, text, columns.map((c) => c.name));
     st.setReturnArrays(true);
-    return collectRows(st.iterate(...params) as Iterable<unknown[]>, limit) as SqlValue[][];
+    st.setReadBigInts(true);
+    return (collectRows(st.iterate(...params) as Iterable<unknown[]>, limit) as SqlValue[][]).map(ordinaryIntegers);
   }
 
   /**

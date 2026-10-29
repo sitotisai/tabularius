@@ -527,6 +527,13 @@
       "restart": "Yes; restart the server after changing its environment.",
       "explainedBy": "README.md"
     },
+    "TABULARIUS_PGWIRE_IDLE_MS": {
+      "description": "How long a signed-in SQL connection may sit idle outside active work before it is closed, in milliseconds.",
+      "default": "300000",
+      "accepted": "Nonnegative whole number of milliseconds; 0 for no limit",
+      "restart": "No server restart; read when a SQL connection signs in.",
+      "explainedBy": "docs/pgwire-results.md"
+    },
     "TABULARIUS_PGWIRE_OUTPUT_STALL_MS": {
       "description": "How long a SQL client may leave the server's answers unread before the connection is closed, in milliseconds; a client that reads a little just before the time is up can wait nearly twice as long.",
       "default": "60000",
