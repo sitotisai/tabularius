@@ -63,6 +63,7 @@ import { ensureTextStyles, repetitionText, TextStyles } from './text-styles.ts';
 import { checkFormat, storedFormat } from './store-format.ts';
 import { UuidV7 } from './uuid-v7.ts';
 import { sameSecret } from './same-secret.ts';
+import { CrossFileProofs, CROSS_FILE_TABLE } from './cross-file.ts';
 export { StoreError, PendingApprovalError };
 
 /** Name equality used by the existing case-insensitive account and privilege-set rules. */
@@ -1294,6 +1295,9 @@ export class Store {
     if (!(this.sql.prepare('PRAGMA table_info(_fm_api_tokens)').all() as { name: string }[]).some((c) => c.name === 'provenance')) this.sql.exec('ALTER TABLE _fm_api_tokens ADD COLUMN provenance TEXT');
     this.sql.exec(`CREATE TABLE IF NOT EXISTS _fm_totp (account TEXT PRIMARY KEY, secret TEXT NOT NULL,
       confirmed INTEGER NOT NULL DEFAULT 0, created TEXT NOT NULL, last_step INTEGER)`);
+    // Which other hosted files this file's accounts have proved their password in (see crossFileProven): fingerprints of the
+    // two password hashes the proof was made for, never the hashes themselves, so the row says nothing about either password.
+    this.sql.exec(CROSS_FILE_TABLE);
     // Passkeys (WebAuthn): one row per registered credential; public key only.
     this.sql.exec(`CREATE TABLE IF NOT EXISTS _fm_passkeys (id TEXT PRIMARY KEY, account TEXT NOT NULL COLLATE NOCASE,
       public_key TEXT NOT NULL, sign_count INTEGER NOT NULL DEFAULT 0, alg INTEGER NOT NULL, label TEXT,
@@ -3935,6 +3939,12 @@ export class Store {
    * owed change unless `mustChange` asks for a fresh one on next sign-in.
    */
   setPassword(account: string, password: string, privilegeSet?: string, opts: { mustChange?: boolean; keepPasskeys?: boolean } = {}): void {
+    this.setPasswordOnly(account, password, privilegeSet, opts);
+    // The new password is tried in the files this one refers to, so a token or a later sign-in reaches them as this person.
+    this.crossFile.proveSync(this.canonicalAccount(account) ?? account, password, '');
+  }
+
+  private setPasswordOnly(account: string, password: string, privilegeSet?: string, opts: { mustChange?: boolean; keepPasskeys?: boolean } = {}): void {
     return this.securityChange(() => {
       account = this.canonicalAccount(account) ?? account;
       this.checkPasswordLength(password);
@@ -3982,6 +3992,11 @@ export class Store {
 
   /** Add a local account with its initial security state as one atomic change. */
   createAccount(account: string, password: string, privilegeSet: string, opts: { inactive?: boolean; mustChange?: boolean } = {}): void {
+    this.createAccountOnly(account, password, privilegeSet, opts);
+    this.crossFile.proveSync(this.canonicalAccount(account) ?? account, password, '');
+  }
+
+  private createAccountOnly(account: string, password: string, privilegeSet: string, opts: { inactive?: boolean; mustChange?: boolean } = {}): void {
     return this.securityChange(() => {
       account = this.canonicalAccount(account) ?? account;
       this.checkPasswordLength(password);
@@ -6364,7 +6379,12 @@ export class Store {
     } satisfies PrivilegeDefinition;
     const p = new Privileges(account, set, this, (file) => {
       const other = file as Store;
-      return other.identityAllowed(account, via, undefined, person) ? other.privileges(account, via, person) : other.privileges('\u0000inactive-account');
+      // The same name in another file is the same person only when it was proved: an external sign-in (a directory or
+      // identity provider vouched for the person, and the other file maps that identity too), or a local account whose
+      // password matched there as well (crossFileProven), as FileMaker opens an external file with the same name and
+      // password and asks otherwise. A name alone gives nothing.
+      const same = via !== undefined || person !== undefined || this.crossFileProven(account, other);
+      return same && other.identityAllowed(account, via, undefined, person) ? other.privileges(account, via, person) : other.privileges('\u0000inactive-account');
     }).withVia(via);
     this.privilegeCache.value.set(key, p);
     return p;
@@ -6823,7 +6843,9 @@ export class Store {
     const hash = this.passwordHash(account, from);
     // An unknown name takes as long as a wrong password, so timing doesn't tell which names exist.
     if (this.spendsScrypt(hash, account, from)) checkPassword(password, DUMMY_HASH);
-    return this.signedIn(account, from, hash !== undefined && checkPassword(password, hash));
+    const ok = this.signedIn(account, from, hash !== undefined && checkPassword(password, hash));
+    if (ok) this.crossFile.proveSync(account, password, from);
+    return ok;
   }
 
   /** verify on the thread pool; an optional directory check shares the attempt's single outcome. */
@@ -6843,6 +6865,7 @@ export class Store {
       const current = this.passwordState(account, from);
       valid = !!proof?.identity && hash !== undefined && current?.hash !== undefined && sameSecret(current.hash, hash) && current?.identity === proof.identity;
     }
+    const localProof = valid;
     if (!valid && fallback && !this.lockedOut(account, from)) {
       const key = this.bucketKey(account, from);
       // Overlapping guesses still count as failures, but cannot multiply LDAP work.
@@ -6859,7 +6882,11 @@ export class Store {
       }
     }
     // Recheck admission after either asynchronous check: another request may have locked the account.
-    return this.signedIn(account, from, valid);
+    const ok = this.signedIn(account, from, valid);
+    // A password this file accepted is tried in the files it refers to, so the person reaches them as themselves there.
+    // Not for a directory's acceptance: that identity is carried by the mapping, not a password.
+    if (ok && localProof) await this.crossFile.prove(account, password, from);
+    return ok;
   }
 
   /**
@@ -6923,6 +6950,57 @@ export class Store {
   private knownSharedAccount(account: string, from: string): boolean {
     return sharedSource(from)
       && this.sql.prepare('SELECT 1 FROM _fm_accounts WHERE name = ? COLLATE NOCASE').get(account) !== undefined;
+  }
+
+  // --- the same account in another hosted file (see cross-file.ts) ------------------------------------------------
+
+  /** The verdicts on which of this file's accounts are the same-named accounts of other files. */
+  readonly crossFile: CrossFileProofs = new CrossFileProofs(this, { sync: checkPassword, async: checkPasswordAsync });
+  /** Every other file hosted beside this one (the host sets it); without it, the files this one's data sources name. */
+  siblings?: () => Store[];
+
+  /** The hash a cross-file proof is made against: the account's local password here, as its own sign-in from `from` would check it. */
+  crossFileHash(account: string, from: string, active = true): string | undefined {
+    const row = this.sql.prepare('SELECT password_hash, source, inactive, password_disabled FROM _fm_accounts WHERE name = ? COLLATE NOCASE').get(account) as
+      | { password_hash: string | null; source: string; inactive: number; password_disabled: number } | undefined;
+    // Whether the account is switched off is the sign-in's and identityAllowed's question, not the proof's: a check that only
+    // compares what the proof was made for reads the hash either way.
+    if (!row || (active && (row.inactive || row.password_disabled))) return undefined;
+    if (row.password_hash) return row.password_hash;
+    if (row.source !== 'fmp12') return undefined;
+    const verifier = this.schema.accounts.find((a) => !a.external && a.name.toLowerCase() === account.toLowerCase())?.passwordVerifier;
+    if (!verifier) return undefined;
+    // An empty password opens the account only from where this file's own sign-in would take it.
+    if (checkFmp12Password('', verifier) && !LOCAL.has(from) && !PASSWORD_POLICY.blankFromNetwork && !(this.allowBlankPasswordFromLan() && privateAddress(from))) return undefined;
+    return `fmp12$${verifier}`;
+  }
+
+  /** The other hosted files a password accepted here is tried in: those hosted beside this one, else the ones its data sources name. */
+  crossFileFiles(): Store[] {
+    if (this.siblings) return this.siblings().filter((s) => s !== this);
+    const out: Store[] = [];
+    for (const d of this.schema.dataSources) {
+      let other: Store | undefined;
+      try { other = this.resolveFile(dataSourceFile(d.paths) ?? d.name); } catch { other = undefined; }
+      if (other && other !== this && !out.includes(other)) out.push(other);
+    }
+    return out;
+  }
+
+  /** Whether a transaction holds the file, so a verdict may not be written to it now. */
+  crossFileBusy(): boolean {
+    return this.heldBy !== undefined || this.sql.isTransaction;
+  }
+
+  /** Whether this file's account has proved, with its password, that it is the account of the same name in `other`. */
+  crossFileProven(account: string, other: Store): boolean {
+    return this.crossFile.proven(account, other);
+  }
+
+  /** A password that opened another file was wrong for this one: counted and logged as a failed sign-in here. */
+  crossFileRefused(account: string, from: string, through: string): void {
+    this.failures.record(this.bucketKey(account, from), from, false, this.knownSharedAccount(account, from));
+    try { this.auditSignIn(account, from, false, undefined, { through }); } catch { /* a busy file keeps the lockout count */ }
   }
 
   /** Records a sign-in attempt's outcome for lockouts; returns `ok`. */

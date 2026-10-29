@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**198 entries in 26 areas.** Waiting on: 22 on a sample file, 104 on a FileMaker run or Design Report, 14 on a Claris answer, 15 on a decision by the owner (an entry can wait on more than one).
+**199 entries in 27 areas.** Waiting on: 22 on a sample file, 105 on a FileMaker run or Design Report, 14 on a Claris answer, 15 on a decision by the owner (an entry can wait on more than one).
 
 ## Conversion
 
@@ -209,6 +209,12 @@ part of it.
 | Live-provider browser behavior for OIDC state-binding cookies is unverified | Provider sign-in may need browser or proxy configuration changes, especially for form_post | Exercise redirects and form_post with a live provider in supported browsers over HTTPS | [docs/security-defaults.md › Sign-in and accounts](security-defaults.md) — “…browser behavior with live providers remains unverified by the synthetic tests.” |
 | Whether another host approves discovered files by name and identity is unverified; Tabularius marks them held | A file may be treated differently when it arrives in a hosted folder | A host run with a newly dropped file and a replacement under an existing name | [docs/security-defaults.md › A file that arrives in the hosted folder](security-defaults.md) — “…inbound hooks and outbound connections are not yet gated by the held flag. Those gates arrive in the next…” |
 | Whether Claris Server trusts forwarding headers, how it treats malformed ones and how it groups IPv6 addresses is unverified; Tabularius applies its own strict profile | Address attribution, limits and lockouts behind a proxy may differ from FileMaker Server | A Claris Server run behind a proxy with valid, malformed and IPv6 forwarding headers | [docs/security-defaults.md › KNOWN](security-defaults.md) — “…malformed-header behavior, and IPv6 grouping \| Unverified; no Claris behavior is claimed documented or…” |
+
+## Sign-in
+
+| What differs or is unknown | How it shows | What would settle it | Where it is written |
+| --- | --- | --- | --- |
+| A second hosted file is reached as the same account only when the name and password match there, as in FileMaker; FileMaker then asks for that file's credentials when they do not match, which the server cannot do | A layout or query over the other file's table answers as if the account had no access there, with no prompt; signing in to the first file again after setting the same password in both files makes the proof | A FileMaker run of a two-file solution with different passwords in each, to record the prompt and what a Data API session gets | [docs/threat-model.md › Who the attacker is](threat-model.md) — “The owner of one hosted file \| Has [Full Access] in one file of a folder that hosts several \| Reaching another…” |
 
 ## Solution patterns
 

@@ -230,6 +230,8 @@ test('external value lists and field metadata retain destination privileges duri
     ]);
     other.create('Remote', { Public: 'remote-public', Secret: 'REMOTE-SECRET' });
     other.savePrivilegeSet({ ...s.reader, tables: {}, records: { ...s.reader.records, fields: { Secret: 'none' } } });
+    s.store.siblings = () => [other];
+    other.siblings = () => [s.store];
     other.setPassword('Reader', 'pw', 'Reader');
     s.store.applyDesign([{ op: 'createDataSource', name: 'Other', paths: ['file:Other'] }]);
     s.store.resolveFile = (name) => name === 'Other' ? other : undefined;
