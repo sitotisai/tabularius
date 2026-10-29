@@ -2163,13 +2163,16 @@ export class Store {
    * also lifts each mark to its table's highest record, in case records came in while a trigger was missing.
    */
   private ensureRecordIdHighWater(): void {
-    this.sql.exec('SAVEPOINT record_id_high_water');
+    // The write lock first, when this is the whole transaction: reads that begin it take a snapshot, and a write that follows
+    // is refused at once, with no busy wait, if another process (a second worker opening the file, say) committed since.
+    const whole = !this.sql.isTransaction;
+    this.sql.exec(whole ? 'BEGIN IMMEDIATE' : 'SAVEPOINT record_id_high_water');
     try {
       this.sql.exec('CREATE TABLE IF NOT EXISTS _fm_record_id_high_water (tbl TEXT PRIMARY KEY COLLATE NOCASE, id INTEGER NOT NULL)');
       this.ensureRecordIdMarks(this.schema.tables.map((t) => t.name));
-      this.sql.exec('RELEASE record_id_high_water');
+      this.sql.exec(whole ? 'COMMIT' : 'RELEASE record_id_high_water');
     } catch (error) {
-      this.sql.exec('ROLLBACK TO record_id_high_water; RELEASE record_id_high_water');
+      this.sql.exec(whole ? 'ROLLBACK' : 'ROLLBACK TO record_id_high_water; RELEASE record_id_high_water');
       throw error;
     }
   }
