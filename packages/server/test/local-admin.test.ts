@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { withFilesystemHook } from '../../store/src/fs-boundary.ts';
 import { LOCAL_FILE, isLocalAdmin, localAccess, localUrl, openLocalAccess } from '../src/local-admin.ts';
 
 // The password-free admin channel for commands run on the server machine: a random token in a file only the
@@ -97,6 +98,36 @@ test('the file is private (mode 0600) even where an older, wider one was', { ski
     writeFileSync(f.file, 'old', { mode: 0o644 });
     openLocalAccess(f.dir, 'http://127.0.0.1:8080');
     assert.equal(statSync(f.file).mode & 0o777, 0o600);
+  } finally { f.done(); }
+});
+
+test('a link planted where the file goes is not followed, and the file is still made', { skip: process.platform === 'win32' }, () => {
+  const f = folder();
+  try {
+    const victim = join(f.dir, 'victim');
+    writeFileSync(victim, 'keep');
+    let planted = 0;
+    withFilesystemHook((e) => {
+      if (e.operation === 'open' && e.phase === 'checked' && e.path === resolve(f.file) && planted++ === 0) symlinkSync(victim, f.file);
+    }, () => openLocalAccess(f.dir, 'http://127.0.0.1:1'));
+    assert.equal(planted, 2);
+    assert.equal(readFileSync(victim, 'utf8'), 'keep');
+    assert.equal(lstatSync(f.file).isSymbolicLink(), false);
+    assert.equal(localAccess(f.dir)?.url, 'http://127.0.0.1:1');
+    assert.equal(statSync(f.file).mode & 0o777, 0o600);
+  } finally { f.done(); }
+});
+
+test('a link planted every time is refused', { skip: process.platform === 'win32' }, () => {
+  const f = folder();
+  try {
+    const victim = join(f.dir, 'victim');
+    writeFileSync(victim, 'keep');
+    assert.throws(() => withFilesystemHook((e) => {
+      if (e.operation === 'open' && e.phase === 'checked' && e.path === resolve(f.file)) symlinkSync(victim, f.file);
+    }, () => openLocalAccess(f.dir, 'http://127.0.0.1:1')),
+    (e: NodeJS.ErrnoException) => e.code === 'ESTALE');
+    assert.equal(readFileSync(victim, 'utf8'), 'keep');
   } finally { f.done(); }
 });
 
