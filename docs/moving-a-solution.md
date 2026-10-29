@@ -710,8 +710,12 @@ document its numbering, so Tabularius uses large numbers that won't be mistaken
 for values in the data. What a formula builds is kept to a million values and
 512 levels. JSON.Format's
 layout follows MBS's pages; where they show only a flattened example (an array
-holding objects), Tabularius puts each item on its own line. Not yet: JSONPath <!-- known-difference: MBS plug-in functions ;; JSON.Format puts each item of an array of objects on its own line, since MBS's pages show only a flattened example ;; The layout of that output can differ from MBS ;; An MBS run of JSON.Format on an array of objects --> <!-- known-difference: MBS plug-in functions ;; JSONPath and JMESPath (Query, Replace, ReplaceEvaluate, Search), Colorize, the record and import functions and the conversions to CSV, HTML, XML and TOON are not available ;; The call gives ? and error 3 ;; Owner decision on whether to build them -->
-and JMESPath (Query, Replace, ReplaceEvaluate, Search), Colorize, the record
+holding objects), Tabularius puts each item on its own line. JSON.Colorize accepts source text and returns
+fixed syntax colors without changing its characters; invalid text is unstyled.
+Its palette and token rules are inferred and unverified; extra arguments remain unavailable.
+<!-- known-difference: MBS plug-in functions ;; JSON.Colorize colors keys, strings, numbers, literals and punctuation with a fixed palette; the result is inferred and unverified ;; Colors may differ from MBS; only one source-text argument is supported ;; A vendor run confirming colors and optional arguments -->
+Not yet: JSONPath <!-- known-difference: MBS plug-in functions ;; JSON.Format puts each item of an array of objects on its own line, since MBS's pages show only a flattened example ;; The layout of that output can differ from MBS ;; An MBS run of JSON.Format on an array of objects --> <!-- known-difference: MBS plug-in functions ;; JSONPath and JMESPath (Query, Replace, ReplaceEvaluate, Search), the record and import functions and the conversions to CSV, HTML, XML and TOON are not available ;; The call gives ? and error 3 ;; Owner decision on whether to build them -->
+and JMESPath (Query, Replace, ReplaceEvaluate, Search), the record
 and import functions, and the conversions to CSV, HTML, XML and TOON. MBS's `Math.*` functions run
 too (sums, averages, minimum, maximum, standard deviation, moving averages,
 bitwise operations on 64-bit integers, hex and binary conversion, unit
@@ -734,7 +738,13 @@ no line break at the end); where several nodes come back from XML.Query, how
 they are laid out is inferred. XML Tabularius can't read is an error even with <!-- known-difference: MBS plug-in functions ;; How several nodes returned by XML.Query are laid out is inferred; XML Tabularius cannot read is an error even with flag 1, a DOCTYPE is left out, and XML.SetSaveNoEmptyTags lasts for the session ;; Output can differ from MBS in those cases ;; An MBS run of those cases -->
 flag 1, a DOCTYPE is left out of what comes back, and XML.SetSaveNoEmptyTags
 lasts for the session rather than the
-whole server. Not yet: Colorize, Validate, ToJSON, Tidy, ToHTML, exclusive <!-- known-difference: MBS plug-in functions ;; Colorize, Validate, ToJSON, Tidy, ToHTML, exclusive canonical form and the file, container, record and import functions are not available ;; The call gives ? and error 3 ;; Owner decision on whether to build them -->
+whole server. XML.Colorize accepts source text, preserving every character and
+leaving invalid XML unstyled. Names use the key color; text and attribute values use the
+string color, numeric and boolean/null values use scalar colors, and comments, CDATA
+and processing instructions use the literal color. The palette and rules are inferred
+and unverified; extra arguments remain unavailable.
+<!-- known-difference: MBS plug-in functions ;; XML.Colorize uses fixed syntax colors without changing source characters; the result is inferred and unverified ;; Colors may differ from MBS; only one source-text argument is supported ;; A vendor run confirming colors and optional arguments -->
+Not yet: Validate, ToJSON, Tidy, ToHTML, exclusive <!-- known-difference: MBS plug-in functions ;; Validate, ToJSON, Tidy, ToHTML, exclusive canonical form and the file, container, record and import functions are not available ;; The call gives ? and error 3 ;; Owner decision on whether to build them -->
 canonical form, and the file, container, record and import functions. MBS's
 `Dictionary.*` and `Variable.*` functions run too, keeping each value's type.
 MBS lists keys in no set order; Tabularius lists them in descending order, as

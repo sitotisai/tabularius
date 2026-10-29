@@ -7,19 +7,21 @@
 // - An element holding text isn't indented inside (libxml2 doesn't); when formatting, whitespace-only text between
 //   elements is dropped first.
 // - Flag 1 (go on after XML errors) isn't honoured: XML Tabularius can't read is an error.
-// Not here: XML.Colorize (styled text), XML.Validate (XML Schema), XML.ToJSON (MBS doesn't describe how mixed
+// Not here: XML.Validate (XML Schema), XML.ToJSON (MBS doesn't describe how mixed
 // content and text beside attributes come out), XML.Tidy and XML.ToHTML (no description of their output), and the
 // file, container, record and import functions. They give an "isn't available" MBS error.
 
 import { rethrowExecutionRefusal } from './execution-refusal.ts';
 
 import { withXmlWorkBudget, workBudget, budgetReplace, budgetDepth } from './work-budget.ts';
+import { colorSyntax, type ColoredText } from './mbs-colorize.ts';
+import { checkTextSize } from './text-budget.ts';
 import { MbsError } from './mbs-text.ts';
 import { canonicalXml } from './xmltools.ts';
 import { XPathError, xpathValues, evaluateXPath, formatNumber, makeNode, parseXmlDocument, stringValue, type XNode } from './xpath.ts';
 import { XsltError, applyXslt } from './xslt.ts';
 
-type MbsXml = (t: string[], scope: object) => string | number;
+type MbsXml = (t: string[], scope: object) => string | number | ColoredText;
 
 // --- references ---------------------------------------------------------------------------------
 // XML.Parse keeps a document for the session and gives back a number (MBS: "a reference number"). As for JSON,
@@ -428,6 +430,19 @@ function xslt(scope: object, xml: string, style: string, params: Map<string, str
 }
 
 export const MBS_XML: Record<string, MbsXml> = {
+  // Inferred: one source-text argument, fixed token colors, invalid input unchanged; unverified against MBS.
+  'xml.colorize': (a) => {
+    if (!a.length) throw new MbsError('wrong number of parameters');
+    if (a.length !== 1) throw new MbsError('XML.Colorize is not available in Tabularius for these parameters');
+    const source = a[0];
+    checkTextSize(source.length);
+    try { parse(source); } catch (e) {
+      rethrowExecutionRefusal(e);
+      if (e instanceof MbsError) return source;
+      throw e;
+    }
+    return colorSyntax(source, 'xml');
+  },
   'xml.parse': ([xml = ''], scope) => keep(scope, parse(xml)),
   // One reference or a list of them (MBS's XML.ItemRefs example passes a list).
   'xml.release': ([refs = ''], scope) => {

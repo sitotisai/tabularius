@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { evaluateText, type CalcContext } from '../src/index.ts';
 import { MBS_JSON, compact, parseJson, pretty } from '../src/mbs-json.ts';
+import { type ColoredText } from '../src/mbs-colorize.ts';
 import { MbsError } from '../src/mbs-text.ts';
 
 /** A FileMaker text literal: quotes and backslashes escaped, a CR written as ¶. */
@@ -11,9 +12,9 @@ const q = (s: string) => '"' + s.replace(/[\\"¶]/g, (x) => '\\' + x).replace(/\
 const fm = (c: CalcContext, name: string, ...args: (string | number)[]) =>
   evaluateText(`MBS ( ${[q(name), ...args.map((a) => (typeof a === 'number' ? String(a) : q(a)))].join(' ; ')} )`, c);
 /** Called directly: numbers are FileMaker numbers, text is text. */
-const direct = (scope: object) => (name: string, ...args: (string | number)[]) =>
-  MBS_JSON[name.toLowerCase()](args.map((a) => ({ text: String(a), number: typeof a === 'number' })), scope);
-const same = (got: string | number, want: string) => assert.equal(compact(parseJson(String(got))), compact(parseJson(want)));
+const direct = (scope: object) => (name: string, ...args: (string | number | ColoredText)[]) =>
+  MBS_JSON[name.toLowerCase()](args.map((a) => ({ text: typeof a === 'object' ? a.value : String(a), number: typeof a === 'number' })), scope);
+const same = (got: unknown, want: string) => assert.equal(compact(parseJson(String(got))), compact(parseJson(want)));
 
 test('AR-calc-extensions-08 JSON reference bulk and depth failures preserve the reference', () => {
   const j = direct({});

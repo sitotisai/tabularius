@@ -2,10 +2,12 @@
 // Numbers keep the digits they were written with, so large numbers pass through without rounding, as MBS does.
 // A JSON parameter is JSON text or a reference number from JSON.Parse, CreateObjectRef or CreateArrayRef; adding
 // to or deleting from a reference changes it in place and gives the reference back.
-// Not here: JSON.ReplaceEvaluate, Colorize's styled text, the record
+// Not here: JSON.ReplaceEvaluate, the record
 // and import functions, conversions (CSV, HTML, XML, TOON), and the functions whose pages haven't been checked.
 // They give an "isn't available" MBS error.
 
+import { colorSyntax, type ColoredText } from './mbs-colorize.ts';
+import { checkTextSize } from './text-budget.ts';
 import { MbsError } from './mbs-text.ts';
 import { jmesSearch } from './jmespath.ts';
 import { jsonPathMatches, replaceAt } from './jsonpath.ts';
@@ -553,7 +555,7 @@ function sortJson(j: Json): Json {
 
 // --- the functions --------------------------------------------------------------------------
 
-type MbsJson = (a: Arg[], scope: object) => string | number;
+type MbsJson = (a: Arg[], scope: object) => string | number | ColoredText;
 const texts = (a: Arg[]) => a.map((x) => x.text);
 
 /** Adds name/value pairs to an object (text or reference). */
@@ -579,6 +581,18 @@ const addToArray = (make: (a: Arg, scope: object) => Json, skipEmpty = true): Mb
 };
 
 export const MBS_JSON: Record<string, MbsJson> = {
+  // Inferred: one source-text argument, fixed token colors, invalid input unchanged; unverified against MBS.
+  'json.colorize': (a) => {
+    if (!a.length) throw new MbsError('wrong number of parameters');
+    if (a.length !== 1) throw new MbsError('JSON.Colorize is not available in Tabularius for these parameters');
+    const source = a[0].text;
+    checkTextSize(source.length);
+    try { parseJson(source); } catch (e) {
+      if (e instanceof MbsError) return source;
+      throw e;
+    }
+    return colorSyntax(source, 'json');
+  },
   'json.parse': ([j], scope) => keep(scope, parseJson(j?.text ?? '')),
   'json.createobjectref': (_, scope) => keep(scope, { t: 'obj', entries: [] }),
   'json.createarrayref': (_, scope) => keep(scope, { t: 'arr', items: [] }),
