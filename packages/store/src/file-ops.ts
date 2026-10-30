@@ -3,17 +3,17 @@ import { rename } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { renameSync as renameChecked } from './fs-boundary.ts';
 
-const retryable = (e: unknown, platform: NodeJS.Platform, attempt: number) =>
-  platform === 'win32' && attempt < 3 && ['EPERM', 'EBUSY', 'EACCES'].includes((e as NodeJS.ErrnoException).code ?? '');
+const retryable = (e: unknown, platform: NodeJS.Platform, attempt: number, attempts = 3) =>
+  platform === 'win32' && attempt < attempts && ['EPERM', 'EBUSY', 'EACCES'].includes((e as NodeJS.ErrnoException).code ?? '');
 const pause = (ms: number) => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); };
 
 /** Brief sharing violations get bounded retries. Never unlink a destination to force a rename.
  * Actual NTFS/antivirus sharing behavior remains unverified without a Windows run.
  */
-export function retryFileSync<T>(action: () => T, platform: NodeJS.Platform = process.platform, wait = pause): T {
+export function retryFileSync<T>(action: () => T, platform: NodeJS.Platform = process.platform, wait = pause, attempts = 3): T {
   for (let attempt = 0; ; attempt++) {
     try { return action(); }
-    catch (e) { if (!retryable(e, platform, attempt)) throw e; wait(25 * (attempt + 1)); }
+    catch (e) { if (!retryable(e, platform, attempt, attempts)) throw e; wait(attempts > 3 ? 25 + Math.floor(Math.random() * 25) : 25 * (attempt + 1)); }
   }
 }
 
