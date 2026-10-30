@@ -23,7 +23,7 @@ name: ci
 #   check and the repo-wide scans, once), `test-shard` (the other test files in four shards,
 #   see scripts/test-plan.ts) and `test`, which only reports whether all of those passed.
 #   `test` is the required check; the shard names do not matter to branch protection.
-# - The owner's Macs help with the queue. `gates` and the macOS shards run on self-hosted
+# - The owner's Macs help with the queue. `gates` runs on self-hosted
 #   runners (labels self-hosted, macOS, tab-ci) when the repository variable CI_MACS is `on`;
 #   the four Linux shards and the `test` report stay on GitHub's machines, because the Linux
 #   suite is the required check and macOS still fails a few tests Linux passes (backup-verify,
@@ -92,7 +92,7 @@ jobs:
           [ "${{ needs.gates.result }}" = success ] && [ "${{ needs.test-shard.result }}" = success ]
   test-macos:
     if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'macos') }}
-    runs-on: ${{ vars.CI_MACS == 'on' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","macOS","tab-ci"]') || 'macos-latest' }}
+    runs-on: macos-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
