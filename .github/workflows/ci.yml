@@ -23,9 +23,11 @@ name: ci
 #   check and the repo-wide scans, once), `test-shard` (the other test files in four shards,
 #   see scripts/test-plan.ts) and `test`, which only reports whether all of those passed.
 #   `test` is the required check; the shard names do not matter to branch protection.
-# - The owner's Macs help with the queue. `gates` and shards 1 and 2 run on self-hosted
+# - The owner's Macs help with the queue. `gates` and the macOS shards run on self-hosted
 #   runners (labels self-hosted, macOS, tab-ci) when the repository variable CI_MACS is `on`;
-#   shards 3 and 4 and the `test` report stay on GitHub's machines. The expression below
+#   the four Linux shards and the `test` report stay on GitHub's machines, because the Linux
+#   suite is the required check and macOS still fails a few tests Linux passes (backup-verify,
+#   standby-model). The expression below
 #   sends a pull request from a fork to ubuntu-latest, but a fork can edit this file, so the real
 #   guard is a job-started check on each runner that refuses anything but a push, a schedule, a
 #   manual run or a pull request from this repository, plus approval for outside contributors. Set CI_MACS
@@ -42,9 +44,10 @@ on:
   schedule:
     - cron: '47 6 * * *'
 concurrency:
-  # A pull request's newer push replaces the run it supersedes. Every push to main keeps its own run: in one shared group a
-  # newer push cancels the run that is waiting, so merges landing every few minutes during a 35-minute run were never tested.
-  group: ci-${{ github.event.pull_request.number || github.sha }}-${{ github.event_name }}
+  # A pull request's newer push replaces the run it supersedes. Pushes to main share one group, so while a run is going
+  # the merges that land behind it wait as one run on the newest commit (each merge was already tested as a pull request).
+  # Giving every push its own run put about 20 runs an hour on 20 job slots, and main fell hours behind.
+  group: ci-${{ github.event.pull_request.number || (github.event_name == 'push' && 'main') || github.sha }}-${{ github.event_name }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   gates:
@@ -61,16 +64,12 @@ jobs:
       - run: npm run fixtures
       - run: npm run gates
   test-shard:
-    runs-on: ${{ matrix.mac && vars.CI_MACS == 'on' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","macOS","tab-ci"]') || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { shard: 1, mac: true }
-          - { shard: 2, mac: true }
-          - { shard: 3, mac: false }
-          - { shard: 4, mac: false }
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -93,7 +92,7 @@ jobs:
           [ "${{ needs.gates.result }}" = success ] && [ "${{ needs.test-shard.result }}" = success ]
   test-macos:
     if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'macos') }}
-    runs-on: macos-latest
+    runs-on: ${{ vars.CI_MACS == 'on' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","macOS","tab-ci"]') || 'macos-latest' }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
