@@ -50,6 +50,59 @@ const tableColumns = (name: string) => store.schema.tables.find((t) => t.name.to
 /** What the rewrite makes of a query when it knows the tables, as the SQL engine does. */
 const rewrite = (query: string) => anyAllToIn(query, tableColumns);
 
+test('SUBSTRING and SUBSTR use standard positions in both SQL spellings', () => {
+  assert.deepEqual(rows('SELECT SUBSTRING(Last FROM 2 FOR 2) FROM P ORDER BY First'), [['ee'], ['ar']]);
+  assert.deepEqual(rows('SELECT SUBSTRING(Last FROM 3) FROM P ORDER BY First'), [['e'], ['rk']]);
+  for (const call of ["SUBSTRING('abcd' FROM -1 FOR 3)", "SUBSTRING('abcd', -1, 3)", "SUBSTR('abcd', -1, 3)"]) {
+    assert.deepEqual(rows(`SELECT ${call}`), [['a']], call);
+  }
+  assert.deepEqual(rows("SELECT SUBSTR('abcd', -1)"), [['abcd']]);
+  assert.deepEqual(rows("SELECT SUBSTRING('abcd', 0, 2)"), [['a']]);
+  assert.deepEqual(rows("SELECT SUBSTRING('abcd', 5, 2)"), [['']]);
+  assert.deepEqual(rows("SELECT SUBSTRING('añcd' FROM 2 FOR 2)"), [['ñc']]);
+  assert.deepEqual(rows('SELECT SUBSTRING(NULL FROM 1)'), [[null]]);
+  assert.deepEqual(rows("SELECT SUBSTRING('abc' FROM NULL)"), [[null]]);
+  assert.throws(() => rows("SELECT SUBSTRING('abc' FROM 1 FOR -1)"), /negative/);
+  assert.throws(() => rows("SELECT SUBSTRING('abc' FROM 'bad')"), /must be a number/);
+  assert.throws(() => rows("SELECT SUBSTRING('abc' FROM 1 FOR 'bad')"), /must be a number/);
+  assert.deepEqual(rows("SELECT SUBSTRING(UPPER(Last) FROM POSITION('e' IN Last) FOR 2) FROM P WHERE First = 'Ann'"), [['EE']]);
+  assert.deepEqual(run('SELECT SUBSTRING(? FROM ? FOR ?)', ['abcd', 2, 2]).rows, [['bc']]);
+  assert.deepEqual(rows("SELECT SUBSTRING(TRIM(LEADING 'x' FROM 'xxabc') FROM 2 FOR 2)"), [['bc']]);
+  assert.deepEqual(rows("SELECT SUBSTRING('abcd' FROM TRIM(BOTH FROM ' 2 ') FOR 2)"), [['bc']]);
+  assert.deepEqual(rows("SELECT 'SUBSTRING(a FROM 1)'"), [['SUBSTRING(a FROM 1)']]);
+});
+
+test('TRIM supports standard direction and character forms without changing its simple form', () => {
+  for (const [call, expected] of [
+    ["TRIM(LEADING 'a' FROM 'aab')", 'b'],
+    ["TRIM(TRAILING 'x' FROM 'axx')", 'a'],
+    ["TRIM(BOTH 'x' FROM 'xax')", 'a'],
+    ["TRIM(BOTH FROM '  a  ')", 'a'],
+    ["TRIM(LEADING FROM '  a ')", 'a '],
+    ["TRIM('x' FROM 'xax')", 'a'],
+    ["TRIM('  a ')", 'a'],
+    ["TRIM('xax')", 'xax'],
+    ["TRIM(BOTH NULL FROM '  a ')", 'a'],
+  ] as const) assert.deepEqual(rows(`SELECT ${call}`), [[expected]], call);
+  assert.throws(() => rows("SELECT TRIM(BOTH 'xy' FROM 'xya')"), /one-character/);
+  assert.deepEqual(rows("SELECT TRIM(LEADING 'x' FROM UPPER('xxa'))"), [['XXA']]);
+  assert.deepEqual(run('SELECT TRIM(LEADING ? FROM ?)', ['x', 'xxAB']).rows, [['AB']]);
+  assert.deepEqual(run('SELECT ?, TRIM(LEADING ? FROM ?)', ['keep', 'x', 'xxAB']).rows, [['keep', 'AB']]);
+  assert.deepEqual(rows("SELECT TRIM(BOTH 'x' FROM SUBSTRING('xax' FROM 1 FOR 3))"), [['a']]);
+  assert.deepEqual(rows("SELECT TRIM(SUBSTR(' ab ', -1))"), [['ab']]);
+  assert.deepEqual(rows("SELECT TRIM(TRIM(BOTH 'x' FROM 'xax'))"), [['a']]);
+});
+
+test('new SQL call rewrites leave quoted text, quoted names, comments and unmatched calls alone', () => {
+  for (const sql of [
+    "SELECT 'TRIM(BOTH FROM x)', 'SUBSTRING(a FROM 1)'",
+    'SELECT "TRIM(BOTH FROM x)" FROM P',
+    'SELECT 1 -- SUBSTRING(a FROM 1)',
+    'SELECT SUBSTRING(Last FROM 2',
+    'SELECT TRIM(BOTH FROM Last',
+  ]) assert.equal(fileMakerSqlSyntax(sql), sql);
+});
+
 test('placeholders keep their numbering when an ANY or ALL comparison is rewritten', () => {
   const db = new DatabaseSync(':memory:');
   try {
