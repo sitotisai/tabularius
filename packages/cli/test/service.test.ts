@@ -8,6 +8,7 @@ import { createServer } from 'node:http';
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { notOnWindows } from '../../store/test/windows.ts';
 import { checkPort, healthUrl, installService, installed, portFree, stopOwnServer, upgrade, winArg, serviceFile, servicePlainRefusal, defaultServiceHost, defaults, validateServicePublicUrl, type Installed } from '../src/service.ts';
 
 const main = join(import.meta.dirname, '..', 'src', 'main.ts');
@@ -134,7 +135,7 @@ test('the installed tabularius service may keep its own port when installed agai
   }
 });
 
-test("a LaunchDaemon's server is stopped by its own process id, for launchd to start again", async () => {
+test("a LaunchDaemon's server is stopped by its own process id, for launchd to start again", { skip: notOnWindows('the Windows server is asked to stop with a request file, tested in windows-readiness.test.ts, not with SIGTERM') }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-pid-'));
   const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)']);
   const exited = new Promise((done) => child.once('exit', (_code, signal) => done(signal)));
@@ -156,7 +157,7 @@ test("a LaunchDaemon's server is stopped by its own process id, for launchd to s
   }
 });
 
-test('a server too busy to hear the stop signal is stopped outright after the grace period', async () => {
+test('a server too busy to hear the stop signal is stopped outright after the grace period', { skip: notOnWindows('Windows has no signal to ignore, and the Windows server is never ended outright') }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-pid-'));
   // Ignores SIGTERM, as a server stuck in one long request does.
   const child = spawn(process.execPath, ['-e', 'process.on("SIGTERM", () => {}); process.stdout.write("ready\\n"); setInterval(() => {}, 1000)']);
