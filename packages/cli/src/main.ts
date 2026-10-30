@@ -1597,7 +1597,7 @@ function main(argv: string[]): number {
         : (process.env.TABULARIUS_FMS_PASSWORD !== undefined ? Promise.resolve(process.env.TABULARIUS_FMS_PASSWORD) : readSecret(`FileMaker Server password for ${user}`))
           .then((password) => fetchFmsExport(from, user, password, bool(args, '--insecure')));
       read.then((exp) => {
-        if (save) writeFileSync(save, JSON.stringify(exp, null, 2) + '\n', { mode: 0o600 });
+        if (save) writeChecked(save, JSON.stringify(exp, null, 2) + '\n', { mode: 0o600 });
         const report = migrateFms(exp, resolve(path), { fmsDir, keyPassphrase: process.env.TABULARIUS_FMS_KEY_PASSPHRASE, dryRun,
           onProgress: dryRun ? undefined : ({ completed, total, elapsedMs, etaMs }) => {
             process.stderr.write(`Migration: ${completed}/${total} files checked (${Math.round(elapsedMs / 1000)}s elapsed${etaMs === null ? '' : `, about ${Math.round(etaMs / 1000)}s remaining`})\n`);
@@ -2319,7 +2319,7 @@ function main(argv: string[]): number {
           file: (rel, data) => {
             const target = join(dirname(out), rel);
             mkdirSync(dirname(target), { recursive: true });
-            writeFileSync(target, data, { mode: 0o600 });
+            writeChecked(target, data, { mode: 0o600 });
           },
         }, { dialect, privileges, filesFolder });
         for (const line of exportSqlSummary(report)) console.log(line);
