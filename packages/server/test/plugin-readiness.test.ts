@@ -28,7 +28,7 @@ const BASE_ELEMENTS = 'com.openhbam.baseelements';
 /** Where each function is used, so the counts below can be read against it. */
 const SCRIPTS: Record<string, string> = {
   'Check version': 'Set Variable [ $v ; Value: BE_Version ]\nSet Variable [ $j ; Value: BE_JSONPath ( "{\\"p\\":1}" ; "$.p" ) ]',
-  'Run a command': 'Set Variable [ $r ; Value: BE_ExecuteSystemCommand ( "ls" ) ]\nSet Variable [ $m ; Value: MBS ( "Text.AddLineNumbers" ; "a" ) ]',
+  'Run a command': 'Set Variable [ $r ; Value: BE_ExecuteSystemCommand ( "ls" ) ]\nSet Variable [ $m ; Value: MBS ( "Window.Create" ; "a" ) ]',
   'Mail it': 'Set Variable [ $s ; Value: BE_SMTPSend ( "a@example.com" ; "b@example.com" ; "Hi" ; "Body" ) ]\nSet Variable [ $v ; Value: EmailVersion ( ) ]',
   'Dynamic MBS': 'Set Variable [ $x ; Value: MBS ( $name ; "a" ) ]\nSet Variable [ $t ; Value: MBS ( "Text.Trim" ; " a " ) ]',
 };
@@ -87,7 +87,7 @@ test('each kind of plug-in call is told apart, with the places that use it count
   assert.equal(find(r, 'BE_ExecuteSystemCommand').behaviour, 'refused');
   assert.equal(find(r, 'BE_SMTPSend').behaviour, 'outbox');
   assert.equal(find(r, 'EmailVersion').behaviour, 'unavailable');
-  assert.equal(find(r, 'MBS ( "Text.AddLineNumbers" )').behaviour, 'mbs-error');
+  assert.equal(find(r, 'MBS ( "Window.Create" )').behaviour, 'mbs-error');
   assert.equal(find(r, 'MBS ( "?" )').behaviour, 'cannot-tell');
   // Counted by the kind of place: one script, one field calculation and one layout object each use the shell command.
   const shell = find(r, 'BE_ExecuteSystemCommand');
@@ -129,7 +129,7 @@ test('what the panel says matches what the calculation really answers', () => {
     ['BE_ExecuteSystemCommand ( "ls" )', 'BE_ExecuteSystemCommand'],
     ['BE_SMTPSend ( "a@example.com" ; "b@example.com" ; "Hi" ; "Body" )', 'BE_SMTPSend'],
     ['EmailVersion ( )', 'EmailVersion'],
-    ['MBS ( "Text.AddLineNumbers" ; "a" )', 'MBS ( "Text.AddLineNumbers" )'],
+    ['MBS ( "Window.Create" ; "a" )', 'MBS ( "Window.Create" )'],
   ] as const) {
     const f = find(r, call);
     const got = String(answer(formula));
