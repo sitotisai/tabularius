@@ -10,9 +10,18 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { FmpDatabase } from '../../fmp12/src/index.ts';
 import { Store, importFmp12, importDesigns, upgradeDesigns } from '../src/index.ts';
+import { refuseReservedTableNames } from '../src/import.ts';
+import type { Schema } from '../../fmp12/src/schema.ts';
 import { syntheticFmp12 } from './synthetic-fmp12.ts';
 
 const ACCOUNT_FIELDS = ['name', 'password_hash', 'source'];
+
+test('fmp12-97: duplicate and case-variant base table names are refused', () => {
+  for (const names of [['Invoices', 'invoices'], ['T', 'T']]) {
+    const schema = { tables: names.map((name, i) => ({ id: 129 + i, name, fields: [] })) } as unknown as Schema;
+    assert.throws(() => refuseReservedTableNames(schema), /duplicate|same name|collid/i);
+  }
+});
 
 function withDir(fn: (dir: string) => void): void {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-reserved-'));

@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { decodeCalc } from '../src/calc.ts';
 import type { Chunk } from '../src/chunks.ts';
-import { containerBlobs, containerRefId, readContainers } from '../src/containers.ts';
+import { containerBlobs, containerRefId, readContainers, readImageLibrary, MAX_CONVERSION_BLOB_BYTES } from '../src/containers.ts';
 import { BLOCK_SIZE, encodePathInt, FmpError, FmpFile, rank } from '../src/file.ts';
 import { readLayoutDesigns } from '../src/layouts.ts';
 import { Pb, pbParse } from '../src/proto.ts';
@@ -281,4 +284,60 @@ test('AR-fmp12-reader-07', () => {
     assert.deepEqual([...blobs.get(containerRefId(ref)!)!.data], [index + 1]);
     assert.deepEqual([...containerBlobs(file, 129, id)].map((b) => b.id), ids.slice(index + 1));
   }
+});
+
+test('fmp12-95: an undecodable record id is reported instead of dropped', () => {
+  const file = chunkFile([{
+    path: [encodePathInt(129), encodePathInt(5), Uint8Array.of(0xe0, 0, 0, 0)],
+    chunk: { type: 'kv', key: 1, wide: false, data: Uint8Array.of(0x41 ^ 0x5a) }, block: 2,
+  }]);
+  assert.throws(() => [...readRecords(file, 129, new Set([1]))], /record id|record path/i);
+  const container = chunkFile([{
+    path: [...[129, 31, 5].map(encodePathInt), Uint8Array.of(0xe0, 0, 0, 0), Buffer.from('FILE')],
+    chunk: { type: 'segment', index: 1, wide: false, data: Uint8Array.of(1) }, block: 2,
+  }]);
+  assert.throws(() => [...containerBlobs(container, 129)], /container id path/i);
+});
+
+test('fmp12-102: large SCSU text decodes without a number array', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-scsu-'));
+  const marker = join(dir, 'unexpected-command');
+  try {
+    for (const name of ['launchctl', 'systemctl', 'sc', 'git', 'npm', 'curl', 'sudo']) {
+      const stub = join(dir, name);
+      writeFileSync(stub, `#!/bin/sh\nprintf unexpected > '${marker}'\nexit 99\n`);
+      chmodSync(stub, 0o755);
+    }
+    const source = new URL('../src/scsu.ts', import.meta.url).href;
+    const code = `import { decodeScsu } from ${JSON.stringify(source)}; const n = 8_000_000; const out = decodeScsu(new Uint8Array(n).fill(65)); if (out.length !== n || out[0] !== 'A' || out[n - 1] !== 'A') process.exit(1);`;
+    const result = spawnSync(process.execPath, ['--max-old-space-size=48', '--input-type=module', '--eval', code], {
+      env: { ...process.env, PATH: dir }, encoding: 'utf8', timeout: 20_000, maxBuffer: 1024 * 1024,
+    });
+    assert.equal(existsSync(marker), false, 'no external command ran');
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, result.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('fmp12-96: oversized container is skipped with its id and byte count', () => {
+  const file = chunkFile([1, 2].map((id) => ({
+    path: [...[129, 31, 5, id].map(encodePathInt), Buffer.from('FILE')],
+    chunk: { type: 'segment' as const, index: 1, wide: false, data: Uint8Array.of(id, id, id) }, block: 2,
+  })));
+  const skipped: [number, number][] = [];
+  assert.deepEqual([...containerBlobs(file, 129, 0, (id, bytes) => skipped.push([id, bytes]), 2)].map((b) => b.id), []);
+  assert.deepEqual(skipped, [[1, 3], [2, 3]]);
+  assert.deepEqual([...containerBlobs(file, 129)].map((b) => b.id), [1, 2]);
+});
+
+test('fmp12-100: image library refuses a blob before copying it into a tree', () => {
+  const data = new Uint8Array(17);
+  const file = chunkFile([{
+    path: [[31, 5, 1].map(encodePathInt), Buffer.from('PNGf')].flat(),
+    chunk: { type: 'segment', index: 1, wide: false, data }, block: 2,
+  }]);
+  assert.throws(() => readImageLibrary(file, 16), /image 1 exceeds 16 bytes/);
+  assert.ok(MAX_CONVERSION_BLOB_BYTES >= 512 * 1024 * 1024);
 });

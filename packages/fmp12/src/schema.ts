@@ -1311,7 +1311,8 @@ function readDataSources(n: Node | undefined): DataSource[] {
 
 /** Tree of every metadata path (catalogs and field definitions, no row data). */
 export function metadataTree(file: FmpFile): Node {
-  const root = buildTree(file, () => true, file.catalogChunks());
+  // Catalog 31 is the image library and can contain large binary streams.
+  const root = buildTree(file, (path) => path[0] !== 31, file.catalogChunks());
   // Each base table's field definitions live under [table].3, beside its records.
   for (const [id] of root.child(3, 16, 5)?.numbered() ?? []) {
     const fields = buildTree(file, () => true, file.chunks(undefined, [id, 3]));
