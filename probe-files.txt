@@ -1,0 +1,3 @@
+raw:packages/server/test/oauth.test.ts
+raw:packages/server/test/insight.test.ts
+raw:packages/server/test/dataapi-body-shapes.test.ts
