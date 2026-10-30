@@ -134,11 +134,18 @@ export class AiUsage implements UsageCounts {
     const file = join(dir, USAGE_DB);
     // Account and file names are in it: readable by the server's user only, like the files themselves. SQLite gives
     // its -wal and -shm files the same permissions.
-    try {
-      closeSync(openChecked(file, 'a', 0o600));
-    } catch (error) {
-      // Another user's file on a shared folder: left as it is.
-      if ((error as NodeJS.ErrnoException).code !== 'EPERM') throw error;
+    for (let tries = 0; ; tries++) {
+      try {
+        closeSync(openChecked(file, 'a', 0o600));
+        break;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        // Another user's file on a shared folder: left as it is.
+        if (code === 'EPERM') break;
+        // Workers starting at once can each find the file missing and one of them makes it first: looked at again,
+        // it is there. A link or other odd entry at the name is refused every time, so it still ends in the error.
+        if ((code !== 'ESTALE' && code !== 'EEXIST') || tries >= 5) throw error;
+      }
     }
     this.db = new DatabaseSync(file);
     this.db.exec('PRAGMA busy_timeout = 5000');
