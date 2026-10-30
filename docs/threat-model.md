@@ -48,6 +48,7 @@ These checks are not `openat(2)` and do not make path-based operations atomic. T
 
 **Modules that use it**
 
+- `packages/cli/src/main.ts`
 - `packages/cli/src/service.ts`
 - `packages/cli/src/windows-task.ts`
 - `packages/plugins/src/package.ts`
