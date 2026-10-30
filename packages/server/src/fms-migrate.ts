@@ -10,8 +10,8 @@
 // for Tabularius's scheduler, which runs them offline; message and system-script
 // schedules, and schedule emails, are listed as not carried over.
 
-import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { readJsonStateSync, updateJsonStateSync } from '../../store/src/durable.ts';
+import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs';
+import { atomicWrite, readJsonStateSync, updateJsonStateSync } from '../../store/src/durable.ts';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { hostRefusal, socketLookup } from '../../scripts/src/net-guard.ts';
@@ -521,9 +521,9 @@ function migrateFmsClaimed(exp: FmsExport, dest: string, opts: MigrateOptions): 
         if (key) {
           if (write) {
             mkdirSync(join(dest, 'tls'), { recursive: true, mode: 0o700 });
-            writeFileSync(join(dest, 'tls', 'cert.pem'), pem);
+            atomicWrite(join(dest, 'tls', 'cert.pem'), pem);
             // Kept unencrypted for the server to read at start, like --tls-key; readable by its owner only.
-            writeFileSync(join(dest, 'tls', 'key.pem'), key.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 });
+            atomicWrite(join(dest, 'tls', 'key.pem'), key.export({ type: 'pkcs8', format: 'pem' }) as string);
           }
           report.settings.tlsCert = join('tls', 'cert.pem');
           report.settings.tlsKey = join('tls', 'key.pem');
