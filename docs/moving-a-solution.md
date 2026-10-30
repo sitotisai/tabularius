@@ -390,6 +390,16 @@ FileMaker Server when idle" come across too. Printing being off stops the
 Print and Save Records as PDF steps; a browser can always print the page it
 shows.
 
+**Idle disconnect.** The "Disconnect user from FileMaker Server when idle"
+option is read from each set, and a set the file stores no option for has it on,
+as FileMaker ships it. With it off, a person signed in to the web client stays
+signed in past the idle time (15 minutes unless the admin console changes it)
+until they have been idle for one day. It applies to the web client only: a Data
+API session times out at the idle time whatever its set says, and so does a
+session of a set with Full Access. The option is read from the set each time a
+session is checked, so turning it on, moving the account to another set or
+turning the account off ends such a session at once.
+
 Of FileMaker's **Custom privileges**, per-table record access and per-field
 access come across, failing closed: a table the set doesn't list gets no
 access, and in a table whose fields the set customises, a field is kept

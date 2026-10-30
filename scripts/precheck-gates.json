@@ -78,5 +78,9 @@
   {
     "file": "packages/server/test/check-solution-docs.test.ts",
     "reason": "Checks that every kind of check-solution finding and its severity match docs/check-solution.md"
+  },
+  {
+    "file": "packages/server/test/docs-idle-disconnect.test.ts",
+    "reason": "Checks the documented effect of the idle-disconnect privilege option against the session code"
   }
 ]
