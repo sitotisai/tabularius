@@ -107,7 +107,7 @@ test('retype visits the text, number and temporal matrix and keeps a copy before
   }
   assert.equal(store.query('SELECT "To_number" AS v FROM "From_text" WHERE _fm_record_id = 1')[0].v, 7);
   assert.equal(store.query('SELECT "To_number" AS v FROM "From_text" WHERE _fm_record_id = 2')[0].v, 15);
-  assert.equal(store.query('SELECT "To_number" AS v FROM "From_text" WHERE _fm_record_id = 3')[0].v, 16);
+  assert.equal(store.query('SELECT "To_number" AS v FROM "From_text" WHERE _fm_record_id = 3')[0].v, '0x10');
   assert.equal(store.query('SELECT "To_date" AS v FROM "From_text" WHERE _fm_record_id = 4')[0].v, '2026-10-11');
   assert.equal(store.query('SELECT "To_number" AS v FROM "From_text" WHERE _fm_record_id = 5')[0].v, '[literal');
   assert.equal(store.query('SELECT "To_text" AS v FROM "From_number" WHERE _fm_record_id = 1')[0].v, '7');

@@ -375,7 +375,12 @@ export function convert(v: Cell, field: ImportField, fixes: Transform[]): { valu
     value = hit;
   }
   // What the field would refuse or store as text.
-  if (field.type === 'number' && typeof value === 'string' && !Number.isFinite(Number(value.replace(/,/g, '')))) return { value, issue: `"${value}" isn't a number` };
+  if (field.type === 'number' && typeof value === 'string') {
+    const decimal = value.replace(/,/g, '');
+    if (!/^\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?\s*$/.test(decimal) || !Number.isFinite(Number(decimal))) {
+      return { value, issue: `"${value}" isn't a number` };
+    }
+  }
   if (field.type === 'date' && typeof value === 'string' && !/^\d{4}-\d{2}-\d{2}$/.test(value) && !looksLikeDate(value)) return { value, issue: `"${value}" isn't a date` };
   return { value };
 }
