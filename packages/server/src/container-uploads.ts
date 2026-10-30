@@ -32,8 +32,6 @@ export const MAX_CONTAINER_UPLOAD_BYTES = 8 * 1024 * 1024 * 1024;
 export const MAX_REQUEST_SPOOLS_PER_ACCOUNT = 4;
 /** What a client is told to wait, in seconds, when a single-request spool is refused for now. */
 const REQUEST_SPOOL_RETRY_SECONDS = 5;
-/** An upload that has received nothing for this long is abandoned (TABULARIUS_UPLOAD_IDLE_HOURS, default 24; 0 keeps them). */
-
 const UPLOAD_PREFIX = 'tabularius-container-uploads-';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
