@@ -569,17 +569,50 @@ function releasePidFile(folder: string, ino: number): void {
   rmSync(file, { force: true });
 }
 
+let ownWindowsIdentity: { started: string; command: string } | undefined;
+
+// Windows answers with the moment the process started, in milliseconds. A process that is not there answers "gone", and one this user may not
+// read (a service running as another account) answers "denied", which is asked again through WMI because it is a process that exists.
+const WINDOWS_IDENTITY_SCRIPT = (pid: number) => `try { $p = [System.Diagnostics.Process]::GetProcessById(${pid}) } catch { 'gone'; exit }
+try { [DateTimeOffset]::new($p.StartTime).ToUnixTimeMilliseconds() } catch { 'denied' }`;
+
+/**
+ * Asks Windows for a process's start time. The .NET call takes a fraction of a second; WMI (Get-CimInstance) takes seconds to
+ * start and stalls for far longer on a busy machine, where the server's start waited on it. A timeout is asked again once with a longer wait.
+ * Windows has no command line here: the start time to the millisecond is what tells one process from another that was given the same number.
+ */
+function windowsProcessIdentity(pid: number): { started: string; command: string } | undefined {
+  const powershell = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const ask = (command: string): string => {
+    const args = ['-NoProfile', '-NonInteractive', '-Command', command];
+    try {
+      return execFileSync(powershell, args, { encoding: 'utf8', timeout: 20_000, windowsHide: true }).trim();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ETIMEDOUT') throw error;
+      return execFileSync(powershell, args, { encoding: 'utf8', timeout: 90_000, windowsHide: true }).trim();
+    }
+  };
+  let answer = ask(WINDOWS_IDENTITY_SCRIPT(pid));
+  if (answer === 'gone') return undefined;
+  if (answer === 'denied') {
+    const cim = ask(`Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" | ForEach-Object { ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() }`);
+    if (!cim) return undefined;
+    answer = cim;
+  }
+  if (!/^\d+$/.test(answer)) throw new Error('could not read the process creation time');
+  return { started: answer, command: '' };
+}
+
 /** Read the OS birth identity, not elapsed time; a recycled PID has a different identity.
- * Linux reads /proc; Windows CIM and macOS ps formats are platform-specific, and their behaviour is unverified here.
+ * Linux reads /proc, Windows asks PowerShell for the start time (checked on a Windows runner by pid-a09.test.ts), and macOS reads ps, whose format is unverified here.
  */
 export function processIdentity(pid: number): { started: string; command: string } | undefined {
   if (process.platform === 'win32') {
-    const output = execFileSync(join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), ['-NoProfile', '-NonInteractive', '-Command',
-      `Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" | Select-Object CreationDate,CommandLine | ConvertTo-Json -Compress`], { encoding: 'utf8', timeout: 5000 });
-    if (!output.trim()) return undefined;
-    const value = JSON.parse(output) as { CreationDate?: string; CommandLine?: string };
-    if (!value.CreationDate) throw new Error('could not read the process creation time');
-    return { started: value.CreationDate, command: value.CommandLine ?? '' };
+    // This process's own identity never changes, and asking PowerShell for it costs seconds on a busy machine.
+    if (pid === process.pid && ownWindowsIdentity) return ownWindowsIdentity;
+    const found = windowsProcessIdentity(pid);
+    if (pid === process.pid) ownWindowsIdentity = found;
+    return found;
   }
   if (process.platform === 'linux') {
     // The kernel's own record: the slim container image has no ps, and a process's start time here is in clock ticks since boot.

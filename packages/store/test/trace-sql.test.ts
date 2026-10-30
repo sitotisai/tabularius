@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { sqlShape, tracing } from '../src/trace.ts';
+import { callersIn, sqlShape, tracing } from '../src/trace.ts';
 import { testCommandPath } from '../../../scripts/test-command-path.ts';
 
 test('a statement\'s shape keeps keywords and hides names and values', () => {
@@ -59,4 +59,17 @@ test('SQL tracing accepts only explicit boolean values and refuses anything else
     process.env.TABULARIUS_TRACE_SQL = value;
     assert.throws(() => tracing(), /TABULARIUS_TRACE_SQL.*not a switch.*1, true, yes or on/, value);
   }
+});
+
+test('the callers named on a traced statement are read from a Windows stack as from any other', () => {
+  const stack = [
+    'Error',
+    '    at callers (file:///D:/a/tabularius/tabularius/packages/store/src/trace.ts:60:20)',
+    '    at Store.find (file:///D:/a/tabularius/tabularius/packages/store/src/store.ts:1200:9)',
+    '    at new Store (C:\\work\\packages\\store\\src\\store.ts:10:3)',
+    '    at file:///D:/a/tabularius/tabularius/packages/server/src/host.ts:5:5',
+    '    at Object.<anonymous> (file:///D:/a/tabularius/tabularius/packages/store/test/x.test.ts:1:1)',
+  ].join('\n');
+  assert.equal(callersIn(stack), 'find < Store < (anonymous)');
+  assert.equal(callersIn('Error\n    at Store.find (file:///home/u/packages/store/src/store.ts:1:1)'), 'find');
 });

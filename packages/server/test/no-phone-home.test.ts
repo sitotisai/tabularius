@@ -13,10 +13,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { applyStarter, createStore, Store } from '../../store/src/index.ts';
 import { serve, MCP_LOCAL_TOKEN_FILE } from '../src/index.ts';
+import { pathToFileURL } from 'node:url';
 
 const root = join(import.meta.dirname, '..', '..', '..');
 const main = join(root, 'packages', 'cli', 'src', 'main.ts');
-const recorder = join(import.meta.dirname, 'outbound-recorder.ts');
+const recorder = pathToFileURL(join(import.meta.dirname, 'outbound-recorder.ts')).href;
 const fixture = join(root, 'fixtures', 'fmp12', 'Charts.fmp12');
 
 const freePort = () => new Promise<number>((resolve, reject) => {
