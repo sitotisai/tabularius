@@ -123,6 +123,7 @@ export function render(entries: Entry[]): string {
   const areas = [...new Set(sorted.map((e) => e.area))];
   const waiting = ([['a sample file', /sample/i], ['a FileMaker run or Design Report', /FileMaker|Design Report|MBS run|native/i], ['a Claris answer', /Claris/i], ['a decision by the owner', /owner/i]] as const)
     .map(([label, pattern]) => `${sorted.filter((e) => pattern.test(e.settles)).length} on ${label}`);
+  const unverified = sorted.filter((e) => /\bunverified\b/i.test(e.what)).length;
   const out = [
     '# Known differences from FileMaker',
     '',
@@ -133,7 +134,7 @@ export function render(entries: Entry[]): string {
     'marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not',
     'part of it.',
     '',
-    `**${sorted.length} entries in ${areas.length} areas.** Waiting on: ${waiting.join(', ')} (an entry can wait on more than one).`,
+    `**${sorted.length} entries in ${areas.length} areas.** Unverified: ${unverified}. Waiting on: ${waiting.join(', ')} (an entry can wait on more than one).`,
     '',
     ...areas.flatMap((area) => [
       `## ${area}`,
