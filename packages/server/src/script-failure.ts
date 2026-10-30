@@ -105,7 +105,7 @@ function quotedName(line: string): string | undefined {
  * that failed; they also limit what this reports.
  */
 export async function explainScriptFailure(store: Store, req: { script: string; layout?: string; recordId?: number; parameter?: string },
-  opts: { account: string; via?: string; privileges?: Privileges; scope?: TokenScope; maxBytes?: number; skip?: string[] }): Promise<ScriptFailure> {
+  opts: { account: string; via?: string; person?: string; groups?: string[]; privileges?: Privileges; scope?: TokenScope; maxBytes?: number; skip?: string[] }): Promise<ScriptFailure> {
   const ranOn = 'a throwaway copy of the file, offline (nothing was sent or changed)';
   const target = store.schema.scripts.find((s) => s.name.toLowerCase() === req.script.toLowerCase());
   if (!target) {
@@ -138,7 +138,7 @@ export async function explainScriptFailure(store: Store, req: { script: string; 
     copy.readContainersLike(store);
     const script = copy.schema.scripts.find((s) => s.id === target.id)!;
     const layout = req.layout ?? startingPoints(copy).get(script.id)?.layout;
-    const privileges = opts.privileges ? narrowPrivileges(copy, copy.privileges(opts.account, opts.via), opts.scope) : undefined;
+    const privileges = opts.privileges ? narrowPrivileges(copy, copy.privileges(opts.account, opts.via, opts.person, opts.groups), opts.scope) : undefined;
     // The state right after each step that set an error: the next step's debug point, or the last one seen.
     type Snapshot = { at: NonNullable<DebugPoint['previousError']>; point: DebugPoint; stack: DebugPoint['stack'] };
     let erred: Snapshot | undefined;

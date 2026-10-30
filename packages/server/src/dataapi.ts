@@ -135,6 +135,15 @@ export interface Session {
 const CLIENT_PRIVILEGES: Record<Session['client'], string[]> = { rest: ['fmrest'], web: ['fmapp', 'fmwebdirect'] };
 
 /** The account's privileges, read on each request so changes (a revoked fmrest, say) apply at once. */
+/** What an identity provider or directory vouched for at a sign-in: the person's email and groups, which another hosted file maps itself. */
+export type ExternalIdentity = { person?: string; groups?: string[] };
+
+/** The session's external identity, for the paths that carry it on to another hosted file's mapping; empty for a local sign-in. */
+export function externalIdentity(session: Pick<Session, 'externalIdentity'>): ExternalIdentity {
+  const id = session.externalIdentity;
+  return id ? { ...(id.person ? { person: id.person } : {}), ...(id.groups ? { groups: id.groups } : {}) } : {};
+}
+
 export function sessionPrivileges(store: Store, session: Session): Privileges {
   if (!store.identityAllowed(session.account, session.via, session.viaId, session.externalIdentity?.person, session.principalId, session.personId)) throw new ApiError(952, 'Invalid FileMaker Data API token (*)', 401);
   let p = store.privileges(session.account, session.via, session.externalIdentity?.person, session.externalIdentity?.groups);
