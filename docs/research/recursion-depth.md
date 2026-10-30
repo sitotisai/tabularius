@@ -2,7 +2,7 @@
 
 ## Result
 
-Non-tail custom-function recursion remains limited by the Node.js JavaScript stack. In the generated `Sum1 ( n ) = If ( n <= 0 ; 0 ; n + Sum1 ( n - 1 ) )` calculation, 500 levels pass and 5,000 levels return `?`. A non-tail runaway on this run reports `Forever recursed too deeply (this server's stack ran out at level 714; FileMaker allows 10000)`. The exact level depends on the Node build and the surrounding call path.
+Non-tail custom-function recursion remains limited by the Node.js JavaScript stack. In the generated `Sum1 ( n ) = If ( n <= 0 ; 0 ; n + Sum1 ( n - 1 ) )` calculation, 500 levels pass in the test suite and 5,000 levels return `?`; a fresh process running only that formula stopped near 480 levels, because the limit depends on how warm the code is. A non-tail runaway on this run reports `Forever recursed too deeply (this server's stack ran out at level 714; FileMaker allows 10000)`. The exact level depends on the Node build and the surrounding call path.
 
 Tail calls through `If`, `Case` and `Let` already use an explicit loop. Existing coverage confirms a tail-recursive sum at 9,990 calls and checks the 10,000-call runaway guard. The measured depth for non-tail recursion is recorded in [numbers and precision](../numbers-and-precision.md).
 
