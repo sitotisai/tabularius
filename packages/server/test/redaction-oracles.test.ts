@@ -15,7 +15,7 @@ import type { LayoutObject } from '../../fmp12/src/index.ts';
 async function fixture(t: TestContext, value = 'synthetic-amber', account?: string) {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-oracles-'));
   const host = new Host(dir, () => {}, { background: false });
-  t.after(async () => { await host.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(async () => { await host.close(); });
   const store = host.create('Sample');
   store.applyDesign([
     { op: 'createTable', name: 'Items', fields: [{ name: 'Password' }, { name: 'PrivateNumber', type: 'number' }, { name: 'Name' }] },
@@ -34,6 +34,7 @@ async function fixture(t: TestContext, value = 'synthetic-amber', account?: stri
   const server = createMcpServer(host, account ? { account, database: 'Sample' } : { admin: true });
   const client = new Client({ name: 'oracle-test', version: '1' });
   t.after(async () => { await client.close(); await server.close(); });
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const [a, b] = InMemoryTransport.createLinkedPair();
   await server.connect(a); await client.connect(b);
   const call = (name: string, args: Record<string, unknown> = {}) => client.callTool({ name, arguments: { database: 'Sample', ...args } });

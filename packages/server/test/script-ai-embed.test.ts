@@ -54,9 +54,8 @@ after(async () => {
   await new Promise<void>((r) => (withEmbed ? withEmbed.server.close(() => r()) : r()));
   await new Promise<void>((r) => (without ? without.server.close(() => r()) : r()));
   await new Promise<void>((r) => (local ? local.server.close(() => r()) : r()));
-  if (dir3) rmSync(dir3, { recursive: true, force: true });
   embedder?.close();
-  for (const d of [dir, dir2]) if (d) rmSync(d, { recursive: true });
+  for (const d of [dir, dir2, dir3]) if (d) rmSync(d, { recursive: true, force: true });
 });
 
 const step = (stepId: number, name: string, params?: StepParams): ScriptStep => ({ stepId, name, enabled: true, params });

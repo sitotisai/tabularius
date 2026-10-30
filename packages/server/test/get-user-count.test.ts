@@ -8,10 +8,10 @@ import { createStore } from '../../store/src/index.ts';
 
 test('hosted file session counts follow opens and closes', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'get-user-count-'));
-  t.after(() => rmSync(dir, { recursive: true }));
   for (const name of ['A', 'B']) createStore(join(dir, `${name}.openhbam.sqlite`));
   const host = new Host(dir, () => {});
   t.after(() => host.close());
+  t.after(() => rmSync(dir, { recursive: true }));
   const api = new DataApi(host);
   host.userCountForFile = (name) => api.sessionCountForFile(name);
   const a = host.get('A')!;

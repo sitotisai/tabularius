@@ -16,12 +16,12 @@ const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtur
 for (const shared of [false, true]) for (const check of ['alive', 'authorize', 'validateSession', 'sweep'] as const) {
   test(`${shared ? 'shared' : 'memory'} session expiry via ${check} releases locks in every file`, async (t) => {
     const dir = mkdtempSync(join(tmpdir(), 'tabularius-expired-locks-'));
-    t.after(() => rmSync(dir, { recursive: true }));
     for (const file of ['A', 'B']) createStore(join(dir, `${file}.openhbam.sqlite`));
     const db = new DatabaseSync(':memory:');
     t.after(() => db.close());
     const host = new Host(dir, () => {}, shared ? { locks: (store) => new SharedRecordLocks(db, store.name) } : {});
     t.after(() => host.close());
+    t.after(() => rmSync(dir, { recursive: true }));
     t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
     // Sessions age on the monotonic clock, shared lock leases on the wall clock: move both.
     let mono = performance.now();
@@ -57,10 +57,10 @@ for (const shared of [false, true]) for (const check of ['alive', 'authorize', '
 
 test('timed-out sessions are cleared as new ones open', { skip }, (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-sweep-'));
-  t.after(() => rmSync(dir, { recursive: true }));
   copyFileSync(fixture, join(dir, 'Charts.fmp12'));
   const host = new Host(dir, () => {});
   t.after(() => host.close());
+  t.after(() => rmSync(dir, { recursive: true }));
   let now = performance.now();
   t.mock.method(performance, 'now', () => now);
   const api = new DataApi(host);
@@ -89,10 +89,10 @@ test('a full-access Data API token still expires at the idle limit', { skip }, (
   // privilege set, so even [Full Access] (which turns idle-disconnect off) does
   // not keep a Data API session alive.
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-fulltoken-'));
-  t.after(() => rmSync(dir, { recursive: true }));
   copyFileSync(fixture, join(dir, 'Charts.fmp12'));
   const host = new Host(dir, () => {});
   t.after(() => host.close());
+  t.after(() => rmSync(dir, { recursive: true }));
   let now = performance.now();
   t.mock.method(performance, 'now', () => now);
   const api = new DataApi(host);
@@ -105,10 +105,10 @@ test('a full-access Data API token still expires at the idle limit', { skip }, (
 
 test('a web-client session with idle-disconnect off keeps its session alive past the idle limit', { skip }, (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-keepalive-'));
-  t.after(() => rmSync(dir, { recursive: true }));
   copyFileSync(fixture, join(dir, 'Charts.fmp12'));
   const host = new Host(dir, () => {});
   t.after(() => host.close());
+  t.after(() => rmSync(dir, { recursive: true }));
   let now = performance.now();
   t.mock.method(performance, 'now', () => now);
   const api = new DataApi(host);
@@ -133,10 +133,10 @@ test('a web-client session with idle-disconnect off keeps its session alive past
 
 test('a Data API session with idle-disconnect off still times out (the option is interactive-only)', { skip }, (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-restidle-'));
-  t.after(() => rmSync(dir, { recursive: true }));
   copyFileSync(fixture, join(dir, 'Charts.fmp12'));
   const host = new Host(dir, () => {});
   t.after(() => host.close());
+  t.after(() => rmSync(dir, { recursive: true }));
   let now = performance.now();
   t.mock.method(performance, 'now', () => now);
   const api = new DataApi(host);
@@ -151,10 +151,10 @@ test('a Data API session with idle-disconnect off still times out (the option is
 
 test('a web-client session is not kept alive for Full Access, a disabled account, or a set that now disconnects idle sessions', { skip }, (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-keepalive2-'));
-  t.after(() => rmSync(dir, { recursive: true }));
   copyFileSync(fixture, join(dir, 'Charts.fmp12'));
   const host = new Host(dir, () => {});
   t.after(() => host.close());
+  t.after(() => rmSync(dir, { recursive: true }));
   let now = performance.now();
   t.mock.method(performance, 'now', () => now);
   const api = new DataApi(host);

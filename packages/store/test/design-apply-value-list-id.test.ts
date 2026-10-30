@@ -8,11 +8,11 @@ import { createStore, designText, planDesignApply, readDesignFolder, Store, writ
 
 test('a moved value-list file is the same list, not a new one', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tab-vl-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'F.sqlite');
   createStore(path);
   const store = new Store(path);
   t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   store.applyDesign([{ op: 'createValueList', name: 'Colours', values: ['red', 'blue'] }]);
   const source = () => ({ schema: store.schema, layouts: store.designs().layouts, accounts: store.accounts(), privilegeSets: store.privilegeSets() });
   const folder = join(dir, 'design');

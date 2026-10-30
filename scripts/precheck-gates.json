@@ -40,6 +40,10 @@
     "reason": "Checks that file-writing modules import the filesystem boundary, apart from a shrinking allow-list"
   },
   {
+    "file": "packages/server/test/test-teardown-order.test.ts",
+    "reason": "Checks that test hooks close servers before they remove the folder, apart from a shrinking allow-list"
+  },
+  {
     "file": "packages/server/test/env-number-guard.test.ts",
     "reason": "Scans every source file for a raw Number(process.env.X) outside the settings helpers"
   },

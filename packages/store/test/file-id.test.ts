@@ -34,7 +34,6 @@ test('created stores have stable identities; an older store gains one on opening
 
 test('read-only SQL refuses a file that replaced the opened one at its path', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'file-id-swap-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'A.openhbam.sqlite');
   const other = join(dir, 'other.openhbam.sqlite');
   createStore(path);
@@ -51,5 +50,6 @@ test('read-only SQL refuses a file that replaced the opened one at its path', (t
   createStore(kept);
   const same = new Store(kept);
   t.after(() => same.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   assert.deepEqual([...same.iterateCommitted('SELECT 1 AS one')].map((r) => ({ ...r })), [{ one: 1 }]);
 });

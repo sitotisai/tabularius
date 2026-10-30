@@ -34,7 +34,7 @@ test('#28 stale same-PID and reused-PID spools expire, recent files survive', (t
 test('#25 admin startup reclaims aged parts with reused PIDs but keeps recent and active owners', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-part-test-'));
   const host = new Host(dir, () => {});
-  t.after(async () => { await host.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(async () => { await host.close(); });
   const first = new Uploads(host, () => {});
   t.after(() => first.stop());
   const live = first.start({ name: 'Synthetic.fmp12', size: 1 });
@@ -47,6 +47,7 @@ test('#25 admin startup reclaims aged parts with reused PIDs but keeps recent an
   for (const path of [old, reused]) age(path, Date.now() - 9 * day);
   const next = new Uploads(host, () => {});
   t.after(() => next.stop());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   assert.equal(existsSync(old), false);
   assert.equal(existsSync(reused), false);
   assert.equal(existsSync(young), true);
@@ -61,7 +62,7 @@ test('#25 admin startup reclaims aged parts with reused PIDs but keeps recent an
 test('#25 a part whose owner is confirmed dead is removed at once; same-PID and live-PID parts keep the grace', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-part-dead-test-'));
   const host = new Host(dir, () => {});
-  t.after(async () => { await host.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(async () => { await host.close(); });
   const folder = join(dir, '.openhbam-uploads');
   mkdirSync(folder);
   const exited = spawnSync(process.execPath, ['-e', '0']);
@@ -73,6 +74,7 @@ test('#25 a part whose owner is confirmed dead is removed at once; same-PID and 
   for (const path of [dead, same, live]) writeFileSync(path, 'synthetic');
   const uploads = new Uploads(host, () => {});
   t.after(() => uploads.stop());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   assert.equal(existsSync(dead), false, 'a crash-looping server must not pile up the parts of owners that are gone');
   assert.equal(existsSync(same), true);
   assert.equal(existsSync(live), true);
@@ -130,9 +132,9 @@ test('an unswapped request spool folder is removed on release', (t) => {
 
 test('#28 a folder with this PID but another run is foreign: a live PID keeps it, only this run is reclaimed after the day', (t) => {
   const tmp = mkdtempSync(join(tmpdir(), 'tabularius-run-test-'));
-  t.after(() => rmSync(tmp, { recursive: true, force: true }));
   const uploads = new ContainerUploads({ tmp });
   t.after(() => uploads.stop());
+  t.after(() => rmSync(tmp, { recursive: true, force: true }));
   uploads.start({ db: 'D', account: 'A' }, { layout: 'L', recordId: 1, field: 'F', repetition: 1 }, { size: 1 });
   const [tracked] = readdirSync(tmp);
   const run = JSON.parse(readFileSync(join(tmp, tracked, 'owner.json'), 'utf8')).run as string;

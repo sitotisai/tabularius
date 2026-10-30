@@ -9,11 +9,11 @@ import { createStore, Store } from '../src/index.ts';
 
 test('ExecuteSQL answers with the committed value after a rolled-back transaction and a later write', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-sql-rollback-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'a.openhbam.sqlite');
   createStore(path);
   const store = new Store(path);
   t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   store.applyDesign([{ op: 'createTable', name: 'T', fields: [{ name: 'Note' }] }]);
   const id = Number(store.create('T', { Note: 'one' }).recordId);
   const formula = 'ExecuteSQL ( "SELECT Note FROM T" ; "|" ; "¶" )';

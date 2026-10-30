@@ -8,11 +8,11 @@ import { reviewPrivileges } from '../src/privilege-review.ts';
 
 test('constant record rules on empty and populated tables are reviewed by their value', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tab-privrev-empty-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'Shop.sqlite');
   createStore(path);
   const store = new Store(path, 'Shop');
   t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   store.applyDesign([{ op: 'createTable', name: 'Orders', fields: [{ name: 'Id', type: 'number' }] }]);
   const check = (rule: string) => {
     store.savePrivilegeSet({

@@ -9,11 +9,11 @@ import type { Host } from '../src/host.ts';
 
 function setup(t: TestContext) {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-review-schedules-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const host = { dir, onAdd: [], names: () => [], scriptOptions: () => ({}), logs: { event: () => {} } } as unknown as Host;
   const schedules = new Schedules(host);
   schedules.broadcast = () => 0;
   t.after(() => schedules.stop());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   return { dir, host, schedules };
 }
 
