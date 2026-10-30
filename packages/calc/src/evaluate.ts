@@ -290,6 +290,18 @@ export interface PluginFiles {
 }
 
 const MAX_DEPTH = 10000;
+/** What a custom function says when its calls nest past the limit in force (10,000, or the lower figure SetRecursion set). */
+function recursionLimitMessage(name: string, limit: number): string {
+  const at = (n: number) => n.toLocaleString('en-US');
+  return limit < MAX_DEPTH
+    ? `${name} recursed too deeply: it passed ${at(limit)} nested calls, the limit SetRecursion set. Raise the limit in SetRecursion (up to ${at(MAX_DEPTH)}), or rewrite ${name} as a loop with While.`
+    : `${name} recursed too deeply: it passed Tabularius's limit of ${at(MAX_DEPTH)} nested calls. Rewrite ${name} as a loop with While.`;
+}
+
+/** The same when the server's stack ran out first (recursion through a function that reads its own arguments). */
+function recursionStackMessage(name: string, level: number): string {
+  return `${name} recursed too deeply: this server's stack ran out at level ${level} (Tabularius allows ${MAX_DEPTH.toLocaleString('en-US')} nested calls). Rewrite ${name} as a loop with While.`;
+}
 /** Number functions that keep a decimal argument's digits even outside SetPrecision. */
 const TARGETED_DECIMAL_FUNCTIONS = new Set(['abs', 'int', 'round', 'truncate', 'mod', 'div', 'sum', 'average', 'min', 'max']);
 
@@ -509,12 +521,12 @@ export class Env {
           this.scopes.length = i;
           break;
         case FN_END: {
-          // JavaScript's stack can run out before FileMaker's 10,000 levels: the same error ("?"), saying how far it got.
+          // JavaScript's stack can run out before Tabularius's 10,000 levels: the same error ("?"), saying how far it got.
           const level = this.depth;
           this.scopes = a as Map<string, Value>[];
           this.depth = i;
           if (!refusal && e instanceof RangeError && stackExhausted(e)) {
-            e = new CalcError(ERR.recursion, `${(n as Node & { k: 'call' | 'var' }).name} recursed too deeply (this server's stack ran out at level ${level}; FileMaker allows ${MAX_DEPTH})`);
+            e = new CalcError(ERR.recursion, recursionStackMessage((n as Node & { k: 'call' | 'var' }).name, level));
           }
           break;
         }
@@ -684,7 +696,7 @@ export class Env {
         const scope = this.bindValues(name, cf, out, nodes.map((a) => this.argumentFieldName(a)));
         const limit = Math.min(MAX_DEPTH, this.recursionLimit ?? MAX_DEPTH);
         this.push(FN_END, n, d, this.depth, this.scopes);
-        if (++this.depth > limit) throw new CalcError(ERR.recursion, `${name} recursed too deeply`);
+        if (++this.depth > limit) throw new CalcError(ERR.recursion, recursionLimitMessage(name, limit));
         this.tick();
         const body = this.parse(cf.formula, cf.parameters.map((p) => p.trim()));
         this.scopes = [scope];

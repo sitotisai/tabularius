@@ -33,6 +33,8 @@ export interface ConversionReport {
     undecoded: ConversionItem[];
     /** Neither FileMaker's nor the file's custom functions: plug-ins. */
     plugIns: ConversionItem[];
+    /** Custom functions that call themselves, directly or through others: they work, up to 10,000 nested calls. `where` is the cycle ("calls itself", or "Even → Odd → Even"). */
+    recursive: ConversionItem[];
   };
   /** AI steps use this server's configuration, not the provider account configured by the script. */
   aiSteps: { count: number; where: string[] };
@@ -179,6 +181,34 @@ export function withoutComments(text: string): string {
  * `focus` limits the report to the places it accepts (a "where" such as `Script "Invoice", line 4`), and keeps every
  * place instead of the first few: what won't work in one script, field or layout.
  */
+/** Custom functions that reach themselves again through the custom functions they call, each with the shortest such cycle. */
+export function recursiveFunctions(store: Store): ConversionItem[] {
+  const calls = solutionIndex(store).customCalls;
+  const proper = new Map(store.schema.customFunctions.map((c) => [lower(c.name), c.name]));
+  const out: ConversionItem[] = [];
+  for (const start of calls.keys()) {
+    // Breadth first from what `start` calls, so the first way back to `start` is the shortest cycle.
+    const from = new Map<string, string>();
+    const queue = [...calls.get(start)!];
+    for (const q of queue) from.set(q, start);
+    let found = false;
+    for (let i = 0; i < queue.length && !found; i++) {
+      const at = queue[i];
+      if (at === start) { found = true; break; }
+      for (const next of calls.get(at) ?? []) {
+        if (!from.has(next)) { from.set(next, at); queue.push(next); }
+      }
+    }
+    if (!found) continue;
+    const path = [start];
+    for (let at = from.get(start)!; at !== start; at = from.get(at)!) path.unshift(at);
+    path.unshift(start);
+    const names = path.map((p) => proper.get(p) ?? p);
+    out.push({ name: proper.get(start) ?? start, count: 1, where: [names.length === 2 ? 'calls itself' : names.join(' → ')] });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export function conversionReport(store: Store, hosted: string[] = [], focus?: (where: string) => boolean, opts: { designOnly?: boolean } = {}): ConversionReport {
   const s = store.schema;
   const index = solutionIndex(store);
@@ -332,7 +362,8 @@ export function conversionReport(store: Store, hosted: string[] = [], focus?: (w
     database: store.name,
     unknownTokens: [...unknown.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id)),
     summary: '',
-    functions: { notYet: notYet.list(), undecoded: undecoded.list(), plugIns: named(plugIns).map((item) => item.name.startsWith('unknown plug-in (id only)') ? { ...item, where: [] } : item) },
+    functions: { notYet: notYet.list(), undecoded: undecoded.list(), plugIns: named(plugIns).map((item) => item.name.startsWith('unknown plug-in (id only)') ? { ...item, where: [] } : item),
+      recursive: recursiveFunctions(store).filter((item) => !focus || focus(`Custom function ${item.name} (`)).slice(0, LIST) },
     aiSteps: ai,
     steps: { notYet: stepsNotYet.list(), dialogs: dialogs.list(), relatedOptions: relatedOptions.list(), importMode: importMode.list(), blocked: blocked.list(), network: network.list(), screenOnly: screenOnly.list(), clientOnly: clientOnly.list(), saveCopyAs: saveCopyAs.list() },
     triggers: { undecoded: unnamedTriggers.list(), layouts: triggerLayouts.size },
@@ -427,6 +458,10 @@ function summarize(r: ConversionReport, unparsed: number, broken: number): strin
   out.push(problems.length ? '## Won\'t work yet' : 'Nothing found that won\'t work.', ...problems);
 
   const notes: string[] = [];
+  if (r.functions.recursive.length) {
+    const shown = r.functions.recursive.slice(0, 8).map((f) => f.where[0] === 'calls itself' ? f.name : `${f.name} (${f.where[0]})`).join(', ');
+    notes.push(`- **Custom functions that call themselves**: ${shown}${r.functions.recursive.length > 8 ? `, and ${r.functions.recursive.length - 8} more` : ''}. Tabularius stops a custom function at 10,000 nested calls (FileMaker documents 50,000 for one whose call to itself is the last thing it does, and 10,000 for any other). The call that passes the limit gives ? and an error that names the function. If one of these can be given more than 10,000 levels of data, rewrite it as a loop with While.`);
+  }
   if (r.aiSteps.count) notes.push(`- **AI steps run on this server's model**: ${plural(r.aiSteps.count, 'step')}. The account's endpoint, key and model named in the script are not used; this server's own model answers.`);
   if (r.steps.blocked.length) notes.push(`- **Send mail only when switched on**: ${names(r.steps.blocked)}. Tabularius sends no email unless the server's administrator switches sending on.`);
   if (r.steps.network.length) notes.push(`- **Reach the network** (off unless the server allows it): ${names(r.steps.network)}.`);

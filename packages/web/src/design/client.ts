@@ -285,7 +285,7 @@ export interface ConversionItem { name: string; count: number; where: string[] }
 export interface ConversionReport {
   database: string;
   summary: string;
-  functions: { notYet: ConversionItem[]; undecoded: ConversionItem[]; plugIns: ConversionItem[] };
+  functions: { notYet: ConversionItem[]; undecoded: ConversionItem[]; plugIns: ConversionItem[]; recursive?: ConversionItem[] };
   steps: { notYet: ConversionItem[]; blocked: ConversionItem[]; network: ConversionItem[]; screenOnly: ConversionItem[]; clientOnly?: ConversionItem[] };
   unparsed: { where: string; text: string; error: string }[];
   broken: { where: string; text: string }[];

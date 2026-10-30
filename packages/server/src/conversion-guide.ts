@@ -305,6 +305,14 @@ export function conversionGuide(store: Store, hosted: string[] = [], report: Con
       what: 'Runs on this server, queued as FileMaker Server queues it, with the same limits on parameters and results; steps that only change a window are skipped there.',
     });
   }
+  if (r.functions.recursive.length) {
+    differs.push({
+      title: 'Custom functions that call themselves', severity: 'low', count: r.functions.recursive.length,
+      where: r.functions.recursive.slice(0, WHERE).map((f) => `Custom function ${f.name}`),
+      what: 'They work, up to 10,000 nested calls. FileMaker documents 50,000 for a custom function whose call to itself is the last thing it does; Tabularius stops those at 10,000 too. The call that passes the limit gives ? and an error that names the function and says it passed the limit.',
+      instead: 'Only a function that can be given more than 10,000 levels of data needs a change: rewrite it as a loop with While ( [ initial values ] ; condition ; [ steps ] ; result ), which runs up to 50,000 iterations.',
+    });
+  }
   // FileMaker's three built-in sets come across as they are; only the file's own sets can have custom privileges.
   const ownSets = r.privileges.sets.filter((s) => !['[full access]', '[data entry only]', '[read-only access]'].includes(s.name.toLowerCase()));
   if (r.privileges.coarsened && ownSets.length) {

@@ -472,6 +472,8 @@ export interface Index {
   starters: Map<string, Set<string>>;
   /** Script name (lower) -> how it reaches outside the solution: steps, and plug-in functions it calls. */
   outbound: Map<string, Set<string>>;
+  /** Per custom function (lower-case name), the lower-case names of the custom functions its body calls. */
+  customCalls: Map<string, Set<string>>;
   catalog: Catalog;
 }
 
@@ -597,10 +599,13 @@ export function solutionIndex(store: Store): Index {
     sites.push(...layoutSites);
   }
 
+  const customCalls = new Map<string, Set<string>>();
   for (const cf of s.customFunctions) {
     const refs = emptyRefs();
     // A JavaScript function's body isn't a calculation: it refers to nothing in the file.
     if (cf.language !== 'javascript') cat.formula(cf.formula, refs, undefined, cf.parameters.map((p) => p.trim()));
+    // Calls constructed as text for Evaluate are not visible in the parsed formula.
+    customCalls.set(lower(cf.name), new Set([...refs.functions].filter((f) => cat.customFunctions.has(f))));
     sites.push({ kind: 'customFunction', where: `Custom function ${cf.name} ( ${cf.parameters.join(' ; ')} )${cf.language === 'javascript' ? ' [JavaScript]' : ''}`, text: cf.formula ?? '', refs });
   }
   for (const vl of s.valueLists) {
@@ -611,7 +616,7 @@ export function solutionIndex(store: Store): Index {
   // Secrets written into scripts and formulas (passwords, API keys) never reach a model or a document.
   for (const site of sites) site.text = redactSecrets(cat.ext(site.text));
   const referenceComplete = !sites.some((site) => site.refs.unparsed || site.refs.unknownTokens?.length);
-  const index: Index = { sites, referenceComplete, calls, callers, buttons, starters, outbound, catalog: cat };
+  const index: Index = { sites, referenceComplete, calls, callers, buttons, starters, outbound, customCalls, catalog: cat };
   indexes.set(store, { schema: store.schema, index });
   return index;
 }

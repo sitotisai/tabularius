@@ -33,7 +33,7 @@ test('a function that waits for its own call recurses as deep as FileMaker allow
   assert.equal(evaluateText('Sum4 ( 200 ; 0 )', ctx), '20100');
   assert.equal(evaluateText('Sum1 ( 9000 )', ctx), '40504500');
   assert.equal(evaluateText('Sum4 ( 9990 ; 0 )', ctx), '49905045');
-  assert.throws(() => evaluate('Sum1 ( 10100 )', ctx), (e) => e instanceof Error && e.message === 'Sum1 recursed too deeply');
+  assert.throws(() => evaluate('Sum1 ( 10100 )', ctx), (e) => e instanceof Error && e.message === "Sum1 recursed too deeply: it passed Tabularius's limit of 10,000 nested calls. Rewrite Sum1 as a loop with While.");
 });
 
 test('the debugger\'s trace still sees every step of a recursive function', () => {
