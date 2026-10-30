@@ -28,12 +28,19 @@ export async function fakeS3(o: FakeS3Options) {
     const body = Buffer.concat(chunks);
     const url = new URL(req.url!, 'http://x');
     const auth = String(req.headers.authorization ?? '');
+    // A request that carries no valid SigV4 timestamp cannot be checked; answer it like S3 does instead of throwing.
+    const stamp = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(String(req.headers['x-amz-date']));
+    if (!stamp) {
+      seen.rejected++;
+      res.writeHead(403).end('<Error><Code>AccessDenied</Code><Message>Missing or invalid x-amz-date header.</Message></Error>');
+      return;
+    }
     const signed = /SignedHeaders=([^,]+)/.exec(auth)?.[1].split(';') ?? [];
     const headers = Object.fromEntries(signed.filter((h) => !['host', 'x-amz-content-sha256', 'x-amz-date'].includes(h)).map((h) => [h, String(req.headers[h])]));
     const expect = signV4({
       method: req.method!, host: String(req.headers.host), path: url.pathname, query: [...url.searchParams.entries()], headers,
       payloadHash: String(req.headers['x-amz-content-sha256']), accessKey: o.accessKey, secretKey: o.secretKey, region: o.region ?? 'us-east-1',
-      date: new Date(String(req.headers['x-amz-date']).replace(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/, '$1-$2-$3T$4:$5:$6Z')),
+      date: new Date(`${stamp[1]}-${stamp[2]}-${stamp[3]}T${stamp[4]}:${stamp[5]}:${stamp[6]}Z`),
     }).authorization;
     const bad = auth !== expect || (o.sessionToken !== undefined && req.headers['x-amz-security-token'] !== o.sessionToken);
     if (bad) {
