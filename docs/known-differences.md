@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**188 entries in 23 areas.** Waiting on: 22 on a sample file, 98 on a FileMaker run or Design Report, 14 on a Claris answer, 17 on a decision by the owner (an entry can wait on more than one).
+**191 entries in 24 areas.** Waiting on: 22 on a sample file, 100 on a FileMaker run or Design Report, 14 on a Claris answer, 17 on a decision by the owner (an entry can wait on more than one).
 
 ## Data API
 
@@ -243,7 +243,15 @@ part of it.
 
 | What differs or is unknown | How it shows | What would settle it | Where it is written |
 | --- | --- | --- | --- |
-| vendor results for six constructs are unspecified in the cited pages | the conformance test records current behavior without an expected result | compare each construct with FileMaker and record the observed result | [docs/sql-grammar-conformance.md › Not verified](sql-grammar-conformance.md) — “…read do not say, so the file marks these entries unverified with no expected result (paths: []). The test…” |
+| CHAR(n) padding required by the SQL standard | short values remain unpadded after CAST | compare with ExecuteSQL on short text and add padding if needed | [docs/sql-grammar-conformance.md › What the check found and what changed](sql-grammar-conformance.md) — “…by this rewrite, and their product behavior is unverified.” |
+| vendor results for parameterized DECIMAL and NUMERIC casts are unspecified in the cited pages | the conformance test uses the SQL standard for these derived expectations | compare the casts with FileMaker and record the observed result | [docs/sql-grammar-conformance.md › What was checked](sql-grammar-conformance.md) — “…come from the SQL standard; the vendor result is unverified. Five entries are marked unverified because the…” |
+| vendor results for five constructs are unspecified in the cited pages | the conformance test records current behavior without an expected result | compare each construct with FileMaker and record the observed result | [docs/sql-grammar-conformance.md › Not verified](sql-grammar-conformance.md) — “…read do not say, so the file marks these entries unverified with no expected result (paths: []). The test…” |
+
+## SQL temporal CAST
+
+| What differs or is unknown | How it shows | What would settle it | Where it is written |
+| --- | --- | --- | --- |
+| vendor behavior for DATE, TIME and TIMESTAMP casts is unverified in the cited pages | Tabularius follows the SQL standard and errors on invalid values | run these casts through FileMaker and compare results | [docs/sql-grammar-conformance.md › What the check found and what changed](sql-grammar-conformance.md) — “…follow the SQL standard. Vendor behavior remains unverified.” |
 
 ## Standby servers
 

@@ -53,6 +53,57 @@ export function containerCastsToName(sql: string, isContainer: (name: string) =>
   });
 }
 
+/**
+ * Rewrite the CASTs SQLite would answer differently from FileMaker's SQL, after rewriting their operands: a character
+ * type (numbers print as decimal text, an optional length keeps that many characters), DATE, TIME and TIMESTAMP (the
+ * value or an error), and DECIMAL or NUMERIC with a precision (rounded to the scale, an error on overflow). Every
+ * other type name is left to SQLite.
+ */
+export function castsToTypes(sql: string): string {
+  const plain = blanked(sql);
+  if (!/\bCAST\s*\(/i.test(plain)) return sql;
+  const cast = /\bCAST\s*\(/gi;
+  let at = 0;
+  let result = '';
+  for (const match of plain.matchAll(cast)) {
+    const start = match.index;
+    if (start < at) continue;
+    const open = start + match[0].length - 1;
+    const end = closing(plain, open + 1);
+    if (end < 0) continue;
+    result += sql.slice(at, start);
+    const body = sql.slice(open + 1, end);
+    const inside = plain.slice(open + 1, end);
+    let depth = 0;
+    let as = -1;
+    for (let i = 0; i < inside.length - 1; i++) {
+      if (inside[i] === '(') depth++;
+      else if (inside[i] === ')') depth--;
+      else if (depth === 0 && inside.slice(i, i + 2).toUpperCase() === 'AS'
+        && (i === 0 || !/\w/.test(inside[i - 1])) && (i + 2 === inside.length || !/\w/.test(inside[i + 2]))) as = i;
+    }
+    if (as < 0) {
+      result += sql.slice(start, end + 1);
+    } else {
+      const operand = castsToTypes(body.slice(0, as));
+      const type = /^(\w+)(?:\s*\(\s*(\d+)(?:\s*,\s*(\d+))?\s*\))?\s*$/i.exec(body.slice(as + 2).trim());
+      const kind = type?.[1].toUpperCase();
+      const digits = type ? type.slice(2).filter((digit): digit is string => digit !== undefined) : [];
+      if (type && (kind === 'VARCHAR' || kind === 'CHAR' || kind === 'CHARACTER') && type[3] === undefined) {
+        result += `fm_cast_text(${operand}, ${type[2] ?? '-1'})`;
+      } else if (kind === 'DATE' || kind === 'TIME' || kind === 'TIMESTAMP') {
+        result += `fm_cast_${kind.toLowerCase()}(${operand}${digits.map((digit) => `, ${digit}`).join('')})`;
+      } else if (type && (kind === 'DECIMAL' || kind === 'NUMERIC') && type[2] !== undefined) {
+        result += `fm_cast_decimal(${operand}, ${type[2]}, ${type[3] ?? '0'})`;
+      } else {
+        result += sql.slice(start, open + 1) + operand + body.slice(as) + ')';
+      }
+    }
+    at = end + 1;
+  }
+  return result + sql.slice(at);
+}
+
 const unsupported = (what: string) => new CalcError(ERR.calculation, `${what} is not supported`);
 
 /** RIGHT OUTER JOIN and FULL OUTER JOIN: FileMaker's SQL has only INNER and LEFT OUTER, and SQLite would accept these. */
