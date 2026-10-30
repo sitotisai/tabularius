@@ -23,7 +23,19 @@ export function integrity(path: string, quick = false): string {
   } finally {
     db.close();
     // Opening it may leave empty log files; the copy is complete without them.
-    for (const ext of leftovers) rmSync(path + ext, { force: true });
+    for (const ext of leftovers) removeLeftover(path + ext);
+  }
+}
+
+/** On Windows a file just closed can stay busy for a moment (the system's own scan of it): delete it again for a few seconds rather than leave a log file in a backup set. */
+function removeLeftover(file: string): void {
+  for (let attempt = 0; ; attempt++) {
+    try { rmSync(file, { force: true }); return; }
+    catch (e) {
+      const busy = process.platform === 'win32' && ['EPERM', 'EBUSY', 'EACCES'].includes((e as NodeJS.ErrnoException).code ?? '');
+      if (!busy || attempt >= 60) throw e;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+    }
   }
 }
 
