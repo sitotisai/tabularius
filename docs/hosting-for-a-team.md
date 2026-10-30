@@ -411,9 +411,11 @@ tokens are cut from targets. `serve --stats-interval 30s` changes the minute
 `Stats.log` adds every process up and each writes its own top calls.
 
 **Encryption at rest.** Set `TABULARIUS_BACKUP_KEY` to a passphrase and every
-backup file, point-in-time changes included, is encrypted as it is written
+published backup file, point-in-time changes included, is encrypted
 (AES-256-GCM, key from the passphrase with scrypt), so a copied or off-site
-backup is unreadable without it. Restore needs the same passphrase, and
+backup is unreadable without it. Point-in-time logs are encrypted as written;
+the full SQLite snapshot is plaintext during staging before it is sealed.
+Restore needs the same passphrase, and
 refuses a wrong one or a damaged file before putting anything back. Keep the
 passphrase somewhere other than the backups: without it they can't be
 restored.
@@ -456,6 +458,15 @@ so a stolen disk or a copied folder holds no readable data. `serve` unlocks
 them with the key at start; encrypt or decrypt a stopped folder yourself with
 `tabularius encrypt <folder>` / `tabularius decrypt <folder>` (same key in the
 environment). The key is never written to the folder.
+
+The store key alone does not encrypt backups. Scheduled and point-in-time
+backups use `TABULARIUS_BACKUP_KEY`, and their SQLite snapshot is temporarily
+plaintext while it is being sealed. Restoring a stopped encrypted store from a
+point-in-time set also leaves a plaintext working file beside the older `.enc`
+file. This combination does not yet provide encrypted backups and a safe
+encrypted-store restore end to end; see
+[the encryption and point-in-time backup research](research/encryption-pitr.md).
+<!-- known-difference: Server operation ;; Encryption at rest is not safely combined with point-in-time backups ;; The store key alone leaves backup sets plaintext, backup staging has a plaintext snapshot, and restore can leave a plaintext store beside an older encrypted file ;; A streaming encrypted snapshot and an atomic encrypted-store restore design -->
 
 <!-- docs-example: illustrative -->
 ```sh
