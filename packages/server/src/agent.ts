@@ -18,7 +18,7 @@ import { recordChanges, runScript, type RecordChanges } from '../../scripts/src/
 import { appendToBatch, cleanupBatchById, CleanupError, journalBatch, snapshotRows, undoCleanup, type UndoOp } from './cleanup.ts';
 import { assertAiPolicy } from './ai-policy.ts';
 import { aiBlocker } from './ai-access.ts';
-import { ApiError, readBody, sessionPrivileges, type DataApi } from './dataapi.ts';
+import { ApiError, externalIdentity, readBody, sessionPrivileges, type DataApi } from './dataapi.ts';
 import { DRY_RUN_MAX_BYTES, fitChanges } from './dry-run.ts';
 import { parseRequestJson } from './request-json.ts';
 import type { Host } from './host.ts';
@@ -296,7 +296,7 @@ function undoOf(store: Store, entries: ReturnType<Store['auditLog']>): UndoOp[] 
 }
 
 /** Every step on a throwaway copy of the file, as the account: what the run would do, nothing kept. */
-export async function dryRunPlan(store: Store, plan: AgentPlan, who: { account: string; via?: string; scope?: TokenScope; signal?: AbortSignal }, maxBytes = DRY_RUN_MAX_BYTES): Promise<{ results: StepResult[]; skipped?: string }> {
+export async function dryRunPlan(store: Store, plan: AgentPlan, who: { account: string; via?: string; person?: string; groups?: string[]; scope?: TokenScope; signal?: AbortSignal }, maxBytes = DRY_RUN_MAX_BYTES): Promise<{ results: StepResult[]; skipped?: string }> {
   let size = 0;
   try {
     size = statSync(store.path).size;
@@ -312,7 +312,7 @@ export async function dryRunPlan(store: Store, plan: AgentPlan, who: { account: 
     who.signal?.throwIfAborted();
     copy = new Store(join(dir, 'copy.sqlite'), store.name);
     copy.readContainersLike(store);
-    const privileges = narrowPrivileges(copy, copy.privileges(who.account, who.via), who.scope);
+    const privileges = narrowPrivileges(copy, copy.privileges(who.account, who.via, who.person, who.groups), who.scope);
     let state: RunState = { layout: plan.layout, foundSet: copy.findIds(plan.layout, { privileges }) };
     const results: StepResult[] = [];
     for (const [i, step] of plan.steps.entries()) {
@@ -401,7 +401,7 @@ export class AgentApi {
       res.once('close', stop);
       if (res.destroyed) stop();
       try {
-        if (m[2] === 'dry-run') send(200, await dryRunPlan(store, plan, { signal: abort.signal, account: session.account, via: session.via, scope: { readOnly: session.readOnly, layouts: session.layoutScope } }));
+        if (m[2] === 'dry-run') send(200, await dryRunPlan(store, plan, { signal: abort.signal, account: session.account, via: session.via, ...externalIdentity(session), scope: { readOnly: session.readOnly, layouts: session.layoutScope } }));
         else send(200, await runApprovedStep(store, plan, Number(body.step), body.state as RunState | undefined, typeof body.run === 'string' ? body.run : undefined, { signal: abort.signal, account: session.account, via: session.via, privileges }));
       } finally { res.removeListener('close', stop); }
     } catch (e) {
