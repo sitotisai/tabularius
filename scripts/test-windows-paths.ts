@@ -10,5 +10,6 @@ export const driveLetterPath = (specifier: string): boolean => /^[A-Za-z]:[\\/]/
 export const asSpecifier = (specifier: string): string => (driveLetterPath(specifier) ? pathToFileURL(specifier).href : specifier);
 
 if (process.platform === 'win32') {
-  registerHooks({ resolve: (specifier, context, next) => next(asSpecifier(specifier), context) });
+  // Only for `import`: a `require('D:\\x.cjs')` takes the path as it is, and would not find a file called file:///D:/x.cjs.
+  registerHooks({ resolve: (specifier, context, next) => next(context.conditions?.includes('import') ? asSpecifier(specifier) : specifier, context) });
 }

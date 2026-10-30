@@ -1,3 +1,4 @@
+import { expectMode } from '../../store/test/windows.ts';
 import '../../store/test/support/stub-path.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -54,7 +55,7 @@ test('invariant: external-container creation retains 0666 permissions filtered b
       const filename = `mask-${mask}.txt`;
       store.setContainer('Items', id, 'Doc', 1, { filename, mime: 'text/plain', data: Buffer.from('contents') });
       const file = join(dir, 'RC_Data_FMS', 'Synthetic', 'Docs', filename);
-      assert.equal(fs.statSync(file).mode & 0o777, 0o666 & ~mask);
+      expectMode(fs.statSync(file).mode & 0o777, 0o666 & ~mask);
       assert.equal(fs.readFileSync(file, 'utf8'), 'contents');
     } finally { process.umask(previous); }
   }
@@ -67,8 +68,8 @@ test('container upload spools are private and reject a link swapped before the n
   let path = '';
   const u = withFilesystemHook((e) => { if (e.phase === 'opened') path = e.path; }, () =>
     uploads.start(who, { layout: 'Items', recordId: 1, field: 'Doc', repetition: 1 }, { size: 4 }));
-  assert.equal(fs.statSync(path).mode & 0o777, 0o600);
-  assert.equal(fs.statSync(dirname(path)).mode & 0o777, 0o700);
+  expectMode(fs.statSync(path).mode & 0o777, 0o600);
+  expectMode(fs.statSync(dirname(path)).mode & 0o777, 0o700);
   let hit = false;
   assert.throws(() => withFilesystemHook((e) => {
     if (e.phase !== 'checked') return;
@@ -83,7 +84,7 @@ test('admin uploads reject a hard link before opening a piece without advancing 
   const { dir, outside } = setup(t), uploads = new Uploads(new Host(dir), () => {}, { idleMs: 0 });
   const u = uploads.start({ name: 'Synthetic.fmp12', size: 4 });
   const path = join(dir, '.openhbam-uploads', u.id + '.part');
-  assert.equal(fs.statSync(path).mode & 0o777, 0o600);
+  expectMode(fs.statSync(path).mode & 0o777, 0o600);
   const req = Object.assign(Readable.from([Buffer.from('data')]), { headers: { 'content-length': '4' } }) as unknown as IncomingMessage;
   let hit = false;
   await assert.rejects(withFilesystemHook((e) => {
@@ -117,7 +118,7 @@ test('external containers reject parent replacement and leaf swaps without commi
   assert.equal(fs.existsSync(join(outside, 'data.txt')), false);
   fs.unlinkSync(moved); fs.renameSync(moved + '-old', moved);
   store.setContainer('Items', id, 'Doc', 1, { filename: 'data.txt', mime: 'text/plain', data: Buffer.from('private') });
-  assert.equal(fs.statSync(join(moved, 'data.txt')).mode & 0o777, 0o600);
+  expectMode(fs.statSync(join(moved, 'data.txt')).mode & 0o777, 0o600);
   const cid = store.containerId('Items', id, 'Doc')!;
   let hit = false;
   assert.throws(() => withFilesystemHook((e) => {
@@ -157,7 +158,7 @@ test('encrypted backup and restore use private files and reject swapped output l
   const { dir, secret } = setup(t), plain = join(dir, 'plain'), encrypted = join(dir, 'encrypted'), restored = join(dir, 'restored');
   fs.writeFileSync(plain, 'private');
   await encryptFile(plain, encrypted, 'synthetic-passphrase');
-  assert.equal(fs.statSync(encrypted).mode & 0o777, 0o600);
+  expectMode(fs.statSync(encrypted).mode & 0o777, 0o600);
   let hit = false;
   await assert.rejects(withFilesystemHook((e) => {
     if (e.phase !== 'checked' || e.path !== restored) return;
@@ -170,7 +171,7 @@ test('encrypted backup and restore use private files and reject swapped output l
 test('log rotation refuses a swapped source and does not append to its link target', async (t) => {
   const { dir, secret } = setup(t), logs = new ServerLogs(dir, { limit: 1 });
   logs.event('Information', 'first'); await logs.flush();
-  assert.equal(fs.statSync(logs.file('Event')).mode & 0o777, 0o600);
+  expectMode(fs.statSync(logs.file('Event')).mode & 0o777, 0o600);
   logs.event('Information', 'second');
   let hit = false;
   await withFilesystemHook((e) => {
@@ -196,7 +197,7 @@ test('service file placement refuses swapped links and restricts existing mode b
   assert.equal(fs.readFileSync(secret, 'utf8'), 'unchanged');
   fs.unlinkSync(path); fs.writeFileSync(path, 'old', { mode: 0o644 });
   placeServiceFile(path, 'configuration', false);
-  assert.equal(fs.statSync(path).mode & 0o777, 0o600);
+  expectMode(fs.statSync(path).mode & 0o777, 0o600);
 });
 
 function packageSource(dir: string) {
@@ -214,7 +215,7 @@ test('plug-in staging is private and unique; a full disk leaves the installed ve
   assert.throws(() => withFilesystemHook((e) => {
     if (hit || e.operation !== 'open' || e.phase !== 'checked' || !e.path.includes('.installing-')) return;
     hit = true;
-    assert.equal(fs.statSync(dirname(e.path)).mode & 0o777, 0o700);
+    expectMode(fs.statSync(dirname(e.path)).mode & 0o777, 0o700);
     throw Object.assign(new Error('injected full disk'), { code: 'ENOSPC' });
   }, () => installPackage(dir, bytes, { allowUnsigned: true, replace: true })));
   assert.ok(hit);
@@ -247,9 +248,9 @@ test('backup reuse copies permissive old files into private files and never link
   fs.chmodSync(old, 0o644);
   await backupExternal(dir, ['Synthetic'], second, first);
   const fresh = join(second, 'RC_Data_FMS', 'Synthetic', 'data');
-  assert.equal(fs.statSync(fresh).mode & 0o777, 0o600);
+  expectMode(fs.statSync(fresh).mode & 0o777, 0o600);
   assert.notEqual(fs.statSync(fresh).ino, fs.statSync(old).ino);
-  assert.equal(fs.statSync(old).mode & 0o777, 0o644);
+  expectMode(fs.statSync(old).mode & 0o777, 0o644);
   fs.unlinkSync(old); fs.symlinkSync(secret, old);
   await assert.rejects(backupExternal(dir, ['Synthetic'], third, first));
   assert.equal(fs.existsSync(join(third, 'RC_Data_FMS', 'Synthetic', 'data')), false);
@@ -263,12 +264,12 @@ test('native SQLite backups keep staging and published plaintext private', async
   const result = await withFilesystemHook((e) => {
     if (e.operation !== 'native' || !e.path.includes('.partial/')) return;
     hit = true;
-    assert.equal(fs.statSync(e.path).mode & 0o777, 0o600);
-    assert.equal(fs.statSync(dirname(e.path)).mode & 0o777, 0o700);
+    expectMode(fs.statSync(e.path).mode & 0o777, 0o600);
+    expectMode(fs.statSync(dirname(e.path)).mode & 0o777, 0o700);
   }, () => backupFolder(dir, dest, 1));
   assert.ok(hit);
-  assert.equal(fs.statSync(join(result.dir, 'Synthetic.openhbam.sqlite')).mode & 0o777, 0o600);
-  assert.equal(fs.statSync(result.dir).mode & 0o777, 0o700);
+  expectMode(fs.statSync(join(result.dir, 'Synthetic.openhbam.sqlite')).mode & 0o777, 0o600);
+  expectMode(fs.statSync(result.dir).mode & 0o777, 0o700);
 });
 
 
@@ -304,7 +305,7 @@ fs.writeFileSync(process.argv.at(-1), 'synthetic image', {mode: 0o600});
   const result = await withFilesystemHook((e) => {
     if (e.operation !== 'open' || e.phase !== 'checked' || !e.path.endsWith('/out.png')) return;
     path = e.path;
-    assert.equal(fs.statSync(dirname(path)).mode & 0o777, 0o700);
+    expectMode(fs.statSync(dirname(path)).mode & 0o777, 0o700);
     fs.unlinkSync(path); fs.symlinkSync(secret, path);
   }, () => tool.withTool(Buffer.from('synthetic'), false, 64));
   assert.ok(path);
