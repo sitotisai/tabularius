@@ -566,6 +566,8 @@ function releasePidFile(folder: string, ino: number): void {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
     throw error;
   }
+  // The owner record goes first: a pid file without one reads as an older version's, which only a matching process keeps.
+  rmSync(join(folder, PID_OWNER), { force: true });
   rmSync(file, { force: true });
 }
 
