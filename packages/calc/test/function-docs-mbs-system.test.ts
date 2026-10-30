@@ -21,7 +21,7 @@ test('MBS system function reference entries are registered and examples evaluate
     assert.ok(['works', 'works-differently', 'partly', 'not-yet'].includes(entry.status), `${entry.name} has an invalid status`);
     assert.ok(entry.examples.length <= 3, `${entry.name} has too many examples`);
     for (const example of entry.examples) {
-      assert.equal(evaluateText(example.formula), example.result, `${entry.name}: ${example.formula}`);
+      assert.equal(evaluateText(example.formula, { platform: 'linux' }), example.result, `${entry.name}: ${example.formula}`);
     }
   }
 });
