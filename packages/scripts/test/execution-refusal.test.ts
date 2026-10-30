@@ -24,7 +24,7 @@ function setup(t: TestContext) {
   b.siblings = () => [a];
   for (const account of ['Admin', 'Worker', 'Other']) a.setPassword(account, 'pw', '[Full Access]');
   t.after(() => { for (const store of stores) store.close(); rmSync(dir, { recursive: true, force: true }); });
-  const options = { layout: 'T', account: 'Worker', executionAccount: 'Worker', executionVia: 'Team', privileges: a.privileges('Worker', 'Team') };
+  const options = { layout: 'T', account: 'Worker', executionAccount: 'Worker', executionVia: 'Team', privileges: a.privileges('Worker', 'Team', undefined, ['Team']) };
   return { a, b, options };
 }
 

@@ -670,7 +670,7 @@ export class Oidc {
       p.resume.done(res, { store, via, email, issuer, sub, provider: s.provider.name, from: clientAddress(req) });
       return;
     }
-    const token = this.api.open(store, email, 'web', via, clientAddress(req), undefined, undefined, { issuer, sub, person: email, mapping: via });
+    const token = this.api.open(store, email, 'web', via, clientAddress(req), undefined, undefined, { issuer, sub, person: email, groups, mapping: via });
     res.writeHead(302, { location: `/app/#db=${encodeURIComponent(store.name)}&token=${token}&state=${encodeURIComponent(p.clientState ?? '')}`, 'cache-control': 'no-store' }).end();
   }
 

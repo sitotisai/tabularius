@@ -11,7 +11,7 @@ before(async () => {
   const [a, b] = m.stores;
   // In the second file this account has a set that does not read every record; in the first it has full access.
   b.savePrivilegeSet({ name: 'Partial', records: { view: true, edit: false, create: false, delete: false, fieldsDefault: 'none' }, layouts: 'viewOnly', scripts: 'viewOnly', valueLists: 'viewOnly', extendedPrivileges: ['fmxdbc'] });
-  b.setPassword('Shared', 'password-1', 'Partial');
+  b.setPassword('Shared', 'password-shared', 'Partial');
   assert.equal(a.schema.tableOccurrences.some((o) => o.name === 'ExternalItems'), true);
   // A second way into the same table of the other file.
   a.applyDesign([{ op: 'createOccurrence', name: 'ExternalOther', file: 'Destination', externalTable: b.schema.tables[0].id }]);
@@ -22,7 +22,7 @@ const open2 = (database: string, user: string, password: string) => PgClient.ope
 const open = (database: string, password: string) => open2(database, 'Shared', password);
 
 test('a refused table of another file answers like a table that is not there', async () => {
-  const c = await open(m.stores[0].name, 'password-0');
+  const c = await open(m.stores[0].name, 'password-shared');
   try {
     for (const extended of [false, true]) {
       const query = (sql: string) => extended ? c.extended(sql) : c.simple(sql);
@@ -42,7 +42,7 @@ test('a refused table of another file answers like a table that is not there', a
 });
 
 test('the answer names the table the query used, not another name that is in the query', async () => {
-  const c = await open(m.stores[0].name, 'password-0');
+  const c = await open(m.stores[0].name, 'password-shared');
   try {
     for (const extended of [false, true]) {
       const query = (sql: string) => extended ? c.extended(sql) : c.simple(sql);
@@ -59,7 +59,7 @@ test('the answer names the table the query used, not another name that is in the
 });
 
 test('a refused table is told apart from a missing one by nothing: not by a syntax error, not by the order of the checks', async () => {
-  const c = await open(m.stores[0].name, 'password-0');
+  const c = await open(m.stores[0].name, 'password-shared');
   try {
     for (const extended of [false, true]) {
       const query = (sql: string) => extended ? c.extended(sql) : c.simple(sql);
@@ -85,7 +85,7 @@ test('a refused table is told apart from a missing one by nothing: not by a synt
 });
 
 test('the catalog does not list a table of another file the account may not read', async () => {
-  const c = await open(m.stores[0].name, 'password-0');
+  const c = await open(m.stores[0].name, 'password-shared');
   try {
     for (const sql of [
       'SELECT tablename FROM pg_catalog.pg_tables',
@@ -102,8 +102,8 @@ test('the catalog does not list a table of another file the account may not read
 });
 
 test('a table of another file the account may read still answers', async () => {
-  m.stores[1].setPassword('Shared', 'password-1', 'Reader');
-  const c = await open(m.stores[0].name, 'password-0');
+  m.stores[1].setPassword('Shared', 'password-shared', 'Reader');
+  const c = await open(m.stores[0].name, 'password-shared');
   try {
     assert.deepEqual((await c.simple('SELECT Value FROM ExternalItems')).rows, [['SENTINEL_1']]);
     const listed = (await c.simple('SELECT tablename FROM pg_catalog.pg_tables')).rows.map((row) => row[0]);

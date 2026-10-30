@@ -417,8 +417,8 @@ export const ROWS: Row[] = [
   },
   {
     id: 'cross-file-password', section: 'Sign-in and accounts', setting: 'Reaching a second hosted file as the same account',
-    default: 'Needs the same name and password in that file: a password accepted in one file is tried in the others, and only an account whose password matched there (or an external identity both files map) reaches that file\'s tables, as FileMaker opens an external file',
-    changedBy: 'Not switchable. The proof is remembered in the file (as fingerprints of the two hashes, never the hashes) until either password changes; a wrong password counts as a failed sign-in in the other file',
+    default: 'Needs the same name and password in that file: a password accepted in one file is tried in the others, and only an account whose password matched there (or a person an identity provider or directory vouched for, whom that file maps itself by email, domain or group) reaches that file\'s tables, as FileMaker opens an external file',
+    changedBy: 'Not switchable. The proof is remembered in the file (as fingerprints of the two hashes, never the hashes) until either password changes; a wrong password given at a sign-in counts as a failed sign-in in the other file (a password set in Manage Security counts nowhere)',
     risk: 'Without it, whoever has Full Access in one hosted file could reach every other file in the folder as any account name they copied, without that file\'s password',
     how: 'probed', expect: 'password',
     observe: async (c) => (grep(c.source('packages/store/src/store.ts'), /(this\.crossFileProven\(account, other\))/) ? 'password' : 'name'),

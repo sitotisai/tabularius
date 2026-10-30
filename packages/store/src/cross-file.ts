@@ -91,11 +91,11 @@ export class CrossFileProofs {
     return out;
   }
 
-  /** Keeps a verdict in both files: the same password in two files is one fact, whichever file learned it. */
-  private record(account: string, from: string, item: ToProve, proven: boolean): void {
+  /** Keeps a verdict in both files: the same password in two files is one fact, whichever file learned it. A mismatch counts against the other file's lockout only for a sign-in (`signIn`): a password set in Manage Security guessed nothing. */
+  private record(account: string, from: string, item: ToProve, proven: boolean, signIn: boolean): void {
     this.keep(account, item.other.name, { own: item.own, theirs: item.theirs, proven });
     item.other.crossFile.keep(account, this.file.name, { own: item.theirs, theirs: item.own, proven });
-    if (!proven) item.other.crossFileRefused(account, from, this.file.name);
+    if (!proven && signIn) item.other.crossFileRefused(account, from, this.file.name);
   }
 
   private keep(account: string, other: string, verdict: Verdict): void {
@@ -119,23 +119,23 @@ export class CrossFileProofs {
     }
   }
 
-  /** Tries a password this file accepted in the other hosted files; on the thread pool. */
-  async prove(account: string, password: string, from: string): Promise<void> {
+  /** Tries a password this file accepted in the other hosted files; on the thread pool. `signIn` is false for a password set rather than given. */
+  async prove(account: string, password: string, from: string, signIn = true): Promise<void> {
     for (const item of this.toProve(account, from)) {
       const theirs = item.other.crossFileHash(account, from);
       let proven = false;
       try { proven = theirs !== undefined && await this.check.async(password, theirs); } catch { proven = false; }
-      this.record(account, from, item, proven);
+      this.record(account, from, item, proven, signIn);
     }
   }
 
-  /** As prove, on this thread, for the sign-ins that are checked on it. */
-  proveSync(account: string, password: string, from: string): void {
+  /** As prove, on this thread, for the sign-ins that are checked on it (one password check per other file that has the account, the first time this pair of passwords meets). */
+  proveSync(account: string, password: string, from: string, signIn = true): void {
     for (const item of this.toProve(account, from)) {
       const theirs = item.other.crossFileHash(account, from);
       let proven = false;
       try { proven = theirs !== undefined && this.check.sync(password, theirs); } catch { proven = false; }
-      this.record(account, from, item, proven);
+      this.record(account, from, item, proven, signIn);
     }
   }
 }

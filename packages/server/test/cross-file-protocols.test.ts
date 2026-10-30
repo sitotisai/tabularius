@@ -65,7 +65,7 @@ for (const from of [0, 1]) test(`MCP tool/resource matrix ${from} → ${1 - from
 
 for (const from of [0, 1]) test(`SQL wire ${from}: database credentials, external reads, and read-only writes`, async () => {
   const own = m.stores[from], other = m.stores[1 - from];
-  const c = await PgClient.open({ port: m.sqlPort, database: own.name, user: 'Shared', password: `password-${from}` });
+  const c = await PgClient.open({ port: m.sqlPort, database: own.name, user: 'Shared', password: 'password-shared' });
   try {
     for (const extended of [false, true]) {
       const query = (sql: string) => extended ? c.extended(sql) : c.simple(sql);
@@ -78,11 +78,12 @@ for (const from of [0, 1]) test(`SQL wire ${from}: database credentials, externa
     }
   } finally { c.close(); }
   // Distinct credentials behind the same account name; warm A must not authenticate B.
-  await assert.rejects(PgClient.open({ port: m.sqlPort, database: other.name, user: 'Shared', password: `password-${from}` }), /28P01/);
+  for (const [i, store] of m.stores.entries()) store.setPassword('Twin', `twin-password-${i}`, '[Full Access]');
+  await assert.rejects(PgClient.open({ port: m.sqlPort, database: other.name, user: 'Twin', password: `twin-password-${from}` }), /28P01/);
   for (const path of [`/fmi/odata/v4/${encodeURIComponent(other.name)}/Items`, `/tabularius/sql/v1/databases/${encodeURIComponent(other.name)}/tables`]) {
-    const warm = await m.request(path.replace(encodeURIComponent(other.name), encodeURIComponent(own.name)), basic('Shared', `password-${from}`));
+    const warm = await m.request(path.replace(encodeURIComponent(other.name), encodeURIComponent(own.name)), basic('Twin', `twin-password-${from}`));
     assert.equal(warm.status, 200, warm.text);
-    const r = await m.request(path, basic('Shared', `password-${from}`));
+    const r = await m.request(path, basic('Twin', `twin-password-${from}`));
     assert.equal(r.status, 401, r.text);
   }
 });
