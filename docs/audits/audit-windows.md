@@ -112,6 +112,8 @@ Product defects the Windows run found and fixed:
 - The integrity check left `-wal` and `-shm` files behind when removing them failed for a moment, which made a restore report files that were not in the backup set; it retries the removal.
 - The process-identity check in the backup folder lock started PowerShell, which stalled on busy runners; it reads the process start time from .NET and falls back to the slower query.
 
+A lock waiter can starve: the process that has just released the state-file lock often takes it again before a sleeping waiter wakes, so under heavy contention on Windows one process can wait past the 30 s default while the others finish. That is the documented `STATE_LOCK_TIMEOUT` and real use never writes 500 times back to back, so the lock is unchanged. The four-process test (about lost updates, not the limit) now passes `lockWaitMs` of five minutes and waits for every child before it removes its folder: it used to remove the folder as soon as one child failed, and the others then failed on a missing file and hid the cause.
+
 The suite does not cover what a hosted runner cannot: antivirus and SMB shares during renames, the installer in a real console with non-ASCII paths, and agreement with FileMaker or with third-party plug-ins. Those remain in the checklist above.
 
 ## Verification record
