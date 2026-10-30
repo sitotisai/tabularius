@@ -878,6 +878,15 @@ console's **Backups** shows each set's last check and test restore, with
 | Back up now | `tabularius backup <folder>`, or **Back up now** in the admin console |
 | Check backups | `tabularius verify-backup <folder> [set]` (exits 1 if one is damaged) |
 
+These two keys currently protect different files. `TABULARIUS_ENCRYPTION_KEY`
+alone does not encrypt a backup set; a backup sealed with
+`TABULARIUS_BACKUP_KEY` still has a temporary plaintext SQLite snapshot while
+it is made. Point-in-time restore into a stopped encrypted folder can leave a
+plaintext working file alongside its older encrypted file. Do not rely on this
+combination for an encrypted backup and restore workflow. The observed paths
+and the decisions needed to support it are in
+[encryption and point-in-time backup research](docs/research/encryption-pitr.md).
+
 Restoring:
 
 <!-- docs-example: illustrative -->
