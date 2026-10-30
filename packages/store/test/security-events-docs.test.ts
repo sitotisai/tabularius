@@ -28,10 +28,6 @@ const named = (kind: string): boolean => new RegExp(`(?<![\\w-])${kind}(?![\\w-]
 
 /** Kinds no page names yet. Remove a kind from here when its page text is written; never add one. */
 const UNDOCUMENTED = new Set<string>([
-  // Accounts
-  'account-added', 'account-removed', 'account-enabled', 'accounts-migrated', 'accounts-imported',
-  'accounts-import-rejected', 'must-change-set', 'must-change-cleared', 'account-local-only-set',
-  'account-local-only-cleared', 'account-require-2fa-set', 'account-require-2fa-cleared',
   // Schema
   'schema-changed',
   // Audit log
