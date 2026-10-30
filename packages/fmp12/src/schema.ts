@@ -458,9 +458,11 @@ export interface FileOptions {
    */
   onWindowOpen?: { scriptId: number; script?: string };
   onWindowClose?: { scriptId: number; script?: string };
-  /** "Switch to layout"; whether the option is ticked is not decoded yet, so this may be unset in FileMaker. */
+  /** The layout stored for "Switch to layout"; the option may be unticked even when this is set. */
   openLayoutId?: number;
   openLayout?: string;
+  /** Whether "Switch to layout" is ticked, inferred (unverified) from bit 0x40 of the fourth flag byte in five sample files; unset when no layout is stored. */
+  switchToLayout?: boolean;
 }
 
 /**
@@ -469,6 +471,9 @@ export interface FileOptions {
  * OnFirstWindowOpen script, the OnLastWindowClose script and the layout to open
  * on, each [n+1][n][id] or 00 for none. Matched across the sample files, whose
  * trigger scripts are named after the events and whose layouts are often "Splash".
+ * Bit 0x40 of the fourth flag byte is inferred (unverified) to mean that
+ * "Switch to layout" is ticked: set in three files with a start-screen layout,
+ * clear in two files that still store "Splash" as the layout.
  */
 export function readFileOptions(b: Uint8Array | undefined, scripts: CatalogItem[], layouts: CatalogItem[]): FileOptions | undefined {
   if (!b || b.length < 5) return undefined;
@@ -492,6 +497,7 @@ export function readFileOptions(b: Uint8Array | undefined, scripts: CatalogItem[
     out.openLayoutId = refs[2];
     const name = layouts.find((l) => l.id === refs[2])?.name;
     if (name) out.openLayout = name;
+    if (b.length > 3) out.switchToLayout = (b[3] & 0x40) !== 0;
   }
   return Object.keys(out).length ? out : undefined;
 }
