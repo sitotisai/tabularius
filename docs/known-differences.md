@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**199 entries in 27 areas.** Waiting on: 22 on a sample file, 105 on a FileMaker run or Design Report, 14 on a Claris answer, 15 on a decision by the owner (an entry can wait on more than one).
+**202 entries in 27 areas.** Waiting on: 22 on a sample file, 106 on a FileMaker run or Design Report, 14 on a Claris answer, 15 on a decision by the owner (an entry can wait on more than one).
 
 ## Conversion
 
@@ -150,7 +150,9 @@ part of it.
 | What differs or is unknown | How it shows | What would settle it | Where it is written |
 | --- | --- | --- | --- |
 | Go to Record [ Previous ] on the first record gives 101, inferred from Next | A script reading Get ( LastError ) there sees 101 | A FileMaker run of the step on the first record | [docs/error-codes.md › Script error codes](error-codes.md) — “…[ Previous ] on the first record \| 101 \| 101 \| Inferred (same as Next)” |
+| Set Field reports denied current-record edits as 200 at the step; reference-product step timing is unverified | Get ( LastError ) immediately after Set Field reads 200 | A reference-product run with a denied record edit | [docs/error-codes.md › Script error codes](error-codes.md) — “…access \| 0 until commit \| 200 at the step \| Inferred from the code's meaning; reference-product step timing is…” |
 | Delete, Reset or Enable Account on an account that is not there gives 213, inferred from FileMaker 14's list (Claris's current list drops it) | A script reading Get ( LastError ) there sees 213 | A FileMaker run of each step on a missing account | [docs/error-codes.md › Script error codes](error-codes.md) — “…an account that isn't there \| 213 \| 213 \| Inferred: 213 meant "User account and/or password does not exist" in…” |
+| Set Field reports a current-record view-only field as 201 at the step; reference-product step timing is unverified | Get ( LastError ) immediately after Set Field reads 201 | A reference-product run with a view-only field | [docs/error-codes.md › Script error codes](error-codes.md) — “…field \| 0 until commit \| 201 at the step \| Inferred from the code's meaning; reference-product step timing is…” |
 | Go to Field to a field that is not on the layout gives 102, inferred | A script reading Get ( LastError ) there sees 102 | A FileMaker run of the step | [docs/error-codes.md › Script error codes](error-codes.md) — “…Field, a field not on the layout \| 102 \| 102 \| Inferred” |
 | The FileMaker-side menu names and behaviour comparisons in the glossary are inferred unless a row links to a Claris source | A menu path or behaviour named in the glossary may differ from the FileMaker version in use | A FileMaker run or a Claris page for each row | [docs/filemaker-glossary.md › FileMaker glossary and menu map](filemaker-glossary.md) — “…menu names and behavior comparisons below are inferred unless a row links to a Claris source; Tabularius…” |
 | Synchronous calculations, aggregates, native SQL and some preparation still block cooperative script batches | A single synchronous operation can delay cancellation and other requests | Asynchronous calculation/store evaluation or worker isolation, followed by latency tests | [docs/guides/building/scripts-and-triggers.md › Run budgets and long record operations](guides/building/scripts-and-triggers.md) — “…compatibility of interruption timing remains unverified.” |
@@ -266,6 +268,7 @@ part of it.
 
 | What differs or is unknown | How it shows | What would settle it | Where it is written |
 | --- | --- | --- | --- |
+| acceptance of SUBSTRING and TRIM FROM forms by FileMaker is unknown | Tabularius runs these forms with SQL standard semantics | run the same forms on FileMaker and record whether they are accepted | [docs/sql-grammar-conformance.md › What the check found and what changed](sql-grammar-conformance.md) — “…1. Whether FileMaker accepts the FROM forms is unverified.” |
 | CHAR(n) padding required by the SQL standard | short values remain unpadded after CAST | compare with ExecuteSQL on short text and add padding if needed | [docs/sql-grammar-conformance.md › What the check found and what changed](sql-grammar-conformance.md) — “…by this rewrite, and their product behavior is unverified.” |
 | vendor results for parameterized DECIMAL and NUMERIC casts are unspecified in the cited pages | the conformance test uses the SQL standard for these derived expectations | compare the casts with FileMaker and record the observed result | [docs/sql-grammar-conformance.md › What was checked](sql-grammar-conformance.md) — “…come from the SQL standard; the vendor result is unverified. Five entries are marked unverified because the…” |
 | vendor results for five constructs are unspecified in the cited pages | the conformance test records current behavior without an expected result | compare each construct with FileMaker and record the observed result | [docs/sql-grammar-conformance.md › Not verified](sql-grammar-conformance.md) — “…read do not say, so the file marks these entries unverified with no expected result (paths: []). The test…” |
