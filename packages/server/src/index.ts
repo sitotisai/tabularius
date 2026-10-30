@@ -558,6 +558,7 @@ export async function serve(opts: ServeOptions): Promise<{ server: Server; host:
     disposers.push(() => debug.stop());
     const assistant = new Assistant(host, api, opts.ai ? { ...opts.ai, log } : opts.ai);
     admin.assistant = assistant;
+    disposers.push(() => assistant.close());
     // An older server's count is read into the shared file at startup, so the console shows today's use straight away.
     assistant.readOldUsage();
     // FileMaker's AI script steps answer with the same model, under the same daily limits and per-file AI switch.

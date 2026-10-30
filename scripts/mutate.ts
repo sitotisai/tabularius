@@ -180,7 +180,10 @@ export async function command(args: string[], timeout: number): Promise<{ status
       try {
         if (process.platform === 'win32') execFileSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
         else process.kill(-child.pid!, 'SIGKILL');
-      } catch { /* already exited */ }
+      } catch {
+        // Already exited, or (on Windows) taskkill could not end the tree: end the child itself so its pipes close.
+        try { child.kill(); } catch { /* already exited */ }
+      }
     };
     let interrupted = false;
     const stop = () => { interrupted = true; kill(); };
