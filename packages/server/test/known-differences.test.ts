@@ -19,6 +19,25 @@ test('the register is up to date with the markers', () => {
   assert.equal(readFileSync(REGISTER, 'utf8'), render(entries), 'run npm run docs:known-differences');
 });
 
+test('the summary counts only rows explicitly marked unverified and preserves waiting counts', () => {
+  const marker = (what: string, settles: string) => `| ${what} | A difference may show | ${settles} | <!-- known-difference: Area ;; ${what} ;; A difference may show ;; ${settles} -->`;
+  const { entries, problems } = pages({ 'synthetic.md': [
+    '# Synthetic differences',
+    '',
+    '| What | How | Settle |',
+    '| --- | --- | --- |',
+    marker('Comparison unverified', 'A sample file'),
+    marker('Still unverified', 'A FileMaker run'),
+    marker('Unverified against the reference', 'A Claris answer and owner decision'),
+    marker('A local test file covers this behavior', 'A FileMaker run'),
+  ].join('\n') });
+  assert.deepEqual(problems, []);
+  const summary = render(entries).split('\n').find((line) => line.startsWith('**'));
+  assert.match(summary!, /Unverified: 3\./);
+  assert.match(summary!, /Waiting on: 1 on a sample file, 2 on a FileMaker run or Design Report, 1 on a Claris answer, 1 on a decision by the owner/);
+  assert.doesNotMatch(summary!, /Confirmed:/);
+});
+
 test('source comments are omitted before excerpts are shortened', () => {
   const { entries } = pages({ 'a.md': '# A\n\n| This is unverified <!-- engine.ts writeField --> and documented here | shows | settles | <!-- known-difference: Scripts ;; behavior ;; shows ;; settles -->\n' });
   assert.equal(entries.length, 1);
