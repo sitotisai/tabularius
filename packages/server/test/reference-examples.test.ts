@@ -294,6 +294,10 @@ test('REST reference examples match live status and response shape', async () =>
   let debugToken = '';
   let importPreviewToken = '';
   let totpSecret = '';
+  // What the server logs through console.error while an example runs (faults it answers with a 500), kept for that example's failure message.
+  const logged: string[] = [];
+  const consoleError = console.error;
+  console.error = (...args: unknown[]) => { logged.push(args.map(String).join(' ')); consoleError(...args); };
   try {
     for (const group of REST_GROUPS) for (const route of group.routes) {
       const f = route.path.startsWith('/tabularius/replication/') ? (replicationFixture ??= await fixture(true)) : base;
@@ -652,11 +656,15 @@ test('REST reference examples match live status and response shape', async () =>
           assert.ok(text.length > 0, `${label}: expected a non-empty text response`);
         }
         passed++;
-      } catch (e) { failures.push(`${label}: ${(e as Error).message}`); }
+      } catch (e) {
+        // A shape mismatch names the field only; the answer itself (and what the server logged while it answered) says why.
+        failures.push(`${label}: ${(e as Error).message}${/status; got/.test((e as Error).message) ? '' : ` [answer: ${text.slice(0, 400)}]`}${logged.length ? ` [server logged: ${logged.splice(0).join(' | ').slice(0, 600)}]` : ''}`);
+      }
+      logged.length = 0;
     }
     assert.deepEqual(failures, [], `${passed} passed, ${failures.length} failed, ${skipped} skipped:\n${failures.join('\n')}`);
     console.log(`REST examples: ${passed} passed, ${failures.length} failed, ${skipped} skipped`);
-  } finally { await base.close(); await replicationFixture?.close(); }
+  } finally { console.error = consoleError; await base.close(); await replicationFixture?.close(); }
 });
 
   test('MCP reference examples match live tool result shape', async () => {
