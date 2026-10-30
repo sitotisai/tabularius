@@ -9,6 +9,15 @@ import { guardedFetch, outboundContext, outboundDeadline } from '../src/net-guar
 
 const PRIVATE = { policy: { private: ['127.0.0.1'] } };
 
+/** A port nothing listens on (port 0 is not one on Windows, where a connect to it is not refused). */
+async function closedPort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
+  const { port } = server.address() as AddressInfo;
+  await new Promise((ok) => server.close(ok));
+  return port;
+}
+
 async function until(predicate: () => boolean): Promise<void> {
   const end = performance.now() + 3000;
   while (!predicate()) {
@@ -113,13 +122,14 @@ test('cancelled waiters leave no slots or listeners, including cancellation just
 
 test('unread cancellation, redirects, refused bodies and failed connects release admission', { timeout: 10_000 }, async (t) => {
   const { base, request } = await fixture(t);
+  const closed = await closedPort();
   await outboundContext.run({ file: 'release-file', account: 'a' }, async () => {
     for (let i = 0; i < 12; i++) {
       const response = await guardedFetch(base + `/unread-${i}`, {}, PRIVATE);
       await response.body!.cancel();
       assert.equal(await (await guardedFetch(base + '/redirect', {}, PRIVATE)).text(), 'ok');
       await assert.rejects(guardedFetch(base + '/oversize', {}, { ...PRIVATE, maxBytes: 8 }), /larger/);
-      await assert.rejects(guardedFetch('http://127.0.0.1:0/', {}, PRIVATE), /fetch failed/);
+      await assert.rejects(guardedFetch(`http://127.0.0.1:${closed}/`, {}, PRIVATE), /fetch failed/);
     }
   });
   assert.equal(await request('release-file', 'a', '/fast-after-errors'), 'ok');

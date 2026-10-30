@@ -42,7 +42,7 @@ import { spawnSync } from 'node:child_process';
 import { closeSync, cpSync, existsSync, fchmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { cleanupPath, openSync, writeFileSync } from '../../store/src/fs-boundary.ts';
 import { homedir, networkInterfaces, tmpdir, userInfo } from 'node:os';
-import { dirname, join, resolve, win32 } from 'node:path';
+import { dirname, join, posix, resolve, win32 } from 'node:path';
 import { request as httpsRequest } from 'node:https';
 import { request as httpRequest } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
@@ -218,7 +218,7 @@ export function serviceFile(o: ServiceOptions, preview = false): { path: string;
   refuseUnsafe(o, preview);
   if (o.platform === 'darwin') {
     const args = command(o).map((a) => `<string>${xml(a)}</string>`).join('');
-    const log = join(o.home, 'logs', 'server.log');
+    const log = posix.join(o.home, 'logs', 'server.log');
     return {
       path: servicePath(o),
       text: `<?xml version="1.0" encoding="UTF-8"?>
@@ -266,7 +266,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 # /usr, /boot and /etc are read-only to it; the folders it writes stay writable even if they sit under those.
 ProtectSystem=full
-ReadWritePaths=${[o.folder, o.home, resolve(dirname(o.main), '../../../..')].map((p) => `-${unitPath(p)}`).join(' ')}
+ReadWritePaths=${[o.folder, o.home, posix.resolve(posix.dirname(o.main), '../../../..')].map((p) => `-${unitPath(p)}`).join(' ')}
 ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
@@ -668,10 +668,11 @@ export function portFree(port: number, host: string): Promise<boolean> {
  */
 export async function checkPort(o: Pick<ServiceOptions, 'port' | 'host' | 'home' | 'folder'> & { extra?: string[]; platform?: Platform }): Promise<void> {
   // The service's own address, and this machine's, where a program listening on one address blocks the other.
-  // On macOS a program listening on every address doesn't stop another binding
+  // On macOS and Windows a program listening on every address doesn't stop another binding
   // one address, though it holds the port there too, so ask for every address as well.
+  const platform = o.platform ?? process.platform;
   const v6 = o.host.includes(':');
-  const hosts = [...new Set([o.host, v6 ? '::1' : '127.0.0.1', ...((o.platform ?? process.platform) === 'darwin' ? [v6 ? '::' : '0.0.0.0'] : [])])];
+  const hosts = [...new Set([o.host, v6 ? '::1' : '127.0.0.1', ...(platform === 'darwin' || platform === 'win32' ? [v6 ? '::' : '0.0.0.0'] : [])])];
   const free = async (port: number) => {
     // One at a time: two probes of one port at once would find each other.
     for (const h of hosts) if (!await portFree(port, h)) return false;
@@ -687,7 +688,7 @@ export async function checkPort(o: Pick<ServiceOptions, 'port' | 'host' | 'home'
       break;
     }
   }
-  throw new Error(`port ${o.port} is in use by another program (\`lsof -nP -iTCP:${o.port} -sTCP:LISTEN\` shows which).${next ? ` Port ${next} is free: install with --port ${next}` : ' Choose a free port with --port'}`);
+  throw new Error(`port ${o.port} is in use by another program (\`${platform === 'win32' ? `netstat -ano | findstr :${o.port}` : `lsof -nP -iTCP:${o.port} -sTCP:LISTEN`}\` shows which).${next ? ` Port ${next} is free: install with --port ${next}` : ' Choose a free port with --port'}`);
 }
 
 /** The service's health check address. */

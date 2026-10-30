@@ -57,7 +57,9 @@ for (const platform of ['darwin', 'linux', 'win32'] as const) {
       if (process.env.UPDATE_GOLDEN === '1') { mkdirSync(GOLDEN, { recursive: true }); writeFileSync(file, golden); }
       assert.ok(existsSync(file), `${file} is missing: run with UPDATE_GOLDEN=1 once and review it`);
       // The golden is what a person reads in a review; a change to a directive shows here first.
-      assert.equal(golden, readFileSync(file, 'utf8'), `the generated file changed: review it, then UPDATE_GOLDEN=1`);
+      // Only the path in the header line is the machine's: its separators are the host's.
+      const header = (text: string) => text.replace(/^[^\n]*/, (line) => line.replaceAll('\\', '/'));
+      assert.equal(header(golden), header(readFileSync(file, 'utf8')), `the generated file changed: review it, then UPDATE_GOLDEN=1`);
     });
   }
 }

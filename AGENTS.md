@@ -37,6 +37,7 @@ npm run precheck        # type check, repo gates and the tests for what you chan
 ```
 
 - One test file: `node --no-warnings --test packages/server/test/some.test.ts`.
+- Windows: the suite runs on Windows too (see [docs/audits/audit-windows.md](docs/audits/audit-windows.md)). `test:ci` there loads the `scripts/test-windows-*.ts` preloads; a test that cannot mean the same on Windows skips with `notOnWindows(reason)` or an entry with a reason in `scripts/windows-skip.json`, never silently. Compare file identity with `fileId()` from `packages/store/src/fs-boundary.ts`, not `Stats.ino` (a Number loses precision on NTFS).
 - CI splits `test:ci` into four shards plus a gates job: `npm run test:ci -- --shard=2/4` runs one shard, `npm run gates` runs the repo-wide scans (docs, release audit, banned names, error text) once. Every test file is in exactly one of them. A new file needs no registration; run `npm run test:weights` now and then to rebalance the shards (see `scripts/test-plan.ts`).
 - Browser tests need Chromium and are not part of `test:ci`: `npm run smoke:web`, `npm run a11y:web`, `npm run test:e2e` (they run in the `browser-tests` workflow for changes under `packages/web` and the server pages; `scripts/require-browser.ts` checks a browser is found).
 - After adding, renaming or describing an MCP tool, a route or a setting, run `npm run docs:reference` (and `npm run docs:plugins` for the plug-in page) and commit the result. The suite fails on a stale generated page.

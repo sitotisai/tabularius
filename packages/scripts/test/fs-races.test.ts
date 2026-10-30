@@ -1,3 +1,4 @@
+import { expectMode } from '../../store/test/windows.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
@@ -94,7 +95,7 @@ test('Insert File refuses a leaf swap without changing its container field', asy
   const s = setup(t), file = join(s.docs, 'source.txt'); fs.writeFileSync(file, 'inside');
   let hit = false;
   await assert.rejects(withFilesystemHook((e) => {
-    if (e.phase !== 'checked' || !e.path.endsWith('/source.txt')) return;
+    if (e.phase !== 'checked' || !/[\\/]source\.txt$/.test(e.path)) return;
     hit = true; fs.unlinkSync(file); fs.symlinkSync(s.secret, file);
   }, () => s.text('Insert File [ Items::Doc ; “source.txt” ]')));
   assert.ok(hit);
@@ -118,8 +119,8 @@ test('temporary script files have private directories and private mode bits', as
   const result = await withFilesystemHook((e) => {
     if (e.phase !== 'opened' || !e.path.endsWith('scratch.txt')) return;
     checked = true;
-    assert.equal(fs.statSync(e.path).mode & 0o777, 0o600);
-    assert.equal(fs.statSync(dirname(e.path)).mode & 0o777, 0o700);
+    expectMode(fs.statSync(e.path).mode & 0o777, 0o600);
+    expectMode(fs.statSync(dirname(e.path)).mode & 0o777, 0o700);
   }, () => s.text('Create Data File [ “file:/Temporary/scratch.txt” ]'));
   assert.equal(result.error, 0); assert.ok(checked);
 });

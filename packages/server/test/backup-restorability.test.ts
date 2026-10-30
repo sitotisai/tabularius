@@ -62,7 +62,7 @@ test('AR-server-backup-ops-03: case 3', async (t) => {
   const remove = fs.rmSync;
   let injected = false;
   t.mock.method(fs, 'rmSync', (path: fs.PathLike, options?: fs.RmOptions) => {
-    if (String(path).endsWith('.partial/' + file) && existsSync(String(path) + '.enc')) {
+    if (String(path).replaceAll('\\', '/').endsWith('.partial/' + file) && existsSync(String(path) + '.enc')) {
       writeFileSync(String(path) + '.enc', 'injected output');
       injected = true;
     }

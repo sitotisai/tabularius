@@ -50,7 +50,8 @@ test('many matches are found in batches, not one call each', () => {
   assert.equal(n, 200_000);
   // Count and answer are exact; this ceiling catches a matching regression
   // while leaving room for CPU scheduling pauses on shared CI runners.
-  assert.ok(Date.now() - t0 < 8000, `${Date.now() - t0} ms`);
+  // Windows is several times slower here (about 14 s for the same text on a shared runner).
+  assert.ok(Date.now() - t0 < (process.platform === 'win32' ? 40_000 : 8000), `${Date.now() - t0} ms`);
 });
 
 test('calls inside one budget share it', () => {

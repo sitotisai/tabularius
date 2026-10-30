@@ -482,6 +482,8 @@ function signOutCookies(req: IncomingMessage): string[] {
 
 /** A path as a shell argument (zsh, bash). */
 function shellQuote(p: string): string {
+  // A Windows path is plain with its backslashes, and double quotes are the ones both cmd and PowerShell take.
+  if (process.platform === 'win32') return /^[\w@%+=:,./~\\-]+$/.test(p) ? p : `"${p}"`;
   return /^[\w@%+=:,./~-]+$/.test(p) ? p : `'${p.replace(/'/g, `'\\''`)}'`;
 }
 

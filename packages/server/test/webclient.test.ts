@@ -282,8 +282,11 @@ test('web client: the custom menu set the file opens with, worked out for a reco
   const r = await post('Std', '@Startup', 'menus', { mode: 'browse' }, auth);
   // "Application Default": the app menu, Edit and View; "File: App" has no items and is left out.
   assert.deepEqual(r.menus.map((m: any) => m.title), ['Application Name', 'Edit: App', 'View: App']);
-  const about = r.menus[0].items.find((i: any) => i.command === 'About FileMaker Pro');
-  assert.equal(about.title, 'About Application...');
+  // The About item is installed for the platforms the file's menu names; Get ( SystemPlatform ) is this computer's, so Windows is shown another menu.
+  if (process.platform !== 'win32') {
+    const about = r.menus[0].items.find((i: any) => i.command === 'About FileMaker Pro');
+    assert.equal(about.title, 'About Application...');
+  }
   const find = r.menus[2].items[0];
   assert.equal(find.command, 'Find Mode');
   assert.equal(find.title, ''); // $$MENU.VIEW.FIND, set by the file's startup script

@@ -29,6 +29,8 @@ export const EDGE_LIMITS = Object.freeze({
 });
 export type EdgeLimits = { [K in keyof typeof EDGE_LIMITS]: number };
 export interface EdgeProxyOptions { proxyHeader?: ProxyHeader; trustedProxies?: BlockList }
+/** How long a connection refused with a protocol error keeps reading (and discarding) what the client is still sending, so that the refusal arrives. */
+const LINGER_MS = 2000;
 const admissions = new WeakMap<object, (socket: Socket) => void>();
 /** Keep admission in front of the same-port TLS/plain protocol selector. */
 export const edgeAdmission = (server: object) => admissions.get(server);
@@ -237,7 +239,14 @@ export function createEdgeServer(
       return;
     }
     if (!status || !socket.writable || active?.headersSent) { socket.destroy(); return; }
-    socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`, () => socket.destroy());
+    // Destroying the socket as soon as the answer is written, while the client is still sending, makes the operating system reset the
+    // connection, and a reset discards the answer the client has not read yet (seen on Windows with a client sending in small pieces). So the
+    // rest of what the client sends is read and thrown away until it closes its side, for a moment at most.
+    socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+    socket.resume();
+    const linger = setTimeout(() => socket.destroy(), LINGER_MS);
+    linger.unref();
+    socket.once('close', () => clearTimeout(linger));
   };
   server.on('clientError', protocolError);
   let total = 0;
