@@ -1,6 +1,6 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -15,6 +15,7 @@ import { Connections } from '../src/connections.ts';
 import { OAuthServer } from '../src/oauth.ts';
 import { Admin } from '../src/admin.ts';
 import { McpTokens } from '../src/mcp-tokens.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 function setup(t: TestContext) {
   const folder = mkdtempSync(join(tmpdir(), 'tabularius-auth-regression-'));
@@ -23,7 +24,8 @@ function setup(t: TestContext) {
   const api = new DataApi(host);
   const store = host.get('A')!;
   store.savePrivilegeSet({ name: 'Reader', records: { view: true, edit: false, create: false, delete: false }, layouts: 'viewOnly', scripts: 'none', valueLists: 'viewOnly', extendedPrivileges: ['fmrest', 'fmmcp'] });
-  t.after(async () => { api.endByDb('A'); await host.close(); rmSync(folder, { recursive: true, force: true }); });
+  t.after(async () => { api.endByDb('A'); await host.close(); });
+  removeAtExit(folder);
   return { folder, host, api, store };
 }
 

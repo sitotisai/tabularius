@@ -13,11 +13,12 @@ import { createStore, Store, STORE_FORMAT } from '../../store/src/index.ts';
 import { encryptFileSync } from '../../server/src/encrypt.ts';
 import { filesNewerThan } from '../src/newer-files.ts';
 import { accountChecks, backupCheck, formatChecks, certificateCheck, diskCheck, doctorText, embedCheck, locationCheck, nodeCheck, runDoctor, storageChecks } from '../src/doctor.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 const main = join(import.meta.dirname, '..', 'src', 'main.ts');
 const tmp = (t: { after: (fn: () => void) => void }) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-doctor-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  removeAtExit(dir);
   return dir;
 };
 const byName = (checks: { name: string }[], name: string) => checks.find((c) => c.name === name) as ReturnType<typeof nodeCheck> | undefined;

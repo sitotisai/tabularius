@@ -12,10 +12,11 @@ import { Host } from '../src/host.ts';
 import { Uploads } from '../src/uploads.ts';
 import { ContainerFiles } from '../src/containers.ts';
 import { ContainerUploads, ContainerUploadError } from '../src/container-uploads.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 function setup(t: TestContext) {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-cleanup-order-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  removeAtExit(dir);
   const warnings = t.mock.method(console, 'warn', () => {});
   const work = new Error('original work failed');
   const cleanup = Object.assign(new Error('cleanup denied'), { code: 'EACCES' });

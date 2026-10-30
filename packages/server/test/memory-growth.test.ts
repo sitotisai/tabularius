@@ -1,6 +1,6 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { IncomingMessage } from 'node:http';
@@ -18,13 +18,15 @@ import { LogShipper } from '../src/logs.ts';
 import { WebClient } from '../src/webclient.ts';
 import { sessionFor } from '../src/mcp.ts';
 import { ScriptQueue } from '../src/server-queue.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 // Inspect retained state as well as responses: a successful request alone cannot detect a leak.
 const inside = (value: unknown): Record<string, any> => value as Record<string, any>;
 function hostFor(t: TestContext) {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-growth-'));
   const host = new Host(dir);
-  t.after(async () => { await host.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(async () => { await host.close(); });
+  removeAtExit(dir);
   return host;
 }
 const request = (address: string, authorization = '') => ({ headers: { authorization }, socket: { remoteAddress: address } }) as IncomingMessage;

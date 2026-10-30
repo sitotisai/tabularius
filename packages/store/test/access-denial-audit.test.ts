@@ -1,17 +1,19 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore, Store, StoreError, writer, endTransaction, securityEventCategory, securityEventSeverity, describeSecurityEvent, type Transaction } from '../src/index.ts';
 import { captureAccessDenial, type AccessDenial, type DenialAudit } from '../src/access-denial.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 const audit: DenialAudit = { code: 200, surface: 'web', identifier: 'request', origin: 'direct', capturedAt: '2026-10-14T12:00:00.000Z' };
 function setup(t: TestContext, name = 'Owner') {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-denial-audit-'));
   createStore(join(dir, `${name}.sqlite`));
   const s = new Store(join(dir, `${name}.sqlite`), name);
-  t.after(() => { s.close(); rmSync(dir, { recursive: true }); });
+  t.after(() => { s.close(); });
+  removeAtExit(dir);
   s.applyDesign([{ op: 'createTable', name: 'T', fields: [{ name: 'A' }, { name: 'Secret' }] }]);
   const id = s.create('T', { A: 'row-label-sentinel', Secret: 'hidden-row-sentinel' }).recordId;
   s.savePrivilegeSet({ name: 'Clerk', records: { view: true, edit: 'Secret = "formula-input-sentinel"', create: false, delete: false }, layouts: 'modifiable', valueLists: 'none', scripts: 'viewOnly', extendedPrivileges: [] });

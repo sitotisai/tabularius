@@ -16,6 +16,7 @@ import { runScript } from '../../scripts/src/index.ts';
 import { parseManifest, readPlugin, PluginRegistry } from '../../plugins/src/index.ts';
 import { runCli } from './cli-run.ts';
 import { root } from './docs-examples.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 const main = join(import.meta.dirname, '..', 'src', 'main.ts');
 const guide = readFileSync(join(root, 'docs', 'writing-a-plugin.md'), 'utf8');
@@ -30,7 +31,8 @@ function fromGuide(name: string): string {
 
 function folder(t: TestContext): string {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-plugin-tutorial-'));
-  t.after(async () => { await stopJavaScript(); rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }); });
+  t.after(async () => { await stopJavaScript(); });
+  removeAtExit(dir, { maxRetries: 5, retryDelay: 50 });
   createStore(join(dir, 'Shop.openhbam.sqlite'));
   const s = new Store(join(dir, 'Shop.openhbam.sqlite'), 'Shop');
   s.applyDesign([{ op: 'createTable', name: 'People', fields: [{ name: 'Name' }] }]);

@@ -1,6 +1,6 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -18,6 +18,7 @@ import { CredentialRedactor, REDACTED, hasUrlAuth } from '../../scripts/src/reda
 import { scriptText, scriptStepName, type LayoutObject } from '../../fmp12/src/index.ts';
 import { offlineScriptOptions } from '../../scripts/src/offline.ts';
 import { DATA_NOT_INSTRUCTIONS } from '../src/ai-security.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 // All data is generated here. No child processes, external services or corpus inputs.
 function fixture(t: TestContext) {
@@ -27,7 +28,8 @@ function fixture(t: TestContext) {
   const store = host.create('Generated');
   store.applyDesign([{ op: 'createTable', name: 'Items', fields: [{ name: 'Name' }, { name: 'Password' }] }]);
   store.create('Items', { Name: 'ordinary', Password: 'generated-private-83' });
-  t.after(async () => { await host.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(async () => { await host.close(); });
+  removeAtExit(dir);
   return { host, store };
 }
 async function connect(t: TestContext, host: Host, account?: string, password?: string) {

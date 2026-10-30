@@ -12,10 +12,11 @@ import { verifySet } from '../src/backup-verify.ts';
 import { Host } from '../src/host.ts';
 import { Admin } from '../src/admin.ts';
 import { DataApi } from '../src/dataapi.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 function setup(t: { after(fn: () => void): void }): string {
   const dir = fs.mkdtempSync(join(tmpdir(), 'tabularius-a09-'));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  removeAtExit(dir);
   return dir;
 }
 

@@ -1,17 +1,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore, Store, StoreError, type FindRequest } from '../src/index.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 function fixture(t: { after: (fn: () => void) => void }) {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-find-review-'));
   const path = join(dir, 'Find.sqlite');
   createStore(path);
   const store = new Store(path);
-  t.after(() => { store.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(() => { store.close(); });
+  removeAtExit(dir);
   store.applyDesign([
     { op: 'createTable', name: 'Items', fields: [
       { name: 'Text', options: { indexLanguage: 'Japanese' } }, { name: 'Number', type: 'number' },

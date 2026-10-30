@@ -1,6 +1,6 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -8,12 +8,14 @@ import { Host } from '../src/host.ts';
 import { DataApi } from '../src/dataapi.ts';
 import { Oidc } from '../src/oidc.ts';
 import { expiryClock } from '../../store/src/clock.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 async function setup(t: TestContext, formPost = false, secure = true) {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-oidc-binding-'));
   const host = new Host(dir, () => {}, { background: false }); host.create('Test');
   const oidc = new Oidc(host, new DataApi(host), { name: 'Test', issuer: 'https://idp.invalid', clientId: 'test', formPost }, secure ? 'https://server.invalid' : 'http://server.invalid');
-  t.after(async () => { oidc.close(); await host.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(async () => { oidc.close(); await host.close(); });
+  removeAtExit(dir);
   const internals = oidc as unknown as { config(): Promise<unknown>; finish(p: unknown): Promise<void> };
   t.mock.method(internals, 'config', async () => ({ issuer: 'https://idp.invalid', authorization_endpoint: 'https://idp.invalid/authorize' }));
   const finish = t.mock.method(internals, 'finish', async () => {});

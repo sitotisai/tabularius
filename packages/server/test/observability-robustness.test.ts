@@ -11,10 +11,11 @@ import { Host } from '../src/host.ts';
 import { ServerLogs, parseLogLimit } from '../src/server-logs.ts';
 import { Metrics } from '../src/metrics.ts';
 import { StatsLog, parseStatsInterval } from '../src/stats-log.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 const temp = (t: { after(fn: () => void): void }) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-observability-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  removeAtExit(dir);
   return dir;
 };
 

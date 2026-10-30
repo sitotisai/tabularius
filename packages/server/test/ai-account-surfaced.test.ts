@@ -1,6 +1,6 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -12,6 +12,7 @@ import { createMcpServer } from '../src/mcp.ts';
 import { conversionReport } from '../src/conversion.ts';
 import { conversionGuide } from '../src/conversion-guide.ts';
 import { HISTORY, Schedules } from '../src/schedules.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 const accountWarning = "Configure AI Account: the endpoint, key and model in this step are not used; this server's own model answers.";
 const loggingWarning = 'Set AI Call Logging does nothing here';
@@ -24,7 +25,8 @@ function setup(t: TestContext) {
   const host = new Host(dir, () => {}, { background: false });
   const store = host.create('Synthetic');
   store.applyDesign([{ op: 'createTable', name: 'Items', fields: [{ name: 'Name' }] }]);
-  t.after(async () => { await host.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(async () => { await host.close(); });
+  removeAtExit(dir);
   return { host, store };
 }
 

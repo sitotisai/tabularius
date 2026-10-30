@@ -10,6 +10,7 @@ import { Admin } from '../src/admin.ts';
 import { DataApi } from '../src/dataapi.ts';
 import { backupFolder, defaultBackupDir, scheduleProgressive } from '../src/backup.ts';
 import { ServerConfig } from '../src/server-config.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 async function setup(t: TestContext) {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-console-errors-'));
@@ -24,7 +25,7 @@ async function setup(t: TestContext) {
   }
   const hosted = await serve({ dir, port: 0, log: () => {} });
   t.after(() => new Promise<void>((resolve) => hosted.server.close(() => resolve())));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  removeAtExit(dir);
   const call = async (path: string, body?: unknown, method = body === undefined ? 'GET' : 'POST') => {
     const r = await fetch(hosted.url + '/tabularius/admin/v1' + path, {
       method, headers: { 'x-tabularius-admin': '1', 'content-type': 'application/json' },
