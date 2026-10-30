@@ -1466,7 +1466,9 @@ test('PostgreSQL syntax as SQLite reads it', () => {
     `SELECT "T"."a" FROM "T", pg_class WHERE n NOT REGEXP '^pg_' AND k IN ('r','p') AND x LIKE 'a%'`);
   assert.equal(pg(`SELECT table_name FROM information_schema.tables`), `SELECT table_name FROM information_schema__tables`);
   assert.equal(pg(`SELECT array_to_string(d.datacl, E'\\n'), trim(both '"' from x), a[1] FROM unnest(t.o) u, pg_class`),
-    `SELECT array_to_string(d.datacl, ' '), trim(x, '"'), a FROM (SELECT value AS u FROM json_each(t.o)) AS u, pg_class`);
+    `SELECT array_to_string(d.datacl, ' '), trim(both '"' from x), a FROM (SELECT value AS u FROM json_each(t.o)) AS u, pg_class`);
+  assert.equal(pgSyntax('SELECT TRIM(LEADING $1 FROM $2), SUBSTRING($2 FROM $3 FOR $4)'),
+    'SELECT TRIM(LEADING $1 FROM $2), SUBSTRING($2 FROM $3 FOR $4)');
   assert.equal(pgSyntax(`SELECT E'a\\nb', 'c\\n'`), `SELECT 'a\nb', 'c\\n'`);
   assert.equal(pg(`SELECT n FROM generate_series(1, 3) s(n) JOIN pg_class ON true`), `SELECT n FROM (WITH RECURSIVE s(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM s WHERE n < 3) SELECT n FROM s) AS s JOIN pg_class ON true`);
 });
