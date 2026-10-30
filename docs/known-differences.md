@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**181 entries in 23 areas.** Waiting on: 22 on a sample file, 91 on a FileMaker run or Design Report, 14 on a Claris answer, 18 on a decision by the owner (an entry can wait on more than one).
+**182 entries in 23 areas.** Waiting on: 22 on a sample file, 92 on a FileMaker run or Design Report, 14 on a Claris answer, 18 on a decision by the owner (an entry can wait on more than one).
 
 ## Data API
 
@@ -236,6 +236,7 @@ part of it.
 
 | What differs or is unknown | How it shows | What would settle it | Where it is written |
 | --- | --- | --- | --- |
+| acceptance of SUBSTRING and TRIM FROM forms by FileMaker is unknown | Tabularius runs these forms with SQL standard semantics | run the same forms on FileMaker and record whether they are accepted | [docs/sql-grammar-conformance.md › What the check found and what changed](sql-grammar-conformance.md) — “…1. Whether FileMaker accepts the FROM forms is unverified.” |
 | vendor results for six constructs are unspecified in the cited pages | the conformance test records current behavior without an expected result | compare each construct with FileMaker and record the observed result | [docs/sql-grammar-conformance.md › Not verified](sql-grammar-conformance.md) — “…read do not say, so the file marks these entries unverified with no expected result (paths: []). The test…” |
 
 ## Standby servers
