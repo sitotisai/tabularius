@@ -210,6 +210,7 @@ function fileOptionsOf(store: Store) {
   const script = (x?: { scriptId: number }) => x && { scriptId: x.scriptId, script: s.scripts.find((sc) => sc.id === x.scriptId)?.name };
   return {
     ...(fo.openLayoutId !== undefined ? { openLayoutId: fo.openLayoutId, openLayout: s.layouts.find((l) => l.id === fo.openLayoutId)?.name } : {}),
+    ...(fo.switchToLayout !== undefined ? { switchToLayout: fo.switchToLayout } : {}),
     ...(fo.onFirstWindowOpen ? { onFirstWindowOpen: script(fo.onFirstWindowOpen) } : {}),
     ...(fo.onLastWindowClose ? { onLastWindowClose: script(fo.onLastWindowClose) } : {}),
     ...(fo.onWindowOpen ? { onWindowOpen: script(fo.onWindowOpen) } : {}),
