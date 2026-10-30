@@ -955,7 +955,7 @@ export const tools: Record<string, McpToolNotes> = {
       response: pretty({
         database: 'Invoices',
         summary: '# Conversion report: Invoices\n\nNothing found that won\'t work.\n\n## Good to know\n- **Never run**: Send Mail (1). Tabularius doesn\'t send email.\n- **Privilege sets imported**: [Full Access] (full access; fmapp, fmwebdirect, fmrest).\n- **Record access is imported at the whole-file level.** FileMaker\'s per-table, per-layout, per-value-list and per-script "Custom privileges" aren\'t decoded yet, so a set that used them is approximated by its overall access — review those sets in Manage Security.',
-        functions: { notYet: [], undecoded: [], plugIns: [] },
+        functions: { notYet: [], undecoded: [], plugIns: [], recursive: [] },
         steps: {
           notYet: [],
           blocked: [{ name: 'Send Mail', count: 1, where: ['Script "Email Invoice", line 2'] }],

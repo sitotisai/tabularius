@@ -47,6 +47,7 @@ export async function reportTab(studio: Studio): Promise<HTMLElement> {
     items(studio, 'Plug-in functions', 'Plug-ins don\'t run here; calculations using them return an error.', r.functions.plugIns,
       (i) => `The plug-in function ${i.name} doesn't run in Tabularius. It is used in: ${places(i)}. What does it do there, and can those formulas do the same with built-in functions? Propose the changes where they can.`),
     items(studio, 'Functions the reader can\'t name yet', 'Shown as ⟨fn:…⟩ in formulas.', r.functions.undecoded),
+    items(studio, 'Custom functions that call themselves', 'They work, up to 10,000 nested calls (FileMaker documents 50,000 for tail recursion). The call that passes the limit gives ? and an error naming the function; rewrite one as a loop with While if it can be given more than that.', r.functions.recursive ?? []),
     items(studio, 'Script steps that can\'t run yet', 'Each one fails with error 3 and the script carries on, as in FileMaker.', r.steps.notYet,
       (i) => `The script step ${i.name} can't run in Tabularius yet. It is used in: ${places(i)}. What do those scripts use it for? Where steps that run here can do the same, rewrite those scripts, check them with check_script, and propose the changes (each is tried on a copy of the file); say which can't be replaced and why.`),
     items(studio, 'Steps that never run', 'Tabularius sends no email unless its administrator switches sending on.', r.steps.blocked,
