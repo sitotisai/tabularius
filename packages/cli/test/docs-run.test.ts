@@ -124,10 +124,13 @@ test('the examples marked run or placeholders work, in an empty home folder with
       const made = await sh('tabularius new ~/Databases Invoices --starter invoicing && tabularius passwd ~/Databases Invoices Admin');
       assert.equal(made.status, 0, `${file}: the hosted Invoices could not be made\n${made.stdout}${made.stderr}`);
       let ran = 0;
+      let fresh = 0;
       for (const f of fences) {
         for (let cmd of shellCommands(f.body)) {
           for (const [from, to] of f.subs ?? []) cmd = cmd.split(from).join(to);
           cmd = cmd.replace(/\bnpm run tabularius -- /g, 'tabularius ');
+          // A name that must be new each time uses `$$`; a shell's own process number is reused fast where numbers are small (Git Bash on Windows), and two commands then meet at one name.
+          cmd = cmd.split('$$').join(String(++fresh));
           const call = tabulariusCall(cmd);
           if (call && NEVER_RETURN.has(call.command)) continue;
           if (!call && /^(tabularius)$/.test(cmd.trim())) continue;
