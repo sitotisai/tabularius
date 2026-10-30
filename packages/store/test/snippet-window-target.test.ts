@@ -1,9 +1,10 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore, designSnippet, snippetChanges, Store } from '../src/index.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 function blank(t: TestContext): Store {
   const dir = mkdtempSync(join(tmpdir(), 'openhbam-window-target-'));
@@ -12,8 +13,8 @@ function blank(t: TestContext): Store {
   const store = new Store(path, 'Windows');
   t.after(() => {
     store.close();
-    rmSync(dir, { recursive: true, force: true });
   });
+  removeAtExit(dir);
   return store;
 }
 

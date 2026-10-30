@@ -9,13 +9,15 @@ import { DatabaseSync } from 'node:sqlite';
 import { claimFolder } from '../../server/src/backup.ts';
 import { createStore, designText, exitBundle, Store, writeDesignText } from '../src/index.ts';
 import { atomicWrite, sweepStateTempsSync } from '../src/durable.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 function fresh(t: { after(fn: () => void): void }): { store: Store; path: string; dir: string } {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-s05-'));
   const path = join(dir, 'test.openhbam.sqlite');
   createStore(path);
   const store = new Store(path);
-  t.after(() => { store.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(() => { store.close(); });
+  removeAtExit(dir);
   return { store, path, dir };
 }
 

@@ -12,10 +12,11 @@ import { commitRestore, recoverRestore } from '../src/restore-files.ts';
 import { writeDurable, syncPath } from '../../store/src/durable.ts';
 import { watchDatabase, DiskTrouble, FileDamaged, type DamageWatch } from '../../store/src/damage.ts';
 import { pageCheck } from '../src/backup-verify.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 function folder(t: TestContext) {
   const root = fs.mkdtempSync(join(tmpdir(), 'tabularius-review-recovery-'));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  removeAtExit(root);
   return root;
 }
 function child(code: string, status = 73) {

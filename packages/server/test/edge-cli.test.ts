@@ -1,10 +1,11 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { RawClient, request } from './edge-test-helpers.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 async function launch(t: TestContext, flags: string[], cap: string) {
   const dir = mkdtempSync(join(tmpdir(), 'edge-cli-'));
@@ -23,8 +24,8 @@ async function launch(t: TestContext, flags: string[], cap: string) {
       const timer = setTimeout(() => child.kill('SIGKILL'), 3000);
       try { await exited; } finally { clearTimeout(timer); }
     }
-    rmSync(dir, { recursive: true, force: true });
   });
+  removeAtExit(dir);
   return { child, exited, output: () => output };
 }
 

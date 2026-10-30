@@ -3,7 +3,7 @@
 // client that cannot take the FATAL of an idle-transaction limit does not keep its connection.
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { connect, createServer, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,6 +12,7 @@ import { PgServer } from '../src/pgwire.ts';
 import { createStore } from '../../store/src/index.ts';
 import { monotonicClock } from '../../store/src/monotonic.ts';
 import { PgClient } from './pg-client.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 const turn = () => new Promise<void>((resolve) => setImmediate(resolve));
 
@@ -27,7 +28,8 @@ async function serveWriter(t: TestContext, port0 = 0) {
   const port = await pg.listen();
   const clients: PgClient[] = [];
   const open = async (at = port) => { const c = await PgClient.open({ port: at, user: 'Ann', password: 'pw', database: 'Synthetic' }); clients.push(c); return c; };
-  t.after(async () => { for (const c of clients) c.close(); pg.close(); await host.close(); rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }); });
+  t.after(async () => { for (const c of clients) c.close(); pg.close(); await host.close(); });
+  removeAtExit(dir, { maxRetries: 5, retryDelay: 50 });
   return { store, open, port, serverSockets: () => [...(pg as unknown as { sockets: Set<Socket> }).sockets] };
 }
 

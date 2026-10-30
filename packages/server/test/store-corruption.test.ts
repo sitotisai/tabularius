@@ -15,6 +15,7 @@ import { serve } from '../src/index.ts';
 import { backupFolder, restoreBackup } from '../src/backup.ts';
 import { integrity, pageCheck, verifySet } from '../src/backup-verify.ts';
 import { fileChecks } from '../../cli/src/doctor.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 const PAGE = 4096;
 const EXT = '.openhbam.sqlite';
@@ -32,7 +33,7 @@ function build(path: string, name: string): void {
 
 function folder(t: TestContext, names: string[] = ['Good', 'Work']): { dir: string; path: (name: string) => string; good: Buffer } {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-corrupt-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
+  removeAtExit(dir, { maxRetries: 5, retryDelay: 50 });
   for (const n of names) build(join(dir, n + EXT), n);
   return { dir, path: (n) => join(dir, n + EXT), good: readFileSync(join(dir, names[0] + EXT)) };
 }

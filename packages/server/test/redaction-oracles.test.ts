@@ -1,6 +1,6 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -10,6 +10,7 @@ import { createMcpServer } from '../src/mcp.ts';
 import { Assistant } from '../src/assistant.ts';
 import { classOf, PiiMasker } from '../src/pii.ts';
 import type { LayoutObject } from '../../fmp12/src/index.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 // Generated stores only. In-memory MCP and a stubbed model boundary: no child processes or network.
 async function fixture(t: TestContext, value = 'synthetic-amber', account?: string) {
@@ -34,7 +35,7 @@ async function fixture(t: TestContext, value = 'synthetic-amber', account?: stri
   const server = createMcpServer(host, account ? { account, database: 'Sample' } : { admin: true });
   const client = new Client({ name: 'oracle-test', version: '1' });
   t.after(async () => { await client.close(); await server.close(); });
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  removeAtExit(dir);
   const [a, b] = InMemoryTransport.createLinkedPair();
   await server.connect(a); await client.connect(b);
   const call = (name: string, args: Record<string, unknown> = {}) => client.callTool({ name, arguments: { database: 'Sample', ...args } });

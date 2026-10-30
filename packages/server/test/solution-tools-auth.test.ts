@@ -1,6 +1,6 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -15,11 +15,13 @@ import type { DataApi, Session } from '../src/dataapi.ts';
 import { AutomationRunner, automationRuns, saveAutomation } from '../src/automations.ts';
 import { InboundHooks, hookSignature, MAX_REPLAY_CLAIMS } from '../src/inbound-hooks.ts';
 import { ScriptQueue } from '../src/server-queue.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 async function setup(t: TestContext) {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-solution-auth-'));
   const host = new Host(dir, () => {});
-  t.after(async () => { await host.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(async () => { await host.close(); });
+  removeAtExit(dir);
   const store = host.create('Public');
   store.setPassword('Admin', 'test-password', '[Full Access]');
   store.setPassword('Reviewer', 'test-password', '[Full Access]');

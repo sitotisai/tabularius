@@ -7,6 +7,7 @@ import { createStore, emptySchema, Store, StoreError, writer } from '@tabularius
 import type { Schema, Script } from '@tabularius/fmp12';
 import { CredentialRedactor, CredentialRedactorCache, REDACTED } from '../src/redaction.ts';
 import { redactorCacheStats, runScript, ScriptSession } from '../src/engine.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 test('a redactor builds its name table once for distinct formulas and a fork reuses it', () => {
   let constructions = 0;
@@ -133,7 +134,8 @@ function open(t: { after: (fn: () => void) => void }, name = 'Data'): Store {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-redactor-reach-'));
   createStore(join(dir, `${name}.sqlite`));
   const store = new Store(join(dir, `${name}.sqlite`), name);
-  t.after(() => { store.close(); rmSync(dir, { recursive: true }); });
+  t.after(() => { store.close(); });
+  removeAtExit(dir);
   return store;
 }
 const reachCredential = ['private', 'R4v6B9z2'].join('-');

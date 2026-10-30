@@ -1,7 +1,7 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { serve } from '../src/index.ts';
@@ -10,6 +10,7 @@ import { MAX_LIVE_STREAMS, MAX_STREAMS_PER_SESSION, MAX_STREAM_BUFFER, putStream
 import { MAX_MCP_STREAMS_PER_IDENTITY, MAX_MCP_UNVERIFIED_STREAMS_PER_ADDRESS } from '../src/stream-slots.ts';
 import { RawClient, request, responseBody, normal, stubCommands } from './edge-test-helpers.ts';
 import type { ServerResponse } from 'node:http';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 async function start(t: TestContext, bodyMs?: number, limits: Record<string, number> = {}) {
   stubCommands(t);
@@ -19,8 +20,8 @@ async function start(t: TestContext, bodyMs?: number, limits: Record<string, num
   t.after(async () => {
     app.server.closeAllConnections();
     await new Promise<void>(resolve => app.server.close(() => resolve()));
-    rmSync(dir, { recursive: true, force: true });
   });
+  removeAtExit(dir);
   const port = Number(new URL(app.url).port);
   const store = app.host.get('Edge')!;
   store.applyDesign([{ op: 'createTable', name: 'Items', fields: [{ name: 'Name' }, { name: 'File', type: 'container' }] }]);

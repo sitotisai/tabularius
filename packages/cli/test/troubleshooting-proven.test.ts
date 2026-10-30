@@ -6,7 +6,7 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { chmodSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync, writeSync } from 'node:fs';
+import { chmodSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, writeFileSync, writeSync } from 'node:fs';
 import { createServer as createNet } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -17,6 +17,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createMcpServer } from '../../server/src/mcp.ts';
 import { runCli } from './cli-run.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 const main = join(import.meta.dirname, '..', 'src', 'main.ts');
 const root = join(import.meta.dirname, '..', '..', '..');
@@ -35,8 +36,8 @@ function folder(t: TestContext, names = ['Shop']): string {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-trouble-'));
   t.after(async () => {
     for (const stop of stoppers.get(t) ?? []) await stop();
-    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
+  removeAtExit(dir, { maxRetries: 5, retryDelay: 50 });
   for (const name of names) {
     createStore(join(dir, name + EXT));
     const s = new Store(join(dir, name + EXT), name);

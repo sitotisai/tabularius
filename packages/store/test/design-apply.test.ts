@@ -6,6 +6,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DesignApplyError, designText, importFmp12, planDesignApply, readDesignFolder, Store, writeDesignText } from '../src/index.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 const fixtures = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12');
 const have = (name: string) => existsSync(join(fixtures, name + '.fmp12'));
@@ -27,14 +28,14 @@ function hosted(t: { after: (fn: () => void) => void }, name: string): Store {
   copyFileSync(template, path);
   const store = new Store(path);
   t.after(() => store.close());
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  removeAtExit(dir);
   return store;
 }
 const source = (s: Store) => ({ schema: s.schema, layouts: s.designs().layouts, accounts: s.accounts(), privilegeSets: s.privilegeSets() });
 const exported = (s: Store) => designText(source(s));
 function folder(t: { after: (fn: () => void) => void }, s: Store): string {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-design-folder-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  removeAtExit(dir);
   writeDesignText(dir, exported(s));
   return dir;
 }
