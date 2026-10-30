@@ -7307,7 +7307,8 @@ export class ScriptEngine {
     const parts = rel.split('/');
     if (!rel || parts.some((x) => !documentNamePart(x) || x.startsWith('.'))) return undefined;
     const path = join(base, ...parts);
-    try { checkPathLength(path, 64); } catch { return undefined; }
+    // Windows cannot hold a path this long; that is a path the system refuses (850), as a too-long name is elsewhere.
+    try { checkPathLength(path, 64); } catch { throw new ScriptError(ERROR.invalidPath, 'The path is too long for the system'); }
     // A link inside the folder that points outside it is not a way out: where the path (or its nearest existing parent) really is must be under the folder.
     try {
       const resolve = (target: string) => this.realPlace(target);
