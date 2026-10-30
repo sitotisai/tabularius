@@ -89,6 +89,7 @@ export async function startDemo(opts: DemoOptions = {}): Promise<Demo> {
     try {
       applyStarter(store, starter, { sample: true, account: 'tabularius demo' });
       store.setPassword(DEMO_ACCOUNT, password, '[Full Access]');
+      store.setScriptNetwork(false, { account: 'tabularius demo' });
     } finally {
       store.close();
     }

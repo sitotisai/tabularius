@@ -8,6 +8,6 @@ The client id registered with the provider.
 | Accepted values | Client id |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1428](../../../../packages/cli/src/main.ts#L1428) |
+| Code | [packages/cli/src/main.ts:1434](../../../../packages/cli/src/main.ts#L1434) |
 
 [All environment variables](../../../environment-variables.md)

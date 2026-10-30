@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Server } from 'node:http';
 import { serve, nextRun, Schedules, type Host } from '../src/index.ts';
+import { approveAll } from './approve-all.ts';
 
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
 const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtures';
@@ -19,6 +20,7 @@ before(async () => {
   dir = mkdtempSync(join(tmpdir(), 'tabularius-sched-'));
   copyFileSync(fixture, join(dir, 'Charts.fmp12'));
   const s = await serve({ dir, port: 0, log: () => {} });
+  approveAll(s.host);
   server = s.server;
   host = s.host;
   base = s.url;

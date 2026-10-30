@@ -504,7 +504,7 @@ export async function serve(opts: ServeOptions): Promise<{ server: Server; host:
     const connections = new Connections(host.dir, log);
     admin.connections = connections;
     host.connections = connections;
-    host.scriptConnections = scriptConnections(connections, { captureOnly: () => host.captureOnlyExtra });
+    host.scriptConnections = scriptConnections(connections, { captureOnly: () => host.captureOnlyExtra, held: (file) => host.isHeld(file) });
     const profiler = new Profiler();
     host.profiler = profiler;
     admin.profiler = profiler;

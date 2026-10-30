@@ -58,6 +58,9 @@ test('it serves the starter on this computer, and only the printed password sign
     const records = (await (await fetch(`${demo.url}/fmi/data/vLatest/databases/Tasks/layouts/${encodeURIComponent(first.name)}/records?_limit=5`, { headers: { authorization: `Bearer ${token}` } })).json()) as { response: { data: unknown[] } };
     assert.ok(records.response.data.length > 0, 'sample records');
     assert.ok(lines.every((l) => !l.includes(demo.password)), 'the password is not in what the server says');
+    // Script network access starts off in the demo, so a copy you are only trying cannot call outside services.
+    const network = await fetch(`${demo.url}/tabularius/admin/v1/script-network/Tasks`, { headers: { 'x-tabularius-admin': '1' } });
+    assert.deepEqual(await network.json(), { on: false, serverWide: false });
   } finally {
     await demo.stop();
   }
