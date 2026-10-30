@@ -7353,7 +7353,12 @@ export class ScriptEngine {
       return path && existsSync(path) && statSync(path).isFile() ? new Uint8Array(readFileSync(path)) : undefined;
     },
     write: (raw, content, append) => {
-      const path = this.sandboxPath(raw);
+      let path: string | undefined;
+      try { path = this.sandboxPath(raw); } catch (e) {
+        // A name Windows refuses up front is the failed write that a too-long name is where the system reports it only when writing.
+        if (e instanceof ScriptError && e.code === ERROR.invalidPath) return false;
+        throw e;
+      }
       if (!path || !existsSync(dirname(path)) || (existsSync(path) && !statSync(path).isFile())) return false;
       try {
         if (append) appendFileSync(path, content);
