@@ -1,14 +1,15 @@
-// Tree-walking evaluator for parsed FileMaker calculations.
+// Evaluator for parsed FileMaker calculations: a stack machine over the parse tree (see Env.run), so that a formula's
+// nesting and a custom function's recursion are bounded by FileMaker's limits, not by the server's call stack.
 
-import { markExecutionRefusal, rethrowExecutionRefusal } from './execution-refusal.ts';
+import { isExecutionRefusal, markExecutionRefusal, rethrowExecutionRefusal } from './execution-refusal.ts';
 import { withRegexBudget } from './regex-guard.ts';
 import { ComplexityError } from './complexity-error.ts';
-import { FUNCTIONS, pluginNotInstalled, type Fn } from './functions.ts';
+import { FUNCTIONS, pluginNotInstalled, stackExhausted, type Fn } from './functions.ts';
 import { getParameter } from './get.ts';
 import { unknownFunctionId } from './unknown.ts';
 import { concatRuns } from './styled.ts';
 import { checkCalcTextSize } from './text-budget.ts';
-import { Decimal, decimalFunction, decimalNumberText, supportsDecimalFunction, withDecimalBudget } from './decimal.ts';
+import { Decimal, decimalFunction, decimalNumberText, setDecimalBudget, supportsDecimalFunction } from './decimal.ts';
 import { assertTraversalDepth, NameTable, parse, type CalcNames, type Node } from './parser.ts';
 import {
   CalcError, ERR, EMPTY, asBoolean, asNumber, asNumberOrEmpty, asText, bool, checkedDate, checkedTimestamp, exactOf, exactPow, fromExact, isBeyondDouble, isEmpty, isOverlongWholeText, num, text, tidy, tidySum,
@@ -289,6 +290,19 @@ export interface PluginFiles {
 }
 
 const MAX_DEPTH = 10000;
+/** Number functions that keep a decimal argument's digits even outside SetPrecision. */
+const TARGETED_DECIMAL_FUNCTIONS = new Set(['abs', 'int', 'round', 'truncate', 'mod', 'div', 'sum', 'average', 'min', 'max']);
+
+// The evaluator's own stack (see Env.run). Each kind is one step of work.
+const EVAL = 0, TRACE = 1, CALL = 2, LET_BIND = 3, LET_BODY = 4, SCOPE_END = 5, UNARY = 6, AND_OR = 7, AND_OR_B = 8, BIN = 9,
+  IF = 10, CASE = 11, CHOOSE = 12, COLLECT = 13, SPREAD = 14, APPLY_BUILTIN = 15, APPLY_PLUGIN = 16, APPLY_JS = 17, APPLY_CUSTOM = 18,
+  FN_END = 19, PRECISION = 20, PRECISION_END = 21, AS_NUMBER = 22;
+
+/** A custom function about to be applied: its evaluated arguments, and the nodes they came from (for GetFieldName). */
+interface CustomCall { cf: CustomFunctionDef; name: string; nodes: Node[]; out: Value[] }
+/** What SetPrecision changed, to put back when its expression ends. */
+interface PrecisionState { previous: number | undefined; budget: (() => void) | undefined; places: number }
+
 /** How many Evaluate calls may be inside one another: text that evaluates itself (a calculation field reading its own text) stops here. */
 const MAX_EVALUATE_DEPTH = 100;
 export const EVALUATION_LIMIT = { steps: 5_000_000, ms: 2500, cachedFormulas: 256 } as const;
@@ -360,10 +374,7 @@ export class Env {
 
   /** Evaluate a node (and report it to ctx.trace when one is set). */
   v(n: Node): Value {
-    if (this.evaluating) {
-      this.tick();
-      return this.traced(n);
-    }
+    if (this.evaluating) return this.run(EVAL, n, this.traceDepth + 1, 0, null);
     assertTraversalDepth(n);
     this.steps = 0;
     this.workExhausted = false;
@@ -372,13 +383,20 @@ export class Env {
     this.workDeadline = started + WORK_BUDGET_MS;
     this.evaluating++;
     try {
-      const result = withRegexBudget(() => this.traced(n));
+      // The whole formula is not a step of its own; every part inside it is one.
+      const result = withRegexBudget(() => this.run(EVAL, n, 1, 1, null));
       // Error-inspection functions may catch an inner error; they cannot reset
       // an exhausted budget or make the enclosing evaluation succeed.
       if (this.workExhausted || this.steps > EVALUATION_LIMIT.steps || calculationTime() >= this.stop) {
         throw new ComplexityError('Calculation exceeds the supported work budget');
       }
       return result;
+    } catch (e) {
+      rethrowExecutionRefusal(e);
+      // The formula's own nesting never reaches JavaScript's stack; a built-in that reads its arguments itself, or a host
+      // callback, can still run it out. That is the formula's error, not a failure of the read or write that ran it.
+      if (e instanceof RangeError && stackExhausted(e)) throw new CalcError(ERR.calculation, "The formula is nested too deeply for this server's stack");
+      throw e;
     } finally {
       this.evaluating--;
       this.stop = Infinity;
@@ -386,23 +404,7 @@ export class Env {
     }
   }
 
-  private traced(n: Node): Value {
-    const trace = this.ctx.trace;
-    if (!trace) return this.node(n);
-    this.traceDepth++;
-    try {
-      const r = this.node(n);
-      trace(n, r, this.traceDepth);
-      return r;
-    } catch (e) {
-      rethrowExecutionRefusal(e);
-      if (e instanceof CalcError) trace(n, e, this.traceDepth);
-      throw e;
-    } finally {
-      this.traceDepth--;
-    }
-  }
-
+  /** The nesting depth of the part being worked out (1 for the whole formula), for ctx.trace. */
   private traceDepth = 0;
   private evaluating = 0;
   private steps = 0;
@@ -420,7 +422,6 @@ export class Env {
     }
   }
 
-  // Kept out of node(), which a long chain of terms recurses through: a bigger frame there overflows the stack sooner.
   private numberLiteral(n: Extract<Node, { k: 'num' }>): Value {
     return this.decimalPlaces !== undefined ? (n.raw === 'Pi' ? Decimal.pi(this.decimalPlaces)
       : Decimal.parse(n.raw ?? String(n.value), this.decimalPlaces)).value()
@@ -429,43 +430,426 @@ export class Env {
         : n.raw?.includes('.') ? decimalLiteral(n.raw, n.value) : num(n.value);
   }
 
-  private node(n: Node): Value {
-    switch (n.k) {
-      case 'num': return this.numberLiteral(n);
-      case 'str': return text(n.value);
-      case 'field': return this.field(n);
-      case 'var': return this.variable(n);
-      case 'get': return getParameter(n.param, this);
-      case 'let': return this.withScope(() => {
-        // A Let variable bound to a field keeps the field's name, for GetFieldName, as in FileMaker.
-        const scope = this.scopes[this.scopes.length - 1];
-        const names = new Map<string, string>();
-        this.parameterFields.set(scope, names);
-        for (const [name, b, rep] of n.binds) {
-          this.bind(name, this.v(b), rep);
-          if (name.startsWith('$')) continue;
-          // A bare name that is no Let variable or parameter is a field of the current table.
-          const fieldName = b.k === 'field' ? this.fieldName(b.occurrence, b.name)
-            : b.k === 'var' && !b.name.startsWith('$') ? this.fieldNameOf(b.name) ?? (this.lookup(b.name) === undefined ? this.fieldName(undefined, b.name) : undefined)
-            : undefined;
-          if (typeof fieldName === 'string') names.set(name.toLowerCase(), fieldName);
-          else names.delete(name.toLowerCase());
+  /**
+   * The evaluator keeps its own stack of frames instead of calling itself for each part of the formula, so the
+   * nesting of a formula, and the depth of a custom function that waits for its own result, never run JavaScript's
+   * stack out: a formula nested as deep as the parser allows evaluates, and a custom function goes FileMaker's 10,000
+   * calls deep whether or not its call is the last thing it does. A frame is one step of work: a node to evaluate,
+   * the rest of an operator once its operands are known, a function to apply to its evaluated arguments, or the state
+   * to put back when a Let, a custom function or SetPrecision ends. Values move through a stack of their own.
+   * A built-in that reads its arguments itself (If and Case are handled here; While, Substitute, Evaluate and the
+   * others call v() for each) starts a run of its own inside this one, and so does a host callback: those nest on
+   * JavaScript's stack, one run per level, and a stack that runs out there is turned into the calculation's error.
+   */
+  private run(k: number, n: Node, d: number, i: number, a: unknown): Value {
+    const base = this.fk.length;
+    const vbase = this.vs.length;
+    const entryDepth = this.traceDepth;
+    this.push(k, n, d, i, a);
+    try {
+      while (this.fk.length > base) {
+        const k = this.fk.pop()!;
+        const n = this.fn.pop()!;
+        const d = this.fd.pop()!;
+        const i = this.fi.pop()!;
+        const a = this.fa.pop()!;
+        this.traceDepth = d;
+        try {
+          this.step(k, n, d, i, a);
+        } catch (e) {
+          throw this.unwind(base, vbase, e);
         }
-        return this.v(n.body);
-      });
-      case 'unary': {
-        const a = this.v(n.a);
-        if (n.op === 'not') return bool(!asBoolean(a));
-        if (n.op === '+') return a;
-        if ((this.decimalPlaces !== undefined || (a.type === 'number' && a.decimal !== undefined)) && n.op === '-') {
-          const d = Decimal.value(a, this.decimalPlaces ?? 448);
-          return d.with(-d.n).value();
-        }
-        return negate(a);
       }
-      case 'bin': return this.binary(n.op, n.a, n.b);
-      case 'call': this.checkClock(); return this.call(n.name, n.args);
+      return this.vs.pop()!;
+    } finally {
+      this.traceDepth = entryDepth;
     }
+  }
+
+  /**
+   * The pending frames, one run inside another on the same five arrays (kind, node, depth, index, payload), and the
+   * values they have produced. Arrays of plain fields, not frame objects, so that evaluating a part allocates nothing.
+   */
+  private readonly fk: number[] = [];
+  private readonly fn: Node[] = [];
+  private readonly fd: number[] = [];
+  private readonly fi: number[] = [];
+  private readonly fa: unknown[] = [];
+  private readonly vs: Value[] = [];
+
+  private push(k: number, n: Node, d: number, i: number, a: unknown): void {
+    this.fk.push(k);
+    this.fn.push(n);
+    this.fd.push(d);
+    this.fi.push(i);
+    this.fa.push(a);
+  }
+
+  /**
+   * An error on its way out of a run: the frames still pending put back what they changed (Let scopes, a custom
+   * function's scope and depth, SetPrecision's digits), the trace hears of each part the error stopped, and a stack
+   * that ran out inside a custom function becomes that function's error, as a thrown error would in a recursive
+   * evaluator's catch. Each state is put back by assignment, not by undoing, so a second error on the way out (a stack
+   * with no room left for the first) leaves nothing half done once the next frame out has run.
+   */
+  private unwind(base: number, vbase: number, e: unknown): unknown {
+    const refusal = isExecutionRefusal(e);
+    const trace = this.ctx.trace;
+    while (this.fk.length > base) {
+      const k = this.fk.pop()!;
+      const n = this.fn.pop()!;
+      const d = this.fd.pop()!;
+      const i = this.fi.pop()!;
+      const a = this.fa.pop()!;
+      switch (k) {
+        case TRACE:
+          if (trace && !refusal && e instanceof CalcError) trace(n, e, d);
+          break;
+        case SCOPE_END:
+          this.scopes.length = i;
+          break;
+        case FN_END: {
+          // JavaScript's stack can run out before FileMaker's 10,000 levels: the same error ("?"), saying how far it got.
+          const level = this.depth;
+          this.scopes = a as Map<string, Value>[];
+          this.depth = i;
+          if (!refusal && e instanceof RangeError && stackExhausted(e)) {
+            e = new CalcError(ERR.recursion, `${(n as Node & { k: 'call' | 'var' }).name} recursed too deeply (this server's stack ran out at level ${level}; FileMaker allows ${MAX_DEPTH})`);
+          }
+          break;
+        }
+        case PRECISION_END: {
+          const saved = a as PrecisionState;
+          this.decimalPlaces = saved.previous;
+          setDecimalBudget(saved.budget);
+          if (!refusal && e instanceof RangeError) e = new CalcError(ERR.calculation, e.message);
+          break;
+        }
+      }
+    }
+    this.vs.length = vbase;
+    return e;
+  }
+
+  /** One step: the frame's own work, which may push the frames that do the rest. */
+  private step(k: number, n: Node, d: number, i: number, a: unknown): void {
+    switch (k) {
+      case EVAL: {
+        if (!i) this.tick();
+        if (this.ctx.trace) this.push(TRACE, n, d, 0, null);
+        switch (n.k) {
+          case 'num': this.vs.push(this.numberLiteral(n)); return;
+          case 'str': this.vs.push(text(n.value)); return;
+          case 'field': this.vs.push(this.field(n)); return;
+          case 'var': {
+            const r = this.variable(n);
+            if ('custom' in r) this.push(r.custom.call ? APPLY_JS : APPLY_CUSTOM, n, d, 0, { cf: r.custom, name: n.name, nodes: [], out: [] } satisfies CustomCall);
+            else this.vs.push(r);
+            return;
+          }
+          case 'get': this.vs.push(getParameter(n.param, this)); return;
+          case 'let': {
+            // A Let variable bound to a field keeps the field's name, for GetFieldName, as in FileMaker.
+            const scope = new Map<string, Value>();
+            const names = new Map<string, string>();
+            this.parameterFields.set(scope, names);
+            this.push(SCOPE_END, n, d, this.scopes.length, null);
+            this.scopes.push(scope);
+            this.push(LET_BODY, n, d, 0, null);
+            // Each name is bound before the next value is read, so later values can use earlier names.
+            for (let i = n.binds.length - 1; i >= 0; i--) {
+              this.push(LET_BIND, n, d, i, names);
+              this.push(EVAL, n.binds[i][1], d + 1, 0, null);
+            }
+            return;
+          }
+          case 'unary': this.push(UNARY, n, d, 0, null); this.push(EVAL, n.a, d + 1, 0, null); return;
+          case 'bin':
+            // and / or stop as soon as the answer is known.
+            if (n.op === 'and' || n.op === 'or') {
+              this.push(AND_OR, n, d, 0, null);
+            } else {
+              this.push(BIN, n, d, 0, null);
+              this.push(EVAL, n.b, d + 1, 0, null);
+            }
+            this.push(EVAL, n.a, d + 1, 0, null);
+            return;
+          case 'call': this.callNode(n, d); return;
+        }
+        return;
+      }
+      case CALL: this.callNode(n as Node & { k: 'call' }, d); return;
+      case TRACE: this.ctx.trace!(n, this.vs[this.vs.length - 1], d); return;
+      case LET_BIND: {
+        const [name, b, rep] = (n as Node & { k: 'let' }).binds[i];
+        this.bind(name, this.vs.pop()!, rep);
+        if (name.startsWith('$')) return;
+        const names = a as Map<string, string>;
+        // A bare name that is no Let variable or parameter is a field of the current table.
+        const fieldName = b.k === 'field' ? this.fieldName(b.occurrence, b.name)
+          : b.k === 'var' && !b.name.startsWith('$') ? this.fieldNameOf(b.name) ?? (this.lookup(b.name) === undefined ? this.fieldName(undefined, b.name) : undefined)
+          : undefined;
+        if (typeof fieldName === 'string') names.set(name.toLowerCase(), fieldName);
+        else names.delete(name.toLowerCase());
+        return;
+      }
+      case LET_BODY: this.push(EVAL, (n as Node & { k: 'let' }).body, d + 1, 0, null); return;
+      case SCOPE_END: this.scopes.length = i; return;
+      case UNARY: {
+        const a = this.vs.pop()!;
+        const op = (n as Node & { k: 'unary' }).op;
+        if (op === 'not') this.vs.push(bool(!asBoolean(a)));
+        else if (op === '+') this.vs.push(a);
+        else if ((this.decimalPlaces !== undefined || (a.type === 'number' && a.decimal !== undefined)) && op === '-') {
+          const dec = Decimal.value(a, this.decimalPlaces ?? 448);
+          this.vs.push(dec.with(-dec.n).value());
+        } else this.vs.push(negate(a));
+        return;
+      }
+      case AND_OR: {
+        const first = asBoolean(this.vs.pop()!);
+        const bn = n as Node & { k: 'bin' };
+        if (bn.op === 'and' ? !first : first) { this.vs.push(bool(first)); return; }
+        this.push(AND_OR_B, n, d, 0, null);
+        this.push(EVAL, bn.b, d + 1, 0, null);
+        return;
+      }
+      case AND_OR_B: this.vs.push(bool(asBoolean(this.vs.pop()!))); return;
+      case BIN: {
+        const b = this.vs.pop()!;
+        const a = this.vs.pop()!;
+        const bn = n as Node & { k: 'bin' };
+        this.vs.push(this.binary(bn.op, a, b, bn.a, bn.b));
+        return;
+      }
+      case IF: {
+        const args = (n as Node & { k: 'call' }).args;
+        const next = asBoolean(this.vs.pop()!) ? args[1] : args[2];
+        if (next) this.push(EVAL, next, d + 1, 0, null);
+        else this.vs.push(EMPTY);
+        return;
+      }
+      case CASE: {
+        const args = (n as Node & { k: 'call' }).args;
+        if (asBoolean(this.vs.pop()!)) { this.push(EVAL, args[i + 1], d + 1, 0, null); return; }
+        const next = i + 2;
+        if (next + 1 < args.length) {
+          this.push(CASE, n, d, next, null);
+          this.push(EVAL, args[next], d + 1, 0, null);
+        } else if (args.length % 2) this.push(EVAL, args[args.length - 1], d + 1, 0, null);
+        else this.vs.push(EMPTY);
+        return;
+      }
+      case CHOOSE: {
+        const args = (n as Node & { k: 'call' }).args;
+        const i = Math.trunc(asNumber(this.vs.pop()!));
+        if (i >= 0 && i + 1 < args.length) this.push(EVAL, args[i + 1], d + 1, 0, null);
+        else this.vs.push(EMPTY);
+        return;
+      }
+      case COLLECT: (a as Value[]).push(this.vs.pop()!); return;
+      case SPREAD: {
+        // An aggregate's argument: every related record's value, or every repetition, read directly; anything else evaluated.
+        const direct = this.valuesDirect(n);
+        if (!direct) {
+          this.push(COLLECT, n, d, 0, a);
+          this.push(EVAL, n, d + 1, 0, null);
+          return;
+        }
+        const out = a as Value[];
+        for (const v of direct) out.push(v);
+        return;
+      }
+      case APPLY_BUILTIN: {
+        const { fn, out } = a as { fn: Fn; out: Value[] };
+        this.vs.push(this.applyBuiltin(n as Node & { k: 'call' }, fn, out));
+        return;
+      }
+      case APPLY_PLUGIN: {
+        const { fn, out } = a as { fn: PluginFunction; out: Value[] };
+        this.vs.push(fn.call(out, this));
+        return;
+      }
+      case APPLY_JS: {
+        const { cf, name, out } = a as CustomCall;
+        if (out.length !== cf.parameters.length) {
+          throw new CalcError(out.length < cf.parameters.length ? ERR.tooFewParameters : ERR.tooManyParameters, `Wrong number of parameters in ${name}`);
+        }
+        this.vs.push(cf.call!(out));
+        return;
+      }
+      case APPLY_CUSTOM: {
+        // The parameters bound to the evaluated arguments in a scope of their own: the body cannot see the caller's names.
+        const { cf, name, nodes, out } = a as CustomCall;
+        const scope = this.bindValues(name, cf, out, nodes.map((a) => this.argumentFieldName(a)));
+        const limit = Math.min(MAX_DEPTH, this.recursionLimit ?? MAX_DEPTH);
+        this.push(FN_END, n, d, this.depth, this.scopes);
+        if (++this.depth > limit) throw new CalcError(ERR.recursion, `${name} recursed too deeply`);
+        this.tick();
+        const body = this.parse(cf.formula, cf.parameters.map((p) => p.trim()));
+        this.scopes = [scope];
+        this.push(EVAL, body, d + 1, 0, null);
+        return;
+      }
+      case FN_END:
+        this.scopes = a as Map<string, Value>[];
+        this.depth = i;
+        return;
+      case PRECISION: {
+        const args = (n as Node & { k: 'call' }).args;
+        const precision = Math.trunc(asNumber(this.vs.pop()!));
+        // Claris documents 16–400, plus the precision-zero example. Keep the
+        // pre-existing evaluation for undocumented precision arguments.
+        if (precision !== 0 && !(precision >= 16 && precision <= 400)) { this.push(EVAL, args[0], d + 1, 0, null); return; }
+        const places = precision === 0 ? 16 : precision;
+        const saved: PrecisionState = { previous: this.decimalPlaces, budget: setDecimalBudget(() => this.checkWorkBudget()), places };
+        this.decimalPlaces = places + 48;
+        this.push(PRECISION_END, n, d, 0, saved); this.push(EVAL, args[0], d + 1, 0, null);
+        return;
+      }
+      case PRECISION_END: {
+        const saved = a as PrecisionState;
+        const raised = this.decimalPlaces!;
+        this.decimalPlaces = saved.previous;
+        setDecimalBudget(saved.budget);
+        const result = this.vs.pop()!;
+        try {
+          this.vs.push(result.type === 'number' && result.decimal !== undefined ? Decimal.value(result, raised).value(saved.places) : result);
+        } catch (e) {
+          if (e instanceof RangeError) throw new CalcError(ERR.calculation, e.message);
+          throw e;
+        }
+        return;
+      }
+      case AS_NUMBER: {
+        const places = this.decimalPlaces ?? 448;
+        const v = this.vs.pop()!;
+        if (v.type === 'number' && v.decimal !== undefined) { this.vs.push(Decimal.value(v, places).value()); return; }
+        if (v.type === 'text' || v.type === 'container') {
+          const numeric = decimalNumberText(v.value);
+          if (numeric?.includes('.')) {
+            try { this.vs.push(Decimal.parse(numeric, places).value()); return; } catch (e) { if (e instanceof RangeError) { this.vs.push(num(NaN)); return; } throw e; }
+          }
+        }
+        this.vs.push((a as Fn).values!([v], this, (n as Node & { k: 'call' }).name, (n as Node & { k: 'call' }).args));
+        return;
+      }
+    }
+  }
+
+  /** A function call: what to do before its arguments are read, and the frames that read them and apply it. */
+  private callNode(n: Node & { k: 'call' }, d: number): void {
+    const { name, args } = n;
+    // No public binary-ID mapping: use the requested plug-in-missing fallback.
+    // Do not evaluate arguments or let a host/custom function claim this ID.
+    if (unknownFunctionId(name)) {
+      this.ctx.notice?.(`Unknown function ${name}: skipped; returns ?`);
+      this.vs.push(text('?'));
+      return;
+    }
+    const resolved = resolveFunction(name, this.ctx);
+    if (resolved?.kind === 'builtin') {
+      const fn = resolved.fn;
+      if (args.length < fn.min) throw new CalcError(ERR.tooFewParameters, `Too few parameters in ${name}`);
+      if (fn.max !== undefined && args.length > fn.max) throw new CalcError(ERR.tooManyParameters, `Too many parameters in ${name}`);
+      // A built-in pack turned off for this file is a plug-in that isn't installed: "?" without evaluating the arguments.
+      if (this.ctx.builtinOff?.(name)) { this.vs.push(text('?')); return; }
+      const key = name.toLowerCase();
+      switch (key) {
+        // Choosing a branch is no work of its own: the clock is not read for it, as it is for every other call.
+        case 'if': this.push(IF, n, d, 0, null); this.push(EVAL, args[0], d + 1, 0, null); return;
+        case 'case': this.push(CASE, n, d, 0, null); this.push(EVAL, args[0], d + 1, 0, null); return;
+        case 'choose': this.push(CHOOSE, n, d, 0, null); this.push(EVAL, args[0], d + 1, 0, null); return;
+      }
+      this.checkClock();
+      if (this.decimalPlaces !== undefined && key === 'pi') { this.vs.push(Decimal.pi(this.decimalPlaces).value()); return; }
+      switch (key) {
+        case 'setprecision': this.push(PRECISION, n, d, 0, null); this.push(EVAL, args[1], d + 1, 0, null); return;
+        case 'getasnumber': this.push(AS_NUMBER, n, d, 0, fn); this.push(EVAL, args[0], d + 1, 0, null); return;
+      }
+      // A built-in that reads its arguments itself (While, Substitute, Evaluate, ...) runs them in a nested run of its own.
+      if (!fn.values) { this.vs.push(fn.run(args, this, name)); return; }
+      const out: Value[] = [];
+      this.push(APPLY_BUILTIN, n, d, 0, { fn, out });
+      this.pushArguments(args, d, out, fn.spread === true, fn.groups === true);
+      return;
+    }
+    if (resolved?.kind === 'plugin') {
+      this.checkClock();
+      const pf = resolved.fn;
+      if (args.length < pf.min) throw new CalcError(ERR.tooFewParameters, `Too few parameters in ${name}`);
+      if (pf.max !== undefined && args.length > pf.max) throw new CalcError(ERR.tooManyParameters, `Too many parameters in ${name}`);
+      const out: Value[] = [];
+      this.push(APPLY_PLUGIN, n, d, 0, { fn: pf, out });
+      this.pushArguments(args, d, out, false, false);
+      return;
+    }
+    if (resolved?.kind === 'custom') {
+      const cf = resolved.fn;
+      // A function written as a formula is only its parts, each a step of its own; one written in JavaScript is a built-in's kind of work.
+      if (cf.call) this.checkClock();
+      if (args.length !== cf.parameters.length) {
+        throw new CalcError(args.length < cf.parameters.length ? ERR.tooFewParameters : ERR.tooManyParameters, `Wrong number of parameters in ${name}`);
+      }
+      const out: Value[] = [];
+      this.push(cf.call ? APPLY_JS : APPLY_CUSTOM, n, d, 0, { cf, name, nodes: args, out } satisfies CustomCall);
+      this.pushArguments(args, d, out, false, false);
+      return;
+    }
+    this.checkClock();
+    // The plug-in isn't installed: FileMaker gives "?" without evaluating the arguments.
+    if (pluginNotInstalled(name)) { this.vs.push(text('?')); return; }
+    throw new CalcError(ERR.unknownFunction, `The function "${name}" cannot be found`);
+  }
+
+  /**
+   * Frames that read a call's arguments left to right into `out`: one value each, every value an aggregate's argument
+   * stands for, or each part of a [ a ; b ] group for a function that takes them.
+   */
+  private pushArguments(args: Node[], d: number, out: Value[], spread: boolean, groups: boolean): void {
+    for (let i = args.length - 1; i >= 0; i--) {
+      const arg = args[i];
+      if (spread) {
+        this.push(SPREAD, arg, d, 0, out);
+      } else if (groups && arg.k === 'call' && arg.name === '[]') {
+        for (let j = arg.args.length - 1; j >= 0; j--) {
+          this.push(COLLECT, arg.args[j], d, 0, out);
+          this.push(EVAL, arg.args[j], d + 1, 0, null);
+        }
+      } else {
+        this.push(COLLECT, arg, d, 0, out);
+        this.push(EVAL, arg, d + 1, 0, null);
+      }
+    }
+  }
+
+  /** A built-in applied to its evaluated arguments: with SetPrecision's digits, or a decimal argument, the number functions keep every digit. */
+  private applyBuiltin(n: Node & { k: 'call' }, fn: Fn, values: Value[]): Value {
+    const name = n.name;
+    const key = name.toLowerCase();
+    if (supportsDecimalFunction(name) && (this.decimalPlaces !== undefined || TARGETED_DECIMAL_FUNCTIONS.has(key))) {
+      if ((key === 'min' || key === 'max') && values.length && values.every((v) => exactOf(v) !== undefined)) {
+        return values.reduce((best, v) => key === 'min'
+          ? (exactOf(v)! < exactOf(best)! ? v : best) : (exactOf(v)! > exactOf(best)! ? v : best));
+      }
+      // Keep the documented 15-significant-digit Sum/Average behavior for a
+      // decimal input beyond that boundary; the remaining decimal functions
+      // share the fixed-point path.
+      const longDecimalAggregate = (key === 'sum' || key === 'average') && values.some((v) => v.type === 'number'
+        && v.decimal !== undefined && v.decimal.replace(/[^0-9]/g, '').replace(/^0+/, '').length > 15);
+      if (this.decimalPlaces !== undefined || (!longDecimalAggregate && values.some((v) => v.type === 'number' && v.decimal !== undefined))) {
+        const places = this.decimalPlaces ?? 448;
+        if (key === 'min' || key === 'max') {
+          const nonblank = values.filter((v) => !isEmpty(v));
+          if (nonblank.some((v) => v.type !== 'number')) {
+            return nonblank.reduce<Value | undefined>((best, v) => !best || (key === 'min' ? compare(v, best, this.order) < 0 : compare(v, best, this.order) > 0) ? v : best, undefined) ?? EMPTY;
+          }
+        }
+        const precise = decimalFunction(key, values, places);
+        if (precise !== undefined) return precise;
+      }
+    }
+    return fn.values!(values, this, name, n.args);
   }
 
   text(n: Node): string {
@@ -583,7 +967,8 @@ export class Env {
     return this.readField(this.ref(n)!);
   }
 
-  private variable(n: Node & { k: 'var' }): Value {
+  /** A one-word name: a Let variable or parameter, a field, or a function written without parentheses (the custom ones are applied by the caller). */
+  private variable(n: Node & { k: 'var' }): Value | { custom: CustomFunctionDef } {
     if (this.decimalPlaces !== undefined && n.name.toLowerCase() === 'pi' && !n.name.startsWith('$')) {
       const local = this.lookup(n.name);
       if (local !== undefined) return local;
@@ -600,7 +985,7 @@ export class Env {
     if (resolved?.kind === 'builtin' && resolved.fn.min === 0) return this.ctx.field?.(ref) ?? (this.ctx.builtinOff?.(n.name) ? text('?') : resolved.fn.run([], this, n.name));
     // So may an enabled plug-in's functions and custom functions without parameters.
     if (resolved?.kind === 'plugin' && resolved.fn.min === 0) return this.ctx.field?.(ref) ?? resolved.fn.call([], this);
-    if (resolved?.kind === 'custom' && !resolved.fn.parameters.length) return this.ctx.field?.(ref) ?? this.customFunction(n.name, resolved.fn, []);
+    if (resolved?.kind === 'custom' && !resolved.fn.parameters.length) return this.ctx.field?.(ref) ?? { custom: resolved.fn };
     // And plug-in functions, which give "?" when the plug-in isn't installed.
     if (!resolved && pluginNotInstalled(n.name)) return this.ctx.field?.(ref) ?? text('?');
     return this.readField(ref);
@@ -612,6 +997,11 @@ export class Env {
    * otherwise the argument's own value.
    */
   values(n: Node): Value[] {
+    return this.valuesDirect(n) ?? [this.v(n)];
+  }
+
+  /** The values an aggregate argument stands for without evaluating it (related records, repetitions), or undefined when it is evaluated. */
+  private valuesDirect(n: Node): Value[] | undefined {
     const ref = this.ref(n);
     if (ref && !(n.k === 'field' && n.rep) && !(n.k === 'var' && n.rep)) {
       if (ref.occurrence !== undefined) {
@@ -626,105 +1016,12 @@ export class Env {
         return out;
       }
     }
-    return [this.v(n)];
+    return undefined;
   }
 
+  /** A function applied to argument nodes, as a formula's call would be. */
   call(name: string, args: Node[]): Value {
-    // No public binary-ID mapping: use the requested plug-in-missing fallback.
-    // Do not evaluate arguments or let a host/custom function claim this ID.
-    if (unknownFunctionId(name)) {
-      this.ctx.notice?.(`Unknown function ${name}: skipped; returns ?`);
-      return text('?');
-    }
-    const resolved = resolveFunction(name, this.ctx);
-    if (resolved?.kind === 'builtin') {
-      const fn = resolved.fn;
-      if (args.length < fn.min) throw new CalcError(ERR.tooFewParameters, `Too few parameters in ${name}`);
-      if (fn.max !== undefined && args.length > fn.max) throw new CalcError(ERR.tooManyParameters, `Too many parameters in ${name}`);
-      // A built-in pack turned off for this file is a plug-in that isn't installed: "?" without evaluating the arguments.
-      if (this.ctx.builtinOff?.(name)) return text('?');
-      if (this.decimalPlaces !== undefined && name.toLowerCase() === 'pi') return Decimal.pi(this.decimalPlaces).value();
-      if (name.toLowerCase() === 'setprecision') {
-        const precision = Math.trunc(asNumber(this.v(args[1])));
-        // Claris documents 16–400, plus the precision-zero example. Keep the
-        // pre-existing evaluation for undocumented precision arguments.
-        if (precision !== 0 && !(precision >= 16 && precision <= 400)) return this.v(args[0]);
-        const previous = this.decimalPlaces;
-        const places = precision === 0 ? 16 : precision;
-        this.decimalPlaces = places + 48;
-        try {
-          const result = withDecimalBudget(() => this.checkWorkBudget(), () => this.v(args[0]));
-          return result.type === 'number' && result.decimal !== undefined
-            ? Decimal.value(result, this.decimalPlaces).value(places) : result;
-        } catch (e) {
-          rethrowExecutionRefusal(e);
-          if (e instanceof RangeError) throw new CalcError(ERR.calculation, e.message);
-          throw e;
-        } finally { this.decimalPlaces = previous; }
-      }
-      if (name.toLowerCase() === 'getasnumber') {
-        const places = this.decimalPlaces ?? 448;
-        const v = this.v(args[0]);
-        if (v.type === 'number' && v.decimal !== undefined) return Decimal.value(v, places).value();
-        if (v.type === 'text' || v.type === 'container') {
-          const numeric = decimalNumberText(v.value);
-          if (numeric?.includes('.')) {
-            try { return Decimal.parse(numeric, places).value(); } catch (e) { if (e instanceof RangeError) return num(NaN); throw e; }
-          }
-        }
-        return fn.run(args, this, name);
-      }
-      const key = name.toLowerCase();
-      const targetedDecimalFunction = ['abs', 'int', 'round', 'truncate', 'mod', 'div', 'sum', 'average', 'min', 'max'].includes(key);
-      if (supportsDecimalFunction(name) && (this.decimalPlaces !== undefined || targetedDecimalFunction)) {
-        const values = ['sum', 'average', 'min', 'max', 'count', 'variance', 'variancep', 'stdev', 'stdevp'].includes(key)
-          ? args.flatMap((arg) => this.values(arg)) : args.map((arg) => this.v(arg));
-        if ((key === 'min' || key === 'max') && values.length && values.every((v) => exactOf(v) !== undefined)) {
-          return values.reduce((best, v) => key === 'min'
-            ? (exactOf(v)! < exactOf(best)! ? v : best) : (exactOf(v)! > exactOf(best)! ? v : best));
-        }
-        // Keep the documented 15-significant-digit Sum/Average behavior for a
-        // decimal input beyond that boundary; the remaining decimal functions
-        // share the fixed-point path.
-        const longDecimalAggregate = (key === 'sum' || key === 'average') && values.some((v) => v.type === 'number'
-          && v.decimal !== undefined && v.decimal.replace(/[^0-9]/g, '').replace(/^0+/, '').length > 15);
-        if (this.decimalPlaces !== undefined || (!longDecimalAggregate && values.some((v) => v.type === 'number' && v.decimal !== undefined))) {
-        const places = this.decimalPlaces ?? 448;
-        if (key === 'npv') {
-          const payments = this.values(args[0]).filter((v) => !isEmpty(v));
-          const rate = Decimal.value(this.v(args[1]), places);
-          const one = Decimal.parse('1', places);
-          try {
-            const base = one.add(rate);
-            let total = Decimal.parse('0', places);
-            for (let i = 0; i < payments.length; i++) {
-              total = total.add(Decimal.value(payments[i], places).div(base.powInteger(BigInt(i + 1))));
-            }
-            return total.value();
-          } catch (e) { if (e instanceof RangeError) return num(NaN); throw e; }
-        }
-        if (key === 'min' || key === 'max') {
-          const nonblank = values.filter((v) => !isEmpty(v));
-          if (nonblank.some((v) => v.type !== 'number')) {
-            return nonblank.reduce<Value | undefined>((best, v) => !best || (key === 'min' ? compare(v, best, this.order) < 0 : compare(v, best, this.order) > 0) ? v : best, undefined) ?? EMPTY;
-          }
-        }
-        const precise = decimalFunction(key, values, places);
-        if (precise !== undefined) return precise;
-        }
-      }
-      return fn.run(args, this, name);
-    }
-    if (resolved?.kind === 'plugin') {
-      const pf = resolved.fn;
-      if (args.length < pf.min) throw new CalcError(ERR.tooFewParameters, `Too few parameters in ${name}`);
-      if (pf.max !== undefined && args.length > pf.max) throw new CalcError(ERR.tooManyParameters, `Too many parameters in ${name}`);
-      return pf.call(args.map((a) => this.v(a)), this);
-    }
-    if (resolved?.kind === 'custom') return this.customFunction(name, resolved.fn, args);
-    // The plug-in isn't installed: FileMaker gives "?" without evaluating the arguments.
-    if (pluginNotInstalled(name)) return text('?');
-    throw new CalcError(ERR.unknownFunction, `The function "${name}" cannot be found`);
+    return this.run(CALL, { k: 'call', name, args }, this.traceDepth, 0, null);
   }
 
   private compiled = new Map<string, Node>();
@@ -769,14 +1066,6 @@ export class Env {
     return n;
   }
 
-  /** The parameters of a custom function call bound to its evaluated arguments, in a scope of their own. */
-  private bindParameters(name: string, cf: CustomFunctionDef, args: Node[]): Map<string, Value> {
-    if (args.length !== cf.parameters.length) {
-      throw new CalcError(args.length < cf.parameters.length ? ERR.tooFewParameters : ERR.tooManyParameters, `Wrong number of parameters in ${name}`);
-    }
-    return this.bindValues(name, cf, args.map((a) => this.v(a)), args.map((a) => this.argumentFieldName(a)));
-  }
-
   /** The name of the field an argument is, for GetFieldName in the function it is passed to. Read in the scope the argument is written in. */
   private argumentFieldName(a: Node): string | undefined {
     return a.k === 'field' ? this.fieldName(a.occurrence, a.name) : a.k === 'var' && !a.name.startsWith('$') ? this.fieldNameOf(a.name) ?? undefined : undefined;
@@ -800,107 +1089,16 @@ export class Env {
     return scope;
   }
 
-  /**
-   * What a custom function's body ends in, when that is another custom function's call: the branch an If or Case picks
-   * is looked for until it is one. Such a call doesn't need the caller's stack, so a function that recurses this way
-   * (a running total passed along, say) can go as deep as FileMaker allows. Not done while a trace is following every step.
-   */
-  private tailCall(node: Node): { node: Node } | { value: Value } | { name: string; cf: CustomFunctionDef; args: Node[]; values?: Value[]; fieldNames?: (string | undefined)[] } {
-    for (;;) {
-      if (node.k === 'let' && !this.ctx.trace) {
-        const letNode = node;
-        const resolved = this.withScope(() => {
-          const scope = this.scopes[this.scopes.length - 1];
-          const names = new Map<string, string>();
-          this.parameterFields.set(scope, names);
-          for (const [name, binding, repetition] of letNode.binds) {
-            this.bind(name, this.v(binding), repetition);
-            if (name.startsWith('$')) continue;
-            const fieldName = binding.k === 'field' ? this.fieldName(binding.occurrence, binding.name)
-              : binding.k === 'var' && !binding.name.startsWith('$') ? this.fieldNameOf(binding.name) ?? (this.lookup(binding.name) === undefined ? this.fieldName(undefined, binding.name) : undefined)
-              : undefined;
-            if (typeof fieldName === 'string') names.set(name.toLowerCase(), fieldName);
-            else names.delete(name.toLowerCase());
-          }
-          const result = this.tailCall(letNode.body);
-          // The arguments of a tail call, and the field names they stand for, are read here, where the Let's variables are visible.
-          if ('cf' in result) return { ...result, values: result.args.map((arg) => this.v(arg)), fieldNames: result.args.map((arg) => this.argumentFieldName(arg)) };
-          // Anything else is finished here too: the bindings have run once, and the body is not run again outside this scope.
-          return 'value' in result ? result : { value: this.v(result.node) };
-        });
-        return resolved;
-      }
-      if (node.k !== 'call' || this.ctx.trace || unknownFunctionId(node.name)) return { node };
-      const key = node.name.toLowerCase();
-      if (key === 'if' && node.args.length >= 2 && node.args.length <= 3) {
-        const next = this.bool(node.args[0]) ? node.args[1] : node.args[2];
-        if (!next) return { value: EMPTY };
-        node = next;
-      } else if (key === 'case' && node.args.length >= 2) {
-        const a = node.args;
-        let next: Node | undefined;
-        for (let i = 0; i + 1 < a.length && !next; i += 2) if (this.bool(a[i])) next = a[i + 1];
-        if (!next && a.length % 2) next = a[a.length - 1];
-        if (!next) return { value: EMPTY };
-        node = next;
-      } else {
-        const resolved = resolveFunction(node.name, this.ctx);
-        return resolved?.kind === 'custom' && !resolved.fn.call ? { name: node.name, cf: resolved.fn, args: node.args } : { node };
-      }
-    }
-  }
-
   /** Run a file-defined custom function from a plug-in call under this evaluation's ordinary limits. */
   callFileCustomFunction(name: string, values: Value[]): Value {
     const cf = this.ctx.customFunction?.(name);
     if (!cf) throw new CalcError(ERR.unknownFunction, `The custom function "${name}" cannot be found`);
     this.checkWorkBudget();
-    return this.customFunction(name, cf, [], values);
+    return this.run(cf.call ? APPLY_JS : APPLY_CUSTOM, { k: 'call', name, args: [] }, this.traceDepth, 0, { cf, name, nodes: [], out: values } satisfies CustomCall);
   }
 
-  private customFunction(name: string, cf: CustomFunctionDef, args: Node[], values?: Value[]): Value {
-    if (cf.call) {
-      if ((values ?? args).length !== cf.parameters.length) {
-        throw new CalcError((values ?? args).length < cf.parameters.length ? ERR.tooFewParameters : ERR.tooManyParameters, `Wrong number of parameters in ${name}`);
-      }
-      return cf.call(values ?? args.map((a) => this.v(a)));
-    }
-    const limit = Math.min(MAX_DEPTH, this.recursionLimit ?? MAX_DEPTH);
-    const start = this.depth;
-    let scope = values ? this.bindValues(name, cf, values, []) : this.bindParameters(name, cf, args);
-    if (++this.depth > limit) throw new CalcError(ERR.recursion, `${name} recursed too deeply`);
-    try {
-      let current = { name, cf };
-      for (;;) {
-        this.tick();
-        const body = this.parse(current.cf.formula, current.cf.parameters.map((p) => p.trim()));
-        const step = this.isolated(scope, () => this.tailCall(body));
-        if ('value' in step) return step.value;
-        if (!('cf' in step)) return this.isolated(scope, () => this.v(step.node));
-        // A tail call: its arguments are read in this call's scope, then it takes this call's place.
-        const next = this.isolated(scope, () => step.values
-          ? this.bindValues(step.name, step.cf, step.values, step.fieldNames ?? [])
-          : this.bindParameters(step.name, step.cf, step.args));
-        if (++this.depth > limit) throw new CalcError(ERR.recursion, `${step.name} recursed too deeply`);
-        scope = next;
-        current = step;
-      }
-    } catch (e) {
-      rethrowExecutionRefusal(e);
-      // JavaScript's stack can run out before FileMaker's 10,000 levels: the same error ("?"), saying how far it got.
-      if (e instanceof RangeError && (e.message.includes('call stack size exceeded') || e.message.includes('too much recursion'))) throw new CalcError(ERR.recursion, `${name} recursed too deeply (this server's stack ran out at level ${this.depth}; FileMaker allows ${MAX_DEPTH})`);
-      throw e;
-    } finally {
-      this.depth = start;
-    }
-  }
-
-  private binary(op: string, an: Node, bn: Node): Value {
-    // and / or stop as soon as the answer is known.
-    if (op === 'and') return bool(asBoolean(this.v(an)) && asBoolean(this.v(bn)));
-    if (op === 'or') return bool(asBoolean(this.v(an)) || asBoolean(this.v(bn)));
-    const a = this.v(an);
-    const b = this.v(bn);
+  /** A binary operator (other than and / or) on its evaluated operands; the nodes are read for ^ on an overlong literal. */
+  private binary(op: string, a: Value, b: Value, an: Node, bn: Node): Value {
     const decimalOperands = [a, b].some((v) => v.type === 'number' && v.decimal !== undefined);
     const exactLargeOperand = isBeyondDouble(a) || isBeyondDouble(b);
     const decimalMixedWithLargeWhole = decimalOperands && [a, b].some((v) => v.type === 'number'
