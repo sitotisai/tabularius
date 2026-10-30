@@ -23,7 +23,8 @@ function setup(t: TestContext, needsFixture = true) {
   else fs.writeFileSync(join(source, 'Charts.fmp12'), 'invalid source for refusal tests');
   fs.writeFileSync(join(source, 'RC_Data_FMS/Charts/data'), 'complete external data');
   fs.writeFileSync(join(dest, 'keep'), 'unrelated');
-  const exp = { databases: [{ filename: 'Charts.fmp12', folder: `filelinux:${source}/` }] };
+  const folder = process.platform === 'win32' ? `filewin:/${source.replaceAll('\\', '/')}/` : `filelinux:${source}/`;
+  const exp = { databases: [{ filename: 'Charts.fmp12', folder }] };
   const migrate = () => migrateFms(exp, dest);
   const original = fs.readFileSync(join(source, 'Charts.fmp12'));
   const assertUnpublished = () => {

@@ -94,7 +94,7 @@ test('AR-server-backup-ops-10: zero progress fails and removes output', () => {
   for (const mode of ['zero-sync', 'zero-async', 'zero-decrypt-sync', 'zero-decrypt-async']) child(mode);
 });
 
-test('AR-server-backup-ops-11: failed destination opens retain no descriptors', () => child('descriptors'));
+test('AR-server-backup-ops-11: failed destination opens retain no descriptors', { skip: process.platform === 'win32' && 'not on Windows: there is no list of open descriptors to count (no /proc/self/fd or /dev/fd)' }, () => child('descriptors'));
 
 test('decrypted plaintext written synchronously stays private to the account whatever the umask', { skip: process.platform === 'win32' }, () => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-encrypt-mode-'));
