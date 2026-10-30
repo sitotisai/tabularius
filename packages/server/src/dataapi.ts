@@ -113,7 +113,8 @@ export interface Session {
   /** Extended privileges can be removed live, but cannot be added to an open session. */
   signedInExtended?: string[];
   /** Trusted person and provider identity behind an external privilege mapping. */
-  externalIdentity?: { issuer?: string; sub?: string; person?: string; mapping: string };
+  /** What the identity provider or directory vouched for (`person`, `groups`), and the mapping it chose here; another file maps the person again from the same claims. */
+  externalIdentity?: { issuer?: string; sub?: string; person?: string; groups?: string[]; mapping: string };
   /** A scoped API token that may only read: writes and scripts are refused. */
   readOnly?: boolean;
   /** A layout-scoped API token: only these layouts may be read or written through (undefined = every layout the set can use). */
@@ -136,7 +137,7 @@ const CLIENT_PRIVILEGES: Record<Session['client'], string[]> = { rest: ['fmrest'
 /** The account's privileges, read on each request so changes (a revoked fmrest, say) apply at once. */
 export function sessionPrivileges(store: Store, session: Session): Privileges {
   if (!store.identityAllowed(session.account, session.via, session.viaId, session.externalIdentity?.person, session.principalId, session.personId)) throw new ApiError(952, 'Invalid FileMaker Data API token (*)', 401);
-  let p = store.privileges(session.account, session.via, session.externalIdentity?.person);
+  let p = store.privileges(session.account, session.via, session.externalIdentity?.person, session.externalIdentity?.groups);
   if (session.signInMark !== undefined && session.signInMark !== store.signInMark(session.account, session.via, session.externalIdentity?.person)) {
     throw new ApiError(952, 'Invalid FileMaker Data API token (*)', 401);
   }
@@ -1396,7 +1397,7 @@ export class DataApi {
     }
     // Local and directory checks make one password attempt. Only successfully remembered
     // directory names bypass anonymous capacity; the local miss must not lock out LDAP's fifth try.
-    let mapped: { via: string; person?: string } | undefined;
+    let mapped: { via: string; person?: string; groups?: string[] } | undefined;
     const checkAlive = () => {
       if (req.socket.destroyed) throw new ApiError(-1, 'The client disconnected', 499);
     };
@@ -1422,7 +1423,7 @@ export class DataApi {
       const sources = await this.dataSources(store, body, from, String(req.headers['x-tabularius-otp'] ?? ''));
       if (req.socket.destroyed) throw new ApiError(-1, 'The client disconnected', 499);
       store.auditSignIn(account, from, true);
-      const token = this.open(store, account, client, mapped.via, from, device, sources, { ...(mapped.person ? { person: mapped.person } : {}), mapping: mapped.via });
+      const token = this.open(store, account, client, mapped.via, from, device, sources, { ...(mapped.person ? { person: mapped.person } : {}), ...(mapped.groups ? { groups: mapped.groups } : {}), mapping: mapped.via });
       store.confirmDirectorySignIn(account);
       return token;
     }
@@ -1563,7 +1564,7 @@ export class DataApi {
     const account = grant.email ?? grant.sub;
     const sources = await this.dataSources(store, body, from, code);
     store.auditSignIn(account, from, true);
-    return this.open(store, account, client, via, from, device, sources, { issuer: grant.issuer, sub: grant.sub, person: grant.email, mapping: via });
+    return this.open(store, account, client, via, from, device, sources, { issuer: grant.issuer, sub: grant.sub, person: grant.email, groups: grant.groups, mapping: via });
   }
 
   /**
@@ -1572,7 +1573,7 @@ export class DataApi {
    * rejects them or the file has no account for the person. verifyAsync records
    * the combined outcome and clears only this source's counter on success.
    */
-  private async directoryLogin(store: Store, account: string, password: string, from: string): Promise<{ via: string; person?: string } | undefined> {
+  private async directoryLogin(store: Store, account: string, password: string, from: string): Promise<{ via: string; person?: string; groups?: string[] } | undefined> {
     if (/[\u0000-\u001f\u007f-\u009f]/u.test(account)) {
       const safeAccount = account.replace(/[\u0000-\u001f\u007f-\u009f]/gu, ' ');
       store.auditSignIn(safeAccount, from, false);
@@ -1592,7 +1593,7 @@ export class DataApi {
     if (!who.email) return undefined;
     if (store.canonicalAccount(who.email) && store.accountInactive(who.email)) return undefined;
     const via = store.externalAccount(who.email, who.groups);
-    return via ? { via, person: who.email } : undefined;
+    return via ? { via, person: who.email, groups: who.groups } : undefined;
   }
 
   /** A session standing in for a scoped API token, kept so its globals and locks persist; undefined when the token is invalid for this file. */
@@ -1643,7 +1644,7 @@ export class DataApi {
     const personId = externalIdentity?.person ? store.accountIdentityId(externalIdentity.person) : undefined;
     const session: Session = { token, db: store.name, account, principalId, personId, started: Date.now(), signedInAt: performance.now(), lastUsed: performance.now(), scripts: new ScriptSession(), client, ...(via ? { via, viaId } : {}), ...(externalIdentity ? { externalIdentity } : {}), ...(from ? { from } : {}), ...(device ? { device: device.slice(0, 200) } : {}), ...(dataSources ? { dataSources } : {}) };
     session.signInMark = store.signInMark(account, via, externalIdentity?.person);
-    session.signedInExtended = store.privileges(account, via, externalIdentity?.person).set.extendedPrivileges.map(e => e.toLowerCase());
+    session.signedInExtended = store.privileges(account, via, externalIdentity?.person, externalIdentity?.groups).set.extendedPrivileges.map(e => e.toLowerCase());
     try {
       // The same privilege check the client-login gate makes: this throws when
       // the set lacks the client's extended privilege. (Idle-disconnect is read from

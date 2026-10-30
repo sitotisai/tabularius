@@ -86,9 +86,8 @@ export class Workbench {
 
   /** Hosts the folder (every file made so far, closed first) and returns a Data API client. */
   async api(file: string, account = 'Admin', password = 'pw'): Promise<Api> {
-    for (const [name, store] of this.stores) {
-      if (name === file) store.setPassword(account, password, '[Full Access]');
-    }
+    // The same account and password in every file of the folder: that is what makes it one person in each (see cross-file.ts).
+    for (const store of this.stores.values()) store.setPassword(account, password, '[Full Access]');
     for (const store of this.stores.values()) store.close();
     this.stores.clear();
     if (this.served) this.earlier.push(this.served);

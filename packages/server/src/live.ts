@@ -69,11 +69,11 @@ export class Live {
       const seen = new Set<string>();
       const readers: Privileges[] = [];
       for (const s of [...api.own((token) => this.byToken.get(token)?.size ?? 0), ...(api.others?.() ?? [])]) {
-        const key = JSON.stringify([s.db, s.account, s.via, s.externalIdentity?.person]);
+        const key = JSON.stringify([s.db, s.account, s.via, s.externalIdentity?.person, s.externalIdentity?.groups]);
         if (!s.streams || seen.has(key)) continue;
         seen.add(key);
         const home = host.get(s.db);
-        if (home) readers.push(home.privileges(s.account, s.via, s.externalIdentity?.person).in(store));
+        if (home) readers.push(home.privileges(s.account, s.via, s.externalIdentity?.person, s.externalIdentity?.groups).in(store));
       }
       return readers;
     });
