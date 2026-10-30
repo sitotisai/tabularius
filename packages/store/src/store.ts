@@ -4185,10 +4185,11 @@ export class Store {
   }
 
   /**
-   * Whether this file's scripts may reach the network (Insert from URL and the plug-in functions that follow it). Off
-   * unless an administrator turned it on; a converted or new file starts off. Kept in the file, and in its security log.
+   * Whether this file's scripts may reach the network (Insert from URL, Send Mail and the plug-in functions that follow
+   * them). On unless an administrator turned it off: a file with no saved setting is on, a file converted from a .fmp12
+   * starts off until an administrator turns it on, and the demo is off. Kept in the file, and in its security log.
    */
-  get scriptNetwork(): boolean { return this.meta('scriptNetwork') === true; }
+  get scriptNetwork(): boolean { return this.meta('scriptNetwork') !== false; }
 
   setScriptNetwork(on: boolean, opts: { account?: string } = {}): void {
     if (typeof on !== 'boolean') throw new StoreError(960, 'Script network access must be true or false');

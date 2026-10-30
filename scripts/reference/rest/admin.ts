@@ -269,6 +269,7 @@ export const groups: RestGroup[] = [
     anchors: [
       String.raw`/^\/tabularius\/admin\/v1\/files\/[^/]+\/external-containers$/.test(`,
       String.raw`/^\/tabularius\/admin\/v1\/files\/[^/]+\/orphan-containers$/.test(`,
+      String.raw`/^\/tabularius\/admin\/v1\/files\/[^/]+\/approve$/.test(`,
       String.raw`/^\/tabularius\/admin\/v1\/files\/[^/]+\/reconvert-preview$/.test(`,
       String.raw`/^\/tabularius\/admin\/v1\/files\/[^/]+\/reconvert$/.test(`,
       `path === '/tabularius/admin/v1/reconvert-all'`,
@@ -364,6 +365,22 @@ export const groups: RestGroup[] = [
           status: 200,
           response: j({ removed: 1, bytes: 18233, externalFiles: 0, count: 0, containers: [], integrity: { referenced: 12, shared: 2, orphans: 0, missingRows: 0, missingExternal: 0, changedExternal: 0, danglingChunks: 0 } }),
         },
+      },
+      {
+        method: 'POST',
+        path: '/tabularius/admin/v1/files/{name}/approve',
+        summary: 'Approves a held file: one that arrived in the hosted folder after the first start, or a different file under an approved name. It stays hosted and readable while held; once approved its scripts, schedules, automations, digests, inbound hooks and connections run.',
+        permissions: WRITE,
+        params: [
+          { name: 'name', in: 'path', type: 'string', required: true, description: 'Hosted file (404 when it isn\'t).' },
+        ],
+        example: {
+          request: `POST /tabularius/admin/v1/files/Invoices/approve\n${COOKIE}\n${W}\n${CT}\n\n{}`,
+          status: 200,
+          response: j({ name: 'Invoices', held: false, approved: true }),
+          skipReason: 'Needs a held file, which only a file that arrives after the first start is.',
+        },
+        notes: 'A file that is not held answers {"name": …, "held": false, "approved": false} and nothing changes. A follower server answers 409: approve on the leader.',
       },
       {
         method: 'POST',

@@ -356,7 +356,7 @@ async function sendS3(c: Connection, secrets: Record<string, string>, io: Connec
  * place that opens a connection's secrets for a request, and it hands back only the service's answer. Every file the
  * script run involves must be one the connection allows, and none may be capture-only.
  */
-export function scriptConnections(c: Connections, opts: { captureOnly?: () => readonly string[] } = {}): ScriptConnections {
+export function scriptConnections(c: Connections, opts: { captureOnly?: () => readonly string[]; held?: (file: string) => boolean } = {}): ScriptConnections {
   const type = (id: string) => CONNECTION_TYPES.find((t) => t.id === id)!;
   return {
     host(name) {
@@ -370,6 +370,8 @@ export function scriptConnections(c: Connections, opts: { captureOnly?: () => re
     async request(name, req, files) {
       const held = files.find((f) => captureOnly(f, opts.captureOnly?.() ?? []));
       if (held !== undefined) throw new ConnectionError(`"${held}" is capture-only: its scripts never get a connection`);
+      const unapproved = files.find((f) => opts.held?.(f));
+      if (unapproved !== undefined) throw new ConnectionError(`"${unapproved}" is held: its scripts get no connection until an administrator approves it`);
       const { connection, secrets, io } = c.use(name, files);
       return type(connection.type).send(connection, secrets, io, req);
     },

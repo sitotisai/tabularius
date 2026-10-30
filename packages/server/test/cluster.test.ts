@@ -10,6 +10,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { clusterRoute, Host, serveCluster, setAdminPassword } from '../src/index.ts';
 import { LOCK_TTL_MS } from '../../store/src/index.ts';
+import { approveAll } from './approve-all.ts';
 
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
 const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtures';
@@ -31,6 +32,7 @@ before(async () => {
   dir = mkdtempSync(join(tmpdir(), 'tabularius-cluster-'));
   copyFileSync(fixture, join(dir, 'Charts.fmp12'));
   const host = new Host(dir);
+  approveAll(host);
   const store = host.get('Charts')!;
   const full = store.privilegeSets().find((p) => p.id === 1)!;
   store.savePrivilegeSet({ ...full, extendedPrivileges: [...full.extendedPrivileges, 'fmrest'] });

@@ -625,6 +625,22 @@ are switched on and off here: an account you turn back on stays on, and
 unticking **Active** in FileMaker later isn't picked up, not even by
 converting again, so switch the account off here too.
 
+### Held files
+
+A file that appears in the hosted folder after the server first started, or a
+different file under the name of an approved one, is **held**. It stays hosted
+and its data can be read, but nothing of its own runs: no script (error 802,
+whoever starts it), no script schedule, automation, digest or inbound hook, and
+no connection is handed to a script that involves it. Backups, the backup and
+verify schedules, checks, compaction and change webhooks go on. **Hosted files** marks it **Held** (hover for the
+reason) with an **Approve** button; press it once you know the file is yours.
+Files you upload, files the server creates and restored copies are approved
+from the start, and so is every file in the folder the first time the server
+starts. A `.fmp12` the server converts from the folder is held until approved.
+The approval record is a plain local file that is not signed: anyone who can
+write to the hosted folder can edit it. [Security defaults](docs/security-defaults.md)
+has the rest.
+
 ### Converting a file again
 
 Some fixes change what conversion reads from a `.fmp12`. Container files are
@@ -1213,6 +1229,7 @@ Calls that need a database take `?database=` (or `?db=`); leaving it out, or nam
 | `POST /backups/{set}/verify` | Check a backup set |
 | `POST /backups/{set}/test-restore` | Restore a set to a scratch folder, open each file and count its records |
 | `POST /files/{name}/reconvert`, `/files/{name}/reconvert-preview` | Convert a file again from its `.fmp12`, or dry-run it |
+| `POST /files/{name}/approve` | Approve a held file (see "Held files" below) |
 | `POST /reconvert-all` | `{"preview": true}` dry-runs every outdated file; `{"files": [...]}` converts them |
 | `POST /records/restore` | `{database, table, recordId, seq}`: put a record back as it was after an audit entry |
 | `POST /restore` | `{database, at, mode: "copy" \| "replace", name}`: `copy` is the default and leaves the live file alone; `replace` has to be asked for; any other `mode` is a 400 |
