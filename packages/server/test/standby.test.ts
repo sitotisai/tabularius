@@ -1,3 +1,4 @@
+import { notOnWindows } from '../../store/test/windows.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -613,7 +614,7 @@ function standbyOfNames(folder: string, source: string, names: string[], lines: 
   return s;
 }
 
-test('a file name is taken by its bytes, not its characters, and 200 bytes is allowed', async () => {
+test('a file name is taken by its bytes, not its characters, and 200 bytes is allowed', { skip: notOnWindows('a 200 character name in a temporary folder is longer than the 260 characters a path may have') }, async () => {
   const root = mkdtempSync(join(tmpdir(), 'tabularius-standby-limit-'));
   const folder = join(root, 'spare');
   mkdirSync(folder);
@@ -636,7 +637,7 @@ test('a file name is taken by its bytes, not its characters, and 200 bytes is al
   }
 });
 
-test('names that would fill the log or break a line of it are shortened, escaped, and said once', async () => {
+test('names that would fill the log or break a line of it are shortened, escaped, and said once', { skip: notOnWindows('a file name cannot hold a new line, a tab or an escape character') }, async () => {
   const root = mkdtempSync(join(tmpdir(), 'tabularius-standby-log-'));
   const folder = join(root, 'spare');
   mkdirSync(folder);

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import * as safe from '../src/fs-boundary.ts';
 import { renameCheckedFile, renameCheckedSync } from '../src/file-ops.ts';
 import { atomicWrite, writeDurable, writeJsonStateSync } from '../src/durable.ts';
+import { notOnWindows } from './windows.ts';
 
 function setup(t: import('node:test').TestContext) {
   const dir = fs.mkdtempSync(join(tmpdir(), 'tabularius-fs-race-'));
@@ -17,7 +18,7 @@ function setup(t: import('node:test').TestContext) {
   return { dir, inside, outside, file, secret };
 }
 
-test('invariant: stable parent aliases support guarded reads, writes, and durable state publication', async (t) => {
+test('invariant: stable parent aliases support guarded reads, writes, and durable state publication', { skip: notOnWindows('Windows has no permission bits to compare; its files are protected by access lists') }, async (t) => {
   const warnings = t.mock.method(console, 'warn');
   const s = setup(t), alias = join(s.dir, 'alias');
   fs.symlinkSync(s.inside, alias);
@@ -40,7 +41,7 @@ test('invariant: stable parent aliases support guarded reads, writes, and durabl
 
 for (const phase of ['checked', 'opened'] as const) {
   for (const attack of ['alias', 'target', 'target-parent'] as const) {
-    test(`invariant: ${attack} replacement behind a parent alias is refused at ${phase}`, (t) => {
+    test(`invariant: ${attack} replacement behind a parent alias is refused at ${phase}`, { skip: attack !== 'alias' && notOnWindows('Windows cannot rename a folder while a file in it is open') }, (t) => {
       const s = setup(t), alias = join(s.dir, 'alias');
       const parent = join(s.inside, 'parent'), target = join(parent, 'target');
       fs.mkdirSync(target, { recursive: true });
@@ -107,7 +108,7 @@ for (const phase of ['checked', 'opened'] as const) {
   }
 }
 
-test('unarmed calls work, create private files, and hooks are scoped across awaits', async (t) => {
+test('unarmed calls work, create private files, and hooks are scoped across awaits', { skip: notOnWindows('Windows has no permission bits to compare; its files are protected by access lists') }, async (t) => {
   const { inside, file } = setup(t);
   safe.writeFileSync(file, 'a'); safe.appendFileSync(file, 'b');
   assert.equal(safe.readFileSync(file, 'utf8'), 'ab');
@@ -122,7 +123,7 @@ test('unarmed calls work, create private files, and hooks are scoped across awai
 });
 
 for (const attack of ['delete', 'symlink', 'parent', 'readonly', 'disk-full'] as const) {
-  test(`atomic publish fails safely on ${attack}`, (t) => {
+  test(`atomic publish fails safely on ${attack}`, { skip: (attack === 'parent' || attack === 'readonly') && notOnWindows('Windows has no permission bits or folder swaps like these; a folder with a file open cannot be renamed and a read-only folder does not stop writing') }, (t) => {
     const s = setup(t);
     let hit = false;
     assert.throws(() => safe.withFilesystemHook((event) => {
@@ -227,4 +228,19 @@ test('invariant: the retrying rename still checks both entries at the moment of 
     fs.writeFileSync(to, 'again');
   }
   assert.deepEqual(waits, [], 'a refused rename is not a sharing violation');
+});
+
+test('a file id is exact: the same file by path, link and descriptor agree, two files differ, a missing one has none', (t) => {
+  const s = setup(t), link = join(s.inside, 'link');
+  fs.linkSync(s.file, link);
+  const fd = fs.openSync(s.file, 'r');
+  t.after(() => fs.closeSync(fd));
+  const id = safe.fileId(s.file);
+  assert.match(id!, /^\d+:\d+$/);
+  assert.equal(safe.fileId(link), id);
+  assert.equal(safe.fileId(fd), id);
+  assert.notEqual(safe.fileId(s.secret), id);
+  assert.equal(safe.fileId(join(s.inside, 'missing')), undefined);
+  // `Stats.ino` is a Number: an NTFS id above 2**53 rounds there, two files then compare equal, and a cleanup removes the wrong one.
+  assert.equal(safe.fileId(s.file), `${fs.lstatSync(s.file, { bigint: true }).dev}:${fs.lstatSync(s.file, { bigint: true }).ino}`);
 });

@@ -10,6 +10,7 @@ import type { Server } from 'node:http';
 import { serve } from '../src/index.ts';
 import type { Host } from '../src/host.ts';
 import { LIBRARY_FILE } from '../src/component-library.ts';
+import { expectMode } from '../../store/test/windows.ts';
 import { createStore, type PrivilegeDefinition } from '../../store/src/index.ts';
 import type { LayoutObject } from '../../fmp12/src/index.ts';
 
@@ -97,7 +98,7 @@ test('save a component to the library, place it in another file, take a newer ve
   const id = saved.json.entry.id;
   assert.deepEqual(host.get('Sales')!.designs().components![0].library, { id, version: 1 });
   // Shared through a file in the hosted folder that only the server can read.
-  assert.equal(statSync(join(dir, LIBRARY_FILE)).mode & 0o077, 0);
+  expectMode(statSync(join(dir, LIBRARY_FILE)).mode & 0o077, 0);
 
   // Stock sees it, and what placing it would leave out.
   const list = await call('Stock', stock, '/library');

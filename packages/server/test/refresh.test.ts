@@ -22,7 +22,8 @@ after(async () => { await hosted?.close(); });
 async function login(account: string) {
   const r = await fetch(hosted.url + '/fmi/data/vLatest/databases/Refresh/sessions', { method: 'POST', headers: { authorization: 'Basic ' + btoa(account + ':pw') } });
   assert.equal(r.status, 200);
-  return { authorization: 'Bearer ' + (await r.json()).response.token, 'content-type': 'application/json' };
+  // Each request on its own connection: this process is the server too, and a long synchronous setup lets it close a kept-alive socket the next request is about to reuse (ECONNRESET).
+  return { authorization: 'Bearer ' + (await r.json()).response.token, 'content-type': 'application/json', connection: 'close' };
 }
 async function post(path: string, body: object, headers = auth) {
   const r = await fetch(app + path, { method: 'POST', headers, body: JSON.stringify(body) });

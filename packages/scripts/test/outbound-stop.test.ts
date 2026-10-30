@@ -10,7 +10,11 @@ import type { ScriptConnections } from '../src/connections.ts';
 import { ScriptQueue } from '../../server/src/server-queue.ts';
 import { deferred, generatedStore, localServer, network, script } from './outbound-engine-helpers.ts';
 
-for (const stage of ['headers', 'body'] as const) test(`stop aborts an in-flight request waiting for ${stage}`, { timeout: 10_000 }, async (t) => {
+// A hang is what these tests look for, so the budget is far above one test's work (about 0.2 s on its own). On a loaded
+// Windows runner, with several test files running at once, one took 11 s; 30 s still catches a hang.
+const BUDGET = process.platform === 'win32' ? 30_000 : 10_000;
+
+for (const stage of ['headers', 'body'] as const) test(`stop aborts an in-flight request waiting for ${stage}`, { timeout: BUDGET }, async (t) => {
   const store = generatedStore(t);
   const arrived = deferred();
   const closed = deferred();
@@ -30,7 +34,7 @@ for (const stage of ['headers', 'body'] as const) test(`stop aborts an in-flight
   assert.equal(getEventListeners(stop.signal, 'abort').length, 0);
 });
 
-for (const kind of ['server', 'automation'] as const) test(`canceling a ${kind} queue run closes its outbound socket`, { timeout: 10_000 }, async (t) => {
+for (const kind of ['server', 'automation'] as const) test(`canceling a ${kind} queue run closes its outbound socket`, { timeout: BUDGET }, async (t) => {
   const store = generatedStore(t);
   const queue = new ScriptQueue(2);
   const arrived = deferred();
@@ -47,7 +51,7 @@ for (const kind of ['server', 'automation'] as const) test(`canceling a ${kind} 
   assert.equal(queue.list().recent[0].outcome, 'canceled');
 });
 
-test('Perform Script on Server uses its own queue stop signal', { timeout: 10_000 }, async (t) => {
+test('Perform Script on Server uses its own queue stop signal', { timeout: BUDGET }, async (t) => {
   const store = generatedStore(t);
   const queue = new ScriptQueue(2);
   const arrived = deferred();
@@ -66,7 +70,7 @@ test('Perform Script on Server uses its own queue stop signal', { timeout: 10_00
   assert.equal(getEventListeners(callerStop.signal, 'abort').length, 0);
 });
 
-test('connection calls share the initiating account pool with ordinary Insert from URL', { timeout: 10_000 }, async (t) => {
+test('connection calls share the initiating account pool with ordinary Insert from URL', { timeout: BUDGET }, async (t) => {
   const store = generatedStore(t);
   const other = generatedStore(t, 'Other');
   const received: string[] = [];
@@ -106,7 +110,7 @@ test('connection calls share the initiating account pool with ordinary Insert fr
   assert.equal((await queued).halted, true);
 });
 
-test('stop cancels an in-flight connection request and removes the stop listener', { timeout: 10_000 }, async (t) => {
+test('stop cancels an in-flight connection request and removes the stop listener', { timeout: BUDGET }, async (t) => {
   const store = generatedStore(t);
   const arrived = deferred();
   const closed = deferred();
@@ -124,7 +128,7 @@ test('stop cancels an in-flight connection request and removes the stop listener
   assert.equal(getEventListeners(stop.signal, 'abort').length, 0);
 });
 
-test('the operator cap wins over a script max-time and normal completion removes its listener', { timeout: 10_000 }, async (t) => {
+test('the operator cap wins over a script max-time and normal completion removes its listener', { timeout: BUDGET }, async (t) => {
   const store = generatedStore(t);
   const base = await localServer(t, (req, res) => { if (req.url === '/fast') res.end('ok'); else res.write('partial'); });
   const before = process.env.TABULARIUS_OUTBOUND_MAX_TIME_MS;
