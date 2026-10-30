@@ -22,7 +22,7 @@ import { Worker } from 'node:worker_threads';
 import { workerResult } from './worker-result.ts';
 import { createHash } from 'node:crypto';
 import { copyFileSync, createReadStream } from '../../store/src/fs-boundary.ts';
-import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { backupInventory, checkedBackupCopies } from './backup-inventory.ts';
@@ -200,8 +200,10 @@ export async function integrityAsync(path: string, quick = false): Promise<strin
 const checking = new Map<string, Promise<unknown>>();
 
 /** Checks every file's copy in a backup set and records the outcome in it. Checks of one set run one at a time, so the outcome kept is that of the check that began last (one read before damage cannot overwrite the one that found it). */
-export function verifySet(setDir: string, passphrase = backupKey(), options: { sign?: boolean } = {}): Promise<SetCheck> {
-  const key = resolve(setDir);
+export async function verifySet(setDir: string, passphrase = backupKey(), options: { sign?: boolean } = {}): Promise<SetCheck> {
+  // The same set reached through a link is still one set; a path that cannot be resolved (it is checked and reported below) queues under its own spelling.
+  let key = resolve(setDir);
+  try { key = realpathSync(setDir); } catch { /* reported by the check */ }
   const run = (checking.get(key) ?? Promise.resolve()).catch(() => {}).then(() => verifySetNow(setDir, passphrase, options));
   checking.set(key, run);
   return run.finally(() => { if (checking.get(key) === run) checking.delete(key); });
