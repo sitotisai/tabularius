@@ -70,5 +70,9 @@
   {
     "file": "packages/store/test/security-events-docs.test.ts",
     "reason": "Checks that every security event kind is named in the documentation or on the shrinking undocumented list"
+  },
+  {
+    "file": "packages/server/test/check-solution-docs.test.ts",
+    "reason": "Checks that every kind of check-solution finding and its severity match docs/check-solution.md"
   }
 ]
