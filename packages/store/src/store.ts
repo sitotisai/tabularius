@@ -55,6 +55,8 @@ export { FindError, type FindRequest };
 
 /** Error with a FileMaker Data API error code. */
 import { checkMemory, PendingApprovalError, StoreError } from './errors.ts';
+import { registerODataValueFunctions } from './odata-values.ts';
+export { registerODataValueFunctions };
 import { watchDatabase, type DamageWatch, type DiskTrouble, type FileDamaged } from './damage.ts';
 import { formulaShape, statements, traceDatabase, traceField, tracing } from './trace.ts';
 import { ResultCache } from './results.ts';
@@ -703,24 +705,6 @@ const FIND_BATCH = 1024;
  * meta, privileges, and the find/word/tombstone machinery — is off-limits.
  */
 const SQL_ALLOWED_INTERNAL = new Set(['_fm_record_id', '_fm_mod_id', '_fm_uuid', '_fm_containers', '_fm_container_chunks']);
-
-/** OData expressions use the same visible number and date values as record JSON. */
-export function registerODataValueFunctions(sql: DatabaseSync): void {
-  sql.function('fm_odata_number', { deterministic: true }, (value) => {
-    if (value === null || value === '') return null;
-    const number = Number(value);
-    return Number.isFinite(number) ? number : null;
-  });
-  sql.function('fm_odata_date', { deterministic: true }, (value) =>
-    typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null);
-  sql.function('fm_odata_mod', { deterministic: true }, (left, right) => {
-    if (left === null || right === null) return null;
-    const divisor = Number(right);
-    if (divisor === 0) throw new StoreError(8310, 'OData mod divisor is zero');
-    const result = Number(left) % divisor;
-    return Number.isFinite(result) ? result : null;
-  });
-}
 
 /**
  * The first reference to a forbidden internal table in a SQL string, if any.
