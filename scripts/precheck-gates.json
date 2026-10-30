@@ -86,5 +86,13 @@
   {
     "file": "packages/server/test/docs-idle-disconnect.test.ts",
     "reason": "Checks the documented effect of the idle-disconnect privilege option against the session code"
+  },
+  {
+    "file": "packages/store/test/docs-native-field-types.test.ts",
+    "reason": "Checks the native field types page against the code: types, stored columns and limits"
+  },
+  {
+    "file": "packages/server/test/docs-fmcsadmin-parity.test.ts",
+    "reason": "Checks that each command on the fmcsadmin page maps to Admin API routes in the REST reference"
   }
 ]
