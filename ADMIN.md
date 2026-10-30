@@ -88,12 +88,13 @@ hand, keeping the secret and credential files private.
 
 ## Request and upload limits
 
-MCP POST bodies, OData JSON `$batch` envelopes, and the web client's dedicated
-JSON readers (preferences, import options and script-dialog answers) accept at
-most **64 nested object/array levels**, including the root container. Brackets
-inside strings do not count. Deeper bodies use the surface's normal invalid-JSON
+JSON request bodies read through the shared `readJson` reader, MCP POST bodies,
+OData JSON `$batch` envelopes, and the web client's dedicated JSON readers
+(preferences, import options and script-dialog answers) accept at most **64
+nested object/array levels**, including the root container. Brackets inside
+strings do not count. Deeper bodies use the surface's normal invalid-JSON
 response (HTTP 400; MCP JSON-RPC code -32700). These checks retain each reader's
-existing byte-size limit. The shared `readJson` reader is not yet covered. <!-- known-difference: Server operation ;; The limit on how deeply a request body may nest does not yet cover the shared readJson reader ;; A very deeply nested body sent to a route that uses that reader is not refused by this check ;; An owner decision, or moving that reader onto the check -->
+existing byte-size limit.
 
 OData, MCP, the admin console JSON API and the FileMaker-compatible Admin API
 accept at most **32 in-flight requests per identity per surface**, per server
