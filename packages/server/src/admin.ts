@@ -138,10 +138,11 @@ import { isIP } from 'node:net';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { BoundedMap } from './bounded-map.ts';
 import { createHash, randomBytes } from 'node:crypto';
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, extname, join, resolve, sep } from 'node:path';
 import { discardExitBundle, exitBundle, ExitBundleError, webViewerEntryCovers, hashPassword, defaultMinPasswordLength, checkPassword, addressBucket, StoreError, findStaleCalcs, refreshStaleCalcs, undoStaleRefresh, staleRefreshHistory, StaleCalcError, SECURITY_EVENT_CATEGORIES, isFullAccess, ownPrivilegeEntry, setOwn, type AuditEntry, type FieldLevel, type SecurityEvent, type Store } from '../../store/src/index.ts';
 import { atomicWrite } from '../../store/src/durable.ts';
+import { copyFileSync as copyChecked } from '../../store/src/fs-boundary.ts';
 import { loadAsset, sendAsset } from './static-cache.ts';
 import { inlineScriptSources } from './csp.ts';
 import type { DataApi } from './dataapi.ts';
@@ -2328,7 +2329,7 @@ export class Admin {
       // Capture the live security database before closeFileEverywhere encrypts
       // it and removes its plaintext source.
       live.checkpoint();
-      copyFileSync(file.path, securitySnapshot);
+      copyChecked(file.path, securitySnapshot);
       this.api.endByDb(file.name);
       await this.host.closeFileEverywhere(file.name);
       try {
