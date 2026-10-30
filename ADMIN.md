@@ -859,7 +859,7 @@ rule on, only an account that may view the whole table can.
 
 ### Security event kinds
 
-**Security events only** in the **Audit log** shows the entries below (and more) by their kind, which is also the `kind` of an entry from `GET /tabularius/admin/v1/audit`. The table lists the kinds for second factors, passkeys, recovery codes, tokens and cleared sign-in blocks; the other kinds are described in the console beside each entry.
+**Security events only** in the **Audit log** shows the entries below (and more) by their kind, which is also the `kind` of an entry from `GET /tabularius/admin/v1/audit`. The table lists the kinds for accounts, second factors, passkeys, recovery codes, tokens and cleared sign-in blocks; the other kinds are described in the console beside each entry.
 
 | Kind | Recorded when |
 | --- | --- |
@@ -875,6 +875,18 @@ rule on, only an account that may view the whole table can.
 | `api-token-revoked` | An API token was revoked; the entry shows its id. |
 | `scim-token-issued` | A provisioning (SCIM) token was issued, so an identity provider can add, change and remove accounts; the entry shows when it expires. |
 | `scim-token-revoked` | The provisioning (SCIM) token was revoked. |
+| `account-added` | An account was created: in the console, by a CSV import, or by the provisioning (SCIM) service, which shows that the account is external. |
+| `account-removed` | An account was removed, together with its second factors, passkeys, recovery codes, tokens and saved finds. The entry names who removed it. Removing an AI agent is recorded under its own kind. |
+| `account-enabled` | An account that had been turned off was turned on again. Its recovery codes, passkeys and API tokens that were revoked when it was turned off stay revoked. |
+| `accounts-migrated` | Accounts that came from a FileMaker file and had no password that can be checked were given temporary passwords, all at once or by name; the entry shows how many. Each must choose a new password at its next sign-in. The passwords are never logged. |
+| `accounts-imported` | A CSV import of accounts was applied; the entry shows its batch id, how many rows it read and how many changed an account. A row that would change nothing is not counted. |
+| `accounts-import-rejected` | A CSV import of accounts was refused as a whole; the entry shows the reason and the batch id. No row of it was applied. |
+| `must-change-set` | An account must choose a new password at its next sign-in. |
+| `must-change-cleared` | That requirement was removed from an account without waiting for the password change. |
+| `account-local-only-set` | An account was limited to signing in from the computer the server runs on. |
+| `account-local-only-cleared` | An account may sign in from the network again. |
+| `account-require-2fa-set` | An account now needs a confirmed second factor to sign in with its password. |
+| `account-require-2fa-cleared` | That requirement was removed from an account. |
 
 ## Putting a record back
 
