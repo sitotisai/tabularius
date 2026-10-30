@@ -67,7 +67,7 @@ for (const targetKind of ['relative', 'absolute', 'dangling'] as const) {
     const target = targetKind === 'absolute' ? outside : targetKind === 'relative' ? '../generated.txt' : '../absent.txt';
     symlinkSync(target, join(tree, 'guide.md'));
     const entries = treeEntries(tree);
-    assert.equal(entries[0].link, target);
+    assert.equal(entries[0].link?.replaceAll('\\', '/'), target.replaceAll('\\', '/'));
     assert.equal(entries[0].data.length, 0, 'do not read the symlink target');
     assert.deepEqual(audit(entries, { kind: 'tree', scope }).map((f) => f.rule), ['symlink']);
   });
@@ -80,7 +80,7 @@ test('tree audit refuses an ancestor symlink before reading an indexed descendan
   writeFileSync(join(outside, 'nested/guide.md'), 'SYNTHETIC OUTSIDE CONTENT\n');
   symlinkSync('../generated', join(tree, 'docs'), 'dir');
   const entries = treeEntries(tree);
-  assert.equal(entries[0].link, '../generated');
+  assert.equal(entries[0].link?.replaceAll('\\', '/'), '../generated');
   assert.equal(entries[0].data.length, 0);
   assert.deepEqual(audit(entries, { kind: 'tree', scope }).map((f) => f.rule), ['symlink']);
 });
