@@ -283,3 +283,28 @@ test('a usage file that can\'t be opened at startup is tried again on next use, 
     rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
   }
 });
+
+test('a write that finds the usage database held by another process asks again, not once', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-ai-usage-held-'));
+  try {
+    const u = new AiUsage(dir, 100);
+    // Another process holds the write lock for 150 ms: longer than one 100 ms wait, shorter than the several this write makes.
+    const code = `const { DatabaseSync } = require('node:sqlite');
+      const db = new DatabaseSync(${JSON.stringify(join(dir, '.openhbam-ai-usage.sqlite'))});
+      db.exec('BEGIN IMMEDIATE');
+      console.log('held');
+      setTimeout(() => { db.exec('COMMIT'); db.close(); }, 150);`;
+    const holder = spawn(process.execPath, ['--no-warnings', '-e', code], { stdio: ['ignore', 'pipe', 'inherit'] });
+    const exited = new Promise<void>((resolve) => holder.on('exit', () => resolve()));
+    await new Promise<void>((resolve, reject) => {
+      holder.once('error', reject);
+      holder.stdout.once('data', () => resolve());
+    });
+    u.add('Charts/clerk', 10, 0.001);
+    assert.equal(u.today(), 10);
+    u.close();
+    await exited;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
