@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const script = join(import.meta.dirname, '..', '..', '..', 'scripts', 'install.sh');
-const skip = spawnSync('sh', ['-c', 'true']).status === 0 ? false : 'no sh';
+const skip = process.platform === 'win32' ? 'not on Windows: scripts/install.sh is the macOS and Linux installer' : spawnSync('sh', ['-c', 'true']).status === 0 ? false : 'no sh';
 
 /** A stand-in for the program: it appends the arguments it was called with to $TABULARIUS_HOME/calls. */
 function fakeApp(dir: string, version: string): string {
