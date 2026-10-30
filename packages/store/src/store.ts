@@ -704,6 +704,24 @@ const FIND_BATCH = 1024;
  */
 const SQL_ALLOWED_INTERNAL = new Set(['_fm_record_id', '_fm_mod_id', '_fm_uuid', '_fm_containers', '_fm_container_chunks']);
 
+/** OData expressions use the same visible number and date values as record JSON. */
+export function registerODataValueFunctions(sql: DatabaseSync): void {
+  sql.function('fm_odata_number', { deterministic: true }, (value) => {
+    if (value === null || value === '') return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  });
+  sql.function('fm_odata_date', { deterministic: true }, (value) =>
+    typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null);
+  sql.function('fm_odata_mod', { deterministic: true }, (left, right) => {
+    if (left === null || right === null) return null;
+    const divisor = Number(right);
+    if (divisor === 0) throw new StoreError(8310, 'OData mod divisor is zero');
+    const result = Number(left) % divisor;
+    return Number.isFinite(result) ? result : null;
+  });
+}
+
 /**
  * The first reference to a forbidden internal table in a SQL string, if any.
  * Line and block comments and single-quoted string literals are removed first
@@ -1232,6 +1250,7 @@ export class Store {
     this.fileMode = this.meta('fileMode') === 'native' ? 'native' : 'compat';
     if (this.fileMode === 'native') this.ensureNativeIds(path);
     if (this.fileMode === 'native') this.sql.function('fm_decimal_key', { deterministic: true }, (v) => decimalKey(v as string | number | null));
+    registerODataValueFunctions(this.sql);
     this.dateOrder = this.meta('dateOrder') ?? 'MDY';
     this.repeating = ownKeyed(this.meta('repeating'));
     this.calc = new Calculations(this);
@@ -9720,13 +9739,13 @@ export class Store {
     return this.withWriteTransaction(() => {
       this.checkLock(info.table, recordId);
       const current = this.row(info, recordId);
+      // A related-only edit is checked field by field on the related record, not as an edit of this one.
+      if (Object.keys(own).length || !related.size) this.checkWrite(info, this.local(opts.privileges), fieldNames(own), current);
+      if (related.size && info.home) this.checkParentViewable(info, current, opts.privileges);
       if (modId !== undefined && Number(current._fm_mod_id) !== modId) {
         throw new StoreError(306, 'Record modification id does not match');
       }
-      // A related-only edit is checked field by field on the related record, not as an edit of this one.
-      if (Object.keys(own).length || !related.size) this.checkWrite(info, this.local(opts.privileges), fieldNames(own), current);
       if (related.size && info.home) {
-        this.checkParentViewable(info, current, opts.privileges);
         // Formatting given as "TO::Field" goes with that related field to the related record; a bare name is the record's own.
         for (const [to, values] of related) {
           const given = opts.styles && Object.entries(opts.styles).filter(([k]) => k.startsWith(`${to}::`)).map(([k, runs]) => [k.slice(to.length + 2), runs] as const);
@@ -11269,6 +11288,7 @@ export class Store {
       defineFold(this.readOnlySql);
       for (const id of SORT_LANGUAGE_IDS) this.readOnlySql.function(sortFunction(id), { deterministic: true }, (v) => (typeof v === 'string' ? keptSortKey(v, id) : v));
       if (this.fileMode === 'native') this.readOnlySql.function('fm_decimal_key', { deterministic: true }, (v) => decimalKey(v as string | number | null));
+      registerODataValueFunctions(this.readOnlySql);
       for (const [name, fn] of this.queryFunctions) this.readOnlySql.function(name, { varargs: true }, fn);
     }
     if (this.fileMode === 'native') this.refreshDecimalSqlViews();

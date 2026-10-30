@@ -13,6 +13,7 @@ const props = [
 
 function names(filter: string): string[] {
   const db = new DatabaseSync(':memory:');
+  db.function('fm_odata_number', { deterministic: true }, (v) => v === null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
   db.exec('CREATE TABLE t (Name TEXT, Age TEXT, Seen TEXT)');
   const add = db.prepare('INSERT INTO t VALUES (?, ?, ?)');
   add.run('a', '42', '2026-03-01T10:00:00');
