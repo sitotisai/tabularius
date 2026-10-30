@@ -30,7 +30,11 @@ test('64 slow clients on worker zero do not consume a shared Unix-peer address a
     const c = await new RawClient(port).ready();
     return c.send(request('/oauth/register', `X-Forwarded-For: ${address}\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n`, 'POST') + '{}').end();
   };
-  assert.match(await call('192.0.2.1'), /^HTTP\/1.1 429 /, 'the real client is capped at the front');
+  // The front counts the 64 held requests as it reads them; on a slower machine the last of them can still be in flight.
+  const capUntil = Date.now() + 10_000;
+  let capped = await call('192.0.2.1');
+  while (!/^HTTP\/1.1 429 /.test(capped) && Date.now() < capUntil) { await new Promise(r => setTimeout(r, 100)); capped = await call('192.0.2.1'); }
+  assert.match(capped, /^HTTP\/1.1 429 /, 'the real client is capped at the front');
   assert.match(await call('192.0.2.2'), /^HTTP\/1.1 400 /, 'another client reaches worker 0 and gets normal validation');
   assert.ok(held.every(c => !c.socket.destroyed && c.text === ''), 'all 64 slow bodies are still held');
   held[0].socket.destroy();

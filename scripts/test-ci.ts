@@ -34,7 +34,9 @@ if (flag('list')) {
   console.log(files.join('\n'));
   process.exit(0);
 }
-const concurrency = Number(process.env.TEST_CI_CONCURRENCY) || Math.max(2, Math.min(4, availableParallelism()));
+// Windows runs two files at once: with four, a loaded runner dropped connections and held files open past a test's patience
+// (the same files pass alone and two at a time), where Linux and macOS cope.
+const concurrency = Number(process.env.TEST_CI_CONCURRENCY) || (process.platform === 'win32' ? 2 : Math.max(2, Math.min(4, availableParallelism())));
 // A file gets ten minutes: docs-run.test.ts runs the hand-written pages'
 // examples (131 s here on a many-core machine, over 300 s on a two-core runner twice running) and asks for 600 s itself.
 // On Windows a delete of a file a test left open fails, where elsewhere it works: the cleanup preload closes those databases and tries again.
