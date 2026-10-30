@@ -108,7 +108,7 @@ test('fmp12-94: no root is ever a folder of its own beside the hosted file, what
     const inside = [at('RC_Data_FMS', name), at('Files', name)];
     for (const base of ['', name, `${name}/Docs`, 'Docs', `../${name}`, `/${name}`, `Files/${name}`, `RC_Data_FMS/${name}/x`]) {
       for (const r of externalRoots(folder, name, [base])) {
-        assert.ok(inside.some((o) => r === o || r.startsWith(o + '/')), `${JSON.stringify(name)} with ${JSON.stringify(base)} gave ${r}`);
+        assert.ok(inside.some((o) => r === o || r.startsWith(o + '/') || r.startsWith(o + '\\')), `${JSON.stringify(name)} with ${JSON.stringify(base)} gave ${r}`);
       }
     }
     for (const o of inside) assert.ok(externalRoots(folder, name, [name]).includes(o), `${name} keeps ${o}`);

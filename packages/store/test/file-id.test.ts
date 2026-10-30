@@ -1,3 +1,4 @@
+import { notOnWindows } from './windows.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { copyFileSync, mkdtempSync, renameSync, rmSync } from 'node:fs';
@@ -32,7 +33,7 @@ test('created stores have stable identities; an older store gains one on opening
   reopened.close();
 });
 
-test('read-only SQL refuses a file that replaced the opened one at its path', (t) => {
+test('read-only SQL refuses a file that replaced the opened one at its path', { skip: notOnWindows('a file cannot be renamed over one that is open, so nothing can replace it') }, (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'file-id-swap-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'A.openhbam.sqlite');
