@@ -158,8 +158,8 @@ function publish(temp: string, path: string): void {
   // Another process may replace the record between the boundary's two looks; try again with our own temp.
   // A swapped temp is refused every time.
   for (let attempt = 0; attempt < 50; attempt++) {
-    // On Windows a reader holding the record for a moment makes the replace fail with a sharing error; it is tried again a few times.
-    try { retryFileSync(() => renameChecked(temp, path)); return; }
+    // On Windows a reader holding the record for a moment makes the replace fail with a sharing error; it is tried again for up to about a second.
+    try { retryFileSync(() => renameChecked(temp, path), process.platform, undefined, 40); return; }
     catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ESTALE' || attempt === 49) throw e; }
   }
 }
