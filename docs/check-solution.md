@@ -46,7 +46,7 @@ Invoices: 1 error, 1 warning, 2 to tidy
 | `layout-table-missing` | error | A layout shows a table occurrence that no longer exists. |
 | `relationship-field-missing` | error | A relationship's match field is not a field of its table. |
 | `relationship-no-match-fields` | warning | A relationship has no match fields (deleting a field takes its match with it), so every record on one side relates to every record on the other. |
-| `value-list-source-missing` | error | A value list takes its values from a field, a table or a data source that is gone, or has no values at all. |
+| `value-list-source-missing` | error / warning | A value list takes its values from a field, a table or a data source that is gone (an error), or has no values and no field to take them from (a warning). |
 | `script-lint` | error / warning | The [script linter](design-mode.md)'s findings: loops that never end and guards that catch nothing. |
 | `step-unavailable` | warning | A step that gives error 3 in this build (see [script step support](script-steps-support.md)); the script goes on to the next step. |
 | `step-needs-setup` | info | A step that gives error 3 unless the server is set up for it (sending mail, network access, the embedding model). |
@@ -54,6 +54,7 @@ Invoices: 1 error, 1 warning, 2 to tidy
 | `privilege-set-grants-nothing` | warning | A privilege set that lets no one view records in any table. |
 | `account-no-privilege-set` | warning | A local account that has no privilege set, so it can do nothing. |
 | `unused-script`, `unused-value-list`, `unused-custom-function` | info | Nothing in the design uses it. A script may still be run through the Data API, a schedule or by hand. |
+| `reference-coverage` | info | Some calculations could not be read completely, so the check cannot be sure that a script, value list or custom function they might name is unused. It leaves each such item out of the `unused-` findings and reports this once instead. |
 
 Script steps that are switched off are not checked.
 
