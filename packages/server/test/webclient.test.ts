@@ -7,6 +7,7 @@ import type { Server } from 'node:http';
 import { serve } from '../src/index.ts';
 import type { Store } from '../../store/src/index.ts';
 import { unzip as unzipXlsx } from '../../scripts/src/xlsx.ts';
+import { approveAll } from './approve-all.ts';
 
 // InterMediator_TestDB's person_layout has two portals (Contact, History);
 // FMburgh's Main Menu shows a picture from the image library; Flicks' Demo
@@ -25,6 +26,7 @@ before(async () => {
   dir = mkdtempSync(join(tmpdir(), 'tabularius-web-'));
   for (const [name, file] of Object.entries(files)) copyFileSync(join(fixtures, file), join(dir, `${name}.fmp12`));
   const s = await serve({ dir, port: 0, log: () => {} });
+  approveAll(s.host);
   server = s.server;
   base = s.url;
   hosted = s.host;

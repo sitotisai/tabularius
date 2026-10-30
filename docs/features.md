@@ -370,7 +370,7 @@ Everything Tabularius can do today, area by area, and what does not carry over f
 Not yet: containers in FileMaker's secure (encrypted) external storage. See <!-- known-difference: Reading .fmp12 files ;; Containers in FileMaker's secure (encrypted) external storage are not supported ;; Such containers do not come across from a converted file ;; An owner decision on supporting them, and a sample file that has them -->
 [docs/ARCHITECTURE.md](ARCHITECTURE.md).
 
-**Script network access is supported.** Web requests (Insert from URL, `connection://` addresses) and plug-in network calls start off for every converted file and for `tabularius demo`, so a copy you are testing cannot call outside services. Turn on **Script network** for a file in the admin console when this copy is the live one. Mail is sent once the server is set up to send it. Steps that need a screen or a person at FileMaker Pro are skipped or give error 3.
+**Script network access is supported.** Web requests (Insert from URL, `connection://` addresses) and plug-in network calls are on for a file unless an administrator turns the file's **Script network** switch off. They start off for a file converted from a `.fmp12` and for `tabularius demo`, so a copy you are testing cannot call outside services; turn **Script network** on for that file in the admin console (Hosted files) when this copy is the live one. Mail is sent once the server is set up to send it. Steps that need a screen or a person at FileMaker Pro are skipped or give error 3.
 
 ## What does not carry over
 

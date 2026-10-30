@@ -53,6 +53,12 @@ export async function runMcpE2E(program: string | string[], port = 0): Promise<v
     // Let the child bind an ephemeral port. Its Web client line is written after listen(), so it is also a readiness signal.
     const base = /Web client: (http:\/\/127\.0\.0\.1:\d+)\/app\//.exec(log)![1];
 
+    // Files converted from the folder are held until approved, as they would be for a person who presses Approve.
+    for (const name of ['Charts', 'Archive']) {
+      const approved = await fetch(`${base}/tabularius/admin/v1/files/${name}/approve`, { method: 'POST', headers: { 'x-tabularius-admin': '1', connection: 'close' } });
+      assert.equal(approved.status, 200, `${name} could not be approved`);
+    }
+
     // 1. No token: refused, and the refusal says where to sign in. (From this computer itself a request with no token is the
     // administrator's; a request a proxy passed on, which says whom it is for, is a stranger's.)
     const ask = (headers: Record<string, string>) => fetch(`${base}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', connection: 'close', 'x-forwarded-for': '203.0.113.9', ...headers }, body: '{}' });
