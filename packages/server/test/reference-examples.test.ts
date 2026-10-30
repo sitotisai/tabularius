@@ -456,7 +456,8 @@ test('REST reference examples match live status and response shape', async () =>
         const requestBody = parseResponse(body) as { code?: string } | undefined;
         if (requestBody && Object.hasOwn(requestBody, 'code')) body = JSON.stringify({ ...requestBody, code: totp(totpSecret) });
       }
-      body = body.replaceAll('/Volumes/Backup/tabularius', join(f.dir, 'Backups'));
+      // The path goes into a JSON body, where a Windows path's backslashes are written doubled.
+      body = body.replaceAll('/Volumes/Backup/tabularius', JSON.stringify(join(f.dir, 'Backups')).slice(1, -1));
       if (requestTarget.includes('/backups/2026-10-13_084500/')) requestTarget = requestTarget.replace('/backups/2026-10-13_084500/', `/backups/${backupSet || 'missing'}/`);
       if (requestTarget === '/tabularius/admin/v1/restore') body = body.replace(/("at"\s*:\s*)"[^"]+"/, `$1"${new Date().toISOString()}"`);
       if (target === '/tabularius/admin/v1/uploads' && method === 'POST') {
