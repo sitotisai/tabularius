@@ -149,11 +149,14 @@ test('databases: list, pause, resume, close (ending sessions) and open', { skip 
 
 test('pausing and stopping several files succeeds during an in-flight read', { skip }, async (t) => {
   const work = mkdtempSync(join(tmpdir(), 'tabularius-adminapi-checkpoint-'));
-  t.after(() => rmSync(work, { recursive: true, force: true }));
   for (const name of ['Charts', 'Inventory', 'Invoices']) copyFileSync(fixture, join(work, `${name}.fmp12`));
   setAdminPassword(work, 'secret');
   const running = await serve({ dir: work, port: 0, log: () => {} });
-  t.after(() => new Promise<void>((resolve) => running.server.close(() => resolve())));
+  // t.after hooks run in the order they were added, so one hook: close the server (its files, its logs) before the folder goes.
+  t.after(async () => {
+    try { await new Promise<void>((resolve) => running.server.close(() => resolve())); }
+    finally { rmSync(work, { recursive: true, force: true }); }
+  });
   const endpoint = `${running.url}/fmi/admin/api/v2`;
   const request = (path: string, init: RequestInit = {}) => fetch(endpoint + path, {
     ...init,
