@@ -7,6 +7,7 @@
 
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { decimalKey } from '../../store/src/native-types.ts';
+import { registerODataValueFunctions } from '../../store/src/odata-values.ts';
 
 export interface JoinTable { columns: { name: string; type: string }[]; rows: SQLInputValue[][] }
 export interface JoinJob {
@@ -31,6 +32,7 @@ export function join(job: JoinJob): JoinResult {
   try {
     db.exec('PRAGMA temp_store = MEMORY');
     db.function('fm_decimal_key', { deterministic: true }, (v) => decimalKey(v as string | number | null));
+    registerODataValueFunctions(db);
     db.function('deadline', { deterministic: false, varargs: true }, () => {
       if (Date.now() > job.deadline) throw new Error(LATE);
       return 1;
