@@ -583,8 +583,9 @@ test('REST reference examples match live status and response shape', async () =>
       }
       if (target === '/tabularius/admin/v1/backup' && response.ok) {
         const backup = parseResponse(text) as { dir?: string } | undefined;
-        if (backup?.dir) backupSet = basename(backup.dir);
+        if (backup?.dir) { backupSet = basename(backup.dir); (globalThis as any).__bdir = backup.dir; }
       }
+      { const bdir = (globalThis as any).__bdir as string | undefined; if (bdir && !(globalThis as any).__seen) { const l = process.getBuiltinModule('node:fs').readdirSync(bdir); if (l.some((n: string) => /-(wal|shm)$/.test(n))) { (globalThis as any).__seen = 1; console.log('SIDECARS after ' + method + ' ' + target + ' :: ' + l.join(',')); } } }
       if (response.ok) {
         const saved = parseResponse(text) as Record<string, unknown> | undefined;
         const nestedId = (key: string) => saved?.[key] && typeof saved[key] === 'object' ? (saved[key] as Record<string, unknown>).id : undefined;
