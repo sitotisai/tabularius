@@ -22,8 +22,12 @@ test('a UUID whose middle groups are all digits is not taken for a phone number'
       assert.equal(m.masker.patterns(uuid), uuid);
       assert.equal(m.masker.patterns(`key ${uuid} end`), `key ${uuid} end`);
     }
-    // A phone number written on its own is still masked.
-    assert.notEqual(m.masker.patterns('call 555-123-4567 today'), 'call 555-123-4567 today');
-    assert.notEqual(m.masker.patterns('call +1 555 123 4567 today'), 'call +1 555 123 4567 today');
+    assert.equal(m.masker.patterns('81f4b889-5074-4983-8241-8ee2b8908744'), '81f4b889-5074-4983-8241-8ee2b8908744');
+    // Phone numbers stay masked however they are written, including next to a hyphen.
+    for (const phone of ['call 555-123-4567 today', 'call +1 555 123 4567 today', '1-800-555-1234', '1-555-123-4567', '0049-30-1234-5678', 'Phone-555-123-4567', 'tel-555-123-4567', '555-123-4567-']) {
+      const out = m.masker.patterns(phone);
+      assert.notEqual(out, phone, `${phone} was left as it is`);
+      assert.match(out, /<PHONE_\d+>/, phone);
+    }
   } finally { m.close(); }
 });
