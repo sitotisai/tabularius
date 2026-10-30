@@ -523,9 +523,11 @@ export function claimFolder(folder: string, purpose: 'server' | 'restore' = 'ser
       lock.exec('COMMIT');
       crashPoint('claim:committed');
     } catch (claimError) {
-      if (lock.isOpen && lock.isTransaction) lock.exec('ROLLBACK');
       // A claim that failed after publishing must not leave a pid file that names this live process as the host.
-      releasePidFile(folder, ino);
+      // It goes while the lock is still held, so a rival never reads our pid and then sees the file vanish.
+      try { releasePidFile(folder, ino); } finally {
+        if (lock.isOpen && lock.isTransaction) lock.exec('ROLLBACK');
+      }
       throw claimError;
     } finally {
       lock.close();
