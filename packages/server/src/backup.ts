@@ -571,17 +571,36 @@ function releasePidFile(folder: string, ino: number): void {
   rmSync(file, { force: true });
 }
 
+let ownWindowsIdentity: { started: string; command: string } | undefined;
+
+/** Asks Windows for a process's creation time and command line. PowerShell takes seconds to start on a loaded machine, so a timeout is asked again once with a longer wait. */
+function windowsProcessIdentity(pid: number): { started: string; command: string } | undefined {
+  const powershell = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const args = ['-NoProfile', '-NonInteractive', '-Command',
+    `Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" | Select-Object CreationDate,CommandLine | ConvertTo-Json -Compress`];
+  let output: string;
+  try {
+    output = execFileSync(powershell, args, { encoding: 'utf8', timeout: 15_000 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ETIMEDOUT') throw error;
+    output = execFileSync(powershell, args, { encoding: 'utf8', timeout: 60_000 });
+  }
+  if (!output.trim()) return undefined;
+  const value = JSON.parse(output) as { CreationDate?: string; CommandLine?: string };
+  if (!value.CreationDate) throw new Error('could not read the process creation time');
+  return { started: value.CreationDate, command: value.CommandLine ?? '' };
+}
+
 /** Read the OS birth identity, not elapsed time; a recycled PID has a different identity.
  * Linux reads /proc; Windows CIM and macOS ps formats are platform-specific, and their behaviour is unverified here.
  */
 export function processIdentity(pid: number): { started: string; command: string } | undefined {
   if (process.platform === 'win32') {
-    const output = execFileSync(join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), ['-NoProfile', '-NonInteractive', '-Command',
-      `Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" | Select-Object CreationDate,CommandLine | ConvertTo-Json -Compress`], { encoding: 'utf8', timeout: 5000 });
-    if (!output.trim()) return undefined;
-    const value = JSON.parse(output) as { CreationDate?: string; CommandLine?: string };
-    if (!value.CreationDate) throw new Error('could not read the process creation time');
-    return { started: value.CreationDate, command: value.CommandLine ?? '' };
+    // This process's own identity never changes, and asking PowerShell for it costs seconds on a busy machine.
+    if (pid === process.pid && ownWindowsIdentity) return ownWindowsIdentity;
+    const found = windowsProcessIdentity(pid);
+    if (pid === process.pid) ownWindowsIdentity = found;
+    return found;
   }
   if (process.platform === 'linux') {
     // The kernel's own record: the slim container image has no ps, and a process's start time here is in clock ticks since boot.
