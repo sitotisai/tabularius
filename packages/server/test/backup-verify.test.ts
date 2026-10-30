@@ -8,7 +8,8 @@ import { basename, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { Server } from 'node:http';
 import { Host, STORE_EXT, backupFolder, backupSets, serve } from '../src/index.ts';
-import { lastCheck, verifyAfterBackup, verifySet } from '../src/backup-verify.ts';
+import { lastCheck, recordCheck, verifyAfterBackup, verifySet } from '../src/backup-verify.ts';
+import type { SetCheck } from '../src/backup-verify.ts';
 
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
 const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtures';
@@ -112,6 +113,27 @@ test('backups in the same second get ordered names and retention keeps the newes
   assert.deepEqual(two.removed, []);
   assert.deepEqual(three.removed, [names[0]]);
   assert.deepEqual(backupSets(dest), names.slice(1));
+});
+
+test('a check that began earlier does not replace the record of one that began later', { skip }, async () => {
+  // The admin console's background check of a new set can finish after a manual check of the same set that found damage.
+  const dest = mkdtempSync(join(tmpdir(), 'tabularius-verify-order-'));
+  try {
+    const set = (await backupFolder(dir, dest, 2)).dir;
+    const check = (ok: boolean, began: number, ms: number): SetCheck => ({ at: new Date(began + ms).toISOString(), ok, files: { [FILE]: ok ? 'ok' : 'changed on disk' }, ms });
+    const began = Date.now() + 60_000;
+    recordCheck(set, check(false, began, 30), began);
+    // Began first, finished last: read the copy before the damage.
+    const earlier = began - 5_000;
+    recordCheck(set, check(true, earlier, 10_000), earlier);
+    assert.equal(lastCheck(set)?.ok, false);
+    // One that began later does replace it.
+    const later = began + 1_000;
+    recordCheck(set, check(true, later, 30), later);
+    assert.equal(lastCheck(set)?.ok, true);
+  } finally {
+    rmSync(dest, { recursive: true, force: true });
+  }
 });
 
 test('the admin console shows each set\'s check and checks one on request', { skip }, async () => {
