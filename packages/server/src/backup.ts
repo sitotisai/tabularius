@@ -30,7 +30,7 @@ import { isDamageError } from '../../store/src/damage.ts';
 import { accountKey } from '../../store/src/account-provisioning.ts';
 import { refuseNewer, storedFormat } from '../../store/src/store-format.ts';
 import { DatabaseSync, backup } from 'node:sqlite';
-import { accessSync, chmodSync, closeSync, constants, existsSync, linkSync, lstatSync, mkdirSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { accessSync, chmodSync, closeSync, constants, existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { checkedFile, cleanupPath, openSync, copyFileSync, readFileSync, writeFileSync } from '../../store/src/fs-boundary.ts';
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -509,27 +509,25 @@ export function claimFolder(folder: string, purpose: 'server' | 'restore' = 'ser
       } catch {
         throw notWritable;
       }
-      try {
-        linkSync(pending, file);
-        // The pending name goes before the lock does: until it is gone the pid file has two names, and a rival that
-        // reads it as the lock passes sees the link count change under it and reports "path changed" instead of "already hosted".
-        // Best effort: the claim already holds the pid file, so a failed removal must not fail it; the finally below tries again.
-        try { rmSync(pending, { force: true }); } catch { /* removed below */ }
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-        const pid = runningServer(folder);
-        // Our own pid is never a live rival: claims made by this process are
-        // in localClaims, so a file naming it is left from an earlier process
-        // with the same pid (a container's server is always pid 1).
-        if (pid !== undefined && pid !== process.pid) throw new Error(`${folder} is already hosted by process ${pid}`);
-        // Rename replaces the stale file in one step, so readers never see the folder unclaimed.
-        renameSync(pending, file);
-      }
+      // The lock already decides who may publish, so the pid file is put in place by rename: it never has a second
+      // name, whose count (link count 2, gone a moment later) could fail a rival's read of it as "path changed".
+      const pid = runningServer(folder);
+      // Our own pid is never a live rival: claims made by this process are
+      // in localClaims, so a file naming it is left from an earlier process
+      // with the same pid (a container's server is always pid 1).
+      if (pid !== undefined && pid !== process.pid) throw new Error(`${folder} is already hosted by process ${pid}`);
+      // Rename replaces a stale file in one step, so readers never see the folder unclaimed.
+      renameSync(pending, file);
+      crashPoint('claim:published');
       atomicWrite(join(folder, PID_OWNER), JSON.stringify({ pid: process.pid, started: identity.started, command: identity.command, ino }));
       lock.exec('COMMIT');
       crashPoint('claim:committed');
     } catch (claimError) {
-      if (lock.isOpen && lock.isTransaction) lock.exec('ROLLBACK');
+      // A claim that failed after publishing must not leave a pid file that names this live process as the host.
+      // It goes while the lock is still held, so a rival never reads our pid and then sees the file vanish.
+      try { releasePidFile(folder, ino); } finally {
+        if (lock.isOpen && lock.isTransaction) lock.exec('ROLLBACK');
+      }
       throw claimError;
     } finally {
       lock.close();
