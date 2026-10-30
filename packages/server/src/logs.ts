@@ -12,7 +12,8 @@
 
 import { crashPoint } from '../../store/src/crash-point.ts';
 import { DatabaseSync } from 'node:sqlite';
-import { appendFileSync, closeSync, fstatSync, openSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, fstatSync, openSync, readSync, rmSync, statSync } from 'node:fs';
+import { appendFileSync, writeFileSync } from '../../store/src/fs-boundary.ts';
 import { randomBytes } from 'node:crypto';
 import { deriveKey, deriveKeySync, openRecord, sealRecord } from './encrypt.ts';
 import type { Store } from '../../store/src/index.ts';
@@ -242,12 +243,12 @@ export interface LogWriter {
 /** Starts a log file, sealed when given a passphrase. */
 export function startLog(path: string, passphrase?: string, database = ''): LogWriter {
   if (!passphrase) {
-    writeFileSync(path, MAGIC);
+    writeFileSync(path, MAGIC, { mode: 0o600 });
     return { path, database, n: 0 };
   }
   const salt = randomBytes(16);
   const prefix = randomBytes(8);
-  writeFileSync(path, Buffer.concat([MAGIC_SEALED, salt, prefix]));
+  writeFileSync(path, Buffer.concat([MAGIC_SEALED, salt, prefix]), { mode: 0o600 });
   return { path, database, key: deriveKeySync(passphrase, salt), prefix, n: 0 };
 }
 
@@ -255,7 +256,7 @@ export function startLog(path: string, passphrase?: string, database = ''): LogW
 export function writeLog(w: LogWriter, r: LogRecord): Buffer {
   const data = w.key ? sealRecord(w.key, w.prefix!, w.n, r.data, recordAad(r.at, w.database)) : r.data;
   const stored = encodeRecord({ ...r, data });
-  appendFileSync(w.path, stored);
+  appendFileSync(w.path, stored, { mode: 0o600 });
   w.n++;
   return stored;
 }
@@ -322,7 +323,7 @@ export function readPart(path: string, offset: number, length: number): Buffer {
 /** Applies a log to a database file that nothing has open: SQLite reads it as the file's own log and folds it in. */
 export function applyLog(dbPath: string, log: Buffer): void {
   rmSync(dbPath + '-shm', { force: true });
-  writeFileSync(dbPath + '-wal', log);
+  writeFileSync(dbPath + '-wal', log, { mode: 0o600 });
   crashPoint('apply-log:mid-apply-log');
   const db = new DatabaseSync(dbPath);
   try {
