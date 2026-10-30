@@ -1254,6 +1254,7 @@ export class ScriptEngine {
   private readonly closed: string[] = [];
   private current!: Window;
   private lastError = 0;
+  private reportedSetFieldDenial?: { window: Window; code: number };
   /** The first step of the run that found its record in use by someone else (error 301), kept though a later step succeeds. */
   private recordInUse?: { line: string; message: string };
   private lastDenial?: AccessDenial;
@@ -1643,7 +1644,7 @@ export class ScriptEngine {
       for (const w of this.windows) {
         // A person's own stop commits like Halt Script; external cancellation and budget halts discard pending edits.
         if (halted && (this.stopSignal?.aborted || this.budgetHalted)) this.revert(w);
-        else this.commitOrDrop(w);
+        else this.commitOrDrop(w, true);
       }
     } catch (e) {
       // A run that fails leaves no record locked behind it.
@@ -3494,13 +3495,22 @@ export class ScriptEngine {
     }
   }
 
-  private commitOrDrop(win: Window): void {
+  private commitOrDrop(win: Window, final = false): void {
     try {
       this.commit(win);
     } catch (e) {
       rethrowExecutionRefusal(e);
       if (!(e instanceof StoreError || e instanceof PrivilegeError)) throw e;
-      this.observeDenial(e, e.code);
+      // A denied Set Field has already reported this same pending edit at its step.
+      // Retain the existing terminal result when the final implicit commit drops it.
+      const reported = this.reportedSetFieldDenial?.window === win && this.reportedSetFieldDenial.code === e.code
+        && this.lastError === e.code && this.lastErrorLocation.split('\t')[1] === 'Set Field';
+      const denial = reported ? undefined : this.observeDenial(e, e.code);
+      if (final) {
+        this.lastError = reported ? 0 : e.code;
+        this.lastDenial = reported ? undefined : denial;
+        this.lastErrorDetail = reported ? '' : denial ? explainAccessDenial(denial).explanation : '';
+      }
       this.revert(win);
     }
   }
@@ -4016,7 +4026,9 @@ export class ScriptEngine {
       case 77: { // Insert Calculated Result
         const value = calc(p.calculation);
         if (this.calcError) return undefined; // the field keeps its value; the error is the step's
+        const target = s.stepId === 76 ? p.field ?? this.activeTarget(this.current) : undefined;
         this.place(f, p, value);
+        if (target && !(p.variable && !p.field)) this.checkSetFieldPrivileges(f, target);
         return undefined;
       }
     }
@@ -6303,6 +6315,24 @@ export class ScriptEngine {
       this.writeField(f, p, value);
     } catch (e) {
       if (this.modified && noted !== undefined) this.modified.length = noted; // not changed after all
+      throw e;
+    }
+  }
+
+  /** A current-record edit is staged, so report its privilege failure at Set Field as well as at commit. Reference-product step timing is unverified. */
+  private checkSetFieldPrivileges(f: Frame, target: FieldRef): void {
+    const { info, field, win } = this.resolveTarget(f, target);
+    if (win.mode === 'find' || field.options?.global || info !== win.layout || field.kind !== 'normal' || field.type === 'container') return;
+    const id = this.currentId(win);
+    if (id === undefined) return;
+    const privileges = this.privileges;
+    try {
+      const level = privileges?.in(info.owner).field(info.table, field.name);
+      if (level && level !== 'modifiable') throw new StoreError(ERROR.fieldNotModifiable, `Field "${field.name}" cannot be modified`,
+        level === 'none' ? undefined : privileges?.in(info.owner).fieldDenial(info.table, field.name, 'edit'));
+      if (!win.uncommittedNew) this.via(info).checkEditable(info, id, privileges);
+    } catch (e) {
+      if (e instanceof StoreError || e instanceof PrivilegeError) this.reportedSetFieldDenial = { window: win, code: e.code };
       throw e;
     }
   }
