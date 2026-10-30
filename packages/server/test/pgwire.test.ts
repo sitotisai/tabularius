@@ -674,12 +674,13 @@ test('bound parameter bytes are capped across a connection’s portals', { timeo
   await t.test('the length prefix rejects oversized text before UTF-8 decoding', async () => {
     limited(await bind('invalid', [Buffer.alloc(1001, 0xff)]));
   });
-  await t.test('unset, zero and invalid overrides keep the default', async () => {
-    for (const value of [undefined, '0', '-1', 'invalid', '1.5', 'Infinity']) {
-      if (value === undefined) delete process.env.TABULARIUS_PGWIRE_MAX_PARAM_BYTES;
-      else process.env.TABULARIUS_PGWIRE_MAX_PARAM_BYTES = value;
-      assert.equal((await bind('default', ['x'.repeat(1001)])).type, '2', String(value));
-      await sync();
+  await t.test('unset uses the default; invalid values stop server startup', async () => {
+    delete process.env.TABULARIUS_PGWIRE_MAX_PARAM_BYTES;
+    assert.equal((await bind('default', ['x'.repeat(1001)])).type, '2');
+    await sync();
+    for (const value of ['0', '-1', 'invalid', '1.5', 'Infinity']) {
+      process.env.TABULARIUS_PGWIRE_MAX_PARAM_BYTES = value;
+      assert.throws(() => new PgServer(host, { port: 0 }), /TABULARIUS_PGWIRE_MAX_PARAM_BYTES.*whole number/, value);
     }
   });
 });

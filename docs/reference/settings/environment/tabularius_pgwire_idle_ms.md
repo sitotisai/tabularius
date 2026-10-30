@@ -8,6 +8,6 @@ How long a signed-in SQL connection may sit idle outside active work before it i
 | Accepted values | Nonnegative whole number of milliseconds; 0 for no limit |
 | Restart needed | No server restart; read when a SQL connection signs in. |
 | Explained in | [docs/pgwire-results.md](../../../pgwire-results.md) |
-| Code | [packages/server/src/pgwire.ts:284](../../../../packages/server/src/pgwire.ts#L284) |
+| Code | [packages/server/src/pgwire.ts:282](../../../../packages/server/src/pgwire.ts#L282) |
 
 [All environment variables](../../../environment-variables.md)

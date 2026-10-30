@@ -1,13 +1,5 @@
 [
-  { "file": "packages/server/src/container-uploads.ts", "name": "TABULARIUS_UPLOAD_IDLE_HOURS", "reason": "Raw read to be converted to the settings helpers" },
-  { "file": "packages/server/src/host.ts", "name": "TABULARIUS_CONTAINER_TTL", "reason": "Raw read to be converted to the settings helpers" },
-  { "file": "packages/server/src/index.ts", "name": "TABULARIUS_REQUEST_QUEUE", "reason": "Raw read to be converted to the settings helpers" },
-  { "file": "packages/server/src/pgwire.ts", "name": "TABULARIUS_PGWIRE_MAX_PARAM_BYTES", "reason": "Raw read to be converted to the settings helpers" },
-  { "file": "packages/server/src/uploads.ts", "name": "TABULARIUS_UPLOAD_IDLE_HOURS", "reason": "Raw read to be converted to the settings helpers" },
-  { "file": "packages/server/src/uploads.ts", "name": "TABULARIUS_MAX_UPLOAD", "reason": "Raw read to be converted to the settings helpers" },
   { "file": "packages/scripts/src/net-guard.ts", "name": "TABULARIUS_OUTBOUND_MAX_TIME_MS", "reason": "Raw read to be converted to the settings helpers" },
-  { "file": "packages/store/src/activity.ts", "name": "TABULARIUS_MAX_SESSION_LOCKS", "reason": "Raw read to be converted to the settings helpers" },
-  { "file": "packages/store/src/trace.ts", "name": "TABULARIUS_TRACE_SQL_MIN_MS", "reason": "Raw read to be converted to the settings helpers" },
   { "file": "scripts/test-ci.ts", "name": "TEST_CI_CONCURRENCY", "reason": "Raw read to be converted to the settings helpers" },
   { "file": "scripts/test-weights.ts", "name": "TEST_CI_CONCURRENCY", "reason": "Raw read to be converted to the settings helpers" }
 ]
