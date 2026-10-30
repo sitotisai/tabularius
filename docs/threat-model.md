@@ -53,14 +53,17 @@ These checks are not `openat(2)` and do not make path-based operations atomic. T
 - `packages/plugins/src/package.ts`
 - `packages/plugins/src/sandboxed.ts`
 - `packages/scripts/src/engine.ts`
+- `packages/server/src/ai-usage.ts`
 - `packages/server/src/backup-external.ts`
 - `packages/server/src/backup-verify.ts`
 - `packages/server/src/backup.ts`
+- `packages/server/src/connections.ts`
 - `packages/server/src/container-uploads.ts`
 - `packages/server/src/containers.ts`
 - `packages/server/src/encrypt.ts`
 - `packages/server/src/hosted-record.ts`
 - `packages/server/src/local-admin.ts`
+- `packages/server/src/oauth.ts`
 - `packages/server/src/restore-files.ts`
 - `packages/server/src/server-logs.ts`
 - `packages/server/src/stats-log.ts`
