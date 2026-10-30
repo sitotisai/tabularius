@@ -121,6 +121,14 @@ test('#121: decimalSum agrees with a BigInt scaled-decimal reference over seeded
   }
 });
 
+test('#121: decimalSum takes a sum over more values than a call can pass as arguments, and keeps big whole numbers exact', () => {
+  assert.equal(decimalSum(Array.from({ length: 300000 }, () => 0.5)), 150000);
+  assert.equal(decimalSum(Array.from({ length: 300000 }, (_, i) => i)), 44999850000);
+  // Whole numbers above 2^40 and runs of small ones past 2^52 move to exact integers before they could lose a digit.
+  assert.equal(decimalSum([9007199254740991, 1, 0.5, -0.25]), 9007199254740992.25);
+  assert.equal(decimalSum(Array.from({ length: 5000 }, () => 2 ** 40 - 1)), 5000 * (2 ** 40 - 1));
+});
+
 test('#114: Variance and StDev use decimal-clean aggregate arithmetic', () => {
   assert.equal(e('Variance ( 0.1 ; 0.2 ; 0.3 )'), '0.01');
   assert.equal(e('VarianceP ( 0.1 ; 0.2 ; 0.3 )'), '0.006666666666666667');
