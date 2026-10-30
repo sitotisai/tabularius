@@ -13,10 +13,10 @@ const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtur
 
 test('the report lists hidden and unverified fields of a custom per-table set', { skip }, (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-conv-custom-'));
-  t.after(() => rmSync(dir, { recursive: true }));
   copyFileSync(fixture, join(dir, 'Charts.fmp12'));
   const host = new Host(dir, () => {});
   t.after(() => host.close());
+  t.after(() => rmSync(dir, { recursive: true }));
   const store = host.get('Charts')!;
   const congress = store.schema.tables.find((x) => x.name === 'Congress')!;
   const field = (n: string) => congress.fields.find((f) => f.name === n)!.id;

@@ -12,11 +12,11 @@ const mapping = '@example.test';
 
 function setup(t: TestContext) {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-account-cleanup-'));
-  t.after(() => rmSync(dir, { recursive: true }));
   copyFileSync(fixture, join(dir, 'Charts.fmp12'));
   copyFileSync(fixture, join(dir, 'Other.fmp12'));
   const host = new Host(dir, () => {});
   t.after(() => host.close());
+  t.after(() => rmSync(dir, { recursive: true }));
   for (const name of ['Charts', 'Other']) {
     const store = host.get(name)!;
     store.savePrivilegeSet({ name: 'Web', records: { view: true, edit: true, create: true, delete: true }, layouts: 'modifiable', valueLists: 'none', scripts: 'none', extendedPrivileges: ['fmapp'] });

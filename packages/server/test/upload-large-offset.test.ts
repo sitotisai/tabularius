@@ -39,9 +39,10 @@ test('a piece that starts beyond what has arrived is told where to send from, wh
 test('Uploads takes a piece that starts past 1,000,000,000 bytes once that much has arrived (a sparse file stands in for it)', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-upload-sparse-'));
   const host = new Host(dir, () => {});
-  t.after(async () => { await host.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(async () => { await host.close(); });
   const uploads = new Uploads(host, () => {});
   t.after(() => uploads.stop());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const size = 1_000_000_200;
   const u = uploads.start({ name: 'Large.fmp12', size });
   // Pretend 1,000,000,100 bytes have arrived: a sparse file of that length takes no disk, and the upload remembers it.

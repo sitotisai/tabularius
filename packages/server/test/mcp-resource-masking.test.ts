@@ -13,7 +13,7 @@ import { createMcpServer } from '../src/mcp.ts';
 test('a number after a newline or tab in a layout or schema comment is masked in the resource as in the tool, and logged', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-mcp-resource-mask-'));
   const host = new Host(dir, () => {}, { background: false });
-  t.after(async () => { await host.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(async () => { await host.close(); });
   const store = host.create('Shop');
   store.applyDesign([
     { op: 'createTable', name: 'People', fields: [{ name: 'Status', type: 'text', comment: 'Escalate to owner:\n555-867-5309 or SSN\t123-45-6789' }] },
@@ -24,6 +24,7 @@ test('a number after a newline or tab in a layout or schema comment is masked in
   const server = createMcpServer(host, { account: 'Admin', database: 'Shop' });
   const client = new Client({ name: 'mask-test', version: '1' });
   t.after(async () => { await client.close(); await server.close(); });
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const [a, b] = InMemoryTransport.createLinkedPair();
   await Promise.all([server.connect(a), client.connect(b)]);
   const layout = store.schema.layouts[0].name;

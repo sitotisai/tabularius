@@ -9,11 +9,11 @@ import { createStore, Store } from '../src/index.ts';
 
 test('a table created with the id of a trashed table still moves the write token', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-trigger-id-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'a.openhbam.sqlite');
   createStore(path);
   const store = new Store(path);
   t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   store.applyDesign([{ op: 'createTable', name: 'Old', fields: [{ name: 'Note' }] }]);
   const id = store.schema.tables.find((x) => x.name === 'Old')!.id;
   store.applyDesign([{ op: 'deleteTable', table: id }]);

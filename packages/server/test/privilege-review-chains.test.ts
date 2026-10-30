@@ -10,11 +10,11 @@ import { reviewPrivileges } from '../src/privilege-review.ts';
 
 function shop(t: { after: (f: () => void) => void }): Store {
   const dir = mkdtempSync(join(tmpdir(), 'tab-privrev-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'Shop.sqlite');
   createStore(path);
   const store = new Store(path, 'Shop');
   t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   return store;
 }
 

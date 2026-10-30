@@ -11,11 +11,11 @@ import { reviewPrivileges } from '../src/privilege-review.ts';
 
 test('the calc-reads-hidden check sees a hidden table named after and, or, not or a number', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tab-privrev-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'Shop.sqlite');
   createStore(path);
   const store = new Store(path, 'Shop');
   t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const calcs: Record<string, string> = {
     Plain: '1 + Secrets::Amount',
     AndRead: 'Name = "x" and Secrets::Amount > 0',

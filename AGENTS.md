@@ -22,7 +22,7 @@ Every package has its tests in its own `test/` folder, named `*.test.ts`.
 
 ## Build and test
 
-The gates include a TypeScript AST lint for dynamic code execution, shell-enabled child-process calls, and bare logging of caught errors. To allow a reviewed finding, add its file, function, kind, hash, and a non-empty one-line reason to `scripts/dangerous-apis-allowlist.json`; `node scripts/dangerous-apis.ts --write` adds new findings with blank reasons for review. The filesystem boundary guard (`npm run check:fs-boundary`) checks file-writing source modules in CLI, server and store; its reasoned `scripts/fs-boundary-allowlist.json` may only shrink as files move onto the boundary.
+The gates include a TypeScript AST lint for dynamic code execution, shell-enabled child-process calls, and bare logging of caught errors. To allow a reviewed finding, add its file, function, kind, hash, and a non-empty one-line reason to `scripts/dangerous-apis-allowlist.json`; `node scripts/dangerous-apis.ts --write` adds new findings with blank reasons for review. The filesystem boundary guard (`npm run check:fs-boundary`) checks file-writing source modules in CLI, server and store; its reasoned `scripts/fs-boundary-allowlist.json` may only shrink as files move onto the boundary. `npm run check:test-teardown` checks that a test's `after` hooks close servers before they remove the folder (node:test runs hooks in the order they were added, not last in first out); its `scripts/test-teardown-allowlist.json` may only shrink.
 
 The `npm run check:env-numbers` guard keeps raw `Number(process.env.NAME)` reads on a shrinking allow-list in `scripts/check-env-numbers-allowlist.json`; new reads belong in the settings helpers in `packages/store/src/settings.ts`.
 

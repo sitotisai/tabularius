@@ -41,7 +41,6 @@ test('unreferenced container rows and external files are retained until explicit
 for (const top of ['RC_Data_FMS', 'Files']) {
   test(`purge deletes owned ${top} files when the store is opened through a directory alias`, (t) => {
     const dir = mkdtempSync(join(tmpdir(), 'tabularius-orphan-alias-'));
-    t.after(() => rmSync(dir, { recursive: true, force: true }));
     const actual = join(dir, 'actual');
     const alias = join(dir, 'alias');
     mkdirSync(actual);
@@ -50,6 +49,7 @@ for (const top of ['RC_Data_FMS', 'Files']) {
     createStore(path);
     const source = new Store(path, 'Media');
     t.after(() => source.close());
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
     const folder = join(actual, top, 'Media', 'Items');
     mkdirSync(folder, { recursive: true });
     const file = join(folder, 'private.png');
@@ -66,7 +66,6 @@ for (const top of ['RC_Data_FMS', 'Files']) {
 for (const kind of ['existing directory link', 'new directory link', 'file link', 'traversal', 'absolute path']) {
   test(`purge refuses a file outside its own folders via ${kind}`, (t) => {
     const dir = mkdtempSync(join(tmpdir(), 'tabularius-orphan-outside-'));
-    t.after(() => rmSync(dir, { recursive: true, force: true }));
     const path = join(dir, 'Media.openhbam.sqlite');
     createStore(path);
     const root = join(dir, 'RC_Data_FMS', 'Media');
@@ -85,6 +84,7 @@ for (const kind of ['existing directory link', 'new directory link', 'file link'
     if (kind === 'absolute path') rel = realpathSync(file);
     const source = new Store(path, 'Media');
     t.after(() => source.close());
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
     if (kind === 'new directory link') symlinkSync(outside, join(root, 'linked'));
     // Approved mounts remain readable, but that does not grant purge ownership.
     assert.equal(source.externalFile(rel), kind === 'existing directory link' ? realpathSync(file) : undefined);
@@ -98,11 +98,11 @@ for (const kind of ['existing directory link', 'new directory link', 'file link'
 
 test('purge retains an owned external file still referenced by another container', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-orphan-shared-reference-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'Media.openhbam.sqlite');
   createStore(path);
   const source = new Store(path, 'Media');
   t.after(() => source.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   source.applyDesign([{ op: 'createTable', name: 'Items', fields: [{ name: 'Pic', type: 'container', options: { global: true } }] }] as never);
   const folder = join(dir, 'RC_Data_FMS', 'Media');
   mkdirSync(folder, { recursive: true });
@@ -313,7 +313,6 @@ test('purging an orphan does not delete a shared-root file another hosted file c
 
 test('a working copy of a store reads container files through the same operator-approved directory links', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-copy-links-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const volume = join(dir, 'volume');
   mkdirSync(volume);
   writeFileSync(join(volume, 'private.png'), 'owned file');
@@ -328,6 +327,7 @@ test('a working copy of a store reads container files through the same operator-
   await source.backup(join(dir, 'scratch', 'copy.sqlite'));
   const copy = new Store(join(dir, 'scratch', 'copy.sqlite'), 'Media');
   t.after(() => copy.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   assert.equal(copy.externalFile('Items/private.png'), undefined, 'a copy knows nothing of the roots until told');
   copy.readContainersLike(source);
   assert.equal(copy.externalFile('Items/private.png'), source.externalFile('Items/private.png'));

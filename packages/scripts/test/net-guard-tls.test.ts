@@ -12,7 +12,6 @@ import { guardedFetch, NAME_LOOKUP, outboundContext } from '../src/net-guard.ts'
 
 test('TLS sockets and sessions are fresh across accounts/files; credentials stay isolated', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-outbound-tls-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const cert = localCertificate(dir, ['outbound.test', '127.0.0.1']);
   // Trust only this generated CA for these requests, without turning off TLS verification.
   const createConnection = Agent.prototype.createConnection;
@@ -30,6 +29,7 @@ test('TLS sockets and sessions are fresh across accounts/files; credentials stay
   });
   await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   t.after(() => new Promise<void>((resolve) => { server.closeAllConnections(); server.close(() => resolve()); }));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const base = `https://outbound.test:${(server.address() as AddressInfo).port}`;
   const identities = [{ file: 'tls-one', account: 'a' }, { file: 'tls-one', account: 'b' }, { file: 'tls-two', account: 'a' }, { file: 'tls-one', account: 'a' }];
   for (const [i, identity] of identities.entries()) await outboundContext.run(identity, async () => {

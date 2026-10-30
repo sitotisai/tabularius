@@ -31,7 +31,6 @@ function setFormat(path: string, value: number): void {
 
 test('a file from a newer Tabularius is left out and named, the others are served, and nothing is written to it', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-newer-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
   make(join(dir, 'Good' + EXT), 'Good');
   make(join(dir, 'Later' + EXT), 'Later');
   setFormat(join(dir, 'Later' + EXT), STORE_FORMAT + 1);
@@ -40,6 +39,7 @@ test('a file from a newer Tabularius is left out and named, the others are serve
   const logs: string[] = [];
   const running = await serve({ dir, port: 0, log: (l: string) => logs.push(l), checkFiles: false, watch: false });
   t.after(async () => { await new Promise<void>((resolve) => running.server.close(() => resolve())); await running.host.close(); });
+  t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
   assert.deepEqual(running.host.names(), ['Good']);
   const listed = running.host.files().find((f) => f.name === 'Later');
   assert.equal(listed?.status, 'closed');
@@ -68,12 +68,12 @@ test('a test restore of a backup of a newer file says it is newer, not that it i
 
 test('a file another process raises to a newer format while it is open is taken offline, not written to further', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-newer-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
   make(join(dir, 'Shop' + EXT), 'Shop');
   make(join(dir, 'Other' + EXT), 'Other');
   const logs: string[] = [];
   const running = await serve({ dir, port: 0, log: (l: string) => logs.push(l), checkFiles: false, watch: false });
   t.after(async () => { await new Promise<void>((resolve) => running.server.close(() => resolve())); await running.host.close(); });
+  t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
   assert.deepEqual(running.host.names().sort(), ['Other', 'Shop']);
   running.host.checkFormats();
   assert.deepEqual(running.host.names().sort(), ['Other', 'Shop'], 'a file in this build\'s format is left alone');

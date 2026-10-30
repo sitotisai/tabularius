@@ -9,7 +9,6 @@ import { Host } from '../src/host.ts';
 
 test('opening a file whose accounts share a lockout bucket logs the pair, once per pair', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-lockout-pairs-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'Shop.openhbam.sqlite');
   createStore(path);
   const seed = new Store(path, 'Shop');
@@ -18,6 +17,7 @@ test('opening a file whose accounts share a lockout bucket logs the pair, once p
   const logs: string[] = [];
   const host = new Host(dir, (line) => logs.push(line));
   t.after(() => { for (const s of host.openStores()) s.close(); });
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const warned = logs.filter((l) => /share one sign-in lockout/.test(l));
   assert.equal(warned.length, 1);
   assert.match(warned[0], /^Shop: the accounts "Jose\u0301" and "Jos\u00e9" share one sign-in lockout/);

@@ -92,7 +92,7 @@ test('a sort over stored fields equals the SQL order of main, for native integer
   const path = join(dir, 'Native.sqlite');
   createStore(path, { mode: 'native' });
   const store = new Store(path);
-  t.after(() => { store.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(() => { store.close(); });
   store.applyDesign([
     { op: 'createTable', name: 'T', fields: [{ name: 'Int', type: 'integer' }, { name: 'Dec', type: 'decimal' }, { name: 'Bool', type: 'boolean' }, { name: 'Txt' }] },
     { op: 'createValueList', name: 'VL', values: ['b', 'a', '10', 'Zed'] },
@@ -113,6 +113,7 @@ test('a sort over stored fields equals the SQL order of main, for native integer
   createStore(classic);
   const other = new Store(classic);
   t.after(() => other.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   other.applyDesign([{ op: 'createTable', name: 'N', fields: [{ name: 'Num', type: 'number' }] }]);
   const insert = other.sql.prepare('INSERT INTO N (Num) VALUES (?)');
   for (const v of [3, 10, 2.5, -1, null, '', 'abc', '12abc', '0x10', ' 7 ', 1e3, '1,5', 0, 'Infinity']) insert.run(v);
