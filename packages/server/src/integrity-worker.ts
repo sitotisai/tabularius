@@ -2,7 +2,7 @@
 // file, which on a large one takes seconds, and must not hold up the requests of the others.
 
 import { parentPort, workerData } from 'node:worker_threads';
-import { integrity, pageCheck } from './backup-verify.ts';
+import { integrity, pageCheck } from './integrity-check.ts';
 
 const { path, quick, backup } = workerData as { path: string; quick?: boolean; backup?: boolean };
 parentPort!.postMessage(backup ? integrity(path, quick) : pageCheck(path, quick !== false));
