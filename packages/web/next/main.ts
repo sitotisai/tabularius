@@ -9,7 +9,7 @@ import { Api, ApiError, listDatabases } from '../src/api.ts';
 import { fileField, listProblem, mustChangeText, parseSession, sessionFailure, signInProblem, wantedFile } from './signin.ts';
 import type { DataRecord, LayoutMeta, ScriptsMenuEntry, SortSpec, Value } from '../src/types.ts';
 import { h, icon, mod, MOD_LABEL, typing } from './dom.ts';
-import { collections, listColumns, menuLayouts, pages, type Collection, type Column, type Page, type Related } from './model.ts';
+import { collections, layoutRoute, listColumns, menuLayouts, pages, type Collection, type Column, type Page, type Related } from './model.ts';
 import { answerPageCalls, tellPages, webViewer } from '../src/layout.ts';
 import { attemptAdd, changedUnderDraft, decodeRoute, outcomeUnknown, sameSheet, saveAndRefresh, settleWrite, type AddOutcome, type AddState, type PortalSnapshot } from './edits.ts';
 import { editPage, newPage } from './pages.ts';
@@ -130,6 +130,10 @@ interface Model {
   collections: Collection[];
   /** Modern layouts: pages written in HTML, CSS and JavaScript, shown as they are. */
   pages: Page[];
+  /** The layouts this account can open and the menu lists, in menu order (what a page's `layouts` call returns). */
+  layouts: string[];
+  /** The privilege set's "Allow printing". */
+  printing: boolean;
   scripts: { name: string; folder?: string }[];
 }
 
@@ -161,7 +165,10 @@ async function readModel(api: Api, progress: (done: number, of: number) => void)
     }
   };
   walk(menu.scripts);
-  return { file: menu.database, account: menu.account, collections: collections(metas), pages: pages(metas), scripts };
+  return {
+    file: menu.database, account: menu.account, collections: collections(metas), pages: pages(metas),
+    layouts: metas.filter((m) => !m.hidden).map((m) => m.meta.layout.name), printing: menu.printing !== false, scripts,
+  };
 }
 
 /** The fields a layout really shows (the Data API returns only those). */
@@ -578,6 +585,22 @@ class Workspace {
         return this.api.summarize(args[0] as Record<string, unknown>);
       }
       case 'performScript': await this.runScript(text(args[0], 'The script name'), String(args[1] ?? '')); return null;
+      case 'layouts': return [...this.model.layouts];
+      case 'goToLayout': {
+        const name = text(args[0], 'The layout');
+        const route = this.model.layouts.includes(name) ? layoutRoute(this.model, name) : undefined;
+        if (!route) throw new Error(`There is no layout "${name}" to go to`);
+        if (location.hash !== route) location.hash = route;
+        return null;
+      }
+      case 'valueList': return this.api.valueList(this.page?.layout ?? this.view?.collection.layout ?? '', text(args[0], 'The value list'));
+      // The browser's print dialog for the window as it is, where a page is saved as PDF.
+      case 'print': {
+        if (!this.model.printing) throw new Error('This account isn\'t allowed to print.');
+        await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 100)));
+        window.print();
+        return null;
+      }
     }
     throw new Error(`${method} is not supported in /next/; use /app/.`);
   }

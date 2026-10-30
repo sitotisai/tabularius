@@ -143,6 +143,16 @@ function related(meta: LayoutMeta, p: Portal): Related | undefined {
   return { name: p.name, label: humanize(p.occurrence.replace(/^[a-z_]+\./i, '')), occurrence: p.occurrence, columns, table: p.table, file: p.file, ...(p.create ? { create: true } : {}) };
 }
 
+/**
+ * Where a layout name leads in this client: the page itself, or the collection that shows its table (a table is
+ * shown through one layout, so another layout of it opens the same collection). Undefined for a layout it doesn't show.
+ */
+export function layoutRoute(model: { collections: Collection[]; pages: Page[] }, name: string): string | undefined {
+  if (model.pages.some((p) => p.layout === name)) return `#/~/${encodeURIComponent(name)}`;
+  const c = model.collections.find((x) => x.layouts.includes(name));
+  return c ? `#/${encodeURIComponent(c.table)}` : undefined;
+}
+
 /** Layout names a person would pick from the menu (not separators, folders or hidden ones). */
 export function menuLayouts(items: MenuItem[]): { name: string; hidden: boolean }[] {
   return items.filter((i) => i.kind === 'item').map((i) => ({ name: i.name, hidden: !!i.hidden }));
