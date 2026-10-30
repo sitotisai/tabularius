@@ -510,7 +510,8 @@ const holdStream = (base: string, authorization: string, localAddress: string) =
   req.end();
 });
 
-test('streams opened with a made-up password for an account do not take that account\'s own streams or calls', async (t) => {
+// The made-up streams come from another address of this computer (127.0.0.2); macOS has only 127.0.0.1 on its loopback.
+test('streams opened with a made-up password for an account do not take that account\'s own streams or calls', { skip: process.platform === 'darwin' && 'macOS has only 127.0.0.1 on the loopback' }, async (t) => {
   const s = await start(t);
   assert.equal((await proveAlice(s.url)).status, 200);
   const open: { end: () => void }[] = [];
