@@ -7,7 +7,7 @@ test('a date a calculation builds stops at 12/31/4000 and starts at 1/1/0001', (
   assert.equal(evaluateText('Date ( 12 ; 31 ; 4000 )'), '12/31/4000');
   assert.equal(evaluateText('Date ( 1 ; 1 ; 4001 )'), '?');
   assert.equal(evaluateText('Date ( 12 ; 31 ; 4000 ) + 1'), '?');
-  assert.equal(evaluateText('Date ( 1 ; 1 ; 1 )'), '1/1/1');
+  assert.equal(evaluateText('Date ( 1 ; 1 ; 1 )'), '1/1/0001');
   assert.equal(evaluateText('Date ( 1 ; 1 ; 1 ) - 1'), '?');
   assert.equal(evaluateText('GetAsDate ( 1460970 )'), '12/31/4000');
   assert.equal(evaluateText('GetAsDate ( 1460971 )'), '?');
