@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, utimesSync, lutimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { ContainerUploads, sweepOrphanUploadFolders } from '../src/container-uploads.ts';
 import { serve } from '../src/index.ts';
 
@@ -37,7 +37,7 @@ test('sweep applies age, owner, name, symlink, cap and failure rules', (t) => {
   mkdirSync(join(tmp, 'other-name'));
   const insideLink = folder(tmp); const inside = join(insideLink, 'external'); symlinkSync(outside, inside, 'dir'); date(insideLink, now - 2 * day); lutimesSync(inside, new Date(now - 2 * day), new Date(now - 2 * day));
   const result = sweepOrphanUploadFolders({ tmp, now, alive: (pid) => [23, 24].includes(pid) });
-  assert.deepEqual(new Set(result.removed), new Set([oldDead, week, noMarker, badMarker, insideLink].map((p) => p.split('/').pop())));
+  assert.deepEqual(new Set(result.removed), new Set([oldDead, week, noMarker, badMarker, insideLink].map((p) => basename(p))));
   assert.ok(result.kept >= 4);
   assert.equal(existsSync(sentinel), true);
   assert.equal(lstatSync(linkFolder).isSymbolicLink(), true);
@@ -66,7 +66,7 @@ test('default process liveness recognizes this process and a completed child', (
   assert.equal(existsSync(marker), false);
   const old = folder(tmp); owner(old, child.pid ?? -1); date(old, Date.now() - 2 * day);
   const result = sweepOrphanUploadFolders({ tmp, now: Date.now() });
-  assert.ok(result.removed.includes(old.split('/').pop()!));
+  assert.ok(result.removed.includes(basename(old)));
   const current = folder(tmp); owner(current, process.pid); date(current, Date.now() - 2 * day);
   assert.ok(sweepOrphanUploadFolders({ tmp, now: Date.now() }).kept >= 1);
 });
