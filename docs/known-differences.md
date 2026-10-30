@@ -7,7 +7,13 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**186 entries in 23 areas.** Waiting on: 22 on a sample file, 96 on a FileMaker run or Design Report, 14 on a Claris answer, 17 on a decision by the owner (an entry can wait on more than one).
+**187 entries in 24 areas.** Waiting on: 22 on a sample file, 96 on a FileMaker run or Design Report, 14 on a Claris answer, 17 on a decision by the owner (an entry can wait on more than one).
+
+## Conversion
+
+| What differs or is unknown | How it shows | What would settle it | Where it is written |
+| --- | --- | --- | --- |
+| An embedded container larger than 512 MiB is left out of the converted copy, and an image library larger than 512 MiB stops the conversion | The converted file lacks that container (the command line export and the progress report name it), or the conversion stops with an error | A streaming conversion that holds one chunk at a time | [docs/moving-a-solution.md › Checking what a conversion left out](moving-a-solution.md) — “conversion with an error.” |
 
 ## Data API
 
