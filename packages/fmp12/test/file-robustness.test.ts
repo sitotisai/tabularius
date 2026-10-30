@@ -100,18 +100,20 @@ function boundedResult(bytes: Uint8Array, passphrase?: string): void {
 }
 
 boundedTest('rejected opens release their descriptor across 2000 attempts', () => {
-  const fdDir = existsSync('/proc/self/fd') ? '/proc/self/fd' : '/dev/fd';
+  // Windows lists no descriptors: there the proof is that the file can be deleted afterwards, which it cannot while one is held open.
+  const fdDir = existsSync('/proc/self/fd') ? '/proc/self/fd' : process.platform === 'win32' ? undefined : '/dev/fd';
+  const count = () => (fdDir ? readdirSync(fdDir).length : 0);
   withTempFile(Buffer.alloc(8192), (path) => {
-    const before = readdirSync(fdDir).length;
+    const before = count();
     for (let i = 0; i < 2000; i++) assert.throws(() => FmpDatabase.open(path), FmpError);
-    assert.equal(readdirSync(fdDir).length, before);
+    assert.equal(count(), before);
   });
   // Also cover failures after the header has been accepted and key derivation.
   for (const passphrase of [undefined, 'wrong passphrase']) {
     withTempFile(encryptedFile(), (path) => {
-      const before = readdirSync(fdDir).length;
+      const before = count();
       assert.throws(() => FmpDatabase.open(path, passphrase), FmpError);
-      assert.equal(readdirSync(fdDir).length, before);
+      assert.equal(count(), before);
     });
   }
 });

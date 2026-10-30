@@ -225,10 +225,22 @@ function moveAside(path: string, inspected: Stats, busy: () => Error): void {
   } finally { rmSync(aside, { force: true }); }
 }
 
+/** Creates the gate. Windows answers EPERM, not EEXIST, for a name that another process has just deleted and not yet let go of: that is waited out briefly, then it is the gate being busy. */
+function openGate(gate: string, busy: () => Error): number {
+  for (let attempt = 0; ; attempt++) {
+    try { return openSync(gate, 'wx', 0o600); }
+    catch (error) {
+      if (process.platform !== 'win32' || (error as NodeJS.ErrnoException).code !== 'EPERM') throw error;
+      if (attempt >= 10) throw busy();
+      pause(2 + Math.floor(Math.random() * 4));
+    }
+  }
+}
+
 function enterLockGate<T>(path: string, busyMessage: string, action: () => T): T {
   const gate = `${path}.takeover`;
   let fd: number;
-  try { fd = openSync(gate, 'wx', 0o600); }
+  try { fd = openGate(gate, () => new GateBusy(busyMessage, 409)); }
   catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if ((code === 'ENOENT' || code === 'ENOTDIR') && !lstatOrUndefined(dirname(path))?.isDirectory()) {
