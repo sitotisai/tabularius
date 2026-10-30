@@ -25,8 +25,10 @@ name: ci
 #   `test` is the required check; the shard names do not matter to branch protection.
 # - The owner's Macs help with the queue. `gates` and shards 1 and 2 run on self-hosted
 #   runners (labels self-hosted, macOS, tab-ci) when the repository variable CI_MACS is `on`;
-#   shards 3 and 4 and the `test` report stay on GitHub's machines. A pull request from a
-#   fork NEVER goes to the Macs: the expression below sends it to ubuntu-latest. Set CI_MACS
+#   shards 3 and 4 and the `test` report stay on GitHub's machines. The expression below
+#   sends a pull request from a fork to ubuntu-latest, but a fork can edit this file, so the real
+#   guard is a job-started check on each runner that refuses anything but a push, a schedule, a
+#   manual run or a pull request from this repository, plus approval for outside contributors. Set CI_MACS
 #   to anything else to send everything back to GitHub's machines (do this when a Mac is off).
 #   The runners are registered to this repository alone and run as a macOS user that
 #   cannot read the owner's files. Never add a self-hosted label to a job that a fork can reach.
