@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, win32, posix } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { notOnWindows } from '../../store/test/windows.ts';
 import { audit, isDependencyDebris, isProgramFile, treeEntries, type Scope } from '../../../scripts/release-audit.ts';
 
 const scope: Scope = { allow: [{ glob: '**', why: 'synthetic audit input' }], executable: [], maxBytes: 1024, larger: [], exceptions: [], emails: [] };
@@ -84,7 +85,7 @@ test('tree audit refuses an ancestor symlink before reading an indexed descendan
   assert.deepEqual(audit(entries, { kind: 'tree', scope }).map((f) => f.rule), ['symlink']);
 });
 
-test('tree audit still reads regular Unicode paths containing a tab', (t) => {
+test('tree audit still reads regular Unicode paths containing a tab', { skip: notOnWindows('a file name cannot contain a tab') }, (t) => {
   const tree = syntheticTree(t, ['docs/café\tguide.md']);
   mkdirSync(join(tree, 'docs'));
   writeFileSync(join(tree, 'docs/café\tguide.md'), 'Generated documentation.\n');
