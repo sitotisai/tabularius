@@ -9,7 +9,7 @@ import { join } from 'node:path';
 const script = join(import.meta.dirname, '..', '..', '..', 'scripts', 'install.sh');
 const print = (os: string, ...args: string[]) =>
   execFileSync('sh', [script, '--service', '/srv/Databases', '--print', ...args], { env: { ...process.env, TABULARIUS_OS: os }, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
-const sh = spawnSync('sh', ['-c', 'true']).status === 0 ? false : 'no sh';
+const sh = process.platform === 'win32' ? 'not on Windows: the shell installer is for macOS and Linux (Windows installs with scripts/install.ps1)' : spawnSync('sh', ['-c', 'true']).status === 0 ? false : 'no sh';
 
 test('the service listens on this computer only unless a certificate for a domain asks otherwise', { skip: sh }, () => {
   assert.match(print('Linux'), /"--host" "127\.0\.0\.1"/);
