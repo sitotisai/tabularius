@@ -2411,6 +2411,76 @@
   "expected": "derived"
  },
  {
+  "id": "func-str-30",
+  "area": "string function",
+  "construct": "SUBSTRING with FROM and FOR",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-character-strings.html",
+  "sql": "SELECT SUBSTRING('Conrad' FROM 2 FOR 3) FROM emp WHERE emp_id = 'E1'",
+  "rows": [["onr"]],
+  "expected": "derived",
+  "note": "the SQL standard supplies this rule; the page shows only the comma form"
+ },
+ {
+  "id": "func-str-31",
+  "area": "string function",
+  "construct": "SUBSTRING with FROM",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-character-strings.html",
+  "sql": "SELECT SUBSTRING('Conrad' FROM 4) FROM emp WHERE emp_id = 'E1'",
+  "rows": [["rad"]],
+  "expected": "derived",
+  "note": "the SQL standard supplies this rule; the page shows only the comma form"
+ },
+ {
+  "id": "func-str-32",
+  "area": "string function",
+  "construct": "SUBSTRING with a negative start",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-character-strings.html",
+  "sql": "SELECT SUBSTRING('Conrad', -1, 3) FROM emp WHERE emp_id = 'E1'",
+  "rows": [["C"]],
+  "expected": "derived",
+  "note": "the SQL standard supplies this rule; the page shows only the comma form with a positive start"
+ },
+ {
+  "id": "func-str-33",
+  "area": "string function",
+  "construct": "TRIM LEADING",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-character-strings.html",
+  "sql": "SELECT TRIM(LEADING 'x' FROM 'xxAB') FROM emp WHERE emp_id = 'E1'",
+  "rows": [["AB"]],
+  "expected": "derived",
+  "note": "the SQL standard supplies this rule; the page shows only the comma form"
+ },
+ {
+  "id": "func-str-34",
+  "area": "string function",
+  "construct": "TRIM BOTH",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-character-strings.html",
+  "sql": "SELECT TRIM(BOTH 'x' FROM 'xABx') FROM emp WHERE emp_id = 'E1'",
+  "rows": [["AB"]],
+  "expected": "derived",
+  "note": "the SQL standard supplies this rule; the page shows only the comma form"
+ },
+ {
+  "id": "func-str-35",
+  "area": "string function",
+  "construct": "TRIM TRAILING blank",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-character-strings.html",
+  "sql": "SELECT TRIM(TRAILING FROM 'AB  ') FROM emp WHERE emp_id = 'E1'",
+  "rows": [["AB"]],
+  "expected": "derived",
+  "note": "the SQL standard supplies this rule; the page shows only the comma form"
+ },
+ {
+  "id": "func-str-36",
+  "area": "string function",
+  "construct": "TRIM rejects multiple removal characters",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-character-strings.html",
+  "sql": "SELECT TRIM(BOTH 'xy' FROM 'xyA') FROM emp WHERE emp_id = 'E1'",
+  "error": true,
+  "expected": "derived",
+  "note": "the SQL standard supplies this rule; the page shows only the comma form"
+ },
+ {
   "id": "func-str-12",
   "area": "string function",
   "construct": "SPACE",
