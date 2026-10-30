@@ -77,7 +77,8 @@ const PATTERNS: [RegExp, PiiKind][] = [
   [/(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g, 'EMAIL'],
   [/(?<![\w-])\d{3}-\d{2}-\d{4}(?![\w-])/g, 'ID'],
   [/(?<![\w-])(?:\d[ -]?){12,18}\d(?![\w-])/g, 'CARD'],
-  [/(?<![\w+])(?:\+\d{1,3}[\s.-]?)?(?:\(\d{2,4}\)\s?|\d{2,4}[\s.-])\d{3,4}[\s.-]\d{3,4}(?![\w])/g, 'PHONE'],
+  // Not inside a longer hyphenated token: the middle groups of a UUID can be all digits (4-4-4), which is no phone number.
+  [/(?<![\w+-])(?:\+\d{1,3}[\s.-]?)?(?:\(\d{2,4}\)\s?|\d{2,4}[\s.-])\d{3,4}[\s.-]\d{3,4}(?![\w-])/g, 'PHONE'],
 ];
 
 function luhn(digits: string): boolean {
