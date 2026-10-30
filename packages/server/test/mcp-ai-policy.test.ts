@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -12,6 +12,7 @@ import { checkPlan } from '../src/agent.ts';
 import { semanticFind } from '../src/semantic-find.ts';
 import { assertAiDesignChanges } from '../src/ai-policy.ts';
 import { assertNoAiVisibility } from '../src/ai-security.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 async function fixture(t: import('node:test').TestContext, secret = true, account?: string) {
   const dir = mkdtempSync(join(tmpdir(), 'ai-policy-'));
@@ -23,7 +24,8 @@ async function fixture(t: import('node:test').TestContext, secret = true, accoun
   host.scriptAi = { refusal: () => undefined, generate: async () => '', embed: async () => [[1]] };
   const server = createMcpServer(host, account ? { account, database: 'Shop' } : { admin: true });
   const client = new Client({ name: 'policy-test', version: '1' });
-  t.after(async () => { await client.close(); await server.close(); await host.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(async () => { await client.close(); await server.close(); await host.close(); });
+  removeAtExit(dir);
   const [a, b] = InMemoryTransport.createLinkedPair();
   await server.connect(a); await client.connect(b);
   const call = (name: string, args: Record<string, unknown> = {}) => client.callTool({ name, arguments: { database: 'Shop', ...args } });

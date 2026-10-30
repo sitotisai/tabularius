@@ -16,10 +16,11 @@ import { backupFolderProblem, checkBackupFolder } from '../src/backup-folder.ts'
 import { retainCurrentCredentials } from '../src/backup.ts';
 import { Schedules } from '../src/schedules.ts';
 import type { Host } from '../src/host.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 function folder(t: TestContext) {
   const root = fs.mkdtempSync(join(tmpdir(), 'tabularius-review-state-'));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  removeAtExit(root);
   return root;
 }
 

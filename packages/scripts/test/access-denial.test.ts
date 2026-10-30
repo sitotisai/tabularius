@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { createStore, Store, type AccessDenial } from '../../store/src/index.ts';
 import type { ScriptStep } from '../../fmp12/src/index.ts';
 import { runScript, scriptDenial } from '../src/index.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 const SECRET = 'hidden-value-sentinel';
 const SUBMITTED = 'submitted-value-sentinel';
@@ -13,7 +14,8 @@ function setup(t: TestContext) {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-script-denial-'));
   createStore(join(dir, 'Owner.sqlite'));
   const s = new Store(join(dir, 'Owner.sqlite'), 'Owner');
-  t.after(() => { s.close(); rmSync(dir, { recursive: true }); });
+  t.after(() => { s.close(); });
+  removeAtExit(dir);
   s.applyDesign([{ op: 'createTable', name: 'T', fields: [{ name: 'A' }, { name: 'Secret' }] }]);
   const id = s.create('T', { A: 'original', Secret: SECRET }).recordId;
   s.savePrivilegeSet({ name: 'Clerk', records: { view: true, edit: 'Secret = "formula-input-sentinel"', create: true, delete: false }, layouts: 'modifiable', valueLists: 'none', scripts: 'viewOnly', extendedPrivileges: [] });

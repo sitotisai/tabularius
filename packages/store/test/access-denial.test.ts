@@ -1,10 +1,11 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore, Store, StoreError, PrivilegeError, explainAccessDenial, type PrivilegeDefinition, type Rule, type RuleOutcome } from '../src/index.ts';
 import { accessDenialContext } from '../src/access-denial.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 const OPEN = { view: true, edit: true, create: true, delete: true };
 const SECRET = 'hidden-value-6bbbc46c';
@@ -15,7 +16,8 @@ function blank(t: TestContext, name = 'Scratch'): Store {
   const path = join(dir, `${name}.sqlite`);
   createStore(path);
   const store = new Store(path, name);
-  t.after(() => { store.close(); rmSync(dir, { recursive: true }); });
+  t.after(() => { store.close(); });
+  removeAtExit(dir);
   store.applyDesign([{ op: 'createTable', name: 'T', fields: [
     { name: 'A' }, { name: 'Secret' }, { name: 'Global', options: { global: true } }, { name: 'File', type: 'container' },
   ] }]);

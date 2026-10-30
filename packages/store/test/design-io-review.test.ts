@@ -2,19 +2,21 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createStore, designObjects, designText, importTables, planImportTables, reconvertCheck, Store, type SheetInput } from '../src/index.ts';
 import { importDesigns } from '../src/import.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 function fresh(t: { after(fn: () => void): void }): { store: Store; path: string; dir: string } {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-design-io-'));
   const path = join(dir, 'test.sqlite');
   createStore(path);
   const store = new Store(path);
-  t.after(() => { store.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(() => { store.close(); });
+  removeAtExit(dir);
   return { store, path, dir };
 }
 

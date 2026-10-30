@@ -14,6 +14,7 @@ import { ContainerUploads } from '../src/container-uploads.ts';
 import { Uploads } from '../src/uploads.ts';
 import { Host } from '../src/host.ts';
 import { backupFolder } from '../src/backup.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 import { backupExternal } from '../src/backup-external.ts';
 import { commitRestore } from '../src/restore-files.ts';
 import { encryptFile, encryptFileSync, decryptFile } from '../src/encrypt.ts';
@@ -25,7 +26,7 @@ import { procDiskBytes } from '../src/stats-log.ts';
 
 function setup(t: import('node:test').TestContext) {
   const dir = fs.mkdtempSync(join(tmpdir(), 'tabularius-fs-integration-'));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  removeAtExit(dir);
   const outside = join(dir, 'outside'); fs.mkdirSync(outside);
   const secret = join(outside, 'secret'); fs.writeFileSync(secret, 'unchanged');
   return { dir, outside, secret };

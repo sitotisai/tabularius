@@ -2,7 +2,7 @@
 // calendar app stays harmless), the cap, and the import.
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore, type PrivilegeDefinition, type Store } from '../../store/src/index.ts';
@@ -11,6 +11,7 @@ import { MAX_EVENTS, createFeed } from '../src/calendar.ts';
 import { unfold } from '../../store/src/calendar.ts';
 import { referenceParse } from '../../store/test/ics-reference.ts';
 import type { Host } from '../src/host.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 const OPEN = { view: true, edit: true, create: true, delete: true };
 const FIELDS = [
@@ -27,8 +28,8 @@ async function start(t: TestContext, mode: 'native' | 'compat' = 'native'): Prom
   const running = await serve({ dir, port: 0, log: (m) => { logs.push(m); } });
   t.after(async () => {
     await new Promise<void>((resolve) => running.server.close(() => resolve()));
-    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
+  removeAtExit(dir, { maxRetries: 5, retryDelay: 50 });
   const store = running.host.get('Planner')!;
   store.setAiPolicy(false);
   store.applyDesign([{ op: 'createTable', name: 'Events', fields: FIELDS as never }]);

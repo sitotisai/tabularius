@@ -1,7 +1,7 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -14,6 +14,7 @@ import { Live, MAX_STREAM_BUFFER } from '../src/live.ts';
 import { describeRecord } from '../src/record-context.ts';
 import { PgServer } from '../src/pgwire.ts';
 import { PgClient } from './pg-client.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 const all = { view: true, edit: true, create: true, delete: true };
 const definition: PrivilegeDefinition = {
@@ -32,8 +33,8 @@ function fixture(t: TestContext) {
   t.after(async () => {
     live.closeAll();
     await host.close();
-    rmSync(dir, { recursive: true, force: true });
   });
+  removeAtExit(dir);
   store.applyDesign([
     { op: 'createTable', name: 'Items', fields: [{ name: 'Title' }, { name: 'Tenant' }] },
     { op: 'createLayout', name: 'BlockedRecords', occurrence: 'Items' },

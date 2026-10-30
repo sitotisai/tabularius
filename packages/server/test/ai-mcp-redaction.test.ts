@@ -1,6 +1,6 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
@@ -11,6 +11,7 @@ import { createMcpServer } from '../src/mcp.ts';
 import { Assistant } from '../src/assistant.ts';
 import { classOf } from '../src/pii.ts';
 import { changeImpact } from '../src/change-impact.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 const SECRET = 'synthetic-literal-417';
 const MARKER = 'synthetic-hidden-field-marker@example.test';
@@ -20,7 +21,8 @@ async function setup(t: TestContext, bound = false) {
   const store = host.create('Review');
   const server = createMcpServer(host, bound ? { account: 'Admin', database: 'Review' } : { admin: true });
   const client = new Client({ name: 'redaction-test', version: '1' });
-  t.after(async () => { await client.close(); await server.close(); await host.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(async () => { await client.close(); await server.close(); await host.close(); });
+  removeAtExit(dir);
   const [a, b] = InMemoryTransport.createLinkedPair();
   await server.connect(a); await client.connect(b);
   const call = (name: string, args: Record<string, unknown> = {}) => client.callTool({ name, arguments: { database: store.name, ...args } });

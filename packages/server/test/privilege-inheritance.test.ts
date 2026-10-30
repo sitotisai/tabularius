@@ -1,6 +1,6 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -15,11 +15,13 @@ import { runApprovedStep, type AgentPlan } from '../src/agent.ts';
 import { AutomationRunner, cleanAutomation, dryRunAutomation, saveAutomation } from '../src/automations.ts';
 import type { OutboxEntry } from '../../scripts/src/index.ts';
 import { IDENTITIES, IDENTITY, SECRET, covering, context, identityText, populate, installChain, expectedChain, putScript } from '../../scripts/test/privilege-inheritance-model.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 function setup(t: TestContext) {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-inheritance-automation-'));
   const host = new Host(dir, () => {}, { background: false });
-  t.after(async () => { await host.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(async () => { await host.close(); });
+  removeAtExit(dir);
   const store = host.create('Generated'); populate(store);
   return { host, store };
 }
