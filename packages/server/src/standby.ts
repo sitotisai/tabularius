@@ -12,6 +12,7 @@
 
 import { createWriteStream, existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { readJsonStateSync, updateJsonStateSync } from '../../store/src/durable.ts';
+import { openSync } from '../../store/src/fs-boundary.ts';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -408,7 +409,11 @@ export class Standby {
     const target = this.path(name);
     const partial = target + '.standby-partial';
     try {
-      await pipeline(Readable.fromWeb(res.body as import('node:stream/web').ReadableStream), createWriteStream(partial), { signal });
+      // Open through the boundary (no links followed, owner only), then stream to that descriptor.
+      const body = Readable.fromWeb(res.body as import('node:stream/web').ReadableStream);
+      let fd: number;
+      try { fd = openSync(partial, 'w', 0o600); } catch (e) { body.destroy(); throw e; }
+      await pipeline(body, createWriteStream(partial, { fd, autoClose: true }), { signal });
       const db = new DatabaseSync(partial, { readOnly: true });
       try {
         const r = Object.values(db.prepare('PRAGMA quick_check').get() as Record<string, string>)[0];
