@@ -51,6 +51,7 @@ import { ApiError, jsonNumberSource, readBody, readJson, stringifyJsonPreserving
 import { schemaChange, SCHEMA_SETS } from './odata-schema.ts';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { decimalKey, decimalNumberText } from '../../store/src/native-types.ts';
+import { registerODataValueFunctions } from '../../store/src/store.ts';
 import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import type { JoinJob, JoinResult, JoinTable } from './odata-crossjoin-worker.ts';
@@ -421,7 +422,8 @@ export function filterSql(text: string, props: Prop[], lambda?: Lambda, computed
       if ((a.uuid || b.uuid) && a.kind !== 'null' && b.kind !== 'null') {
         return { sql: `lower(${a.sql}) ${OPS[op]} lower(${b.sql})`, params: [...a.params, ...b.params], kind: 'bool' };
       }
-      return { sql: `(${a.sql}) ${OPS[op]} (${b.sql})`, params: [...a.params, ...b.params], kind: 'bool' };
+      const comparison = a.kind !== 'null' && b.kind !== 'null' && (op === 'eq' || op === 'ne') ? (op === 'eq' ? '=' : '<>') : OPS[op];
+      return { sql: `(${a.sql}) ${comparison} (${b.sql})`, params: [...a.params, ...b.params], kind: 'bool' };
     }
     if (op === 'in') {
       next();
@@ -436,7 +438,7 @@ export function filterSql(text: string, props: Prop[], lambda?: Lambda, computed
     }
     return a;
   };
-  const ARITH: Record<string, string> = { add: '+', sub: '-', mul: '*', div: '/', mod: '%' };
+  const ARITH: Record<string, string> = { add: '+', sub: '-', mul: '*', div: '/', mod: 'mod' };
   const additive = (): Expr => {
     let a = multiplicative();
     while (is('add') || is('sub')) {
@@ -451,7 +453,7 @@ export function filterSql(text: string, props: Prop[], lambda?: Lambda, computed
     while (is('mul') || is('div') || is('mod')) {
       const op = ARITH[next().toLowerCase()];
       const b = unary();
-      a = { sql: op === '/' ? `(CAST(${a.sql} AS REAL) / ${b.sql})` : `(${a.sql} ${op} ${b.sql})`, params: [...a.params, ...b.params], kind: 'number' };
+      a = { sql: op === '/' ? `(CAST(${a.sql} AS REAL) / ${b.sql})` : op === 'mod' ? `fm_odata_mod(${a.sql}, ${b.sql})` : `(${a.sql} ${op} ${b.sql})`, params: [...a.params, ...b.params], kind: 'number' };
     }
     return a;
   };
@@ -609,7 +611,8 @@ export function filterSql(text: string, props: Prop[], lambda?: Lambda, computed
     if (!p.queryable) throw bad(`$filter: ${p.name} is not stored (a global, unstored calculation, repeating or container field), so it can't be filtered on`, '102');
     fields.add(p.field);
     const kind = KIND[p.type] ?? 'string';
-    return { sql: kind === 'number' && p.type !== 'decimal' ? `CAST(${q(p.field)} AS REAL)` : q(p.field), params: [], kind, ...(p.type === 'decimal' ? { decimal: true } : {}), ...(p.type === 'uuid' ? { uuid: true } : {}) };
+    const column = q(p.field);
+    return { sql: kind === 'number' && p.type !== 'decimal' ? `fm_odata_number(${column})` : kind === 'date' ? `fm_odata_date(${column})` : column, params: [], kind, ...(p.type === 'decimal' ? { decimal: true } : {}), ...(p.type === 'uuid' ? { uuid: true } : {}) };
   };
 
   if (!tokens.length) throw bad('$filter is empty');
@@ -1049,7 +1052,7 @@ export class ODataEndpoint {
 
     const m = /^(.+?)(?:\((.*)\))?$/.exec(parts[1])!;
     const set = findSet(sets, m[1]);
-    const opts = { account: p.account, privileges: p };
+    const opts = { account: p.account, privileges: p, dataEntry: true };
 
     if (m[2] === undefined) {
       if (parts[2] === '$count' && parts.length === 3) {
@@ -1067,7 +1070,6 @@ export class ODataEndpoint {
           const made = set.info.owner.create(set.info, data, opts);
           return { recordId: made.recordId, modId: this.fill(set, made.recordId, files, opts) ?? made.modId };
         });
-        const entity = this.entity(set, r.recordId, p);
         const where = `${base}/${encodeURIComponent(set.name)}(${r.recordId})`;
         res.setHeader('location', where);
         res.setHeader('etag', etag(r.modId));
@@ -1077,6 +1079,12 @@ export class ODataEndpoint {
           // Just where the new record is (OData 4.0 section 8.2.8.7).
           res.writeHead(204, { 'odata-version': '4.0', 'odata-entityid': where }).end();
           return;
+        }
+        let entity;
+        try { entity = this.entity(set, r.recordId, p); }
+        catch (e) {
+          if (!(e instanceof ODataError) || e.status !== 404) throw e;
+          entity = { ROWID: r.recordId, ROWMODID: r.modId };
         }
         return send(res, 201, { '@odata.context': `${base}/$metadata#${set.name}/$entity`, ...entity });
       }
@@ -1191,6 +1199,11 @@ export class ODataEndpoint {
       return send(res, 200, { '@odata.context': context, ...(keep ? Object.fromEntries(Object.entries(entity).filter(([k]) => keep.has(k))) : entity) });
     }
     if (method === 'PATCH' || method === 'PUT') {
+      try { owner.get(set.info, id, 'iso', undefined, p, { fields: [] }); }
+      catch (e) {
+        if (e instanceof StoreError && e.code === 200) throw new ODataError(404, '101', 'Record is missing');
+        throw e;
+      }
       const { data, files } = this.body(await this.read(at, () => readJson(req, set.info.owner.fileMode === 'native')), set);
       const expected = ifMatch(req);
       const r = allOrNothing(() => {
@@ -1201,12 +1214,24 @@ export class ODataEndpoint {
       const want = returnPreference(req);
       if (want) res.setHeader('preference-applied', `return=${want}`);
       if (want === 'representation') {
-        return send(res, 200, { '@odata.context': `${base}/$metadata#${set.name}/$entity`, ...this.entity(set, id, p) });
+        let entity;
+        try { entity = this.entity(set, id, p); }
+        catch (e) {
+          if (!(e instanceof ODataError) || e.status !== 404) throw e;
+          res.writeHead(204, { 'odata-version': '4.0' }).end();
+          return;
+        }
+        return send(res, 200, { '@odata.context': `${base}/$metadata#${set.name}/$entity`, ...entity });
       }
       res.writeHead(204, { 'odata-version': '4.0' }).end();
       return;
     }
     if (method === 'DELETE') {
+      try { owner.get(set.info, id, 'iso', undefined, p, { fields: [] }); }
+      catch (e) {
+        if (e instanceof StoreError && e.code === 200) throw new ODataError(404, '101', 'Record is missing');
+        throw e;
+      }
       const expected = ifMatch(req);
       if (expected !== undefined) {
         const current = owner.get(set.info, id, 'iso', undefined, p, { fields: [] }).modId;
@@ -1513,6 +1538,7 @@ export class ODataEndpoint {
     const db = new DatabaseSync(':memory:');
     try {
       db.function('fm_decimal_key', { deterministic: true }, (v) => decimalKey(v as string | number | null));
+      registerODataValueFunctions(db);
       const columns = sources.flatMap((x) => (x.type === 'text' ? [`${col.get(x.field)} TEXT`, `${key(x)} TEXT`] : [`${col.get(x.field)} ${typed(x.type)}`]));
       db.exec(`CREATE TABLE r (${columns.length ? columns.join(', ') : 'x'})`);
       if (sources.length) {
