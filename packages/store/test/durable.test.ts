@@ -7,6 +7,7 @@ import { existsSync, linkSync, mkdtempSync, readFileSync, readdirSync, rmSync, s
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { notOnWindows } from './windows.ts';
 
 function fakeFs(code: string, failure: 'file' | 'directory' | 'open' = 'directory') {
   const calls: string[] = [];
@@ -299,7 +300,7 @@ test('a close error still removes the temporary state file without retrying clos
   }
 });
 
-test('a directory sync error is reported but does not fail an already replaced state file', () => {
+test('a directory sync error is reported but does not fail an already replaced state file', { skip: notOnWindows('Windows does not open a folder to flush it, so there is no folder flush to fail') }, () => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-json-state-'));
   const fsync = fs.fsyncSync;
   const warn = console.warn;
