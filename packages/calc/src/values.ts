@@ -130,17 +130,44 @@ export function timestampFromDate(ms: number): number {
  */
 function decimalParts(ns: number[]): { sum: bigint; scale: number } | undefined {
   if (ns.some((n) => !Number.isFinite(n))) return undefined;
-  const parts = ns.map((raw) => {
+  // Whole numbers the double holds exactly (most of a large table's values) are added as numbers and moved to a BigInt
+  // before they could lose a digit; only the others are read from their decimal text.
+  let whole = 0n;
+  let run = 0;
+  const parts: { sign: bigint; digits: bigint; places: number }[] = [];
+  let scale = 0;
+  for (const raw of ns) {
+    if (Number.isSafeInteger(raw)) {
+      if (Math.abs(raw) > 2 ** 40) { whole += BigInt(raw); continue; }
+      run += raw;
+      if (Math.abs(run) > 2 ** 52) { whole += BigInt(run); run = 0; }
+      continue;
+    }
     // Tidy only binary noise left by a prior operation; retain longer decimal inputs when they are materially distinct.
     const value = tidy(raw);
-    const match = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i.exec(String(value));
-    if (!match) return { sign: 1n, digits: 0n, places: 0 };
+    const text = String(value);
+    if (!/e/i.test(text)) {
+      const dot = text.indexOf('.');
+      const places = dot < 0 ? 0 : text.length - dot - 1;
+      if (places > scale) scale = places;
+      const negative = text.charCodeAt(0) === 45;
+      parts.push({ sign: negative ? -1n : 1n, digits: BigInt((dot < 0 ? text : text.slice(0, dot) + text.slice(dot + 1)).slice(negative ? 1 : 0)), places });
+      continue;
+    }
+    const match = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i.exec(text);
+    if (!match) continue;
     const places = (match[3]?.length ?? 0) - Number(match[4] ?? 0);
-    const digits = BigInt(match[2] + (match[3] ?? ''));
-    return { sign: match[1] === '-' ? -1n : 1n, digits, places };
-  });
-  const scale = Math.max(0, ...parts.map(({ places }) => places));
-  const sum = parts.reduce((total, part) => total + part.sign * part.digits * 10n ** BigInt(scale - part.places), 0n);
+    if (places > scale) scale = places;
+    parts.push({ sign: match[1] === '-' ? -1n : 1n, digits: BigInt(match[2] + (match[3] ?? '')), places });
+  }
+  let sum = (whole + BigInt(run)) * 10n ** BigInt(scale);
+  const powers = new Map<number, bigint>();
+  for (const part of parts) {
+    const gap = scale - part.places;
+    let factor = powers.get(gap);
+    if (factor === undefined) powers.set(gap, factor = 10n ** BigInt(gap));
+    sum += part.sign * part.digits * factor;
+  }
   return { sum, scale };
 }
 
