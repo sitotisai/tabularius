@@ -41,7 +41,7 @@ for (const row of SHAPES) test(`OData matrix: ${row.name}`, async (t) => {
       try {
         const reply = await request(m, ODATA + operation.path, operation.method, operation.body);
         // OData conceals an inaccessible table/field as an unknown entity set/property.
-        let want = gate || (operation.name.endsWith(' other') && row.expected.limited ? 200 : 0) || (operation.op === 'script' ? expected(e, 'script') || expected(e, 'read') : operation.op !== 'metadata' && !e.view ? 102 : expected(e, operation.op, false));
+        let want = gate || (operation.name.endsWith(' other') && row.expected.limited ? 101 : 0) || (operation.op === 'script' ? expected(e, 'script') || expected(e, 'read') : operation.op !== 'metadata' && !e.view ? 102 : expected(e, operation.op, false));
         // A filtered-out entity is indistinguishable from a missing entity in OData.
         if (!gate && operation.op === 'other' && e.limited) want = 101;
         if (!gate && e.view && e.field === 'none' && ['create', 'edit', 'upload'].includes(operation.op)) want = 102;
