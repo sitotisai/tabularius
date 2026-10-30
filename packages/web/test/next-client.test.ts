@@ -1,7 +1,7 @@
 // The alternative client's guesses and search parsing (packages/web/next), without a browser.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { collections, humanize, isKey, listColumns, pages, pickTitle, type Column } from '../next/model.ts';
+import { collections, humanize, isKey, layoutRoute, listColumns, pages, pickTitle, type Column } from '../next/model.ts';
 import { parse, requests, unparse } from '../next/query.ts';
 import { score } from '../next/palette.ts';
 import { show, fromInputDate, toInputDate, initials } from '../next/values.ts';
@@ -156,6 +156,27 @@ test('#158 pages carry allowed viewer hosts from their layout', () => {
 });
 test('#159 unsupported bridge methods explain the client limitation', () => {
   assert.match(mainSource, /not supported in \/next\/; use \/app\//);
+});
+test('#159 the page bridge offers layouts, goToLayout, valueList and print', () => {
+  for (const call of ['layouts', 'goToLayout', 'valueList', 'print']) assert.match(mainSource, new RegExp(`case '${call}':`));
+  assert.match(mainSource, /layouts: metas\.filter\(\(m\) => !m\.hidden\)/);
+  assert.match(mainSource, /printing: menu\.printing !== false/);
+  assert.match(mainSource, /if \(!this\.model\.printing\) throw new Error\('This account isn\\'t allowed to print\.'\)/);
+});
+test('#159 a layout name leads to its page, or to the collection that shows its table', () => {
+  const people = meta('People', 'People', [f('Name')]);
+  const detail = meta('Person detail', 'People', [f('Name')]);
+  const map = meta('Map', 'Places', []);
+  map.design = { objects: [{ id: 1, kind: 'web-viewer' }] } as LayoutMeta['design'];
+  const model = {
+    collections: collections([{ meta: people, hidden: false }, { meta: detail, hidden: false }]),
+    pages: pages([{ meta: map, hidden: false }]),
+  };
+  assert.equal(layoutRoute(model, 'Map'), '#/~/Map');
+  assert.equal(layoutRoute(model, 'Person detail'), '#/People');
+  assert.equal(layoutRoute(model, 'People'), '#/People');
+  assert.equal(layoutRoute(model, 'Nowhere'), undefined);
+  assert.equal(layoutRoute({ ...model, pages: [{ ...model.pages[0], layout: 'A b/c' }] }, 'A b/c'), '#/~/A%20b%2Fc');
 });
 
 test('route decoding tolerates malformed escapes and decodes valid names', async () => {

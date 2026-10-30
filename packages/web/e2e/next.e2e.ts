@@ -32,9 +32,11 @@ before(async () => {
   gallery.applyDesign([{ op: 'createTable', name: 'Parks', fields: [{ name: 'Name' }, { name: 'Photo', type: 'container' }, { name: 'Leaflet', type: 'container' }] }] as DesignOp[]);
   gallery.create('Parks', { Name: 'Roundhay' });
   // A modern layout: one web viewer showing a page that lists parks and adds one through window.tabularius.
-  const html = '<h1>Parks</h1><ul id=list></ul><button id=add>Add Kew</button><script>' +
+  const html = '<h1>Parks</h1><ul id=list></ul><button id=add>Add Kew</button><button id=lay>Layouts</button><button id=go>Go to Parks</button><pre id=out></pre><script>' +
     "async function show() { const f = await tabularius.records('Parks', { limit: 10 }); document.getElementById('list').replaceChildren(...f.data.map((r) => Object.assign(document.createElement('li'), { textContent: r.fieldData.Name }))); }" +
-    "show(); tabularius.on('refresh', show); document.getElementById('add').onclick = async () => { await tabularius.create('Parks', { Name: 'Kew' }); show(); };</script>";
+    "show(); tabularius.on('refresh', show); document.getElementById('add').onclick = async () => { await tabularius.create('Parks', { Name: 'Kew' }); show(); };" +
+    "document.getElementById('lay').onclick = async () => { document.getElementById('out').textContent = (await tabularius.layouts()).join(); };" +
+    "document.getElementById('go').onclick = async () => { await tabularius.goToLayout('Parks'); };</script>";
   const parks = gallery.schema.tableOccurrences.find((t) => t.name === 'Parks')!.id;
   gallery.applyDesign([{ op: 'createLayout', name: 'Welcome', occurrence: parks, design: {
     width: 800, parts: [{ kind: 'body', kindId: 2, top: 0, height: 600, style: {} }],
@@ -495,8 +497,12 @@ test('a modern layout shows as a page, its data calls answered as the signed-in 
   await frame.locator('#add').click();
   await until(() => frame.locator('li').allTextContents(), (l) => l.join() === 'Roundhay,Kew');
   assert.deepEqual(hosted.store('Gallery').find('Parks', {}).records.map((r) => r.fieldData['Name']), ['Roundhay', 'Kew']);
-  // Back to the collection, which lists the park the page added.
-  await page.locator('.rail-item[data-table="Parks"]').click();
+  // The page can list the layouts this account opens and go to one (#159).
+  await frame.locator('#lay').click();
+  await until(() => frame.locator('#out').textContent(), (t) => (t ?? '').split(',').includes('Welcome') && (t ?? '').split(',').includes('Parks'));
+  await frame.locator('#go').click();
+  await until(() => page.evaluate(() => location.hash), (h) => h === '#/Parks');
+  // The collection lists the park the page added.
   await until(() => page.locator('.row:not(.head)').count(), (n) => n === 2);
   // And to the page again from the command bar.
   await openPalette(page);
