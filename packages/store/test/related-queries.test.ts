@@ -75,7 +75,7 @@ function traced(reads: string[], layoutOnly = false, offsets: number[] = []): { 
       const rec = s.find(layout, { limit: 1, offset: offsets[i] ?? 1001, layoutOnly: ${layoutOnly} }).records[0];
       console.log(JSON.stringify(rec.fieldData));
     }
-  `], { encoding: 'utf8', env: { ...process.env, TABULARIUS_TRACE_SQL: '1', TABULARIUS_TRACE_SQL_MIN_MS: '' }, timeout: 60_000, maxBuffer: 256 * 1024 * 1024 });
+  `], { encoding: 'utf8', env: { ...process.env, TABULARIUS_TRACE_SQL: '1', TABULARIUS_TRACE_SQL_MIN_MS: '0' }, timeout: 60_000, maxBuffer: 256 * 1024 * 1024 });
   assert.equal(r.status, 0, r.stderr.slice(-2000));
   return { lines: r.stderr.split('-- read\n').slice(1), out: r.stdout.trim().split('\n') } as never;
 }
