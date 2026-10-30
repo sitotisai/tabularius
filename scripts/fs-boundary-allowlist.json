@@ -16,10 +16,6 @@
     "reason": "does not write a key, token or approval record: a pid marker file"
   },
   {
-    "file": "packages/server/src/admin.ts",
-    "reason": "writes a credential, key, token or approval record; to move onto fs-boundary"
-  },
-  {
     "file": "packages/server/src/backup-folder.ts",
     "reason": "does not write a key, token or approval record: an empty probe file to test folder writability"
   },
