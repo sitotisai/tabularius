@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { serviceFile } from '../src/service.ts';
+import { notOnWindows } from '../../store/test/windows.ts';
 
 // No npm install or service restart: these tests exercise the real folder swap
 // with two tiny generated releases, and stub only the subprocess boundary.
@@ -18,7 +19,7 @@ function release(path: string, version: string): void {
   writeFileSync(join(path, 'package.json'), JSON.stringify({ version, engines: { node: '>=22.18.0' } }));
 }
 
-for (const step of checkpoints) test(`upgrade:${step}`, { concurrency: false }, async (t) => {
+for (const step of checkpoints) test(`upgrade:${step}`, { concurrency: false, skip: notOnWindows('it starts the saved command from a systemd unit built out of this computer\'s own paths, and a systemd unit holds only paths that start with a slash') }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'tabularius-crash-upgrade-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const app = join(root, 'app'); const source = join(root, 'release');
