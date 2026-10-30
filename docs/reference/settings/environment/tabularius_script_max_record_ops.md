@@ -8,6 +8,6 @@ Maximum record operations per script run, shared by its steps and synchronous su
 | Accepted values | Whole number, decimal digits only, up to 9007199254740991; 0 disables the record budget |
 | Restart needed | Restart the server after changing its environment; each new script engine reads the setting. A value that is not a whole number stops `serve` at start, naming the variable. |
 | Explained in | [docs/guides/building/scripts-and-triggers.md](../../../guides/building/scripts-and-triggers.md) |
-| Code | [packages/scripts/src/engine.ts:1507](../../../../packages/scripts/src/engine.ts#L1507) |
+| Code | [packages/scripts/src/engine.ts:1508](../../../../packages/scripts/src/engine.ts#L1508) |
 
 [All environment variables](../../../environment-variables.md)
