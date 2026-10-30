@@ -752,7 +752,14 @@ export class WebClient {
     return { values: store.fieldIndex(layout, body.field, { prefix, limit, privileges }) };
   }
 
-  private readableLayout(store: Store, name: string, privileges: Privileges): boolean {
+  /** The layouts whose table lives in another hosted file; the only ones whose readability needs that file's privileges. */
+  private externalLayouts(store: Store): Set<string> {
+    return new Set(store.layouts().filter((l) => l.file !== undefined).map((l) => l.name));
+  }
+
+  /** Whether the account may see this layout's table in the file that holds it. Layouts of the file's own tables are not looked up, so listing a wide file's layouts does not load its designs. */
+  private readableLayout(store: Store, name: string, privileges: Privileges, external = this.externalLayouts(store)): boolean {
+    if (!external.has(name)) return true;
     try {
       const info = store.layout(name);
       return info.owner === store || privileges.in(info.owner).table(info.table).view !== false;
@@ -766,7 +773,8 @@ export class WebClient {
       ? store.schema.layoutOrder
       : store.schema.layouts.map((l) => ({ id: l.id, name: l.name, kind: 'item' as const, depth: 0 }));
     // Layouts the privilege set has no access to are not listed at all.
-    const layouts = order.filter((o) => o.kind !== 'item' || (privileges.layout(o.name).layout !== 'none' && this.readableLayout(store, o.name, privileges)))
+    const external = this.externalLayouts(store);
+    const layouts = order.filter((o) => o.kind !== 'item' || (privileges.layout(o.name).layout !== 'none' && this.readableLayout(store, o.name, privileges, external)))
       .map((o) => ({ ...o, open: o.kind === 'item' && open.has(o.name) }));
     // File Options: the layout the file opens on, and its window script triggers.
     const options = store.schema.fileOptions;
@@ -946,7 +954,7 @@ export class WebClient {
         const where = occ ? { table: occ.table.name, ...(occ.store !== store ? { file: occ.store.name } : {}) } : {};
         return { ...p, ...where, ...(may ? { create: true } : {}) };
       }),
-      layouts: Object.fromEntries(store.layouts().filter((l) => privileges.layout(l.name).layout !== 'none' && this.readableLayout(store, l.name, privileges)).map((l) => [store.schema.layouts.find((x) => x.name === l.name)?.id, l.name])),
+      layouts: Object.fromEntries(store.layouts().filter((l) => privileges.layout(l.name).layout !== 'none' && (l.file === undefined || this.readableLayout(store, l.name, privileges))).map((l) => [store.schema.layouts.find((x) => x.name === l.name)?.id, l.name])),
       ...(store.schema.pageSetup ? { pageSetup: store.schema.pageSetup } : {}),
       // Value lists the Sort dialog can order by (a custom order): those the account may see, not of related values.
       sortLists: store.schema.valueLists.filter((v) => v.field?.relatedFromId === undefined && privileges.valueList(v.name) !== 'none').map((v) => v.name),
