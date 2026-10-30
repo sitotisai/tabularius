@@ -6,7 +6,7 @@ The grammar is in [`packages/server/test/data/sql-grammar.json`](../packages/ser
 
 ## What was checked
 
-229 entries, 224 with an expectation and 5 recorded as not verified (below). Each entry with an expectation runs on the applicable paths.
+238 entries, 233 with an expectation and 5 recorded as not verified (below). Each entry with an expectation runs on the applicable paths.
 
 | Area | Constructs |
 | --- | --- |
@@ -18,13 +18,13 @@ The grammar is in [`packages/server/test/data/sql-grammar.json`](../packages/ser
 | UNION, ORDER BY (names, ordinals, `ASC`/`DESC`, binary order) | 13 |
 | OFFSET, FETCH FIRST (`ROW`/`ROWS`, count omitted, `WITH TIES`, `PERCENT`, subqueries, count under 1) | 23 |
 | Constants and operators (strings, scientific notation, `DATE`/`TIME`/`TIMESTAMP`, `{D '...'}`, `^`, `**`, precedence, string `+` and `-`, date arithmetic) | 26 |
-| Functions: string, numeric, date, `CASE`, `COALESCE`, `NULLIF`, `CAST`, container `GetAs` | 68 |
+| Functions: string, numeric, date, `CASE`, `COALESCE`, `NULLIF`, `CAST`, container `GetAs` | 77 |
 | `FOR UPDATE` cursor clause | 1 |
 | System tables and columns (`FileMaker_Tables`, `FileMaker_Fields`, `FileMaker_BaseTables`, `ROWID`, `ROWMODID`) | 6 |
 | Statements that write (`INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`, `ALTER TABLE`, `CREATE`/`DROP INDEX`, `TRUNCATE`) | 8 |
 | `?` parameters (one, multiple in order, a value containing a quote) | 3 |
 
-99 results are ones the Claris page states, with the example it gives. 125 are worked out from a stated rule or the SQL standard (marked `derived` in the file); the three character CAST cases follow the standard because the cited page does not state their results. Five entries are marked `unverified` because the vendor result is not stated. Every entry names its page. The `?` cases follow [Claris's ExecuteSQL help](https://help.claris.com/en/pro-help/content/executesql.html), which specifies argument binding order; the quoted-name cases follow its `"Last Name"` example and the [reserved keyword rule](https://help.claris.com/en/sql-reference/content/reserved-sql-keywords.html). <!-- known-difference-ok: describes evidence categories rather than a product behavior difference -->
+99 results are ones the Claris page states, with the example it gives. 134 are worked out from a stated rule or the SQL standard (marked `derived` in the file); the character, date and time, and DECIMAL CAST cases follow the standard because the cited pages do not state their results. The Claris pages read give no example of `DECIMAL(p,s)` or `NUMERIC(p,s)` casts, so their precision, scale and overflow expectations come from the SQL standard; the vendor result is unverified. <!-- known-difference: SQL grammar ;; vendor results for parameterized DECIMAL and NUMERIC casts are unspecified in the cited pages ;; the conformance test uses the SQL standard for these derived expectations ;; compare the casts with FileMaker and record the observed result --> Five entries are marked `unverified` because the vendor result is not stated. Every entry names its page. The `?` cases follow [Claris's ExecuteSQL help](https://help.claris.com/en/pro-help/content/executesql.html), which specifies argument binding order; the quoted-name cases follow its `"Last Name"` example and the [reserved keyword rule](https://help.claris.com/en/sql-reference/content/reserved-sql-keywords.html). <!-- known-difference-ok: describes evidence categories rather than a product behavior difference -->
 
 ## What the check found and what changed
 
