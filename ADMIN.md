@@ -877,6 +877,23 @@ rule on, only an account that may view the whole table can.
 | `scim-token-issued` | A provisioning (SCIM) token was issued, so an identity provider can add, change and remove accounts; the entry shows when it expires. |
 | `scim-token-revoked` | The provisioning (SCIM) token was revoked. |
 
+**Privilege sets, password rules and AI agents.**
+
+| Kind | Recorded when |
+| --- | --- |
+| `privilege-set-saved` | A privilege set was created or changed. The entry names the set but not what changed. When the change alters what the set allows (not only its comment or idle-disconnect option), the API tokens of the accounts that use it are ended. |
+| `privilege-set-deleted` | A privilege set was deleted; the entry names it. |
+| `privilege-set-assigned` | An account was given a privilege set: when it was created, moved to another set, or added by a CSV import. The entry shows the set. |
+| `privilege-set-unassigned` | An account made by an identity provider lost its privilege set, because the provider took the person out of the group that gave it. It opens nothing until it is given a set again; the entry shows the set it had. |
+| `password-policy-changed` | The file's password policy was changed. The entry shows the minimum length and the maximum age in days now in force, where there is one. |
+| `require-2fa-set` | A second factor was made compulsory for Full Access accounts. It is refused while any Full Access account has none. |
+| `require-2fa-cleared` | That requirement for Full Access accounts was removed. |
+| `agent-added` | An AI agent was added: an account that cannot sign in with a password and is tied to a privilege set other than Full Access. The entry says whether its changes need approval and who made it. |
+| `agent-removed` | An AI agent was removed. |
+| `agent-change-proposed` | An AI agent whose changes need approval proposed a record change (create, update or delete). It waits until someone approves or rejects it. The entry shows the kind and the record number, when there is one. |
+| `agent-change-approved` | A proposed change by an AI agent was approved and applied. The entry names the person who approved it. |
+| `agent-change-rejected` | A proposed change by an AI agent was thrown away without being applied. The entry names the person who rejected it. |
+
 ## Putting a record back
 
 In the admin console's **Audit log**, **History** on any record change lists
