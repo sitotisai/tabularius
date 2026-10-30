@@ -4,6 +4,7 @@ import { copyFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Server } from 'node:http';
+import { approveAll } from './approve-all.ts';
 import { serve } from '../src/index.ts';
 
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
@@ -21,6 +22,7 @@ before(async () => {
   server = s.server;
   base = s.url;
   host = s.host;
+  approveAll(s.host);
   const store = s.host.get('Charts')!;
   for (const set of store.privilegeSets().filter((p) => p.id === 1 || p.name === '[Read-Only Access]')) {
     store.savePrivilegeSet({ ...set, extendedPrivileges: [...set.extendedPrivileges, 'fmrest'] });

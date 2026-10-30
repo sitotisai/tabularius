@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Script, ScriptStep, StepParams } from '../../fmp12/src/index.ts';
 import { runScript } from '../../scripts/src/index.ts';
+import { approveAll } from './approve-all.ts';
 import { serve } from '../src/index.ts';
 
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
@@ -49,6 +50,7 @@ before(async () => {
   dir3 = mkdtempSync(join(tmpdir(), 'tabularius-embed-local-'));
   copyFileSync(fixture, join(dir3, 'Charts.fmp12'));
   local = await serve({ dir: dir3, port: 0, log: () => {}, ai: { apiKey: '', embedUrl: `http://127.0.0.1:${port}/v1`, embedModel: 'nomic-embed-text' } });
+  for (const s of [withEmbed, without, local]) approveAll(s.host);
 });
 after(async () => {
   await new Promise<void>((r) => (withEmbed ? withEmbed.server.close(() => r()) : r()));

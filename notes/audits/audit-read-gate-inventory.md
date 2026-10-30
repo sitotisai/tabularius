@@ -176,9 +176,9 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/cli/src/diagnostics.ts:205](../../packages/cli/src/diagnostics.ts#L205) `designCopy` | `SQLite.all` (205); `SQLite.prepare` (205, 208) | OPERATOR |
 | [packages/cli/src/diagnostics.ts:445](../../packages/cli/src/diagnostics.ts#L445) `diagnostics` | `SQLite.get` (445); `SQLite.prepare` (445, 449); `SQLite.all` (449) | OPERATOR |
 | [packages/cli/src/doctor.ts:140](../../packages/cli/src/doctor.ts#L140) `accountChecks` | `SQLite.all` (140); `SQLite.prepare` (140) | OPERATOR |
-| [packages/cli/src/main.ts:721](../../packages/cli/src/main.ts#L721) `accountsWithPasswordOff` | `SQLite.all` (721); `SQLite.prepare` (721) | OPERATOR |
-| [packages/cli/src/main.ts:750](../../packages/cli/src/main.ts#L750) `hostedRead` | `SQLite.all` (750, 753); `SQLite.prepare` (750, 753); `Store.sql` (750, 753) | OPERATOR |
-| [packages/cli/src/main.ts:2436](../../packages/cli/src/main.ts#L2436) `main` | `Store.orphanContainerReport` (2436); `Store.auditLog` (2909); `SQLite.get` (3171); `SQLite.prepare` (3171) | OPERATOR |
+| [packages/cli/src/main.ts:727](../../packages/cli/src/main.ts#L727) `accountsWithPasswordOff` | `SQLite.all` (727); `SQLite.prepare` (727) | OPERATOR |
+| [packages/cli/src/main.ts:756](../../packages/cli/src/main.ts#L756) `hostedRead` | `SQLite.all` (756, 759); `SQLite.prepare` (756, 759); `Store.sql` (756, 759) | OPERATOR |
+| [packages/cli/src/main.ts:2444](../../packages/cli/src/main.ts#L2444) `main` | `Store.orphanContainerReport` (2444); `Store.auditLog` (2917); `SQLite.get` (3179); `SQLite.prepare` (3179) | OPERATOR |
 | [packages/scripts/src/data-api-step.ts:104](../../packages/scripts/src/data-api-step.ts#L104) `respond` | `Store.get` (104, 131, 140); `Store.find` (105, 117) | SCRIPT |
 | [packages/scripts/src/engine.ts:8191](../../packages/scripts/src/engine.ts#L8191) `ScriptEngine/containerFile` | `Store.get` (8191); `Store.containerId` (8192); `Store.container` (8193) | SCRIPT |
 | [packages/scripts/src/engine.ts:5759](../../packages/scripts/src/engine.ts#L5759) `ScriptEngine/design` | `Store.valueListItems` (5759) | SCRIPT |
