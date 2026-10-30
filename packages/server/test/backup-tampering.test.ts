@@ -770,7 +770,6 @@ test('encrypted: a set signed by the earlier form of signature counts as unsigne
 /** Point-in-time backups following one set, with a second full backup of the same folder to switch to. */
 async function twoSets(t: { after(fn: () => void): void }) {
   const root = mkdtempSync(join(tmpdir(), 'backup-tamper-follow-'));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
   const folder = join(root, 'live');
   const dest = join(root, 'dest');
   mkdirSync(folder);
@@ -781,6 +780,7 @@ async function twoSets(t: { after(fn: () => void): void }) {
   const messages: string[] = [];
   const p = await scheduleProgressive(host, { every: 3_600_000, dest, log: (m) => messages.push(m) });
   t.after(() => { p.stop(); host.close(); });
+  t.after(() => rmSync(root, { recursive: true, force: true }));
   const second = (await backupFolder(folder, dest, 0, KEY)).dir;
   const change = async (table: string) => {
     host.get('A')!.applyDesign([{ op: 'createTable', name: table }]);

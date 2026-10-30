@@ -15,7 +15,6 @@ const MB = 1 << 20;
 
 test('polling the admin status does not read the source .fmp12 again while it is unchanged', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-status-poll-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const source = join(dir, 'Big.fmp12');
   writeFileSync(source, Buffer.alloc(3 * MB, 7));
   const store = join(dir, 'Big.openhbam.sqlite');
@@ -35,6 +34,7 @@ test('polling the admin status does not read the source .fmp12 again while it is
   syncBuiltinESMExports();
   const s = await serve({ dir, port: 0, log: () => {} });
   t.after(() => { s.server.close(); spy.mock.restore(); syncBuiltinESMExports(); });
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const status = async () => (await (await fetch(`${s.url}/tabularius/admin/v1/status`, { headers: { 'x-tabularius-admin': '1' } })).json()).databases[0];
 
   // Whatever the start-up and the first answer read, the next polls read nothing of the source.

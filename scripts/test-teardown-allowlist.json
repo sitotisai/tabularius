@@ -1,0 +1,637 @@
+[
+  {
+    "file": "packages/cli/test/doctor.test.ts",
+    "test": "--port is checked even when a service is installed, if it names another port",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/cli/test/doctor.test.ts",
+    "test": "a missing folder, an empty folder and a taken port",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/cli/test/doctor.test.ts",
+    "test": "doctor --port reads the number given, with the folder before or after it",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/cli/test/plugin-tutorial.test.ts",
+    "test": "a plug-in that loops, throws, eats memory or returns far too much is contained, and the server and its other functions carry on",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/cli/test/plugin-tutorial.test.ts",
+    "test": "packing, signing, installing in another folder, updating and removing a plug-in, as the guide\\'s Sharing section says",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/cli/test/plugin-tutorial.test.ts",
+    "test": "the guide\\'s plug-in, written out as printed, installs, is enabled and answers from a calculation and a script",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/cli/test/troubleshooting-proven.test.ts",
+    "test": "port in use: the message names the program-finding command, and --port with a free port is the way out",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/cli/test/troubleshooting-proven.test.ts",
+    "test": "the AI assistant is off when the server was not started with --ai; an account without fmmcp is told which privilege it needs",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/scripts/test/access-denial.test.ts",
+    "test": "cross-file denial survives automatic rollback and is audited in its captured owning file",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/scripts/test/redactor-cache.test.ts",
+    "test": "a call into another file hides the values its scripts pass along, before they run",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/admin-console-errors.test.ts",
+    "test": "#31 backup schedules follow the configured folder and later edits",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/admin-console-errors.test.ts",
+    "test": "#35 external containers with progressive logs are refused before closing",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/ai-account-surfaced.test.ts",
+    "test": "MCP run_script returns retained warnings without a trace and omits them for a plain script",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/ai-account-surfaced.test.ts",
+    "test": "persisted schedule warnings and run history stay bounded without changing the script result",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/ai-account-surfaced.test.ts",
+    "test": "scheduled run results retain warnings after restart and after editing the scheduled script",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/ai-mcp-redaction.test.ts",
+    "test": "AR-server-mcp-ai-02",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/ai-mcp-redaction.test.ts",
+    "test": "model and export surface matrix granted=${granted}",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/ai-policy-round2.test.ts",
+    "test": "R2 a signed container URL cannot cross MCP accounts",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/ai-policy-round2.test.ts",
+    "test": "R2 an unreviewed built-in cannot borrow a mixed-case custom function body",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/ai-policy-round2.test.ts",
+    "test": "R2 authentication cache expires monotonically despite wall-clock jumps",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/ai-policy-round2.test.ts",
+    "test": "R2 denied layout counts agree between MCP tools and resources",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/ai-policy-round2.test.ts",
+    "test": "R2 error hints never name files a different account owns",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/ai-policy-round2.test.ts",
+    "test": "R2 inherited policy follows a cyclic file graph even when the entry file is off",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/ai-policy-round2.test.ts",
+    "test": "R2 MCP dynamic script names cannot select undeclared hosted files",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/ai-policy-round2.test.ts",
+    "test": "R2 MCP SQL cannot read a quoted internal vault even with a human visibility grant",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/ai-policy-round2.test.ts",
+    "test": "R2 personal-data criteria and error text cannot resolve another account’s token",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/ai-policy-round2.test.ts",
+    "test": "R2 policy refuses count, sort, malformed SQL and resource routes before data reads",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/ai-policy-round2.test.ts",
+    "test": "R2 real MCP portal reads hide copies even when the source portal is omitted",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/ai-policy-round2.test.ts",
+    "test": "R2 warmed concurrent account connections honor their own grants and later revocation",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/backup-a09.test.ts",
+    "test": "#36 status caches backup manifests and counts shared inodes once",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/backup-review-recovery.test.ts",
+    "test": "two processes claiming a Unicode folder through different aliases have exactly one owner",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/backup-review-schedules.test.ts",
+    "test": "daily verify schedule edits and restart retain bounded run days and history",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/backup-review-state.test.ts",
+    "test": "backup destination cache expires by elapsed time despite a backward wall clock and resets on edit",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/backup-review-state.test.ts",
+    "test": "concurrent manifest writers through an alias retain all updates across restart",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/calendar-feed.test.ts",
+    "test": "a feed read back through the import makes the same events",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/cleanup-error-order.test.ts",
+    "test": "container upload ${mismatch ? 'hash failure keeps its status' : 'explicit removal reports failure'} when cleanup fails",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/cleanup-error-order.test.ts",
+    "test": "explicit upload removal still reports its own cleanup failure",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/cleanup-error-order.test.ts",
+    "test": "thumbnail failure keeps its undefined result and releases its slot when cleanup fails",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/cleanup-error-order.test.ts",
+    "test": "upload conversion records the work error even when partial cleanup fails",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/compaction-host.test.ts",
+    "test": "a follower process cannot start scheduled or manual compaction",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/compaction-host.test.ts",
+    "test": "admin compact route returns report, refusal, unhosted and method rejection",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/compaction-host.test.ts",
+    "test": "one job per file; close waits and blocks a new pass",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/compaction-host.test.ts",
+    "test": "tick starts due jobs, logs failure and leaves later passes possible",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/data-api-privacy.test.ts",
+    "test": "AR-server-data-apis-03 a burst is delivered, a stalled reader is cut off",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/data-api-privacy.test.ts",
+    "test": "AR-server-data-apis-03 a delete is judged before its cascade removes what the rule counts",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/data-api-privacy.test.ts",
+    "test": "AR-server-data-apis-03 a delete is judged by the rule that was recorded for it",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/data-api-privacy.test.ts",
+    "test": "AR-server-data-apis-03 a layout the account has no record access to is not streamed",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/data-api-privacy.test.ts",
+    "test": "AR-server-data-apis-03 a layout-scoped stream gets only its layout\\'s table",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/data-api-privacy.test.ts",
+    "test": "AR-server-data-apis-03 delete visibility includes external principals on other workers",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/data-api-privacy.test.ts",
+    "test": "AR-server-data-apis-03 delete visibility is decided before table-dependent rules change",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/data-api-privacy.test.ts",
+    "test": "AR-server-data-apis-03 deletes use the last row under scoped and unscoped tokens",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/data-api-privacy.test.ts",
+    "test": "AR-server-data-apis-03 deletes without row rules still reach scoped streams",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/data-api-privacy.test.ts",
+    "test": "AR-server-data-apis-03 events",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/data-api-privacy.test.ts",
+    "test": "AR-server-data-apis-03 external deletes retain owner rules across serialized changes",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/data-api-privacy.test.ts",
+    "test": "AR-server-data-apis-03 one rule shared by two accounts grants a delete to the owner of the row only",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/data-api-privacy.test.ts",
+    "test": "AR-server-data-apis-03 pending delete visibility counts toward the buffer limit",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/data-api-privacy.test.ts",
+    "test": "AR-server-data-apis-03 queued deletes recheck row rules and layout access",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/data-api-privacy.test.ts",
+    "test": "AR-server-data-apis-03 restore deletes use the last row",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/data-api-privacy.test.ts",
+    "test": "AR-server-data-apis-03 scope and current privileges",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/data-api-privacy.test.ts",
+    "test": "AR-server-data-apis-04 a table denied in another file is not listed on the wire",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/data-api-privacy.test.ts",
+    "test": "AR-server-data-apis-04 an account that reads everything may name a schema",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/data-api-privacy.test.ts",
+    "test": "AR-server-data-apis-04 pgwire",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/edge-application.test.ts",
+    "test": "a Data API call with a made-up token is refused before its body is read, so a trickled body holds nothing",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/edge-application.test.ts",
+    "test": "a made-up token does not exempt a body from the deadline, however the sign-in address is spelled, while a real session on another route is left alone",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/edge-application.test.ts",
+    "test": "a real token does not exempt the sign-in routes, which read their body without looking at it, and a stranger can still sign in",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/edge-application.test.ts",
+    "test": "chunked bodies that trickle to the routes that read before sign-in are ended, so they cannot hold every slot",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/edge-application.test.ts",
+    "test": "GET /mcp streams with made-up Basic accounts take no request slot and are bounded per address",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/edge-application.test.ts",
+    "test": "live streams evict at ten per session, cap total subscribers, release listeners and keep ordinary requests responsive",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/edge-application.test.ts",
+    "test": "sign-in bodies that never arrive cannot take every request slot",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/edge-cli.test.ts",
+    "test": "<untitled>",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/fs-races.test.ts",
+    "test": "a full disk during external container writing removes its private partial file",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/fs-races.test.ts",
+    "test": "container upload spools are private and reject a link swapped before the next piece",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/fs-races.test.ts",
+    "test": "external containers reject parent replacement and leaf swaps without committing field changes",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/fs-races.test.ts",
+    "test": "invariant: external-container creation retains 0666 permissions filtered by the process umask",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/fs-races.test.ts",
+    "test": "thumbnail tool output rejects a swapped link and removes only its private scratch folder",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/link-lifetimes.test.ts",
+    "test": "a shortened TTL applies to new links; existing links keep their signed deadline",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/live-restore-signed.test.ts",
+    "test": "console restore: a copy that changed on disk, or a manifest that is not JSON, is refused before the file is closed",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/mcp-ai-policy.test.ts",
+    "test": "an account cannot inherit the administrator exception or use an AI mark to grant field access",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/memory-growth-resources.test.ts",
+    "test": "debugger runs evict and halt the oldest continuation",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/memory-growth-resources.test.ts",
+    "test": "deleted schedules release their held-warning marker",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/memory-growth-resources.test.ts",
+    "test": "late web script results cannot recreate paused runs or timers after logout",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/memory-growth-resources.test.ts",
+    "test": "one web session cannot start more than 64 concurrent button scripts",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/memory-growth-resources.test.ts",
+    "test": "paused web scripts are bounded across sessions and cancel what does not fit",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/memory-growth-resources.test.ts",
+    "test": "PostgreSQL unsigned address table has an aggregate ceiling",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/memory-growth-resources.test.ts",
+    "test": "replication address churn and long-poll waiters are bounded",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/memory-growth-resources.test.ts",
+    "test": "SSE streams have a total cap and session end removes listeners immediately",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/memory-growth-resources.test.ts",
+    "test": "webhook replay claims fail closed at capacity and keep prior signatures",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/memory-growth.test.ts",
+    "test": "change feeds and replication release closed store incarnations",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/memory-growth.test.ts",
+    "test": "ending a session clears its web timers, paused work and live session on file close",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/memory-growth.test.ts",
+    "test": "OAuth address registration table is bounded even while all entries are fresh",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/observability-robustness.test.ts",
+    "test": "AR-server-observability-05 follower lifecycle",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/observability-robustness.test.ts",
+    "test": "AR-server-observability-05 startup failure",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/observability-robustness.test.ts",
+    "test": "AR-server-observability-07",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/oidc-browser-binding.test.ts",
+    "test": "form-post OIDC uses a Secure cross-site cookie and refuses HTTP",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/pgwire-backpressure-batches.test.ts",
+    "test": "a client that reads slowly but steadily is not cut off by the stall limit",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/privilege-inheritance.test.ts",
+    "test": "schedules and signed inbound hooks enter seeded compositions as their configured account",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/redaction-oracles.test.ts",
+    "test": "a generated-key field stops being exempt once it holds anything but generated keys",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/redaction-oracles.test.ts",
+    "test": "paired protected worlds have identical indirect tool, resource and prompt outputs",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/redaction-oracles.test.ts",
+    "test": "with only isolation on, probes on values derived from a protected field answer the same in paired worlds",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/secret-sinks.test.ts",
+    "test": "encrypted backups and external containers: every seeded credential stays out of bytes and metadata",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/secret-sinks.test.ts",
+    "test": "webhook delivery failure logs only its id and endpoint host: ${name}",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/server-auth-regressions.test.ts",
+    "test": "AR-server-auth-06 ${scenario}",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/solution-tools-auth.test.ts",
+    "test": "AR-server-solution-tools-04 expiry and capacity",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/solution-tools-auth.test.ts",
+    "test": "AR-server-solution-tools-04 recovers from clock ${ahead}ms ahead",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/store-corruption.test.ts",
+    "test": "a checkpoint that a reader holds back says so, instead of leaving the changes out of the file",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/store-corruption.test.ts",
+    "test": "a damaged file stays offline until it passes the check; a good copy put in its place is served again",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/store-corruption.test.ts",
+    "test": "a file found damaged here is announced to the cluster\\'s other processes, which stop serving it without announcing it again",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/store-corruption.test.ts",
+    "test": "a query that lands on a damaged page is answered with the file\\'s name and the damage, not \"Unknown error\"; the file is then offline, nothing more is written to it, and the others are unaffected",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/store-corruption.test.ts",
+    "test": "a server starts with a file it cannot open: the others are hosted, the file is listed with the reason and named in the log",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/store-corruption.test.ts",
+    "test": "checkFiles: false leaves the check made at start out",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/store-corruption.test.ts",
+    "test": "closing the host while the startup check runs waits for it, and a file whose log could not be folded in is not encrypted over",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/store-corruption.test.ts",
+    "test": "damaged pages the open does not read are found by the startup check, which takes the file offline and leaves the others serving",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/store-corruption.test.ts",
+    "test": "leftovers of an interrupted copy, restore or conversion beside the files do not stop the server or the hosted files",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/server/test/store-corruption.test.ts",
+    "test": "the check made at start runs by itself, and a file it cannot read is not called damaged",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/store/test/access-denial-audit.test.ts",
+    "test": "key churn has a separate rate budget and bounded deterministic eviction",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/store/test/access-denial-audit.test.ts",
+    "test": "ten minute repeats, independent accounts, surfaces, owners and changed policy fingerprints",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/store/test/access-denial.test.ts",
+    "test": "cross-file checks capture the owning file and its effective privilege set",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/store/test/design-apply.test.ts",
+    "test": "review fixes: keyword-looking values, mixed lists, duplicate ids, --remove on an empty folder",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/store/test/design-io-review.test.ts",
+    "test": "AR-store-design-io-02",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/store/test/design-io-review.test.ts",
+    "test": "AR-store-design-io-02 write rollback",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/store/test/find-review.test.ts",
+    "test": "the allowance is earned by the records read before a value, not paid up front",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/store/test/native-foreign-keys.test.ts",
+    "test": "restoring a parent from the audit log to before it existed follows ON DELETE like a delete",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/store/test/native-foreign-keys.test.ts",
+    "test": "set-null empties the children\\'s key, and no-action refuses only when children would be left",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/store/test/snippet-window-target.test.ts",
+    "test": "${step} exports the window selector before its name calculation",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/store/test/snippet-window-target.test.ts",
+    "test": "${step} keeps named targets in clipboard XML",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/store/test/snippet-window-target.test.ts",
+    "test": "${step} treats Current and an absent selector as the current window",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  },
+  {
+    "file": "packages/store/test/store-durability-s05.test.ts",
+    "test": "applyDesign preserves a peer design committed during preparation",
+    "reason": "a helper this test calls adds the folder removal before the test adds its own closes, so the folder goes first; the next batch moves the removal last"
+  }
+]

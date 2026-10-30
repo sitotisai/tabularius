@@ -151,7 +151,6 @@ test('AR-store-core-02 notifications wait for the enclosing transaction', (t) =>
 test('AR-store-core-02 interrupted external write is recovered on open', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-container-recover-'));
   const path = join(dir, 'Media.sqlite');
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   createStore(path);
   const initial = new Store(path, 'Media');
   initial.applyDesign([
@@ -175,6 +174,7 @@ test('AR-store-core-02 interrupted external write is recovered on open', (t) => 
   assert.equal(existsSync(target), true);
   const recovered = new Store(path, 'Media');
   t.after(() => recovered.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   assert.equal(existsSync(target), false);
   assert.equal(recovered.containerId('Items', id, 'Doc'), undefined);
   assert.deepEqual(readdirSync(dir).filter((name) => name.startsWith('.openhbam-container-pending-')), []);
@@ -229,7 +229,6 @@ test('truncate, restoring a deleted row and setting stored calculations are audi
 test('a bad external container journal marker is skipped when the file opens', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-bad-marker-'));
   const path = join(dir, 'Media.sqlite');
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   createStore(path);
   const first = new Store(path, 'Media');
   const prefix = (first as unknown as { externalMarkerPrefix(): string }).externalMarkerPrefix();
@@ -245,6 +244,7 @@ test('a bad external container journal marker is skipped when the file opens', (
   const count = warned.length;
   const again = new Store(path, 'Media');
   t.after(() => again.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   assert.equal(warned.length, count, 'a marker already reported is not reported again on the next open');
 });
 

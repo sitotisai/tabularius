@@ -16,7 +16,6 @@ after(() => rmSync(templateDir, { recursive: true, force: true }));
 
 function hosted(t: { after: (fn: () => void) => void }, name: string): Store {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-design-apply-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, name + '.openhbam');
   let template = templates.get(name);
   if (!template) {
@@ -28,6 +27,7 @@ function hosted(t: { after: (fn: () => void) => void }, name: string): Store {
   copyFileSync(template, path);
   const store = new Store(path);
   t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   return store;
 }
 const source = (s: Store) => ({ schema: s.schema, layouts: s.designs().layouts, accounts: s.accounts(), privilegeSets: s.privilegeSets() });

@@ -10,11 +10,11 @@ import { conversionGuide } from '../src/conversion-guide.ts';
 
 test('unnamed layout and object triggers are counted by event and layout', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-conversion-triggers-'));
-  t.after(() => rmSync(dir, { recursive: true }));
   const path = join(dir, 'Synthetic.openhbam.sqlite');
   createStore(path);
   const store = new Store(path, 'Synthetic');
   t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true }));
 
   const schema: Schema = {
     ...emptySchema(),
@@ -73,11 +73,11 @@ test('unnamed layout and object triggers are counted by event and layout', (t) =
 
 test('an empty file gets no speculative window-trigger todo', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-conversion-empty-'));
-  t.after(() => rmSync(dir, { recursive: true }));
   const path = join(dir, 'Empty.openhbam.sqlite');
   createStore(path);
   const store = new Store(path, 'Empty');
   t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true }));
   const schema: Schema = emptySchema();
   Object.defineProperty(store, 'schema', { value: schema, configurable: true });
   assert.ok(!conversionGuide(store).todo.some((item) => item.includes('OnWindowOpen or OnWindowClose')));

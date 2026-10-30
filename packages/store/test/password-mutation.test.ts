@@ -23,10 +23,10 @@ test('synchronous and asynchronous verifiers accept only the correct password an
 
 test('both sign-in paths check current account eligibility and reject unknown accounts', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'mutation-password-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'Accounts.sqlite'); createStore(path);
   const store = new Store(path);
   t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   store.setPassword('Admin', 'backup');
   store.setPassword('Worker', 'right');
   for (const verify of [store.verify.bind(store), store.verifyAsync.bind(store)]) {
@@ -44,10 +44,10 @@ test('both sign-in paths check current account eligibility and reject unknown ac
 const fixture = new URL('../../../fixtures/fmp12/Charts.fmp12', import.meta.url);
 test('imported blank-password accounts have the same local-only behavior on both sign-in paths', { skip: !existsSync(fixture) }, async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'mutation-imported-password-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'Charts.sqlite'); importFmp12(fileURLToPath(fixture), path);
   const store = new Store(path);
   t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   assert.deepEqual(store.blankPasswordAccounts(), ['Admin']);
   for (const verify of [store.verify.bind(store), store.verifyAsync.bind(store)]) {
     assert.equal(await verify('Admin', '', '127.0.0.1'), true);
@@ -73,9 +73,9 @@ test('imported blank-password accounts have the same local-only behavior on both
 
 test('unknown accounts spend the same password-hash work as wrong passwords, while lockouts stay cheap', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'mutation-password-work-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'Accounts.sqlite'); createStore(path);
   const store = new Store(path); t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   store.setPassword('Admin', 'backup');
   store.setPassword('Worker', 'right');
   const sync = crypto.scryptSync, asyncHash = crypto.scrypt;
@@ -102,9 +102,9 @@ test('unknown accounts spend the same password-hash work as wrong passwords, whi
 
 test('an async password success cannot bypass a lock acquired while hashing or charge a wrong-password attempt', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'mutation-password-race-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'Accounts.sqlite'); createStore(path);
   const store = new Store(path); t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   store.setPassword('Admin', 'backup');
   store.setPassword('Worker', 'right');
   const original = crypto.scrypt;

@@ -9,7 +9,6 @@ import { existingDirectoryLinks, safeExistingPath } from '../../store/src/safe-p
 
 test('external container reads reject symlinks outside their root', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-path-read-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'Media.openhbam.sqlite');
   createStore(path);
   new Store(path, 'Media').close();
@@ -21,6 +20,7 @@ test('external container reads reject symlinks outside their root', (t) => {
   writeFileSync(join(outside, 'secret.txt'), 'outside secret');
   const store = new Store(path, 'Media');
   t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const root = join(dir, 'RC_Data_FMS', 'Media');
   mkdirSync(root, { recursive: true });
   symlinkSync(outside, join(root, 'linked'));
@@ -30,11 +30,11 @@ test('external container reads reject symlinks outside their root', (t) => {
 
 test('external container uploads do not write through symlinks outside their root', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-path-write-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'Media.openhbam.sqlite');
   createStore(path);
   const store = new Store(path, 'Media');
   t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   store.applyDesign([
     { op: 'createTable', name: 'Items', fields: [{ name: 'Doc', type: 'container' }] },
     { op: 'updateField', table: 'Items', field: 'Doc', options: { externalStorage: { path: '"Items/Docs/"' } } },
@@ -51,7 +51,6 @@ test('external container uploads do not write through symlinks outside their roo
 
 test('external container storage may use a directory symlink present when the store opens', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-path-mounted-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'Media.openhbam.sqlite');
   createStore(path);
   const root = join(dir, 'RC_Data_FMS', 'Media');
@@ -67,6 +66,7 @@ test('external container storage may use a directory symlink present when the st
   symlinkSync(elsewhere, join(volume, 'escape'));
   const store = new Store(path, 'Media');
   t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   store.applyDesign([
     { op: 'createTable', name: 'Items', fields: [{ name: 'Doc', type: 'container' }] },
     { op: 'updateField', table: 'Items', field: 'Doc', options: { externalStorage: { path: '"Items/Docs/"' } } },
@@ -85,7 +85,6 @@ test('external container storage may use a directory symlink present when the st
 
 test('external container storage may use a directory symlink one level below the root (the field folder mounted elsewhere)', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-path-depth-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'Media.openhbam.sqlite');
   createStore(path);
   const root = join(dir, 'RC_Data_FMS', 'Media');
@@ -95,6 +94,7 @@ test('external container storage may use a directory symlink one level below the
   symlinkSync(volume, join(root, 'Items', 'Docs'));
   const store = new Store(path, 'Media');
   t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   store.applyDesign([
     { op: 'createTable', name: 'Items', fields: [{ name: 'Doc', type: 'container' }] },
     { op: 'updateField', table: 'Items', field: 'Doc', options: { externalStorage: { path: '"Items/Docs/"' } } },
@@ -106,7 +106,6 @@ test('external container storage may use a directory symlink one level below the
 
 test('external container mount lookup follows the volume’s case behavior', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-path-case-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'Media.openhbam.sqlite');
   createStore(path);
   const root = join(dir, 'RC_Data_FMS', 'Media');
@@ -118,6 +117,7 @@ test('external container mount lookup follows the volume’s case behavior', (t)
   symlinkSync(volume, join(root, 'Items', 'Docs'));
   const store = new Store(path, 'Media');
   t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
 
   let insensitive = false;
   try { insensitive = realpathSync(join(root, 'items', 'docs')) === realpathSync(join(root, 'Items', 'Docs')); } catch {}
@@ -126,7 +126,6 @@ test('external container mount lookup follows the volume’s case behavior', (t)
 
 test('store open inspects a bounded part of a large container tree and rejects late links', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-path-wide-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'Media.openhbam.sqlite');
   createStore(path);
   const root = join(dir, 'RC_Data_FMS', 'Media');
@@ -138,6 +137,7 @@ test('store open inspects a bounded part of a large container tree and rejects l
   const started = performance.now();
   const store = new Store(path, 'Media');
   t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   assert.ok(performance.now() - started < 3000, 'store open should not traverse the 5,000 directories');
   symlinkSync(outside, join(root, 'late'));
   assert.equal(store.externalFile('late/secret.txt'), undefined);

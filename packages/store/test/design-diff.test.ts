@@ -12,11 +12,11 @@ const skip = existsSync(join(fixtures, 'Flicks.fmp12')) ? false : 'fixtures miss
 
 function design(t: { after: (fn: () => void) => void }): { store: Store; text: () => Map<string, string> } {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-design-diff-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'Flicks.tabularius');
   importFmp12(join(fixtures, 'Flicks.fmp12'), path);
   const store = new Store(path);
   t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   return { store, text: () => designText({ schema: store.schema, layouts: store.designs().layouts, accounts: store.accounts(), privilegeSets: store.privilegeSets() }) };
 }
 
