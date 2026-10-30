@@ -181,9 +181,10 @@ export function validateServicePublicUrl(extra: readonly string[]): void {
   validatePublicUrl(i >= 0 ? extra[i + 1] ?? '' : process.env.TABULARIUS_PUBLIC_URL);
 }
 
-function servicePath(o: Pick<ServiceOptions, 'platform' | 'system' | 'home'>): string {
-  if (o.platform === 'darwin') return o.system ? `/Library/LaunchDaemons/${LABEL}.plist` : join(homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`);
-  if (o.platform === 'linux') return o.system ? '/etc/systemd/system/openhbam.service' : join(homedir(), '.config', 'systemd', 'user', 'openhbam.service');
+function servicePath(o: Pick<ServiceOptions, 'platform' | 'system' | 'home'> & { systemRoot?: string }): string {
+  const root = o.systemRoot ?? '';
+  if (o.platform === 'darwin') return o.system ? `${root}/Library/LaunchDaemons/${LABEL}.plist` : join(homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`);
+  if (o.platform === 'linux') return o.system ? `${root}/etc/systemd/system/openhbam.service` : join(homedir(), '.config', 'systemd', 'user', 'openhbam.service');
   return join(o.home, 'openhbam-task.xml');
 }
 
@@ -548,7 +549,8 @@ function lanAddresses(): string[] {
     .map((a) => a.address);
 }
 
-export function uninstallService(o: Pick<ServiceOptions, 'platform' | 'home' | 'user'>, which = installed(o.home)): void {
+/** `systemRoot` puts the system service file under another folder (tests use it so they never reach a real service on the machine). */
+export function uninstallService(o: Pick<ServiceOptions, 'platform' | 'home' | 'user'> & { systemRoot?: string }, which = installed(o.home)): void {
   const both = which ? [which.system] : [false, true];
   for (const system of both) {
     const f = { path: servicePath({ ...o, system }) };
