@@ -28,6 +28,13 @@ export function withFilesystemHook<T>(hook: (event: FilesystemBoundary) => void,
 function boundary(event: FilesystemBoundary): void { hooks.getStore()?.(event); }
 const name = (path: fs.PathLike): string => resolve(path instanceof URL ? fileURLToPath(path) : path.toString());
 const same = (a: fs.Stats, b: fs.Stats): boolean => a.dev === b.dev && a.ino === b.ino && a.mode === b.mode && a.nlink === b.nlink;
+/** The exact identity of a file (path or open descriptor): `Stats.ino` is a Number, and an NTFS file id above 2**53 loses its low bits in it, so two different files can read as the same one. Undefined when the path is missing. */
+export function fileId(target: string | number): string | undefined {
+  try {
+    const st = typeof target === 'number' ? fs.fstatSync(target, { bigint: true }) : fs.lstatSync(target, { bigint: true });
+    return `${st.dev}:${st.ino}`;
+  } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
+}
 function refused(): never {
   throw Object.assign(new Error('Filesystem path changed or is not a safe regular file'), { code: 'ESTALE' });
 }
@@ -108,18 +115,18 @@ function prepareOpen(path: fs.PathLike, flags: string | number, mode: fs.Mode | 
 
 /** onOpened receives the verified descriptor identity before control returns to the caller. */
 export function openSync(path: fs.PathLike, flags: fs.OpenMode, mode: fs.Mode | null = 0o600,
-  onOpened?: (opened: fs.Stats) => void,
+  onOpened?: (opened: fs.Stats, id: string | undefined) => void,
 ): number {
   const pending = prepareOpen(path, flags, mode);
   const fd = fs.openSync(pending.path, pending.flags, pending.mode);
-  try { const opened = pending.validate(fd); onOpened?.(opened); return fd; }
+  try { const opened = pending.validate(fd); onOpened?.(opened, fileId(fd)); return fd; }
   catch (e) { fs.closeSync(fd); throw e; }
 }
 
-export async function open(path: string, flags: string, mode = 0o600, onOpened?: (opened: fs.Stats) => void): Promise<FileHandle> {
+export async function open(path: string, flags: string, mode = 0o600, onOpened?: (opened: fs.Stats, id: string | undefined) => void): Promise<FileHandle> {
   const pending = prepareOpen(path, flags, mode);
   const handle = await nativeOpen(pending.path, pending.flags, pending.mode);
-  try { const opened = pending.validate(handle.fd); onOpened?.(opened); return handle; }
+  try { const opened = pending.validate(handle.fd); onOpened?.(opened, fileId(handle.fd)); return handle; }
   catch (e) { await handle.close(); throw e; }
 }
 
@@ -209,17 +216,17 @@ function warnCleanup(error: unknown): void {
  * throwing. Pass { throwOnError: true } when removal itself is the operation.
  */
 export function cleanupPath(path: string, { onError = warnCleanup, ...options }: CleanupOptions = { force: true }): PathCleanup {
-  const p = name(path), checkParents = parents(p), before = leaf(p);
+  const p = name(path), checkParents = parents(p), before = leaf(p), beforeId = fileId(p);
   if (!before) return () => {}; // absence is not ownership of a future entry
   return ({ throwOnError = false } = {}) => {
     try {
       checkParents();
-      const current = leaf(p);
-      if (!current || (before && (before.dev !== current.dev || before.ino !== current.ino))) return;
+      const current = leaf(p), currentId = fileId(p);
+      if (!current || currentId !== beforeId) return;
       boundary({ operation: 'remove', phase: 'checked', path: p });
       checkParents();
       const next = leaf(p);
-      if (!next || next.dev !== current.dev || next.ino !== current.ino) return;
+      if (!next || fileId(p) !== currentId) return;
       fs.rmSync(p, options);
     } catch (error) {
       if (['ENOENT', 'ESTALE', 'ENOTDIR'].includes((error as NodeJS.ErrnoException | null)?.code ?? '')) return;
@@ -236,7 +243,8 @@ export const linkSync: typeof fs.linkSync = (from, to) => {
   const path = name(from), target = name(to), source = leaf(path);
   const checkFrom = parents(path), checkTo = parents(target);
   if (!source?.isFile() || leaf(target)) refused();
-  if (source.mode & 0o077) throw Object.assign(new Error('Backup needs a private copy'), { code: 'EPRIVATECOPY' });
+  // Windows has no mode bits to read (every file shows 0o666); a backup folder's privacy there is its access list.
+  if (process.platform !== 'win32' && source.mode & 0o077) throw Object.assign(new Error('Backup needs a private copy'), { code: 'EPRIVATECOPY' });
   boundary({ operation: 'link', phase: 'checked', path, target });
   checkFrom(); checkTo();
   const next = leaf(path);

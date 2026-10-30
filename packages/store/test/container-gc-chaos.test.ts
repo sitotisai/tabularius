@@ -215,7 +215,7 @@ for (const route of ['link', 'copy fallback'] as const) {
       const at = join(f.dir, 'private.openhbam.sqlite');
       await f.store.selfContainedCopy(at);
       assert.equal(route === 'copy fallback', fallback === 1, 'the fallback ran exactly when the link was refused');
-      assert.equal(statSync(at).mode & 0o077, 0, 'no group or other permission bits on the published copy');
+      if (process.platform !== 'win32') assert.equal(statSync(at).mode & 0o077, 0, 'no group or other permission bits on the published copy');
       const copy = new Store(at, 'private');
       try { assert.equal(copy.findIds('Items').length, 1); } finally { copy.close(); }
     } finally {

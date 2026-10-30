@@ -5,7 +5,7 @@ import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cpSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { runCli } from './cli-run.ts';
 import { problems } from '../../../scripts/error-strings-lib.ts';
 
@@ -25,7 +25,7 @@ describe('command line: wrong values are answered in sentences', { concurrency: 
     { name: 'a port above 65535', args: ['serve', '@', '--port', '99999'], says: /^error: serve: --port takes a port number from 1 to 65535, not "99999"$/ },
     { name: 'a PORT variable that is not a number', args: ['serve', '@'], env: { PORT: 'zzz' }, says: /^error: serve: the PORT variable takes a port number/ },
     { name: 'an address that is not there', args: ['serve', '@', '--host', '999.1.1.1', '--allow-plain-http'], says: /^error: the address "999\.1\.1\.1" was not found\. Use an IP address of this computer/ },
-    { name: 'a certificate file that is not there', args: ['serve', '@', '--tls-cert', 'nofile.pem', '--tls-key', 'nokey.pem'], says: /^error: no such file or folder: nofile\.pem$/ },
+    { name: 'a certificate file that is not there', args: ['serve', '@', '--tls-cert', 'nofile.pem', '--tls-key', 'nokey.pem'], says: /^error: no such file or folder: (?:.*[\\/])?nofile\.pem$/ },
     { name: 'a number of backups to keep that is not a number', args: ['serve', '@', '--keep', 'none'], says: /^error: serve: --keep is the number of backups to keep, a whole number of 1 or more, not "none"$/ },
     { name: 'the same in a variable', args: ['serve', '@'], env: { TABULARIUS_BACKUP_KEEP: '0' }, says: /^error: serve: TABULARIUS_BACKUP_KEEP is the number of backups to keep/ },
     { name: 'script network accepts a valid host list', args: ['serve', '@', '--allow-script-network-to', 'intranet.example,api.example', '--port', 'abc'], says: /^error: serve: --port takes a port number from 1 to 65535, not "abc"$/ },
@@ -47,7 +47,8 @@ describe('command line: wrong values are answered in sentences', { concurrency: 
         cpSync(made, folder, { recursive: true });
         const r = await cli(c.args.map((a) => (a === '@' ? folder : a)), c.env);
         assert.equal(r.status, 1, r.stdout + r.stderr);
-        const first = r.stderr.split('\n')[0].replaceAll(folder, '<folder>');
+        // A file named by a relative path is reported by the full path on Windows; the folder the command ran in is not part of what the person sees.
+        const first = r.stderr.split('\n')[0].replaceAll(folder, '<folder>').replaceAll(`${process.cwd()}${sep}`, '');
         assert.match(first, c.says);
         assert.deepEqual(problems(first), [], first);
         assert.doesNotMatch(r.stderr, /\n\s+at .*:\d+:\d+/, 'no stack trace');

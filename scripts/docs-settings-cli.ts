@@ -39,7 +39,7 @@ if (absentFromHelp.length) throw new Error(`Serve flags missing from CLI help: $
 function sourceFiles(dir: string): string[] {
   return readdirSync(join(root, dir), { withFileTypes: true }).flatMap((entry) => {
     if (entry.name === 'node_modules' || entry.name.startsWith('.')) return [];
-    const path = join(dir, entry.name);
+    const path = join(dir, entry.name).replaceAll('\\', '/'); // the names below are written with forward slashes on every system
     if (entry.isDirectory()) return sourceFiles(path);
     return /\.(?:ts|js|cjs|mjs)$/.test(path) && (dir.startsWith('scripts') || path.includes('/src/')) ? [path] : [];
   });
@@ -153,7 +153,7 @@ for (const [path, content] of generated) {
 for (const directory of ['docs/reference/settings/environment', 'docs/reference/settings/serve', 'docs/reference/cli']) {
   if (!existsSync(join(root, directory))) continue;
   for (const file of readdirSync(join(root, directory))) {
-    const path = join(directory, file);
+    const path = join(directory, file).replaceAll('\\', '/');
     if (file.endsWith('.md') && !generated.has(path)) { console.error(`${path}: obsolete generated page`); stale++; }
   }
 }

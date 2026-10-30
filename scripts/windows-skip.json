@@ -1,0 +1,5 @@
+{
+  "packages/cli/test/get-script.test.ts": "scripts/get.sh installs on macOS and Linux; Windows installs with scripts/install.ps1, which packages/cli/test/windows-installer.test.ts checks",
+  "packages/cli/test/install-checksum.test.ts": "it runs the shell installer scripts/install.sh, which is for macOS and Linux; Windows installs with scripts/install.ps1",
+  "packages/cli/test/standby-signal.test.ts": "it stops a process with SIGINT and SIGTERM and expects a clean exit; on Windows a signal ends the process at once, and Windows stops the service through its own stop request"
+}

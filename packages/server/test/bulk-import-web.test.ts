@@ -30,7 +30,8 @@ test('large web Add previews a bounded sample and streams every generated row wi
     const csv = 'Name\r\n' + Array.from({ length: 20_001 }, (_, i) => `Synthetic ${i}`).join('\r\n') + '\r\n';
     const form = () => { const f = new FormData(); f.append('upload', new Blob([csv], { type: 'text/csv' }), 'rows.csv'); return f; };
     const endpoint = `${hosted.url}/tabularius/app/v1/databases/Scale/layouts/Items/import`;
-    const headers = { authorization: `Bearer ${token}` };
+    // Each request on its own connection: the import blocks this process, the server too, long enough for it to close a kept-alive socket the next request would reuse.
+    const headers = { authorization: `Bearer ${token}`, connection: 'close' };
     const previewResponse = await fetch(`${endpoint}?plan=1`, { method: 'POST', headers, body: form() });
     assert.equal(previewResponse.status, 200);
     const preview = await previewResponse.json();
@@ -47,10 +48,10 @@ test('large web Add previews a bounded sample and streams every generated row wi
       sawProgress = (await r.json()).runs.some((x: { operation: string }) => x.operation === 'Import Records');
     }
     assert.equal(sawProgress, true);
-    const otherProgress = await fetch(`${hosted.url}/tabularius/app/v1/databases/Scale/runs/progress`, { headers: { authorization: `Bearer ${otherToken}` } });
+    const otherProgress = await fetch(`${hosted.url}/tabularius/app/v1/databases/Scale/runs/progress`, { headers: { authorization: `Bearer ${otherToken}`, connection: 'close' } });
     assert.equal(otherProgress.status, 200);
     assert.deepEqual((await otherProgress.json()).runs, []);
-    const anonymous = await fetch(`${hosted.url}/tabularius/app/v1/databases/Scale/runs/progress`);
+    const anonymous = await fetch(`${hosted.url}/tabularius/app/v1/databases/Scale/runs/progress`, { headers: { connection: 'close' } });
     assert.equal(anonymous.status, 401);
     const response = await imported;
     assert.equal(response.status, 200);

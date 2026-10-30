@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { notOnWindows } from '../../store/test/windows.ts';
 import { compareBaseline, markerPath, ROOT, runPrecheck, selectTouchedTests, testFailures, treeHash, writeMarker } from '../../../scripts/precheck.ts';
 
 const gates = JSON.parse(readFileSync(join(ROOT, 'scripts/precheck-gates.json'), 'utf8')) as { file: string; reason: string }[];
@@ -61,7 +62,7 @@ test('failure summary leaves out todo tests that fail as expected', () => {
   assert.deepEqual(testFailures(output), ['✖ the real one (12ms) — AssertionError: Expected 1']);
 });
 
-test('marker includes the commit and a working-tree hash that changes with a file', () => {
+test('marker includes the commit and a working-tree hash that changes with a file', { skip: notOnWindows('the test puts a shell script named git on the PATH') }, () => {
   const root = mkdtempSync(join(tmpdir(), 'tabularius-precheck-'));
   try {
     mkdirSync(join(root, '.git'));

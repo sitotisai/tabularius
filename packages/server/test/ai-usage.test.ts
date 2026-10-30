@@ -75,7 +75,10 @@ test('a worker that finds the usage database missing while another makes it carr
 test('several worker processes adding at once add up exactly', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-ai-usage-'));
   try {
-    await Promise.all([1, 2, 3, 4, 5].map((n) => worker(dir, n, 200)));
+    // Wait for every worker, not just the first to fail: the folder is removed below, and a worker still running holds its file.
+    const done = await Promise.allSettled([1, 2, 3, 4, 5].map((n) => worker(dir, n, 200)));
+    const failed = done.flatMap((d) => (d.status === 'rejected' ? [String((d.reason as Error).message)] : []));
+    assert.deepEqual(failed, [], 'every worker finished');
     const u = new AiUsage(dir);
     assert.equal(u.today(), 5 * 200 * 10, 'the server total');
     assert.equal(u.today('Charts/clerk'), 5 * 200 * 10, 'the account total');
@@ -240,7 +243,9 @@ test('after an upgrade, the older server\'s count shows before anyone asks: read
     const day = new Date().toISOString().slice(0, 10);
     writeFileSync(join(dir, '.openhbam-ai-usage.json'), JSON.stringify({ day, tokens: 25_098, accounts: {}, month: { month: day.slice(0, 7), tokens: 25_098, costUsd: 0.2, questions: 4 } }));
     // Reading alone, as the console does.
-    assert.equal(new Assistant({ dir } as Host, undefined as never, { apiKey: 'x' }).usageReport().today.tokens, 25_098);
+    const reader = new Assistant({ dir } as Host, undefined as never, { apiKey: 'x' });
+    assert.equal(reader.usageReport().today.tokens, 25_098);
+    reader.close(); // the file is deleted next, which a system that cannot delete an open file refuses
     for (const f of ['', '-wal', '-shm']) rmSync(join(dir, `.openhbam-ai-usage.sqlite${f}`), { force: true });
     // Serving with AI on reads it in at startup; with AI off, nothing is made.
     const off = await serve({ dir, port: 0, log: () => {} });
@@ -276,5 +281,30 @@ test('a usage file that can\'t be opened at startup is tried again on next use, 
     assert.ok(existsSync(join(dir, '.openhbam-ai-usage.sqlite')));
   } finally {
     rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+  }
+});
+
+test('a write that finds the usage database held by another process asks again, not once', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-ai-usage-held-'));
+  try {
+    const u = new AiUsage(dir, 100);
+    // Another process holds the write lock for 150 ms: longer than one 100 ms wait, shorter than the several this write makes.
+    const code = `const { DatabaseSync } = require('node:sqlite');
+      const db = new DatabaseSync(${JSON.stringify(join(dir, '.openhbam-ai-usage.sqlite'))});
+      db.exec('BEGIN IMMEDIATE');
+      console.log('held');
+      setTimeout(() => { db.exec('COMMIT'); db.close(); }, 150);`;
+    const holder = spawn(process.execPath, ['--no-warnings', '-e', code], { stdio: ['ignore', 'pipe', 'inherit'] });
+    const exited = new Promise<void>((resolve) => holder.on('exit', () => resolve()));
+    await new Promise<void>((resolve, reject) => {
+      holder.once('error', reject);
+      holder.stdout.once('data', () => resolve());
+    });
+    u.add('Charts/clerk', 10, 0.001);
+    assert.equal(u.today(), 10);
+    u.close();
+    await exited;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

@@ -29,7 +29,7 @@ function sources(root: string): string[] {
     for (const e of readdirSync(dir, { withFileTypes: true })) {
       if (e.name === 'node_modules') continue;
       if (e.isDirectory()) walk(join(dir, e.name));
-      else if (e.isFile() && /\.[cm]?[jt]sx?$/.test(e.name) && !/\.d\.[cm]?ts$/.test(e.name)) out.push(join(dir, e.name));
+      else if (e.isFile() && /\.[cm]?[jt]sx?$/.test(e.name) && !/\.d\.[cm]?ts$/.test(e.name)) out.push(join(dir, e.name).replaceAll('\\', '/'));
     }
   };
   for (const e of readdirSync(join(root, 'packages'), { withFileTypes: true })) {
@@ -60,7 +60,7 @@ export function collectReadSites(root = resolve(import.meta.dirname, '..'), over
   const options: ts.CompilerOptions = { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, allowImportingTsExtensions: true, allowJs: true, skipLibCheck: true };
   const host = ts.createCompilerHost(options);
   const read = host.readFile.bind(host);
-  host.readFile = (path) => overrides.get(relative(root, path)) ?? read(path);
+  host.readFile = (path) => overrides.get(relative(root, path).replaceAll('\\', '/')) ?? read(path);
   const program = ts.createProgram(roots, options, host);
   const checker = program.getTypeChecker();
   const included = new Set(roots);
@@ -71,7 +71,7 @@ export function collectReadSites(root = resolve(import.meta.dirname, '..'), over
       let expression = node;
       while ((ts.isPropertyAccessExpression(expression.parent) || ts.isElementAccessExpression(expression.parent) || ts.isCallExpression(expression.parent))
         && expression.parent.expression === expression) expression = expression.parent;
-      sites.push({ file: relative(root, sf.fileName), line: sf.getLineAndCharacterOfPosition(node.getStart()).line + 1,
+      sites.push({ file: relative(root, sf.fileName).replaceAll('\\', '/'), line: sf.getLineAndCharacterOfPosition(node.getStart()).line + 1,
         fn: scope(node), api, hash: digest(normalized(expression)) });
     };
     const classify = (decl: ts.Declaration | undefined): string | undefined => {
