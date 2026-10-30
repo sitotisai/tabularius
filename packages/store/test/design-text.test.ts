@@ -12,11 +12,11 @@ const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtur
 
 function hosted(t: { after: (fn: () => void) => void }): Store {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-design-text-'));
-  t.after(() => rmSync(dir, { recursive: true }));
   const path = join(dir, 'Charts.tabularius');
   importFmp12(fixture, path);
   const store = new Store(path);
   t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true }));
   return store;
 }
 const source = (s: Store) => ({ schema: s.schema, layouts: s.designs().layouts, accounts: s.accounts(), privilegeSets: s.privilegeSets() });

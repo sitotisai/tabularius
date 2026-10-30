@@ -9,10 +9,10 @@ import { createStore, Store } from '../src/index.ts';
 
 test('createOccurrence and updateOccurrence take a color and nothing else', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tab-color-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   createStore(join(dir, 'T.sqlite'));
   const store = new Store(join(dir, 'T.sqlite'), 'T');
   t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   store.applyDesign([{ op: 'createTable', name: 'People', fields: [{ name: 'Name' }] }]);
   const colors = () => store.schema.tableOccurrences.map((o) => o.color);
   const hostile = ['red;cursor:url(https://evil.example/beacon.png),auto', 'url(https://evil.example/x.png)', 'red}body{display:none', '#fff;stroke:red', 'rgb(1 2 3);x:y'];

@@ -1845,10 +1845,11 @@ for (const revoke of ['fmxdbc', 'read-all', 'inactive'] as const) test(`open SQL
   store.setPassword('Reader', 'pw', definition.name);
   const pg = new PgServer(localHost, { port: 0 });
   const peer = new Store(path);
-  t.after(async () => { pg.close(); peer.close(); await localHost.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(async () => { pg.close(); peer.close(); await localHost.close(); });
   const port = await pg.listen();
   const c = await Client.open({ user: 'Reader', password: 'pw', database: 'Revocation', port });
   t.after(() => c.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const query = async (sql: string) => { c.send('Q', cstr(sql)); return c.results(await c.until('Z')); };
   assert.deepEqual((await query('SELECT 1')).rows, [['1']]);
   await query('BEGIN');

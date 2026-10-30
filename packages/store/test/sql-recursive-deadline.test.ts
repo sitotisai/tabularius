@@ -57,11 +57,11 @@ test('a recursive query that ends gives the rows it would give here, with their 
 
 test('a recursive query reads native decimal fields as REAL, as SQL does everywhere else', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-sql-recursive-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'N.sqlite');
   createStore(path, { mode: 'native' } as never);
   const store = new Store(path);
   t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   store.applyDesign([{ op: 'createTable', name: 'Prices', fields: [{ name: 'Amount', type: 'decimal' }] }] as never);
   assert.equal(store.fileMode, 'native');
   store.create('Prices', { Amount: '10' });
@@ -131,11 +131,11 @@ test('a request for every row (an unlimited limit) gets every row of a recursive
 test('a recursive query reads a file that was given by a relative path, whatever the server\'s folder is', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-sql-relative-'));
   const here = process.cwd();
-  t.after(() => { process.chdir(here); rmSync(dir, { recursive: true, force: true }); });
   process.chdir(dir);
   createStore('R.sqlite');
   const store = new Store('R.sqlite');
   t.after(() => store.close());
+  t.after(() => { process.chdir(here); rmSync(dir, { recursive: true, force: true }); });
   store.applyDesign([{ op: 'createTable', name: 'Items', fields: [{ name: 'Name' }] }] as never);
   store.create('Items', { Name: 'a' });
   assert.deepEqual(store.select('with recursive c(x) as (select 1 union all select x + 1 from c where x < 3) select x, (select count(*) from Items) from c').rows, [[1, 1], [2, 1], [3, 1]]);

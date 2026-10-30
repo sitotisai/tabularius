@@ -8,9 +8,9 @@ import { createStore, Store, LOCKOUT } from '../src/index.ts';
 // Lockouts count elapsed time (performance.now); Date.now only shows the end of a lock. The tests move both together.
 function open(t: import('node:test').TestContext, prefix: string) {
   const dir = mkdtempSync(join(tmpdir(), prefix));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'A.sqlite'); createStore(path);
   const store = new Store(path); t.after(() => store.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   let wall = Date.now(), mono = Math.floor(performance.now());
   t.mock.method(Date, 'now', () => wall);
   t.mock.method(performance, 'now', () => mono);

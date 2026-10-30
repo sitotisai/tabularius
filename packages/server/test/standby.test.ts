@@ -24,7 +24,6 @@ test('a standby persists the primary time of the last applied change and logs it
   const root = mkdtempSync(join(tmpdir(), 'tabularius-standby-taken-'));
   const spare = join(root, 'spare');
   mkdirSync(spare);
-  t.after(() => rmSync(root, { recursive: true, force: true }));
   const source = join(root, 'source.sqlite');
   createStore(source);
   const store = new Store(source, 'Tasks');
@@ -61,6 +60,7 @@ test('a standby persists the primary time of the last applied change and logs it
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
+  t.after(() => rmSync(root, { recursive: true, force: true }));
   const address = server.address();
   assert.ok(address && typeof address !== 'string');
   const primary = `http://127.0.0.1:${address.port}`;

@@ -68,7 +68,6 @@ test('in a checkout the commit is the one git reports', () => {
 
 test('the Data API, admin console, web client, metrics and info all name the same version', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-version-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const file = join(dir, `Shop${STORE_EXT}`);
   createStore(file);
   const store = new Store(file, 'Shop');
@@ -77,6 +76,7 @@ test('the Data API, admin console, web client, metrics and info all name the sam
   setAdminPassword(dir, 'secret');
   const s = await serve({ dir, port: 0, watch: false, log: () => {} });
   t.after(() => new Promise<void>((resolve) => s.server.close(() => resolve())));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const commit = serverCommit();
 
   const product = await (await fetch(`${s.url}/fmi/data/vLatest/productInfo`)).json() as { response: { productInfo: { version: string } } };

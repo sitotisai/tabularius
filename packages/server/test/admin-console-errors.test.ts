@@ -13,7 +13,6 @@ import { ServerConfig } from '../src/server-config.ts';
 
 async function setup(t: TestContext) {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-console-errors-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   for (const name of ['Test', 'Second']) {
     const path = join(dir, name + '.openhbam.sqlite');
     createStore(path);
@@ -25,6 +24,7 @@ async function setup(t: TestContext) {
   }
   const hosted = await serve({ dir, port: 0, log: () => {} });
   t.after(() => new Promise<void>((resolve) => hosted.server.close(() => resolve())));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const call = async (path: string, body?: unknown, method = body === undefined ? 'GET' : 'POST') => {
     const r = await fetch(hosted.url + '/tabularius/admin/v1' + path, {
       method, headers: { 'x-tabularius-admin': '1', 'content-type': 'application/json' },
@@ -145,13 +145,13 @@ test('#32 a session timeout that is partly invalid changes nothing', async (t) =
 
 test('#32 a Host opened without serving on a bad settings file warns once with the file and key and uses defaults', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-lenient-host-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'Test.openhbam.sqlite');
   createStore(path);
   writeFileSync(join(dir, '.openhbam-settings.json'), '{"keep":"abc","blockNewUsers":true}');
   const warnings = t.mock.method(process, 'emitWarning', () => {});
   const host = new Host(dir);
   t.after(() => host.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   assert.deepEqual(host.names(), ['Test']);
   assert.equal(host.config.blockNewUsers(), false, 'defaults, not a half-read file');
   assert.equal(host.config.sessionIdleMinutes(), 15);

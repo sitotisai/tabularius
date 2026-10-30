@@ -51,6 +51,7 @@
     "docs:security-defaults": "node --no-warnings scripts/security-defaults.ts",
     "check:secrets": "node --no-warnings scripts/check-secret-primitives.ts",
     "check:fs-boundary": "node --no-warnings scripts/check-fs-boundary-imports.ts",
+    "check:test-teardown": "node --no-warnings scripts/check-test-teardown-order.ts",
     "check:env-numbers": "node --no-warnings scripts/check-env-numbers.ts",
     "check:read-gate": "node --no-warnings scripts/read-gate-inventory.ts",
     "check:read-gate-typed": "node --no-warnings scripts/read-gate-typed.ts",

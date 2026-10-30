@@ -14,10 +14,10 @@ const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtur
 
 test('get_security names the imported sets whose access only approximates FileMaker, and how', { skip }, (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-sec-approx-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   copyFileSync(fixture, join(dir, 'Charts.fmp12'));
   const host = new Host(dir, () => {});
   t.after(() => host.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const store = host.get('Charts')!;
   const congress = store.schema.tables.find((x) => x.name === 'Congress')!;
   const field = (n: string) => congress.fields.find((f) => f.name === n)!.id;
@@ -54,10 +54,10 @@ test('get_security names the imported sets whose access only approximates FileMa
 
 test('the conversion report lists [Guest] with the other accounts, as built in', { skip }, (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-conv-guest-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   copyFileSync(fixture, join(dir, 'Charts.fmp12'));
   const host = new Host(dir, () => {});
   t.after(() => host.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const store = host.get('Charts')!;
   const guest = store.accounts().find((a) => a.name === '[Guest]');
   assert.ok(guest, 'Charts has the built-in [Guest] account');
