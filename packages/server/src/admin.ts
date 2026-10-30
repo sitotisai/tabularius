@@ -2934,6 +2934,8 @@ export class Admin {
       converting: [...this.host.converted].map(([name, p]) => ({ name, ...p })),
       // Files dropped in that could not be converted, and why: not ready is not the same as never loads.
       failed: [...this.host.failures].filter(([file]) => existsSync(join(this.host.dir, file))).map(([file, error]) => ({ file, error })),
+      // Files a cluster worker could not open after its retries, and why; the text keeps no absolute path.
+      openFailed: this.host.openFailures.list((file) => this.host.files().some((f) => f.name.toLowerCase() === file.toLowerCase())),
       // Files dropped in that use Encryption at Rest, waiting for their passphrase.
       locked: [...this.host.locked].filter(([file]) => !this.host.converted.has(basename(file, extname(file)))).map(([file, i]) => ({ file, hint: i.hint, error: i.error })),
       clients: clients.map((c) => ({ ...c, locks: locks.filter((l) => l.client === c.id).length })),
