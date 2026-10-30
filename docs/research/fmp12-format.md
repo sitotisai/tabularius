@@ -311,9 +311,14 @@ one formula per FileMaker function would complete the tables.
 
 Key 2: `04 03 <left TO ref> 04 03 <right TO ref> …`, longer than 22 bytes when
 the relationship sorts. Child `.3` holds one kv per predicate: an operator
-byte (0..6 read as = ≠ < ≤ > ≥ ×; only = and × are confirmed) and two tagged
-refs (tag, length, path integer; tag 02 = field, 04 = table occurrence). The
-last byte of key 2 holds each side's options: 0x01 / 0x02 delete related
+byte (0..6 read as = ≠ < ≤ > ≥ ×; only = and × are confirmed).
+A predicate whose operator byte is above 6, or whose field references have no
+path integer, is not read; the relationship is left out of `relationships` and
+listed in `unreadRelationships` with its id and the reason, because a join read
+with fewer predicates would relate more records than the file does.
+Each predicate has two tagged refs (tag, length, path integer; tag 02 = field,
+04 = table occurrence). The last byte of key 2 holds each side's options:
+0x01 / 0x02 delete related
 records in the right / left table, 0x10 / 0x20 allow creation in the right /
 left table, 0x40 / 0x80 sort the right / left side. Flicks' Design Report
 confirms 0x10; the rest fit how every relationship in the private samples is
