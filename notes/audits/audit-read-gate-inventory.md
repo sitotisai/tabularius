@@ -244,15 +244,15 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/server/src/automations.ts:308](../../packages/server/src/automations.ts#L308) `dryRunAutomation` | `Store.canViewRecord` (308); `Store.findIds` (308); `Store.auditLog` (324, 352, 360); `Store.select` (337); `Store.evaluate` (353) | AUTOMATION |
 | [packages/server/src/automations.ts:307](../../packages/server/src/automations.ts#L307) `dryRunAutomation/truth` | `Store.evaluateEach` (307) | AUTOMATION |
 | [packages/server/src/backup-verify.ts:152](../../packages/server/src/backup-verify.ts#L152) `testRestore` | `Store.recordCount` (152) | OPERATOR |
-| [packages/server/src/backup.ts:1066](../../packages/server/src/backup.ts#L1066) `accountDifferences/read` | `SQLite.all` (1066, 1068); `SQLite.prepare` (1066, 1068) | OPERATOR |
-| [packages/server/src/backup.ts:1179](../../packages/server/src/backup.ts#L1179) `columnInfo` | `SQLite.all` (1179); `SQLite.prepare` (1179) | OPERATOR |
-| [packages/server/src/backup.ts:1123](../../packages/server/src/backup.ts#L1123) `credentialsReadable` | `SQLite.all` (1123); `SQLite.prepare` (1123) | OPERATOR |
-| [packages/server/src/backup.ts:1093](../../packages/server/src/backup.ts#L1093) `readNames` | `SQLite.all` (1093); `SQLite.prepare` (1093) | OPERATOR |
-| [packages/server/src/backup.ts:1214](../../packages/server/src/backup.ts#L1214) `reconcileCredentials` | `SQLite.all` (1214, 1236, 1251, 1261, 1267); `SQLite.prepare` (1214, 1222, 1236, 1238, 1251, 1252, 1259, 1261, 1262, 1267, 1268, 1272, 1273, 1274); `SQLite.get` (1222, 1272) | OPERATOR |
-| [packages/server/src/backup.ts:1241](../../packages/server/src/backup.ts#L1241) `reconcileCredentials/accountColumns` | `SQLite.all` (1241); `SQLite.prepare` (1241) | OPERATOR |
-| [packages/server/src/backup.ts:1217](../../packages/server/src/backup.ts#L1217) `reconcileCredentials/has` | `SQLite.all` (1217); `SQLite.prepare` (1217) | OPERATOR |
-| [packages/server/src/backup.ts:1150](../../packages/server/src/backup.ts#L1150) `retainCurrentRecordIdMarks` | `SQLite.prepare` (1150, 1161, 1162, 1163); `SQLite.all` (1152, 1162); `SQLite.get` (1161) | OPERATOR |
-| [packages/server/src/backup.ts:1389](../../packages/server/src/backup.ts#L1389) `stageRestorePoint` | `SQLite.get` (1389, 1391, 1392); `SQLite.prepare` (1389, 1391, 1392) | OPERATOR |
+| [packages/server/src/backup.ts:1062](../../packages/server/src/backup.ts#L1062) `accountDifferences/read` | `SQLite.all` (1062, 1064); `SQLite.prepare` (1062, 1064) | OPERATOR |
+| [packages/server/src/backup.ts:1175](../../packages/server/src/backup.ts#L1175) `columnInfo` | `SQLite.all` (1175); `SQLite.prepare` (1175) | OPERATOR |
+| [packages/server/src/backup.ts:1119](../../packages/server/src/backup.ts#L1119) `credentialsReadable` | `SQLite.all` (1119); `SQLite.prepare` (1119) | OPERATOR |
+| [packages/server/src/backup.ts:1089](../../packages/server/src/backup.ts#L1089) `readNames` | `SQLite.all` (1089); `SQLite.prepare` (1089) | OPERATOR |
+| [packages/server/src/backup.ts:1210](../../packages/server/src/backup.ts#L1210) `reconcileCredentials` | `SQLite.all` (1210, 1232, 1247, 1257, 1263); `SQLite.prepare` (1210, 1218, 1232, 1234, 1247, 1248, 1255, 1257, 1258, 1263, 1264, 1268, 1269, 1270); `SQLite.get` (1218, 1268) | OPERATOR |
+| [packages/server/src/backup.ts:1237](../../packages/server/src/backup.ts#L1237) `reconcileCredentials/accountColumns` | `SQLite.all` (1237); `SQLite.prepare` (1237) | OPERATOR |
+| [packages/server/src/backup.ts:1213](../../packages/server/src/backup.ts#L1213) `reconcileCredentials/has` | `SQLite.all` (1213); `SQLite.prepare` (1213) | OPERATOR |
+| [packages/server/src/backup.ts:1146](../../packages/server/src/backup.ts#L1146) `retainCurrentRecordIdMarks` | `SQLite.prepare` (1146, 1157, 1158, 1159); `SQLite.all` (1148, 1158); `SQLite.get` (1157) | OPERATOR |
+| [packages/server/src/backup.ts:1385](../../packages/server/src/backup.ts#L1385) `stageRestorePoint` | `SQLite.get` (1385, 1387, 1388); `SQLite.prepare` (1385, 1387, 1388) | OPERATOR |
 | [packages/server/src/calendar.ts:389](../../packages/server/src/calendar.ts#L389) `CalendarFeeds/feed` | `Store.find` (389) | CALENDAR |
 | [packages/server/src/changes.ts:195](../../packages/server/src/changes.ts#L195) `ChangeFeed/visible` | `Store.canViewRecord` (195) | CHANGE |
 | [packages/server/src/cleanup.ts:1051](../../packages/server/src/cleanup.ts#L1051) `CleanupJournal/add` | `SQLite.prepare` (1051); `Store.sql` (1051) | CLEANUP |
