@@ -410,8 +410,10 @@ export class Standby {
     const partial = target + '.standby-partial';
     try {
       // Open through the boundary (no links followed, owner only), then stream to that descriptor.
-      const fd = openSync(partial, 'w', 0o600);
-      await pipeline(Readable.fromWeb(res.body as import('node:stream/web').ReadableStream), createWriteStream(partial, { fd, autoClose: true }), { signal });
+      const body = Readable.fromWeb(res.body as import('node:stream/web').ReadableStream);
+      let fd: number;
+      try { fd = openSync(partial, 'w', 0o600); } catch (e) { body.destroy(); throw e; }
+      await pipeline(body, createWriteStream(partial, { fd, autoClose: true }), { signal });
       const db = new DatabaseSync(partial, { readOnly: true });
       try {
         const r = Object.values(db.prepare('PRAGMA quick_check').get() as Record<string, string>)[0];
