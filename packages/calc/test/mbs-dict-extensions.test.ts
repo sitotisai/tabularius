@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { evaluateText, type CalcContext } from '../src/index.ts';
+import { stackExhausted } from '../src/functions.ts';
 import { Env } from '../src/evaluate.ts';
 import { MBS_DICT, withValueText } from '../src/mbs-dict.ts';
 import { num, text, type Value } from '../src/values.ts';
@@ -218,6 +219,14 @@ test('FM.CF: recursive calls share the calculation recursion budget', () => {
     ? { parameters: ['n'], formula: 'If ( n = 0 ; 0 ; MBS ( "FM.CF" ; "Countdown" ; n - 1 ) )' } : undefined };
   assert.equal(evaluateText('MBS ( "FM.CF" ; "Countdown" ; 3 )', ctx), '0');
   assert.equal(evaluateText('MBS ( "FM.CF" ; "Countdown" ; 100000 )', ctx), '?');
+});
+test('a stack check that itself runs out of stack counts as the stack running out', () => {
+  assert.equal(stackExhausted(new RangeError('Maximum call stack size exceeded')), true);
+  assert.equal(stackExhausted(new RangeError('too much recursion')), true);
+  assert.equal(stackExhausted(new RangeError('Invalid string length')), false);
+  const unreadable = new RangeError('x');
+  Object.defineProperty(unreadable, 'message', { get() { throw new SyntaxError('Invalid regular expression: Maximum call stack size exceeded'); } });
+  assert.equal(stackExhausted(unreadable), true);
 });
 test('FM.CF: a recursion the stack cannot hold is "?" however much stack there is', () => {
   // Where the stack runs out depends on the machine (frame sizes, how much is compiled), so the run is repeated with several sizes.
