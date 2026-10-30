@@ -924,6 +924,12 @@ an error and `--json` prints the findings. It reads files only and writes
 nothing. The sample files are part of the test run, which fails on a new error,
 so a gap is seen there before it is seen on someone's file.
 
+Conversion also has a size ceiling for pictures and files stored inside the
+file. One embedded container larger than 512 MiB is left out of the copy and
+the conversion says so (the command line `export` prints a `warning:` line naming
+the table, field and blob); an image library larger than 512 MiB stops the
+conversion with an error. <!-- known-difference: Conversion ;; An embedded container larger than 512 MiB is left out of the converted copy, and an image library larger than 512 MiB stops the conversion ;; The converted file lacks that container (the command line export and the progress report name it), or the conversion stops with an error ;; A streaming conversion that holds one chunk at a time -->
+
 ## Counting what a collection of files uses
 
 `tabularius corpus-scan <folder>` is for someone looking at many `.fmp12` files at
