@@ -119,8 +119,14 @@ test('checkServeSettings refuses an empty key, a bad number or switch, and a nea
   assert.match(both, /TABULARIUS_SQL_PORT/);
 });
 
-test('serve checks every server and store whole-number setting at both bounds', () => {
+test('serve rejects invalid whole-number settings at start and accepts valid or unset values', () => {
   const settings: [string, number, number | undefined][] = [
+    ['TABULARIUS_MAX_UPLOAD_IN_PROGRESS', 1, undefined],
+    ['TABULARIUS_REQUEST_LIMIT', 4, undefined],
+    ['TABULARIUS_WARM_HEAP_MB', 1, undefined],
+    ['TABULARIUS_PGWIRE_MAX_BUFFERED_ROWS', 1, undefined],
+    ['TABULARIUS_DRAIN_SECONDS', 1, 86400],
+    ['TABULARIUS_SCRIPT_MAX_RECORD_OPS', 0, undefined],
     ['TABULARIUS_UPLOAD_IDLE_HOURS', 0, 87600],
     ['TABULARIUS_REQUEST_QUEUE', 0, 100000],
     ['TABULARIUS_CONTAINER_TTL', 1, 3600],
@@ -130,9 +136,11 @@ test('serve checks every server and store whole-number setting at both bounds', 
     ['TABULARIUS_TRACE_SQL_MIN_MS', 0, 86400000],
   ];
   for (const [name, min, max] of settings) {
+    assert.doesNotThrow(() => checkServeSettings({}), `${name} unset`);
     for (const value of ['1e3', '', '1.5', '-1', max === undefined ? '99999999999999999999' : String(max + 1)]) {
       assert.throws(() => checkServeSettings({ [name]: value }), new RegExp(`${name} .*whole number`), `${name}=${value}`);
     }
+    if (min > 0) assert.throws(() => checkServeSettings({ [name]: '0' }), new RegExp(`${name} .*whole number`), `${name}=0`);
     assert.doesNotThrow(() => checkServeSettings({ [name]: String(min) }), `${name} minimum`);
     if (max !== undefined) assert.doesNotThrow(() => checkServeSettings({ [name]: String(max) }), `${name} maximum`);
   }
