@@ -25,6 +25,8 @@ row also says where the expectation comes from:
 | Perform Find / Constrain Found Set, no match | 401 | 401 | Meaning |
 | Perform Find with no criteria | 400 | 400 | Meaning |
 | Set Field into a calculation field | 201 | 201 | Meaning ("Field cannot be modified") |
+| Set Field on the current record with denied record-edit access | 0 until commit | 200 at the step | Inferred from the code's meaning; reference-product step timing is unverified. | <!-- known-difference: Scripts and script steps ;; Set Field reports denied current-record edits as 200 at the step; reference-product step timing is unverified ;; Get ( LastError ) immediately after Set Field reads 200 ;; A reference-product run with a denied record edit -->
+| Set Field on the current record into a view-only field | 0 until commit | 201 at the step | Inferred from the code's meaning; reference-product step timing is unverified. | <!-- known-difference: Scripts and script steps ;; Set Field reports a current-record view-only field as 201 at the step; reference-product step timing is unverified ;; Get ( LastError ) immediately after Set Field reads 201 ;; A reference-product run with a view-only field -->
 | Set Field / Delete Record / Omit Record with no current record | 101 | 101 | Meaning |
 | Set Field By Name, a field that isn't there | 102 | 102 | Meaning |
 | Select Window / Close Window, a window that isn't there | 112 | 112 | Meaning |
@@ -130,7 +132,7 @@ a code that no row of this page mentions.
 | 20 | Canceled by a triggered script | A step whose script trigger ran before it and exited with False. |
 | 100 | File is missing | A hosted file a step names is not hosted; a file in the documents folder cannot be read or its folder is missing; a table with no table occurrence; a SQL connection finding that the file at a hosted file's path is no longer the file that was opened. |
 | 104 | Script is missing | Perform Script, Perform Script on Server, a callback script or a script trigger naming a script that is not there. |
-| 200 | Record access is denied | Set Field of a global field in Find mode, when the account cannot edit the table. |
+| 200 | Record access is denied | Set Field of a global field in Find mode, when the account cannot edit the table; Set Field of a current record when record-edit access is denied. |
 | 300 | File is locked or in use | Create, Open, Delete or Rename Data File on a file that is already open, or a file-writing step (Export Field Contents and the like) naming an open data file or a folder. |
 | 715 | Excel worksheet or named range is missing | Import Records from a workbook without the sheet named. |
 | 718 | XML parse error | Import Records of XML that does not parse, or an XSLT style sheet that does not. |
