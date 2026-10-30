@@ -652,6 +652,12 @@ function describeFailure(w: ScriptFailure): string {
   return out.join('\n');
 }
 
+/** test-scripts and script-tests run a file's scripts offline from the command line, for the person at the keyboard who
+ * named the folder: a file the server would hold for approval is theirs to try here. Nothing is approved on disk. */
+function trustCommandLine(host: Host): void {
+  for (const store of host.openStores()) store.held = undefined;
+}
+
 /**
  * Outbound test mode switches (serve and test-scripts): --test-outbound turns
  * it on; --mail-redirect A sends a copy of each message to A (and only A)
@@ -1978,6 +1984,7 @@ function main(argv: string[]): number {
       }
       const outbound = outboundFlags(args, 'test-scripts');
       const host = new Host(path);
+      trustCommandLine(host);
       if (outbound) host.testOutbound(outbound);
       const names = args[0] && !args[0].startsWith('--') ? [args[0]] : host.names();
       const run = async () => {
@@ -2098,6 +2105,7 @@ function main(argv: string[]): number {
       for (let v = flag(args, '--script'); v !== undefined; v = flag(args, '--script')) only.push(v);
       const json = bool(args, '--json');
       const host = new Host(path);
+      trustCommandLine(host);
       const named = args[0] && !args[0].startsWith('--') ? args[0] : undefined;
       const names = named ? [named] : host.names().filter((n) => !captureOnly(n));
       const live = runningServer(path) !== undefined;

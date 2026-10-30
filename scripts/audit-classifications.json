@@ -14,6 +14,7 @@
   "route GET /tabularius/admin/v1/files/{name}/external-containers": "admin-gap",
   "route GET /tabularius/admin/v1/files/{name}/orphan-containers": "admin-gap",
   "route POST /tabularius/admin/v1/files/{name}/orphan-containers": "admin-gap",
+  "route POST /tabularius/admin/v1/files/{name}/approve": "security-partial",
   "route POST /tabularius/admin/v1/files/{name}/reconvert-preview": "admin-gap",
   "route POST /tabularius/admin/v1/files/{name}/reconvert": "admin-gap",
   "route POST /tabularius/admin/v1/reconvert-all": "admin-gap",

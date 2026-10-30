@@ -12,6 +12,7 @@ import type { Store } from '../../store/src/index.ts';
 import { runScript } from '../../scripts/src/index.ts';
 import { serve } from '../src/index.ts';
 import type { Host } from '../src/host.ts';
+import { approveAll } from './approve-all.ts';
 
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
 const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtures';
@@ -37,6 +38,7 @@ before(async () => {
   dir = mkdtempSync(join(tmpdir(), 'tabularius-script-ai-'));
   copyFileSync(fixture, join(dir, 'Charts.fmp12'));
   const s = await serve({ dir, port: 0, log: () => {}, ai: { apiKey: 'test-key', model: 'server-model', baseUrl: `http://127.0.0.1:${(model.address() as { port: number }).port}` } });
+  approveAll(s.host);
   server = s.server;
   host = s.host;
   store = host.get('Charts')!;

@@ -8,6 +8,7 @@ import type { Server } from 'node:http';
 import { serve } from '../src/index.ts';
 import { runScript } from '../../scripts/src/index.ts';
 import type { Host } from '../src/host.ts';
+import { approveAll } from './approve-all.ts';
 
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
 const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtures';
@@ -21,6 +22,7 @@ before(async () => {
   dir = mkdtempSync(join(tmpdir(), 'tabularius-mcp-sandbox-'));
   copyFileSync(fixture, join(dir, 'Charts.fmp12'));
   const s = await serve({ mcpToken: 'test-admin-token', dir, port: 0, log: () => {}, scriptNetwork: true, testOutbound: { allowHosts: ['127.0.0.1'] } });
+  approveAll(s.host);
   server = s.server;
   base = s.url;
   host = s.host;

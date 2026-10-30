@@ -7,6 +7,7 @@ import type { Server } from 'node:http';
 import { filterSql, serve } from '../src/index.ts';
 import type { Host } from '../src/host.ts';
 import { totpCode } from '../../store/src/index.ts';
+import { approveAll } from './approve-all.ts';
 
 // OData v4, as Excel, Power BI and other OData clients use it.
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
@@ -22,6 +23,7 @@ before(async () => {
   dir = mkdtempSync(join(tmpdir(), 'tabularius-odata-'));
   copyFileSync(fixture, join(dir, 'Charts.fmp12'));
   const s = await serve({ dir, port: 0, watch: false, log: () => {}, listFilesPublicly: true });
+  approveAll(s.host);
   server = s.server;
   root = `${s.url}/fmi/odata/v4`;
   host = s.host;

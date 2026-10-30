@@ -9,6 +9,6 @@
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | No direct environment equivalent |
 | Explained in | [docs/reference/settings/serve-flags.md](../serve-flags.md) |
-| Code | [packages/cli/src/main.ts:665](../../../../packages/cli/src/main.ts#L665) |
+| Code | [packages/cli/src/main.ts:671](../../../../packages/cli/src/main.ts#L671) |
 
 [All serve flags](../serve-flags.md)

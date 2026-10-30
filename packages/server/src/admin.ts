@@ -85,6 +85,8 @@ import { auditCsvField } from '../../store/src/audit-output.ts';
 //                                                    back as it was at a moment, in place or as a new file
 //   POST /tabularius/admin/v1/backups/{set}/verify     check a backup set again now (backup-verify.ts)
 //   POST /tabularius/admin/v1/files/{name}/reconvert-preview   what converting again would change (a dry run)
+//   POST /tabularius/admin/v1/files/{name}/approve             approve a held file (one that arrived in the hosted folder, or a different file under an
+//                                                    approved name): its scripts, schedules, automations, digests, hooks and connections start to run
 //   POST /tabularius/admin/v1/locked/{file}/unlock     {passphrase}: hosts a dropped-in .fmp12 that uses Encryption at
 //                                                     Rest; the passphrase is used for that conversion only, never kept
 //   (reconvert and reconvert-preview take {passphrase} too, for such a file)
@@ -310,7 +312,7 @@ function consoleMethods(path: string): string | undefined {
   if (/^backups\/[^/]+\/(verify|test-restore)$/.test(name)) return 'POST';
   if (/^files\/[^/]+\/external-containers$/.test(name)) return 'GET';
   if (/^files\/[^/]+\/orphan-containers$/.test(name)) return 'GET, POST';
-  if (/^files\/[^/]+\/reconvert(?:-preview)?$/.test(name) || /^locked\/[^/]+\/unlock$/.test(name)) return 'POST';
+  if (/^files\/[^/]+\/(?:reconvert(?:-preview)?|approve)$/.test(name) || /^locked\/[^/]+\/unlock$/.test(name)) return 'POST';
   if (/^server-scripts\/[\w-]+\/cancel$/.test(name)) return 'POST';
   if (name === 'schedules') return 'GET, POST';
   if (/^schedules\/[0-9a-f]+$/.test(name)) return 'PATCH, DELETE';
@@ -1148,6 +1150,21 @@ export class Admin {
           const body = await readJson(req).catch(lenient({})) as { purge?: boolean };
           if (body.purge !== true) send(400, { error: 'purge must be true to remove unreferenced containers' });
           else send(200, { ...store.purgeOrphanContainers(), ...store.orphanContainerReport(), integrity: store.containerIntegrityReport() });
+        }
+      } else if (/^\/tabularius\/admin\/v1\/files\/[^/]+\/approve$/.test(path) && req.method === 'POST') {
+        // A held file stays hosted and readable but runs nothing of its own until someone with the admin console approves it.
+        const name = decodeURIComponent(path.split('/')[5]);
+        const store = this.host.storeOf(name);
+        if (!store) send(404, { error: `${name} isn't hosted` });
+        else if (!store.held) send(200, { name: store.name, held: false, approved: false });
+        else {
+          try {
+            this.host.approve(store.name, 'admin console');
+            this.log(`${store.name} approved (admin console)`);
+            send(200, { name: store.name, held: false, approved: true });
+          } catch (e) {
+            send(409, { error: `${store.name} could not be approved: ${(e as Error).message}` });
+          }
         }
       } else if (/^\/tabularius\/admin\/v1\/files\/[^/]+\/reconvert-preview$/.test(path) && req.method === 'POST') {
         // A dry run: what converting again would change, in a scratch folder; nothing hosted is touched.

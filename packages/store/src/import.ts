@@ -430,6 +430,8 @@ export function importFmp12(src: string | FmpDatabase, outPath: string, onProgre
         ...(typeof src === 'string' ? { size: fileInfo!.size, sha256: fileSha256(src) } : {}),
       }));
       meta.run('dateOrder', JSON.stringify(db.dateStyle));
+      // A converted file starts with script network access off, until an administrator turns it on (a file with no setting is on).
+      meta.run('scriptNetwork', 'false');
       // FileMaker password verifiers can't be checked yet, so imported accounts
       // start without a password; set one with `tabularius passwd`.
       const addAccount = sql.prepare('INSERT OR IGNORE INTO _fm_accounts VALUES (?, NULL, ?)');
