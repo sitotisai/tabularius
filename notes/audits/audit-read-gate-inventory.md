@@ -311,9 +311,9 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/server/src/dry-run.ts:92](../../packages/server/src/dry-run.ts#L92) `dryRunChanges/runOnce` | `Store.auditLog` (92, 96) | DESIGN |
 | [packages/server/src/find-advice.ts:99](../../packages/server/src/find-advice.ts#L99) `findAdvice` | `Store.recordCount` (99) | DESIGN |
 | [packages/server/src/formula-preview.ts:31](../../packages/server/src/formula-preview.ts#L31) `previewFormula` | `Store.findIds` (31); `Store.evaluate` (42) | DESIGN |
-| [packages/server/src/hosted-record.ts:217](../../packages/server/src/hosted-record.ts#L217) `approveRestoredFiles` | `SQLite.get` (217); `SQLite.prepare` (217, 221) | OPERATOR |
-| [packages/server/src/hosted-record.ts:111](../../packages/server/src/hosted-record.ts#L111) `markStore` | `SQLite.get` (111); `SQLite.prepare` (111, 115) | OPERATOR |
-| [packages/server/src/hosted-record.ts:70](../../packages/server/src/hosted-record.ts#L70) `peekInstance` | `SQLite.get` (70); `SQLite.prepare` (70) | OPERATOR |
+| [packages/server/src/hosted-record.ts:219](../../packages/server/src/hosted-record.ts#L219) `approveRestoredFiles` | `SQLite.get` (219); `SQLite.prepare` (219, 223) | OPERATOR |
+| [packages/server/src/hosted-record.ts:112](../../packages/server/src/hosted-record.ts#L112) `markStore` | `SQLite.get` (112); `SQLite.prepare` (112, 116) | OPERATOR |
+| [packages/server/src/hosted-record.ts:71](../../packages/server/src/hosted-record.ts#L71) `peekInstance` | `SQLite.get` (71); `SQLite.prepare` (71) | OPERATOR |
 | [packages/server/src/import-mapping.ts:1019](../../packages/server/src/import-mapping.ts#L1019) `applyImportAddStream` | `SQLite.prepare` (1019); `Store.sql` (1019) | IMPORT |
 | [packages/server/src/import-mapping.ts:780](../../packages/server/src/import-mapping.ts#L780) `applyImportRun` | `SQLite.prepare` (780); `Store.sql` (780) | IMPORT |
 | [packages/server/src/import-mapping.ts:500](../../packages/server/src/import-mapping.ts#L500) `existingKeys` | `Store.viewableIds` (500); `Store.query` (502) | IMPORT |
