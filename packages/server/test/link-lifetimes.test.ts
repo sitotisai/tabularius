@@ -27,19 +27,38 @@ function setup(t: TestContext) {
   return { host, store, dir, advance: (ms: number) => { now += ms; } };
 }
 
-for (const ttl of ['0', '-1', 'NaN', 'Infinity', '999999', '2']) {
-  test(`signed links enforce a finite deadline with TTL=${ttl}`, (t) => {
+test('signed links enforce a finite deadline with TTL=2', (t) => {
+  const previous = process.env.TABULARIUS_CONTAINER_TTL;
+  process.env.TABULARIUS_CONTAINER_TTL = '2';
+  t.after(() => { if (previous === undefined) delete process.env.TABULARIUS_CONTAINER_TTL; else process.env.TABULARIUS_CONTAINER_TTL = previous; });
+  const { host, store, advance } = setup(t);
+  const params = new URLSearchParams(host.signed(store.name, 1, '', store.linkPrincipal('Alice')));
+  assert.ok(host.checkUrl(store.name, 1, params));
+  advance(2000);
+  assert.equal(host.checkUrl(store.name, 1, params), false);
+  for (const exp of [0, NaN, Infinity, -1]) {
+    assert.equal(host.checkSignature(store.name, 1, host.sign(store.name, 1, '', exp), '', exp), false);
+  }
+});
+
+test('an unset TTL gives links an hour', (t) => {
+  const previous = process.env.TABULARIUS_CONTAINER_TTL;
+  delete process.env.TABULARIUS_CONTAINER_TTL;
+  t.after(() => { if (previous !== undefined) process.env.TABULARIUS_CONTAINER_TTL = previous; });
+  const { host, store, advance } = setup(t);
+  const params = new URLSearchParams(host.signed(store.name, 1, '', store.linkPrincipal('Alice')));
+  assert.ok(host.checkUrl(store.name, 1, params));
+  advance(3600_000);
+  assert.equal(host.checkUrl(store.name, 1, params), false);
+});
+
+// A TTL that cannot be honoured stops the server instead of lengthening or disabling link expiry.
+for (const ttl of ['0', '-1', 'NaN', 'Infinity', '999999', '3601', '0.5', '']) {
+  test(`a TTL of "${ttl}" is refused when the host starts`, (t) => {
     const previous = process.env.TABULARIUS_CONTAINER_TTL;
     process.env.TABULARIUS_CONTAINER_TTL = ttl;
     t.after(() => { if (previous === undefined) delete process.env.TABULARIUS_CONTAINER_TTL; else process.env.TABULARIUS_CONTAINER_TTL = previous; });
-    const { host, store, advance } = setup(t);
-    const params = new URLSearchParams(host.signed(store.name, 1, '', store.linkPrincipal('Alice')));
-    assert.ok(host.checkUrl(store.name, 1, params));
-    advance(ttl === '2' ? 2000 : 3600_000);
-    assert.equal(host.checkUrl(store.name, 1, params), false);
-    for (const exp of [0, NaN, Infinity, -1]) {
-      assert.equal(host.checkSignature(store.name, 1, host.sign(store.name, 1, '', exp), '', exp), false);
-    }
+    assert.throws(() => setup(t), /TABULARIUS_CONTAINER_TTL/);
   });
 }
 
@@ -55,17 +74,6 @@ test('a shortened TTL applies to new links; existing links keep their signed dea
   advance(1000);
   assert.equal(shorter.checkUrl(store.name, 1, fresh), false);
   assert.ok(host.checkUrl(store.name, 1, old));
-});
-
-test('a fractional TTL shortens links (to one second at least) instead of lengthening them', (t) => {
-  const previous = process.env.TABULARIUS_CONTAINER_TTL;
-  process.env.TABULARIUS_CONTAINER_TTL = '0.5';
-  t.after(() => { if (previous === undefined) delete process.env.TABULARIUS_CONTAINER_TTL; else process.env.TABULARIUS_CONTAINER_TTL = previous; });
-  const { host, store, advance } = setup(t);
-  const params = new URLSearchParams(host.signed(store.name, 1));
-  assert.ok(host.checkUrl(store.name, 1, params), 'valid when issued');
-  advance(1000);
-  assert.equal(host.checkUrl(store.name, 1, params), false, 'gone within a second or so, not an hour');
 });
 
 test('a link with no usable expiry or signature is refused before any account is looked up', (t) => {
