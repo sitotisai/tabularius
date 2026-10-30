@@ -413,7 +413,10 @@ test('review fixes: registrations never push out an app in use; a full list refu
     const now = Date.now();
     const add = db.prepare('INSERT INTO clients (id, secret_hash, name, redirect_uris, created, used) VALUES (?, NULL, ?, ?, ?, ?)');
     const n = (db.prepare('SELECT COUNT(*) AS n FROM clients').get() as { n: number }).n;
+    // One transaction: 500 separate commits each wait for the disk, and on a busy Windows machine that outlasts the connection the test holds open.
+    db.exec('BEGIN');
     for (let i = n; i < 500; i++) add.run(`ohc_fill${i}`, 'x', '[]', now - 1000, null);
+    db.exec('COMMIT');
     // Full: an unused one gives way, the one in use stays.
     await register();
     assert.ok(db.prepare('SELECT 1 FROM clients WHERE id = ?').get(used.client_id));
