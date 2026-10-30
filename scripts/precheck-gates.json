@@ -58,5 +58,9 @@
   {
     "file": "packages/cli/test/npm-scripts.test.ts",
     "reason": "Checks package.json lists no script twice and that every script is written down"
+  },
+  {
+    "file": "packages/server/test/unhosted-sign-in-parity.test.ts",
+    "reason": "Holds a missing file name to the same lockout, answer and hashing as a hosted one"
   }
 ]
