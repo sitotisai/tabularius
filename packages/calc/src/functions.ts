@@ -1588,7 +1588,7 @@ for (const [name, f] of Object.entries(MBS_XML)) {
 }
 // Dictionaries and plug-in variables (mbs-dict.ts) keep values as they are, for the script session.
 for (const [name, f] of Object.entries(MBS_DICT)) {
-  MBS[name] = (v, env) => withValueText((x) => T(x, env), () => f({ values: v, texts: v.map((x) => T(x, env)) }, env.ctx.pluginSession ?? env.ctx));
+  MBS[name] = (v, env) => withValueText((x) => T(x, env), () => f({ values: v, texts: v.map((x) => T(x, env)) }, env.ctx.pluginSession ?? env.ctx, env));
 }
 // The List functions (mbs-list.ts) work on text.
 for (const [name, f] of Object.entries(MBS_LIST)) {
