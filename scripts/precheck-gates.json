@@ -78,5 +78,9 @@
   {
     "file": "packages/server/test/check-solution-docs.test.ts",
     "reason": "Checks that every kind of check-solution finding and its severity match docs/check-solution.md"
+  },
+  {
+    "file": "packages/store/test/docs-empty-rule.test.ts",
+    "reason": "Checks the documented behaviour of do not evaluate if all referenced fields are empty against the code"
   }
 ]
