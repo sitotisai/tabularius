@@ -779,8 +779,9 @@ export class WebClient {
       .map((o) => ({ ...o, open: o.kind === 'item' && open.has(o.name) }));
     // File Options: the layout the file opens on, and its window script triggers.
     const options = store.schema.fileOptions;
-    // The layout File Options stores for "Switch to layout". Whether the option is ticked isn't
-    // decoded; FileMaker would otherwise reopen the last layout used, which a converted file doesn't know.
+    // The layout File Options stores for "Switch to layout". The inferred tick is read into
+    // switchToLayout, but the stored layout is deliberately used whatever it says until a
+    // FileMaker run confirms the bit. A converted file does not know the last layout used.
     // By id, so a layout renamed in design mode still opens.
     const start = (options?.openLayoutId !== undefined ? store.schema.layouts.find((l) => l.id === options.openLayoutId)?.name : undefined) ?? options?.openLayout;
     return {
