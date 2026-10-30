@@ -31,7 +31,8 @@ test('service install stores an absolute token file path without storing or prin
   const task = readFileSync(join(dir, 'home', 'openhbam-task.xml')).toString('utf16le');
   const record = readFileSync(join(dir, 'home', 'service.json'), 'utf8');
   assert.ok(task.includes(file), 'the service command uses the absolute path');
-  assert.ok(record.includes(file), 'the saved service options use the absolute path');
+  // service.json is JSON, where a Windows path's backslashes are written doubled.
+  assert.ok(record.includes(JSON.stringify(file).slice(1, -1)), 'the saved service options use the absolute path');
   assert.ok(!`${task}\n${record}\n${result.stdout}\n${result.stderr}`.includes(token), 'no token value is stored or printed');
   assert.doesNotMatch(result.stderr, /written into the service file/);
   assert.match(result.stderr, /--mcp-token-file is named by path/);
@@ -58,7 +59,7 @@ test('service install rejects duplicate file options before writing anything', (
 });
 
 test('inline token install summary keeps the existing note and names only inline options', () => {
-  const lines = serviceSummary({ folder: '/srv/data', port: 8080, host: '127.0.0.1', extra: ['--mcp-token', 'inline-word'] }, []);
+  const lines = serviceSummary({ folder: '/srv/data', port: 8080, host: '127.0.0.1', extra: ['--mcp-token', 'inline-word'], platform: 'linux' }, []);
   assert.ok(lines.some((line) => /--mcp-token is written into the service file, which only your account can read/.test(line)));
   assert.ok(lines.every((line) => !line.includes('inline-word')));
 });

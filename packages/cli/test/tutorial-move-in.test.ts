@@ -9,6 +9,9 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+// Git Bash reads C:\a\b as C:ab; it takes C:/a/b.
+const bash = (path: string): string => path.replaceAll('\\', '/');
+
 const root = join(import.meta.dirname, '..', '..', '..');
 const main = join(root, 'packages', 'cli', 'src', 'main.ts');
 const sample = join(root, 'fixtures', 'fmp12', 'Charts.fmp12');
@@ -25,7 +28,7 @@ test('the move-a-file-in tutorial works as written', { skip: (!existsSync(sample
   const work = mkdtempSync(join(tmpdir(), 'tabularius-tutorial-move-'));
   const port = await freePort();
   // The page's own text, with the throwaway home and port in place of the ones it shows.
-  const adapt = (s: string) => s.replaceAll('~/Databases', join(work, 'Databases')).replaceAll('8080', String(port));
+  const adapt = (s: string) => s.replaceAll('~/Databases', bash(join(work, 'Databases'))).replaceAll('8080', String(port));
   const blocks = [...page.matchAll(/^```(\w+)( run)?\n([\s\S]*?)^```$/gm)].map((m) => ({ lang: m[1], run: !!m[2], code: m[3] }));
   const shell: string[] = [];
   let server: ReturnType<typeof spawn> | undefined;
@@ -38,7 +41,7 @@ test('the move-a-file-in tutorial works as written', { skip: (!existsSync(sample
     }
     const at = shell.indexOf('__SERVE__');
     assert.ok(at > 0, 'the page shows how to start the server');
-    const run = (script: string) => spawnSync('bash', ['-ec', `tabularius() { node --no-warnings '${main}' "$@"; }\n${script}`], { cwd: work, encoding: 'utf8', env: { ...process.env, HOME: work } });
+    const run = (script: string) => spawnSync('bash', ['-ec', `tabularius() { node --no-warnings '${bash(main)}' "$@"; }\n${script}`], { cwd: work, encoding: 'utf8', env: { ...process.env, HOME: work } });
 
     const before = run(shell.slice(0, at).join('\n'));
     assert.equal(before.status, 0, before.stdout + before.stderr);
@@ -48,7 +51,7 @@ test('the move-a-file-in tutorial works as written', { skip: (!existsSync(sample
     assert.match(before.stdout, /Invoices: \d+ stored calculations/);
     assert.ok(existsSync(join(work, 'Databases', 'Invoices.openhbam.sqlite')), 'the report converted the copy');
 
-    server = spawn(process.execPath, ['--no-warnings', main, 'serve', join(work, 'Databases'), '--port', String(port)], { stdio: 'ignore' });
+    server = spawn(process.execPath, ['--no-warnings', main, 'serve', bash(join(work, 'Databases')), '--port', String(port)], { stdio: 'ignore' });
     for (const end = Date.now() + 60_000; ; await new Promise((ok) => setTimeout(ok, 200))) {
       if (await fetch(`http://127.0.0.1:${port}/fmi/data/vLatest/databases`).then((r) => r.status < 500, () => false)) break;
       assert.ok(Date.now() < end, 'the server came up');

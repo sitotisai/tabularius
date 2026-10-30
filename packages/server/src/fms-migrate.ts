@@ -279,7 +279,8 @@ function databasesOnDisk(fmsDir: string): FmsDatabase[] {
       if (e.isDirectory()) {
         if (e.name !== 'RC_Data_FMS') walk(join(dir, e.name));
       } else if (extname(e.name).toLowerCase() === '.fmp12') {
-        out.push({ filename: e.name, folder: 'filelinux:' + dir.split(sep).join('/') + '/' });
+        // On Windows a folder is filewin:/C:/..., and a filelinux: path would read as /C:/... there.
+        out.push({ filename: e.name, folder: (process.platform === 'win32' ? 'filewin:/' : 'filelinux:') + dir.split(sep).join('/') + '/' });
       }
     }
   };

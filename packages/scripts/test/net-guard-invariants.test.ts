@@ -7,7 +7,6 @@ import { getEventListeners } from 'node:events';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
 import { gzipSync, deflateSync, brotliCompressSync } from 'node:zlib';
 import { NAME_LOOKUP, OutboundRefused, addressRefusal, classifyAddress, guardedFetch, guardedLookup, hostRefusal, networkProblem, outboundContext, parseAllowList } from '../src/net-guard.ts';
 
@@ -54,7 +53,10 @@ test('refusals, resolver and connection failures do not expose internal addresse
   assert.ok(error instanceof TypeError);
   assert.doesNotMatch(String(error) + String(error.cause) + networkProblem(error), /10\.23\.45\.67|private-name/);
   assert.equal((error.cause as NodeJS.ErrnoException).code, 'EOTHER');
-  const denied = await guardedFetch('http://127.0.0.1:0', {}, PRIVATE).catch((e: unknown) => e);
+  // A port nothing listens on: connecting to port 0 gives a different failure on Windows, which is not what this checks.
+  const gone = await local(t, () => {});
+  await new Promise<void>((resolve) => gone.server.close(() => resolve()));
+  const denied = await guardedFetch(gone.base, {}, PRIVATE).catch((e: unknown) => e);
   assert.ok(denied instanceof TypeError);
   assert.doesNotMatch(String(denied) + String(denied.cause) + networkProblem(denied), /127\.0\.0\.1/);
   const raw = new TypeError('fetch failed', { cause: new Error('unrecognised failure at fd12:3456::7') });
@@ -112,7 +114,7 @@ test('proxy environment variables present at startup never divert a guarded HTTP
   // control request, made with the stock http module, must reach the proxy; otherwise this test could pass without proving anything.
   const seen: string[] = [];
   const proxy = await local(t, (req, res) => { seen.push(req.url ?? ''); res.end('proxy'); });
-  const guard = fileURLToPath(new URL('../src/net-guard.ts', import.meta.url));
+  const guard = new URL('../src/net-guard.ts', import.meta.url).href;
   const script = `
     import { createServer, get } from 'node:http';
     import { guardedFetch } from ${JSON.stringify(guard)};

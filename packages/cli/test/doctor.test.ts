@@ -12,6 +12,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createStore, Store, STORE_FORMAT } from '../../store/src/index.ts';
 import { encryptFileSync } from '../../server/src/encrypt.ts';
 import { filesNewerThan } from '../src/newer-files.ts';
+import { notOnWindows } from '../../store/test/windows.ts';
 import { accountChecks, backupCheck, formatChecks, certificateCheck, diskCheck, doctorText, embedCheck, locationCheck, nodeCheck, runDoctor, storageChecks } from '../src/doctor.ts';
 import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
@@ -42,7 +43,7 @@ test('disk space has a floor and grows with hosted files, backups, WAL and a bac
   assert.match(diskCheck(gb, 2 * gb, 4 * gb).message, /10\.0 GB recommended/);
 });
 
-test('disk sizing reads metadata for hosted files, containers and configured backups', (t) => {
+test('disk sizing reads metadata for hosted files, containers and configured backups', { skip: notOnWindows('a Windows file is not sparse, so the 20 GB sizes here would take 20 GB of disk') }, (t) => {
   const dir = tmp(t);
   const gb = 1024 ** 3;
   const sized = (path: string, size: number) => {

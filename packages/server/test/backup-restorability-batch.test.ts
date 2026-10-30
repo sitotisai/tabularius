@@ -81,8 +81,8 @@ test('AR-server-backup-ops-05: case 4', async (t) => {
   assert.equal(result.error, undefined);
   assert.equal(result.status, 73, result.stderr);
   const journal = JSON.parse(readFileSync(join(live, '.restore-journal.json'), 'utf8'));
-  assert.ok(journal.files.some((entry: { target: string }) => entry.target === file));
-  assert.ok(journal.files.some((entry: { target: string }) => entry.target === 'Files/A'));
+  assert.ok(journal.files.some((entry: { target: string }) => entry.target.replaceAll('\\', '/') === file));
+  assert.ok(journal.files.some((entry: { target: string }) => entry.target.replaceAll('\\', '/') === 'Files/A'));
   recoverRestore(live);
   assert.deepEqual(readFileSync(join(live, file)), before);
   assert.equal(readFileSync(join(live, rel), 'utf8'), 'live');

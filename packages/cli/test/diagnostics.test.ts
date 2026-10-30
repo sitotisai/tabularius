@@ -2,6 +2,7 @@
 // the settings, the environment, the file's own names and records and error text, and none may survive in any file of the
 // bundle. The bundle is also checked to say what it should (ids for files, counts for the design).
 
+import { expectMode } from '../../store/test/windows.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -16,7 +17,8 @@ import { diagnostics, Scrubber, tailLines, writeBundle } from '../src/diagnostic
 
 const main = join(import.meta.dirname, '..', 'src', 'main.ts');
 
-const HOME = '/home/jdoe';
+// A home folder as this system writes one: a path in the other form is resolved to a drive on Windows and is not the one the bundle was told to hide.
+const HOME = process.platform === 'win32' ? 'C:\\Users\\jdoe' : '/home/jdoe';
 const SEEDS = {
   file: 'Acme Payroll',
   table: 'SalaryRecords',
@@ -104,7 +106,7 @@ test('no seeded secret or personal value survives in any file of the bundle', as
   t.after(() => rmSync(s.root, { recursive: true, force: true }));
   const bundle = await diagnostics(s.folder, { home: HOME, userFolder: s.userFolder, env: s.env, now: new Date('2026-10-17T12:00:00Z') });
   const all = everything(bundle);
-  const leaked = Object.entries(SEEDS).filter(([, v]) => v.split('\n').some((part) => part.length > 3 && all.includes(part))).map(([k]) => k);
+  const leaked = Object.entries(SEEDS).filter(([, v]) => v.split('\n').some((part) => part.length > 3 && all.includes(part))).map(([k, v]) => `${k} in ${[...bundle].filter(([, text]) => v.split('\n').some((part) => part.length > 3 && text.includes(part))).map(([name]) => name).join(', ')}`);
   assert.deepEqual(leaked, [], 'seeds that survived');
   for (const extra of ['Jane Q. Doe', '123-45-6789', '987-65-4321', 'Pay everyone', 'smtp.acme.example', 'payroll.acme.example', 'plain-api-key-value', 'cs-value-12345', 'querytoken123', hostname().length >= 3 ? hostname() : 'no-host', s.root]) {
     assert.ok(!all.includes(extra), `${extra} survived`);
@@ -387,7 +389,7 @@ test('a bundle is written readable by its owner only, and --out needs a name', (
   const root = mkdtempSync(join(tmpdir(), 'tabularius-diag-'));
   try {
     const zipPath = writeBundle(new Map([['a.txt', 'x']]), join(root, 'b.zip'));
-    assert.equal(statSync(zipPath).mode & 0o077, 0);
+    expectMode(statSync(zipPath).mode & 0o077, 0);
     const r = spawnSync(process.execPath, ['--no-warnings', main, 'diagnostics', root, '--out', '--full'], { encoding: 'utf8' });
     assert.notEqual(r.status, 0);
     assert.match(r.stderr, /--out needs a file name or folder/);

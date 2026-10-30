@@ -1,6 +1,7 @@
 // Switching from FileMaker Server: its files, schedules, backups and certificate
 // brought into a Tabularius folder in one step.
 import { test } from 'node:test';
+import { expectMode } from '../../store/test/windows.ts';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -128,7 +129,7 @@ test('files, schedules, backups and the certificate come over in one step', { sk
     assert.equal(r.certificate?.done, true, r.certificate?.note);
     assert.match(r.certificate!.subject, /fms\.example\.com/);
     assert.equal(settings.tlsCert, join(dest, 'tls', 'cert.pem'));
-    assert.equal(statSync(settings.tlsKey!).mode & 0o077, 0, 'the key is readable by its owner only');
+    expectMode(statSync(settings.tlsKey!).mode & 0o077, 0, 'the key is readable by its owner only');
     assert.doesNotMatch(readFileSync(settings.tlsKey!, 'utf8'), /ENCRYPTED/);
 
     // It serves HTTPS with that certificate, and runs the imported schedules.

@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore, LOCKOUT, Store } from '../../store/src/index.ts';
 import { backupFolder, serve, type Host } from '../../server/src/index.ts';
+import { pathToFileURL } from 'node:url';
 
 const root = join(import.meta.dirname, '..', '..', '..');
 const main = join(root, 'packages', 'cli', 'src', 'main.ts');
@@ -31,6 +32,9 @@ const section = (name: string): string => {
   assert.ok(text, `docs/runbook.md has no "## ${name}" section`);
   return text;
 };
+
+/** A path as a pattern, where either slash matches either slash (Windows prints both). */
+const inPattern = (path: string): string => path.replace(/[\\/]|[.*+?^${}()|[\]]/g, (c) => (c === '/' || c === '\\' ? '[\\\\/]' : `\\${c}`));
 
 /** The commands and calls the page has run, as written, so the last test can find any that no scenario ran. */
 const ran = new Set<string>();
@@ -536,7 +540,7 @@ test('a file never finishes converting', async () => {
   writeFileSync(arm, `import { armCrashPointForTest } from ${JSON.stringify(new URL('../../store/src/crash-point.ts', import.meta.url).href)};\narmCrashPointForTest('host-conversion:after-convert');\n`);
   const port = await freePort();
   // The server is cut off after the conversion has done its work and before it is published.
-  const first = startStep(where, 'tabularius serve <folder>', { folder }, { execArgv: ['--import', new URL(`file://${arm}`).href], swap: {}, env: { PORT: String(port) } });
+  const first = startStep(where, 'tabularius serve <folder>', { folder }, { execArgv: ['--import', pathToFileURL(arm).href], swap: {}, env: { PORT: String(port) } });
   assert.equal(await first.exited, 73, 'cut off at the chosen point');
   assert.match(first.out(), /converting Charts\.fmp12/);
   assert.doesNotMatch(first.out(), /converted Charts\.fmp12/);
@@ -815,9 +819,9 @@ test('the folder was moved', async () => {
   writeFileSync(join(home, 'service.json'), JSON.stringify({ platform: process.platform, folder: oldFolder, port: await freePort(), host: '127.0.0.1', system: false, extra: [] }));
   renameSync(oldFolder, newFolder);
   const doctor = runStep(where, 'tabularius doctor <new-folder>', { 'new-folder': newFolder }, { env: { TABULARIUS_HOME: home } });
-  assert.match(doctor.stdout, new RegExp(`check\\s+Backups: no backup folder yet \\(${oldFolder.replace(/[/.]/g, '\\$&')}/Backups\\)`));
+  assert.match(doctor.stdout, new RegExp(`check\\s+Backups: no backup folder yet \\(${inPattern(join(oldFolder, 'Backups'))}\\)`));
   sees(where, 'no backup folder yet', doctor.stdout);
-  assert.match(doctor.stdout, new RegExp(`PROBLEM Service: installed for ${oldFolder.replace(/[/.]/g, '\\$&')} but nothing answers on port \\d+`));
+  assert.match(doctor.stdout, new RegExp(`PROBLEM Service: installed for ${inPattern(oldFolder)} but nothing answers on port \\d+`));
   sees(where, 'installed for <old folder> but nothing answers', doctor.stdout.replaceAll(oldFolder, '<old folder>'));
   // The settings file names the old place; the page says to edit it.
   const settings = JSON.parse(readFileSync(join(newFolder, '.openhbam-settings.json'), 'utf8')) as { backupDir: string };
@@ -913,7 +917,9 @@ test('two servers both took writes: the standby refuses a folder with its own fi
   await until('the standby to start', () => standby.out().includes(`standby of ${primary} in ${folder}`));
   await stopChild(standby.child);
   const code = await standby.exited;
-  assert.equal(code, 0, `the standby ended with ${standby.child.signalCode ?? `code ${code}`}: ${standby.out()}`);
+  // Windows ends a process that is sent SIGINT at once, so there is no clean exit to see there.
+  if (process.platform === 'win32') assert.equal(standby.child.signalCode, 'SIGINT');
+  else assert.equal(code, 0, `the standby ended with ${standby.child.signalCode ?? `code ${code}`}: ${standby.out()}`);
 });
 
 // --- the page and the tests agree ------------------------------------------------------------------------------

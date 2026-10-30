@@ -885,7 +885,9 @@ test('a primary killed without warning: its acknowledged edits are all there whe
     await until(() => !!standby!.state.files[DB], 'the first copy');
     child.stdin.write('go\n');
     await until(() => out.includes('ABOUT TO DIE'), 'the child to finish its edits');
-    assert.equal(await exited, 'SIGKILL');
+    // Windows ends a killed process outright and reports no signal; the recovery below is the same.
+    const how = await exited;
+    if (process.platform !== 'win32') assert.equal(how, 'SIGKILL');
     await standby.stop();
     // The standby is a state the primary committed: five edits or all twelve, never in between.
     const seen = (p: string) => { const c = join(root, `seen-${Math.random()}.sqlite`); copyFileSync(p, c); try { return fileDigest(c, []); } finally { rmSync(c, { force: true }); } };

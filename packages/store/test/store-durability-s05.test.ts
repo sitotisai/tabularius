@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { createRequire, syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { claimFolder } from '../../server/src/backup.ts';
 import { createStore, designText, exitBundle, Store, writeDesignText } from '../src/index.ts';
@@ -63,7 +63,7 @@ test('startup sweep removes orphan atomicWrite temps and keeps a live owner', ()
     assert.ok(existsSync(live));
     fs.writeFileSync = ((file: Parameters<typeof fs.writeFileSync>[0], data: Parameters<typeof fs.writeFileSync>[1]) => {
       if (typeof file === 'number') {
-        const staged = readdirSync(dir).find((name) => name.endsWith('.tmp') && name !== live.split('/').at(-1));
+        const staged = readdirSync(dir).find((name) => name.endsWith('.tmp') && name !== basename(live));
         assert.ok(staged?.startsWith(`.journal.${process.pid}.`), staged);
         utimesSync(join(dir, staged!), old, old);
         assert.deepEqual(sweepStateTempsSync(dir), []);

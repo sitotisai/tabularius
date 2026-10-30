@@ -9,6 +9,7 @@ import { isAbsolute, join, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createStore, discardExitBundle, exitBundle, ExitBundleError, Store, totpCode } from '../src/index.ts';
 import { commandStubEnv } from '../../../scripts/test-command-stubs.ts';
+import { expectMode } from './windows.ts';
 
 const PASSWORD = ['correct', 'horse', 'battery', 'staple'].join(' ');
 const ROWS = 10_500;
@@ -71,7 +72,7 @@ test('a crash after the first committed batch leaves only the stage, and a resum
   assert.equal(existsSync(target), false);
   assert.equal(existsSync(`${target}.partial`), true);
   assert.equal(existsSync(`${target}.lock`), false);
-  assert.equal(statSync(`${target}.partial`).mode & 0o777, 0o700);
+  expectMode(statSync(`${target}.partial`).mode & 0o777, 0o700);
   // A record created after the snapshot does not appear in the resumed copy.
   const sql = (store as unknown as { sql: DatabaseSync }).sql;
   sql.prepare("INSERT INTO Customers (Name) VALUES ('Added after the crash')").run();
@@ -125,7 +126,7 @@ test('a crash after the first committed batch leaves only the stage, and a resum
     const all = files(target);
     assert.deepEqual(all.filter((f) => /pending|\.source|stage\.json|\.work/.test(f)), []);
     assert.deepEqual(all.filter((f) => f !== 'manifest.json' && !(f in manifest.files)), []);
-    for (const f of all) assert.equal(statSync(join(target, f)).mode & 0o077, 0, f);
+    for (const f of all) expectMode(statSync(join(target, f)).mode & 0o077, 0, f);
     // No secrets in the design or the schema.
     const design = all.filter((f) => f.startsWith('design/')).map((f) => readFileSync(join(target, f), 'utf8')).join('\n');
     assert.match(design, /Admin/);
@@ -467,10 +468,12 @@ test('discard removes the stage, audits it, and refuses a missing stage, a symli
 
   mkdirSync(`${target}.partial`, { mode: 0o700 });
   chmodSync(`${target}.partial`, 0o755);
-  await assert.rejects(discardExitBundle(store, target, asAdmin()), (e: ExitBundleError) => e.status === 409 && /other users/.test(e.message));
+  // Windows has no mode bits to widen, so there is no stage other users can open to refuse.
+  if (process.platform !== 'win32') await assert.rejects(discardExitBundle(store, target, asAdmin()), (e: ExitBundleError) => e.status === 409 && /other users/.test(e.message));
   chmodSync(`${target}.partial`, 0o700);
-  let chowned = true;
-  try { chownSync(`${target}.partial`, 12345, 12345); } catch { chowned = false; }
+  // Windows has no owners to change: chown there does nothing and fails nothing.
+  let chowned = process.platform !== 'win32';
+  if (chowned) try { chownSync(`${target}.partial`, 12345, 12345); } catch { chowned = false; }
   if (chowned) await assert.rejects(discardExitBundle(store, target, asAdmin()), (e: ExitBundleError) => e.status === 409 && /another user/.test(e.message));
   if (chowned) chownSync(`${target}.partial`, process.getuid!(), process.getgid!());
   rmSync(`${target}.partial`, { recursive: true, force: true });

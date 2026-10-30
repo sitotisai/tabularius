@@ -10,7 +10,7 @@ type Budget = { generatedFrom: string; assets: Record<string, { raw: number; gzi
 
 function asset(path: string): Asset {
   const bytes = readFileSync(path);
-  return { path: path.slice(root.length + 1), raw: bytes.byteLength, gzip: gzipSync(bytes, { level: 9 }).byteLength };
+  return { path: path.slice(root.length + 1).replaceAll('\\', '/'), raw: bytes.byteLength, gzip: gzipSync(bytes, { level: 9 }).byteLength };
 }
 
 function imports(path: string): string[] {

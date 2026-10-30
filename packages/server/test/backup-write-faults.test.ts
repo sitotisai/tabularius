@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
+import { notOnWindows } from '../../store/test/windows.ts';
 import { createStore } from '../../store/src/index.ts';
 import { backupFolder, backupSets, claimFolder, restoreBackup, sweepCrashLeftovers } from '../src/backup.ts';
 import { verifyExternal } from '../src/backup-external.ts';
@@ -61,7 +62,7 @@ for (const fault of ['ENOSPC', 'truncated', 'corrupted', 'writer'] as const) {
     const previous = await backupFolder(live, backups, 1, '');
     fs.writeFileSync(source, 'changed container, requiring a new copy');
     atWriteClose(t, (to) => {
-      if (!to.includes('.partial') || !to.endsWith('Files/A/data')) return;
+      if (!to.includes('.partial') || !to.replaceAll('\\', '/').endsWith('Files/A/data')) return;
       if (fault === 'writer') {
         const child = spawnSync(process.execPath, ['--input-type=module', '--eval', `
           import { writeFileSync } from 'node:fs';
@@ -74,7 +75,7 @@ for (const fault of ['ENOSPC', 'truncated', 'corrupted', 'writer'] as const) {
       if (fault === 'ENOSPC') throw Object.assign(new Error(`ENOSPC: no space left on device, copy '${to}'`), { code: 'ENOSPC' });
     });
     await assert.rejects(backupFolder(live, backups, 1, ''), /ENOSPC|changed|checksum|copy/i);
-    assert.deepEqual(backupSets(backups), [previous.dir.split('/').at(-1)]);
+    assert.deepEqual(backupSets(backups), [basename(previous.dir)]);
     assert.equal(fs.readFileSync(join(previous.dir, 'Files/A/data'), 'utf8'), 'original container');
     assert.ok(!fs.readdirSync(backups).some((n) => n.endsWith('.partial')));
     assert.equal(fs.readFileSync(source, 'utf8'), fault === 'writer' ? 'concurrent writer' : 'changed container, requiring a new copy');
@@ -203,7 +204,7 @@ for (const operation of ['backup', 'restore']) {
       fs.closeSync = (fd) => {
         const path = paths.get(fd);
         paths.delete(fd);
-        if (path && !inside && (${JSON.stringify(operation)} === 'backup' ? path.includes('.partial') && path.endsWith('Files/A/data') : path.endsWith('.sqlite.restoring'))) {
+        if (path && !inside && (${JSON.stringify(operation)} === 'backup' ? path.includes('.partial') && path.replaceAll('\\\\', '/').endsWith('Files/A/data') : path.endsWith('.sqlite.restoring'))) {
           inside = true;
           fs.truncateSync(path, 4);
           process.exit(73);
@@ -218,7 +219,7 @@ for (const operation of ['backup', 'restore']) {
     claimFolder(live)();
     assert.deepEqual(fs.readFileSync(db), before);
     assert.equal(fs.readFileSync(source, 'utf8'), 'new live data, needing a fresh copy');
-    assert.deepEqual(backupSets(backups), [previous.dir.split('/').at(-1)]);
+    assert.deepEqual(backupSets(backups), [basename(previous.dir)]);
     assert.equal(fs.readFileSync(join(previous.dir, 'Files/A/data'), 'utf8'), 'original container');
     sweepCrashLeftovers(live, backups, Date.now() + 2 * 86_400_000);
     if (operation === 'backup') await backupFolder(live, backups, 1, '');
@@ -229,7 +230,7 @@ for (const operation of ['backup', 'restore']) {
   });
 }
 
-test('a directory fsync failure after the committed journal rename reports a committed restore', (t) => {
+test('a directory fsync failure after the committed journal rename reports a committed restore', { skip: notOnWindows('a folder cannot be opened and synced, so there is no directory sync to fail') }, (t) => {
   const { live } = setup(t);
   const child = spawnSync(process.execPath, ['--no-warnings', '--input-type=module', '--eval', `
     import assert from 'node:assert/strict';
