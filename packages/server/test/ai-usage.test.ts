@@ -8,6 +8,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, st
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AiUsage, MemoryUsage } from '../src/ai-usage.ts';
+import { withFilesystemHook } from '../../store/src/fs-boundary.ts';
 import { Assistant } from '../src/assistant.ts';
 import { serve } from '../src/index.ts';
 import type { Host } from '../src/host.ts';
@@ -54,6 +55,22 @@ function worker(dir: string, n: number, times: number): Promise<void> {
     p.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`worker ${n} failed: ${err}`))));
   });
 }
+
+test('a worker that finds the usage database missing while another makes it carries on', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-usage-race-'));
+  try {
+    const file = join(dir, '.openhbam-ai-usage.sqlite');
+    let made = 0;
+    // The other worker's file appears between this one's two looks at the name.
+    withFilesystemHook((event) => {
+      if (event.operation === 'open' && event.phase === 'checked' && event.path === file && !made++) writeFileSync(file, '', { mode: 0o600 });
+    }, () => new AiUsage(dir).close());
+    assert.equal(made >= 1, true, 'the race happened');
+    assert.equal(lstatSync(file).isFile(), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test('several worker processes adding at once add up exactly', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-ai-usage-'));
