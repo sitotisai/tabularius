@@ -283,7 +283,7 @@ function fromJson(v: unknown, p: Prop): string | number {
 // --- $filter -------------------------------------------------------------------
 
 type Kind = 'string' | 'number' | 'date' | 'time' | 'timestamp' | 'bool' | 'null';
-interface Expr { sql: string; params: SqlValue[]; kind: Kind; decimal?: boolean; uuid?: boolean; rawNumber?: string }
+interface Expr { sql: string; params: SqlValue[]; kind: Kind; decimal?: boolean; uuid?: boolean; rawNumber?: string; numColumn?: boolean }
 
 const KIND: Record<string, Kind> = { text: 'string', number: 'number', date: 'date', time: 'time', timestamp: 'timestamp', boolean: 'bool', integer: 'number', decimal: 'number', json: 'string', uuid: 'string' };
 
@@ -439,12 +439,14 @@ export function filterSql(text: string, props: Prop[], lambda?: Lambda, computed
     return a;
   };
   const ARITH: Record<string, string> = { add: '+', sub: '-', mul: '*', div: '/', mod: 'mod' };
+  // A number field that is empty counts as 0 in arithmetic (as in a calculation), though a comparison leaves it out.
+  const operand = (e: Expr) => (e.numColumn ? `COALESCE(${e.sql}, 0)` : e.sql);
   const additive = (): Expr => {
     let a = multiplicative();
     while (is('add') || is('sub')) {
       const op = ARITH[next().toLowerCase()];
       const b = multiplicative();
-      a = { sql: `(${a.sql} ${op} ${b.sql})`, params: [...a.params, ...b.params], kind: 'number' };
+      a = { sql: `(${operand(a)} ${op} ${operand(b)})`, params: [...a.params, ...b.params], kind: 'number' };
     }
     return a;
   };
@@ -453,7 +455,7 @@ export function filterSql(text: string, props: Prop[], lambda?: Lambda, computed
     while (is('mul') || is('div') || is('mod')) {
       const op = ARITH[next().toLowerCase()];
       const b = unary();
-      a = { sql: op === '/' ? `(CAST(${a.sql} AS REAL) / ${b.sql})` : op === 'mod' ? `fm_odata_mod(${a.sql}, ${b.sql})` : `(${a.sql} ${op} ${b.sql})`, params: [...a.params, ...b.params], kind: 'number' };
+      a = { sql: op === '/' ? `(CAST(${operand(a)} AS REAL) / ${operand(b)})` : op === 'mod' ? `fm_odata_mod(${operand(a)}, ${operand(b)})` : `(${operand(a)} ${op} ${operand(b)})`, params: [...a.params, ...b.params], kind: 'number' };
     }
     return a;
   };
@@ -612,7 +614,7 @@ export function filterSql(text: string, props: Prop[], lambda?: Lambda, computed
     fields.add(p.field);
     const kind = KIND[p.type] ?? 'string';
     const column = q(p.field);
-    return { sql: kind === 'number' && p.type !== 'decimal' ? `fm_odata_number(${column})` : kind === 'date' ? `fm_odata_date(${column})` : column, params: [], kind, ...(p.type === 'decimal' ? { decimal: true } : {}), ...(p.type === 'uuid' ? { uuid: true } : {}) };
+    return { sql: kind === 'number' && p.type !== 'decimal' ? `fm_odata_number(${column})` : kind === 'date' ? `fm_odata_date(${column})` : column, params: [], kind, ...(kind === 'number' && p.type !== 'decimal' ? { numColumn: true } : {}), ...(p.type === 'decimal' ? { decimal: true } : {}), ...(p.type === 'uuid' ? { uuid: true } : {}) };
   };
 
   if (!tokens.length) throw bad('$filter is empty');
@@ -658,8 +660,9 @@ function computedProps(text: string | null, set: EntitySet): Computed[] {
 
 /** A computed value as JSON: what SQLite gave, as the expression's kind says. */
 function computedJson(v: unknown, kind: Kind): unknown {
+  // A yes/no is true or false: a comparison with an empty or non-numeric value is false, not unknown.
+  if (kind === 'bool') return v !== null && v !== undefined && Number(v) !== 0;
   if (v === null || v === undefined) return null;
-  if (kind === 'bool') return Number(v) !== 0;
   if (kind === 'number') return typeof v === 'bigint' ? Number(v) : v;
   if ((kind === 'date' || kind === 'time' || kind === 'timestamp') && v === '') return null;
   if (kind === 'timestamp' && typeof v === 'string' && !/(Z|[+-]\d{2}:\d{2})$/.test(v)) return `${v}Z`;
