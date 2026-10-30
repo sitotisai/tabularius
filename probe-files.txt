@@ -1,0 +1,2 @@
+raw:packages/server/test/edge-cluster.test.ts
+raw:packages/server/test/loadtest.test.ts
