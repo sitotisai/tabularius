@@ -321,7 +321,7 @@ export class Host {
 
   /** What a script is told, and the server log says once in a while, when its file's network access is off: where to turn it on. */
   private networkOffNotice(file: string): string {
-    const message = `Network access is off for "${file}". Turn it on in the admin console (Files, "Script network", Turn on), or start the server with --allow-script-network to allow it for every file.`;
+    const message = `Network access is off for "${file}", so Insert from URL, Send Mail and plug-in web calls do not work in it yet. An administrator turns it on from the Files page of the admin console (Script network, Turn on), or the server can be started with --allow-script-network to allow it for every file.`;
     const last = this.networkRefused.get(file.toLowerCase());
     const now = Date.now();
     if (last === undefined || now - last > 10 * 60_000) {

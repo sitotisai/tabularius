@@ -65,7 +65,7 @@ export interface Hosted {
  * (the originals are never touched), and `stores` are empty databases made
  * without any .fmp12, for the test to build with Store.applyDesign.
  */
-export async function host(opts: { fixtures?: string[]; stores?: string[]; /** Keep the public list of files off, as a server started without --list-files-publicly does; the harness lists them by default so a test can pick one. */ listFilesOff?: boolean; appConnections?: boolean; /** Leave each file's Script network switch off, as a new file has it (the banner then shows); otherwise it is on, so a screen under test is the same with or without the banner. */ scriptNetworkOff?: boolean; /** The assistant, answering from a stand-in for the model's API (never the real one). */ ai?: NonNullable<Parameters<typeof serve>[0]['ai']> }): Promise<Hosted> {
+export async function host(opts: { fixtures?: string[]; stores?: string[]; /** Keep the public list of files off, as a server started without --list-files-publicly does; the harness lists them by default so a test can pick one. */ listFilesOff?: boolean; appConnections?: boolean; /** Leave the server-wide flag off, so a test can turn a file's own Script network switch off as a converted file has it (the banner then shows); otherwise it is on, so a screen under test is the same with or without the banner. */ scriptNetworkOff?: boolean; /** The assistant, answering from a stand-in for the model's API (never the real one). */ ai?: NonNullable<Parameters<typeof serve>[0]['ai']> }): Promise<Hosted> {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-e2e-'));
   for (const f of opts.fixtures ?? []) copyFileSync(join(FIXTURES, f), join(dir, f));
   for (const s of opts.stores ?? []) createStore(join(dir, s + STORE_EXT));

@@ -602,6 +602,7 @@ export class Schedules {
         if (held) throw new ScheduleError(held);
         const store = this.host.get(s.database);
         if (!store) throw new ScheduleError(`"${s.database}" is not hosted`);
+        if (store.held) throw new ScheduleError(`"${s.database}" is held (${store.held.reason}): its scripts are not scheduled until an administrator approves it`);
         if (s.sync) {
           run = await this.runSync(s, started, elapsed, manual);
         } else {

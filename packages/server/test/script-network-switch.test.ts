@@ -11,7 +11,7 @@ import { itemNetwork } from '../src/item-network.ts';
 
 const admin = { 'x-tabularius-admin': '1', 'content-type': 'application/json' };
 
-test('a file starts with script network access off; the console turns it on and off, and the file keeps it', async () => {
+test('a converted file starts with script network access off; the console turns it on and off, and the file keeps it', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'script-network-'));
   const answers = createServer((_req, res) => res.end('hi'));
   await new Promise<void>((r) => answers.listen(0, '127.0.0.1', r));
@@ -29,12 +29,15 @@ test('a file starts with script network access off; the console turns it on and 
       return { status: r.status, body: await r.json() };
     };
 
+    // A converted file starts off (the converter saves it); one with no saved setting is on.
+    assert.equal(store.scriptNetwork, true);
+    store.setScriptNetwork(false);
     // Off to begin with: error 3, and the message and the server log say how to turn it on.
     assert.equal(store.scriptNetwork, false);
     assert.deepEqual((await status()).body, { on: false, serverWide: false });
     const refused = await fetchIt();
     assert.equal(refused.result, '3|');
-    assert.match(JSON.stringify(refused.trace), /Turn it on in the admin console \(Files, \\"Script network\\", Turn on\), or start the server with --allow-script-network/);
+    assert.match(JSON.stringify(refused.trace), /An administrator turns it on from the Files page of the admin console \(Script network, Turn on\), or the server can be started with --allow-script-network/);
     await host.logs!.flush();
     const logged = (await host.logs!.read('ScriptEvent')).entries.map((e) => e.message);
     assert.ok(logged.some((m) => m.includes('refused network access') && m.includes('--allow-script-network')), logged.join('\n'));
@@ -60,7 +63,7 @@ test('a file starts with script network access off; the console turns it on and 
     // Turned off again.
     assert.deepEqual((await status({ on: false })).body, { on: false, serverWide: false });
     assert.equal((await fetchIt()).result, '3|');
-    assert.equal(store.securityEvents({ kind: 'script-network-off' }).length, 1);
+    assert.equal(store.securityEvents({ kind: 'script-network-off' }).filter((e) => e.account === 'admin console').length, 1);
   } finally {
     await new Promise<void>((r) => hosted.server.close(() => r()));
     await new Promise<void>((r) => answers.close(() => r()));
@@ -76,6 +79,7 @@ test('a script cannot borrow the network of a file whose access is off, and the 
   try {
     const { host } = hosted;
     host.get('Open')!.setScriptNetwork(true);
+    host.get('Closed')!.setScriptNetwork(false);
     const opts = host.scriptOptions('Open');
     assert.equal(opts.network, true);
     assert.equal(opts.networkFiles('Open'), true);

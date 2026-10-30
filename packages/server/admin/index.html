@@ -414,6 +414,7 @@
   </section>
   <section id="files">
     <h2>Hosted files <span class="count" id="dbs-count"></span> <span class="spacer"></span><button id="reconvert-all" hidden>Convert all again…</button></h2>
+    <p class="note" id="held-note" hidden></p>
     <p class="note" id="script-network-note" hidden></p>
     <div id="dbs"></div>
     <p class="note" id="web-hosts-note" hidden></p>
@@ -1962,8 +1963,11 @@ async function refresh() {
 
   $('dbs-count').textContent = s.databases.length;
   const networkOff = s.databases.filter((d) => d.scriptNetwork && !d.scriptNetwork.on).map((d) => d.name);
+  const held = s.databases.filter((d) => d.held).map((d) => d.name);
+  $('held-note').hidden = !held.length;
+  $('held-note').textContent = held.length ? `${held.join(', ')} ${held.length === 1 ? 'is' : 'are'} held: ${held.length === 1 ? 'it' : 'they'} arrived in the hosted folder or replaced an approved file, so ${held.length === 1 ? 'its' : 'their'} scripts, schedules, automations, digests, hooks and connections do not run. People can still read the data. Approve a file below once you know it is yours.` : '';
   $('script-network-note').hidden = !networkOff.length;
-  $('script-network-note').textContent = networkOff.length ? `Scripts can't reach the network yet${s.databases.length > 1 ? ` in ${networkOff.join(', ')}` : ''}. Turn on Script network in the table below when this copy is the live one. Until then Insert from URL and the other web calls give error 3.` : '';
+  $('script-network-note').textContent = networkOff.length ? `Scripts can't reach the network yet${s.databases.length > 1 ? ` in ${networkOff.join(', ')}` : ''}. Insert from URL, Send Mail and web calls from plug-ins give error 3 until you press Turn on in the Script network column below.` : '';
   const noWebHosts = s.databases.filter((d) => !d.webViewerHosts?.length).map((d) => d.name);
   $('web-hosts-note').hidden = !noWebHosts.length;
   $('web-hosts-note').textContent = noWebHosts.length ? `Web viewers show only their own content${s.databases.length > 1 ? ` in ${noWebHosts.join(', ')}` : ''}. List the web hosts a file's web viewers may load below; until then an address on the web shows as text.` : '';
@@ -1973,7 +1977,7 @@ async function refresh() {
   ], ''));
   $('reconvert-all').hidden = s.databases.filter((d) => d.reconvert).length < 2;
   render($('dbs'), table(s.databases, [
-    { label: 'File', get: (d) => d.name },
+    { label: 'File', wrap: true, html: (d) => !d.held ? esc(d.name) : `${esc(d.name)} <span class="bad" title="${esc(d.held.reason)}">Held</span> <button data-approve-file="${esc(d.name)}" aria-label="Approve ${esc(d.name)}" title="Let this file's scripts, schedules, automations, digests, hooks and connections run">Approve</button>` },
     { label: 'Size', get: (d) => bytes(d.bytes), num: true },
     { label: 'Tables', get: (d) => d.tables, num: true },
     { label: 'Layouts', get: (d) => d.layouts, num: true },
@@ -2256,6 +2260,12 @@ document.addEventListener('click', async (e) => {
         refresh();
       }
     }
+  }
+  const approveFile = e.target.closest('[data-approve-file]');
+  if (approveFile && confirm(`Approve ${approveFile.dataset.approveFile}? Its scripts, schedules, automations, digests, hooks and connections will start to run. Approve only a file you put in the hosted folder yourself.`)) {
+    approveFile.disabled = true;
+    await call('POST', `/tabularius/admin/v1/files/${encodeURIComponent(approveFile.dataset.approveFile)}/approve`, {}).catch((err) => say(plainMessage(err)));
+    refresh();
   }
   const network = e.target.closest('[data-script-network]');
   if (network) {

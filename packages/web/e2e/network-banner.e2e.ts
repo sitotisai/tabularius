@@ -1,4 +1,4 @@
-// The web client says scripts can't reach the network while a file's Script network switch is off (a new file has it
+// The web client says scripts can't reach the network while a file's Script network switch is off (a converted file has it
 // off), above everything but the skip link, and stops saying so when an administrator turns it on, on a small database
 // built here with no .fmp12.
 import { test, before, after } from 'node:test';
@@ -15,6 +15,7 @@ before(async () => {
   if (skip) return;
   hosted = await host({ stores: ['Shop'], scriptNetworkOff: true });
   const store = hosted.store('Shop');
+  store.setScriptNetwork(false, { account: 'test' });
   store.applyDesign([{ op: 'createTable', name: 'Customers', fields: [{ name: 'Name' }] }] as DesignOp[]);
   store.setPassword('Ann', 'ann-secret-1', '[Full Access]');
   browser = await launch();

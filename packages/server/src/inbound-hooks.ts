@@ -387,6 +387,7 @@ export class InboundHooks {
     };
     const store = this.host.get(hook.database);
     if (!store) return done(503, { outcome: 'error', message: `${hook.database} is not open` }, { error: 'The file is not available' });
+    if (store.held) return done(403, { outcome: 'refused', message: `${store.name} is held (${store.held.reason}): its inbound hooks do not run until an administrator approves it` }, { error: 'Refused' });
     const opts = this.host.scriptOptions(store.name);
     if (captureOnly(store.name, opts.outbound?.captureOnly)) return done(403, { outcome: 'refused', message: 'a capture-only file never runs inbound hooks' }, { error: 'Refused' });
     try {

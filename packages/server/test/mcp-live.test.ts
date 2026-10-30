@@ -44,6 +44,8 @@ before(async () => {
     if (!/now hosting Charts/.test(log) || !/now hosting Archive/.test(log)) return undefined;
     return /Web client: (http:\/\/127\.0\.0\.1:\d+)\/app\//.exec(log)?.[1];
   });
+  // Files converted from the folder are held until approved, as they would be for a person who presses Approve.
+  for (const name of ['Charts', 'Archive']) assert.equal((await fetch(`${base}/tabularius/admin/v1/files/${name}/approve`, { method: 'POST', headers: { 'x-tabularius-admin': '1' } })).status, 200);
   // Turned off from the command line while the server runs, as an administrator would.
   const off = spawnSync(process.execPath, ['--no-warnings', main, 'ai', dir, 'Archive', 'off'], { encoding: 'utf8' });
   assert.equal(off.status, 0, off.stderr);

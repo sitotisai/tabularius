@@ -1507,10 +1507,13 @@ export class ScriptEngine {
   constructor(opts: RunOptions = {}) {
     this.maxRecordOps = wholeNumber('TABULARIUS_SCRIPT_MAX_RECORD_OPS') ?? 50_000_000;
     this.initiatingPrivileges = opts.privileges;
-    this.opts = opts.beforeFile ? { ...opts, beforeFile: (file) => {
+    // A file the host holds (not yet approved by an administrator) runs no script, whoever started it and from wherever.
+    this.opts = { ...opts, beforeFile: (file) => {
+      if (file.held) throw new ScriptError(ERROR.cannotOpenFile, `"${file.name}" is held (${file.held.reason}): its scripts do not run until an administrator approves it`);
+      if (!opts.beforeFile) return;
       this.enforceExecution(file, () => opts.beforeFile!(file));
       this.pdfFiles?.add(file);
-    } } : opts;
+    } };
     if (opts.stop) this.stopSignal = opts.stop;
     opts.userStop?.addEventListener('stop', this.onUserStop);
     this.session = opts.session ?? new ScriptSession();

@@ -14,6 +14,7 @@ import { Dashboards } from '../src/dashboards.ts';
 import { DigestRunner, Digests, describeSchedule, lastSlot, nextSlot, highlights } from '../src/digests.ts';
 import { Webhooks } from '../src/changes.ts';
 import type { ChangeFeed } from '../src/changes.ts';
+import { approveAll } from './approve-all.ts';
 
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
 const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtures';
@@ -49,6 +50,7 @@ before(async () => {
   dir = mkdtempSync(join(tmpdir(), 'tabularius-digests-'));
   copyFileSync(fixture, join(dir, 'Charts.fmp12'));
   const s = await serve({ dir, port: 0, log: () => {}, ai: { apiKey: 'test-key', baseUrl: `http://127.0.0.1:${(model.address() as { port: number }).port}` } });
+  approveAll(s.host);
   server = s.server;
   base = s.url;
   host = s.host;
