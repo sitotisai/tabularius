@@ -223,7 +223,9 @@ test('after an upgrade, the older server\'s count shows before anyone asks: read
     const day = new Date().toISOString().slice(0, 10);
     writeFileSync(join(dir, '.openhbam-ai-usage.json'), JSON.stringify({ day, tokens: 25_098, accounts: {}, month: { month: day.slice(0, 7), tokens: 25_098, costUsd: 0.2, questions: 4 } }));
     // Reading alone, as the console does.
-    assert.equal(new Assistant({ dir } as Host, undefined as never, { apiKey: 'x' }).usageReport().today.tokens, 25_098);
+    const reader = new Assistant({ dir } as Host, undefined as never, { apiKey: 'x' });
+    assert.equal(reader.usageReport().today.tokens, 25_098);
+    reader.close(); // the file is deleted next, which a system that cannot delete an open file refuses
     for (const f of ['', '-wal', '-shm']) rmSync(join(dir, `.openhbam-ai-usage.sqlite${f}`), { force: true });
     // Serving with AI on reads it in at startup; with AI off, nothing is made.
     const off = await serve({ dir, port: 0, log: () => {} });
