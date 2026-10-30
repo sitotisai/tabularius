@@ -62,7 +62,7 @@ test('$filter becomes a parameterized condition on stored fields', () => {
   ];
   const f = filterSql("Name eq 'x'' or 1=1 --' and (Age ge 18 or Age eq null)", props);
   assert.deepEqual(f.params, ["x' or 1=1 --", 18]);
-  assert.match(f.where, /"Name"\) IS \(\?\)/);
+  assert.match(f.where, /"Name"\) = \(\?\)/);
   assert.deepEqual(f.fields.sort(), ['Age', 'Name']);
   assert.deepEqual(filterSql("contains(tolower(Name),'an') and not startswith(Name,'Z')", props).params, ['an', 'Z']);
   assert.throws(() => filterSql('Total gt 5', props), /not stored/);
