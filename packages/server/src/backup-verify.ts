@@ -188,8 +188,13 @@ export function restoreTestDue(dest: string, every = RESTORE_TEST_EVERY_MS, now 
 export async function integrityAsync(path: string, quick = false): Promise<string> {
   // A server started with node --input-type=module -e (a test, a script) passes that flag on, and a thread given a file refuses it.
   const execArgv = process.execArgv.filter((a) => !a.startsWith('--input-type'));
-  const worker = new Worker(new URL('./integrity-worker.ts', import.meta.url), { workerData: { path, quick, backup: true }, execArgv });
-  return workerResult(worker, (value) => typeof value === 'string' ? value : undefined, new AbortController().signal);
+  try {
+    const worker = new Worker(new URL('./integrity-worker.ts', import.meta.url), { workerData: { path, quick, backup: true }, execArgv });
+    return await workerResult(worker, (value) => typeof value === 'string' ? value : undefined, new AbortController().signal);
+  } catch {
+    // A thread that cannot start or stops early (a loaded host, a thread limit) says nothing about the file: check it here, blocking, as before.
+    return integrity(path, quick);
+  }
 }
 
 /** Checks every file's copy in a backup set and records the outcome in it. */
