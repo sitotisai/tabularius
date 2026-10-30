@@ -125,7 +125,7 @@ function piiToolRefusal(tool: string, isolated: Store[]): string | undefined {
  * account already signed in to one file (the web client's AI assistant), or
  * the server administrator.
  */
-export type McpIdentity = { account: string; password: string; /** Client address, for sign-in lockout. */ from?: string; otp?: string } | { account: string; database: string; /** Client address, for Re-Login's local-only rule. */ from?: string; /** External account the session signed in through. */ via?: string; /** A scoped API token's limits (read-only, layouts). */ scope?: TokenScope } | { admin: true };
+export type McpIdentity = { account: string; password: string; /** Client address, for sign-in lockout. */ from?: string; otp?: string } | { account: string; database: string; /** Client address, for Re-Login's local-only rule. */ from?: string; /** External account the session signed in through. */ via?: string; /** What the identity provider or directory vouched for at that sign-in, for another hosted file to map the person itself. */ person?: string; groups?: string[]; /** A scoped API token's limits (read-only, layouts). */ scope?: TokenScope } | { admin: true };
 
 // Verified passwords, so each tool call does not pay for a password hash.
 const verified = new Map<string, number>();
@@ -367,7 +367,7 @@ function privilegesIn(store: Store, who: McpIdentity, via = 'MCP'): Privileges |
   if ('database' in who) {
     if (store.name.toLowerCase() !== who.database.toLowerCase()) throw new StoreError(9, `Insufficient privileges: this session is signed in to ${who.database} only`);
     store.requireActiveAccount(who.via ?? who.account);
-    const p = store.privileges(who.account, who.via);
+    const p = store.privileges(who.account, who.via, who.person, who.groups);
     if (!p.has('fmmcp')) throw new StoreError(9, `Insufficient privileges: the "${p.name}" privilege set needs the fmmcp extended privilege (AI access) in ${store.name}`, p.extendedDenial(['fmmcp']));
     refuse();
     store.recordUsage(who.account, 'mcp');
@@ -1059,7 +1059,7 @@ export function createMcpServer(host: Host, who: McpIdentity = { admin: true }, 
       designAccess(store, p);
       if (p) p.checkScript(script);
       return json(await explainScriptFailure(store, { script, ...(layout ? { layout } : {}), ...(recordId !== undefined ? { recordId } : {}), ...(parameter !== undefined ? { parameter } : {}) },
-        { account: p?.account ?? 'AI', ...('via' in who ? { via: who.via } : {}), ...(p ? { privileges: p } : {}), ...('scope' in who ? { scope: who.scope } : {}) }));
+        { account: p?.account ?? 'AI', ...('via' in who ? { via: who.via, person: who.person, groups: who.groups } : {}), ...(p ? { privileges: p } : {}), ...('scope' in who ? { scope: who.scope } : {}) }));
     } catch (e) {
       return failError(e);
     }
