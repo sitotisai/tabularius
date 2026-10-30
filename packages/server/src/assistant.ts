@@ -35,7 +35,7 @@ import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { PrivilegeError, StoreError, lintScript, parseScriptText, type FindRequest, type Privileges, type ScriptLintIssue, type SortSpec, type Store } from '../../store/src/index.ts';
-import { ApiError, badPathError, lenient, readJson, sessionPrivileges, type DataApi } from './dataapi.ts';
+import { ApiError, badPathError, externalIdentity, lenient, readJson, sessionPrivileges, type DataApi, type ExternalIdentity } from './dataapi.ts';
 import { ConnectionError } from './connections.ts';
 import { TRANSFORMS, type MapperInput } from './import-mapping.ts';
 import { createMcpServer } from './mcp.ts';
@@ -937,7 +937,7 @@ export class Assistant {
       const messages = trimHistory((body.messages ?? []).filter((x) => (x.role === 'user' || x.role === 'assistant') && typeof x.content === 'string' && x.content));
       if (!messages.length || messages.at(-1)!.role !== 'user') throw new ApiError(5, 'Send messages ending with the user\'s question', 400);
       if (!/application\/x-ndjson/.test(String(req.headers.accept ?? ''))) {
-        send(200, await this.chat(store, session.account, messages, clientContext(body.context), privileges, session.via, image ? { image } : {}, scope));
+        send(200, await this.chat(store, session.account, messages, clientContext(body.context), privileges, session.via, image ? { image } : {}, scope, externalIdentity(session)));
         return true;
       }
       // Streamed: a line per step ({"step": "Looking at layout …"}), then {"done": answer} or {"error": …}.
@@ -947,7 +947,7 @@ export class Assistant {
       res.writeHead(200, { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store', 'x-accel-buffering': 'no' });
       const line = (x: unknown) => { if (!res.writableEnded && !res.destroyed) res.write(JSON.stringify(x) + '\n'); };
       try {
-        line({ done: await this.chat(store, session.account, messages, clientContext(body.context), privileges, session.via, { onStep: (step) => line({ step }), onTool: (tool) => line({ tool }), onText: (text) => line({ text }), signal: abort.signal, ...(image ? { image } : {}) }, scope) });
+        line({ done: await this.chat(store, session.account, messages, clientContext(body.context), privileges, session.via, { onStep: (step) => line({ step }), onTool: (tool) => line({ tool }), onText: (text) => line({ text }), signal: abort.signal, ...(image ? { image } : {}) }, scope, externalIdentity(session)) });
       } catch (e) {
         const err = e instanceof StoreError || e instanceof PrivilegeError ? new ApiError(e.code, e.message, 400) : unexpectedError(e);
         line({ error: { code: err.code, message: err.message, status: err.status } });
@@ -1525,7 +1525,7 @@ export class Assistant {
 
   /** Answers the last message, using tools as the account. */
   async chat(store: Store, account: string, history: ChatMessage[], context: ChatContext, privileges: Privileges, via?: string,
-    progress: { onStep?: (step: string) => void; onTool?: (trace: ToolTrace) => void; onText?: (text: string) => void; signal?: AbortSignal; image?: ChatImage } = {}, scope?: TokenScope): Promise<ChatResult> {
+    progress: { onStep?: (step: string) => void; onTool?: (trace: ToolTrace) => void; onText?: (text: string) => void; signal?: AbortSignal; image?: ChatImage } = {}, scope?: TokenScope, identity?: ExternalIdentity): Promise<ChatResult> {
     const ceiling = scope && scoped(scope) ? structuredClone(scope) : undefined;
     const refused = aiRefusal(store, { account, privileges, via: 'AI assistant' });
     if (refused) throw new StoreError(9, refused);
@@ -1538,7 +1538,7 @@ export class Assistant {
     const started = performance.now();
     let steps = 0;
     try {
-      const r = await this.answer(store, account, history, context, privileges, via, progress, usage, route, ceiling);
+      const r = await this.answer(store, account, history, context, privileges, via, progress, usage, route, ceiling, identity);
       steps = r.tools.length;
       return { ...r, model: route.model, ms: Math.round(performance.now() - started) };
     } finally {
@@ -1548,7 +1548,7 @@ export class Assistant {
   }
 
   private async answer(store: Store, account: string, history: ChatMessage[], context: ChatContext, privileges: Privileges, via: string | undefined,
-    progress: { onStep?: (step: string) => void; onTool?: (trace: ToolTrace) => void; onText?: (text: string) => void; signal?: AbortSignal; image?: ChatImage }, usage: Usage, route: { model: string; effort?: 'low'; pii?: PiiMasker }, scope?: TokenScope):
+    progress: { onStep?: (step: string) => void; onTool?: (trace: ToolTrace) => void; onText?: (text: string) => void; signal?: AbortSignal; image?: ChatImage }, usage: Usage, route: { model: string; effort?: 'low'; pii?: PiiMasker }, scope?: TokenScope, identity?: ExternalIdentity):
     Promise<Omit<ChatResult, 'model' | 'ms'>> {
     const pii = route.pii;
     // What the window says goes to the model too: with isolation on, nothing in it that could hold a value.
@@ -1556,7 +1556,7 @@ export class Assistant {
     context = pii ? piiContext(context) : windowForModel(store, context);
     const canDesign = privileges.full;
     const privilegeSet = privileges.name;
-    const server = createMcpServer(this.host, { account, database: store.name, ...(via ? { via } : {}), ...(scope ? { scope } : {}) });
+    const server = createMcpServer(this.host, { account, database: store.name, ...(via ? { via, ...identity } : {}), ...(scope ? { scope } : {}) });
     const client = new Client({ name: 'tabularius-assistant', version: SERVER_VERSION });
     const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
     await server.connect(serverSide);
@@ -1909,8 +1909,8 @@ export class Assistant {
       const accessRefusal = (): string | undefined => {
         try {
           // A deactivated or replaced account (or a revoked mapping) ends the question even when its privilege set is unchanged.
-          if (!store.identityAllowed(account, via)) return 'Your access changed; start a new question';
-          const current = store.privileges(account, via);
+          if (!store.identityAllowed(account, via, undefined, identity?.person)) return 'Your access changed; start a new question';
+          const current = store.privileges(account, via, identity?.person, identity?.groups);
           const fresh = privileges.ceiling ? privileges.ceiling(current) : narrowPrivileges(store, current, scope);
           // Keep the session's cross-file bindings as an independent boundary;
           // refreshing the root account must never replace them with wider access.
