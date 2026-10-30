@@ -3,7 +3,7 @@
 // Windows refuses to delete a file that a process still holds open, and most tests remove their
 // temporary folder while the store they opened in it is still open (Linux and macOS allow it). Rather
 // than touch a thousand tests, this keeps a list of the SQLite files opened in the process and, when a
-// delete fails because the file is in use, closes the ones under that path and keeps trying for a couple of seconds (a process
+// delete fails because the file is in use, closes the ones under that path and keeps trying for ten seconds (a process
 // that has just exited lets go of its files a moment after).
 // It changes nothing about what a test asserts, and does nothing when the delete works. Only a recursive delete made by
 // test code is retried, which is how a test tears down its folder: a test that deletes a file on purpose while its server is
@@ -70,7 +70,7 @@ export const tearsDownFolder = (options: unknown): boolean => !!options && typeo
 
 /** How long a delete that fails because a file is in use keeps trying: a process that has just exited, or is exiting, lets go of its files a moment later. */
 export type Patience = { attempts: number; waitMs: number };
-const PATIENCE: Patience = { attempts: 20, waitMs: 100 };
+const PATIENCE: Patience = { attempts: 100, waitMs: 100 };
 const sleepSync = (ms: number) => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); };
 
 export function retryDeletes(fs: FsLike, closeUnder: (path: unknown) => number, allowed: (options: unknown) => boolean = (options) => tearsDownFolder(options) && calledFromTest(), patience: Patience = PATIENCE): void {
