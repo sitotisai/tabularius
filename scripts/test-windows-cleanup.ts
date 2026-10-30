@@ -11,7 +11,7 @@ import { createRequire } from 'node:module';
 import { resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-type Database = { close(): void; isOpen?: boolean };
+type Database = { close(): void; readonly isOpen?: boolean };
 type DatabaseClass = new (location: string, ...rest: unknown[]) => Database;
 type FsLike = Record<string, any> & { promises?: Record<string, any> };
 
@@ -40,6 +40,11 @@ export function trackDatabases(sqlite: { DatabaseSync: DatabaseClass }, caseBlin
       if (typeof location === 'string' && location !== '' && location !== ':memory:') {
         opened.push({ location: normal(location, caseBlind), ref: new WeakRef(this) });
       }
+    }
+    // A test that deletes its folder before closing its store closes it a second time after this helper has closed it for the delete.
+    close() {
+      if (this.isOpen === false) return;
+      super.close();
     }
   };
   /** Closes every open database at `path`, beside it (its -wal and -journal files) or below it. Returns how many it closed. */
