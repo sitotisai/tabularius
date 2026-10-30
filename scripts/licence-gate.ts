@@ -107,7 +107,7 @@ export function checkWorkspaces(root: string): string[] {
   if (!existsSync(join(root, 'NOTICE'))) problems.push('NOTICE is missing (credit for code derived from other projects goes there)');
   const expected = licenceText === undefined ? undefined : spdxOfLicenceFile(licenceText);
   if (licenceText !== undefined && !expected) problems.push('LICENSE is not a licence this check recognises (MIT or Apache-2.0)');
-  const manifests = ['package.json', ...readdirSync(join(root, 'packages')).map((p) => join('packages', p, 'package.json'))];
+  const manifests = ['package.json', ...readdirSync(join(root, 'packages')).map((p) => `packages/${p}/package.json`)];
   for (const m of manifests) {
     const file = join(root, m);
     if (!existsSync(file)) continue;

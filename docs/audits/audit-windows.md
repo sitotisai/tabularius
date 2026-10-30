@@ -95,6 +95,27 @@ Use a disposable Windows 10/11 or Windows Server VM, NTFS, an ordinary user, and
 
 A Windows CI job running these native lifecycle checks requires owner-managed workflow work if it is not already configured. No workflow file was changed in this audit. Security-adjacent path, installer and shutdown changes require the supervisor's separate model/person review before merge.
 
+## The test suite on Windows
+
+The whole suite (`npm run test:ci`, the same files as on Linux, in the same 12 shards) was run on GitHub's `windows-latest` runner, and every shard finished with no failing test. The runs that proved it used a scratch workflow dispatch (the Claude GitHub app cannot change `.github/workflows`); adding a permanent `test-windows` job is a change for the repository owner, and `.github/workflows/ci.yml` is where it goes.
+
+What the Windows run needs, so that a test that passes on Linux means the same thing there:
+
+- Three test files are skipped on Windows, each with its reason, in `scripts/windows-skip.json` (they exercise `sh` installers and POSIX signals). A single test that checks permission bits, symlinks or signals skips itself with `notOnWindows(reason)` (a helper in `packages/store/test/windows.ts`); nothing is skipped without a stated reason.
+- `scripts/test-windows-cleanup.ts` is loaded with `--import` by `test:ci` on Windows only. Windows refuses to delete a file a process still holds open, so when a test's recursive delete of its own temporary folder fails for that reason it closes the SQLite files under that folder and tries again for up to ten seconds. It does not touch deletes made by the product.
+- `scripts/test-windows-paths.ts` lets a child process import a `D:\...` path. `scripts/test-windows-fetch.ts` gives each `fetch` in a test its own connection: a test that blocks its own process for longer than the server's idle time otherwise finds the connection `fetch` kept closed, and fails with a reset.
+
+Product defects the Windows run found and fixed:
+
+- A file id (`Stats.ino`) is a Number, and an NTFS id above 2**53 loses its low bits, so two different files could compare as the same file. The encryption cleanup and the boundary's `cleanupPath` decide what to delete from that comparison; they now compare `fileId()` (an exact `dev:ino` from a bigint stat). The other `ino` comparisons in the code base (for example in the store's temporary-file cleanup, the container-upload sweep and the conversion files) share the limit and are not changed here; they are a follow-up.
+- A refused request (400, 431, 408) closed the socket as soon as the answer was written; Windows then resets the connection if the client is still sending, and the answer can be lost. The server now reads and discards what the client still sends, for two seconds at most, before it closes.
+- The integrity check left `-wal` and `-shm` files behind when removing them failed for a moment, which made a restore report files that were not in the backup set; it retries the removal.
+- The process-identity check in the backup folder lock started PowerShell, which stalled on busy runners; it reads the process start time from .NET and falls back to the slower query.
+
+A lock waiter can starve: the process that has just released the state-file lock often takes it again before a sleeping waiter wakes, so under heavy contention on Windows one process can wait past the 30 s default while the others finish. That is the documented `STATE_LOCK_TIMEOUT` and real use never writes 500 times back to back, so the lock is unchanged. The four-process test (about lost updates, not the limit) now passes `lockWaitMs` of five minutes and waits for every child before it removes its folder: it used to remove the folder as soon as one child failed, and the others then failed on a missing file and hid the cause.
+
+The suite does not cover what a hosted runner cannot: antivirus and SMB shares during renames, the installer in a real console with non-ASCII paths, and agreement with FileMaker or with third-party plug-ins. Those remain in the checklist above.
+
 ## Verification record
 
 The implementation includes Windows-specific tests in the store, calc, scripts, plug-ins, CLI and server packages, plus a static PowerShell test. No new test skips by host platform. `npm run typecheck` is the type gate; test commands use `node --no-warnings --test --test-concurrency=2` with explicit test files. Retained integration coverage includes path mounts, backup destinations/external containers, logs, plug-in packages and exports. Native service, upgrade, installer-download, PowerShell and release-build suites were not executed under the no-command/no-network restriction. `npm run precheck` was not run because it invokes git; no `precheck: PASS` is claimed.

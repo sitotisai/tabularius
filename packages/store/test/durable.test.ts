@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import { readJsonStateSync, syncPath, type DurableFs, updateJsonStateSync, writeDurable, writeJsonStateSync, writeStateFileSync, withStateLock } from '../src/durable.ts';
 import { createRequire, syncBuiltinESMExports } from 'node:module';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { notOnWindows } from './windows.ts';
 
 function fakeFs(code: string, failure: 'file' | 'directory' | 'open' = 'directory') {
   const calls: string[] = [];
@@ -72,6 +73,18 @@ test('a real file and its folder are flushed and published on this system', () =
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('a file with a second link, as a published conversion has, is flushed as Windows opens it', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'durable-linked-'));
+  try {
+    const store = join(dir, 'store');
+    writeFileSync(store, 'x');
+    linkSync(store, join(dir, 'temp'));
+    syncPath(store, undefined, 'win32');
+    assert.equal(readFileSync(store, 'utf8'), 'x');
+    assert.equal(statSync(store).mode & 0o777, statSync(join(dir, 'temp')).mode & 0o777, 'flushing leaves the mode alone');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('directory IO failures are not hidden', () => {
   assert.throws(() => syncPath('/data', fakeFs('EIO').fs, 'linux'), { code: 'EIO' });
 });
@@ -94,15 +107,22 @@ test('four processes keep all 2000 interleaved JSON state updates', async () => 
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-json-lock-'));
   const file = join(dir, 'counter.json');
   const moduleUrl = pathToFileURL(join(process.cwd(), 'packages/store/src/durable.ts')).href;
+  // This test is about lost updates, not the wait limit. A process that has just released the lock often takes it again before
+  // a waiting one wakes, so on a loaded Windows runner one child can wait longer than the 30 s default for the other three to
+  // finish; five minutes keeps that from failing the run.
   const source = `import { updateJsonStateSync } from ${JSON.stringify(moduleUrl)};\n` +
-    `for (let i = 0; i < 500; i++) updateJsonStateSync(process.argv[1], { count: 0 }, (x) => ({ count: x.count + 1 }));`;
+    `for (let i = 0; i < 500; i++) updateJsonStateSync(process.argv[1], { count: 0 }, (x) => ({ count: x.count + 1 }), { lockWaitMs: 300_000 });`;
   try {
     const run = () => new Promise<void>((resolve, reject) => {
       const child = spawn(process.execPath, ['--input-type=module', '-e', source, file], { stdio: 'inherit' });
       child.once('error', reject);
       child.once('exit', (code) => code === 0 ? resolve() : reject(new Error(`increment child exited ${code}`)));
     });
-    await Promise.all([run(), run(), run(), run()]);
+    // Wait for every child before the folder is removed: one failing early must not pull the folder out from under the others,
+    // which then fail on a missing file and hide the first error.
+    const results = await Promise.allSettled([run(), run(), run(), run()]);
+    const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+    if (failed) throw failed.reason;
     assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')), { count: 2000 });
     assert.deepEqual(readdirSync(dir).sort(), ['counter.json', 'counter.json.lock.db']);
   } finally { rmSync(dir, { recursive: true, force: true }); }
@@ -287,7 +307,7 @@ test('a close error still removes the temporary state file without retrying clos
   }
 });
 
-test('a directory sync error is reported but does not fail an already replaced state file', () => {
+test('a directory sync error is reported but does not fail an already replaced state file', { skip: notOnWindows('Windows does not open a folder to flush it, so there is no folder flush to fail') }, () => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-json-state-'));
   const fsync = fs.fsyncSync;
   const warn = console.warn;

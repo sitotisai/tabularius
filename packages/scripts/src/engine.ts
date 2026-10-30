@@ -7308,9 +7308,12 @@ export class ScriptEngine {
     } else if (docs >= 0) rel = s.slice(docs + DOCUMENTS.length);
     else rel = s.split('/').pop() ?? '';
     const parts = rel.split('/');
+    // Windows names a name over 255 bytes with the other names it refuses; the system's answer elsewhere is the same 850.
+    if (process.platform === 'win32' && parts.some((x) => Buffer.byteLength(x) > 255)) throw new ScriptError(ERROR.invalidPath, 'The name is too long for the system');
     if (!rel || parts.some((x) => !documentNamePart(x) || x.startsWith('.'))) return undefined;
     const path = join(base, ...parts);
-    try { checkPathLength(path, 64); } catch { return undefined; }
+    // Windows cannot hold a path this long; that is a path the system refuses (850), as a too-long name is elsewhere.
+    try { checkPathLength(path, 64); } catch { throw new ScriptError(ERROR.invalidPath, 'The path is too long for the system'); }
     // A link inside the folder that points outside it is not a way out: where the path (or its nearest existing parent) really is must be under the folder.
     try {
       const resolve = (target: string) => this.realPlace(target);
@@ -7353,7 +7356,12 @@ export class ScriptEngine {
       return path && existsSync(path) && statSync(path).isFile() ? new Uint8Array(readFileSync(path)) : undefined;
     },
     write: (raw, content, append) => {
-      const path = this.sandboxPath(raw);
+      let path: string | undefined;
+      try { path = this.sandboxPath(raw); } catch (e) {
+        // A name Windows refuses up front is the failed write that a too-long name is where the system reports it only when writing.
+        if (e instanceof ScriptError && e.code === ERROR.invalidPath) return false;
+        throw e;
+      }
       if (!path || !existsSync(dirname(path)) || (existsSync(path) && !statSync(path).isFile())) return false;
       try {
         if (append) appendFileSync(path, content);

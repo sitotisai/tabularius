@@ -8,6 +8,10 @@ import * as service from '../src/service.ts';
 import { runExposure } from '../src/exposure.ts';
 import { commandStubEnv } from '../../../scripts/test-command-stubs.ts';
 import type { TestContext } from 'node:test';
+import { notOnWindows } from '../../store/test/windows.ts';
+
+// A unit file for another system names that system's paths, so these tests give it paths of that form instead of this computer's.
+const linux = () => ({ ...service.defaults('linux'), node: '/usr/bin/node', main: '/srv/tabularius/main.ts' });
 
 function folder(t: TestContext) {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-a04-'));
@@ -31,17 +35,18 @@ test('#173 serve refuses unknown and equals options before starting', (t) => {
   }
 });
 test('#173 service generation refuses unknown serve options', () => {
-  assert.throws(() => service.serviceFile({ ...service.defaults('linux'), folder: '/tmp/data', port: 8080, host: '127.0.0.1', system: false, extra: ['--ai-exlude', 'Payroll'] }), /--ai-exlude/);
+  assert.throws(() => service.serviceFile({ ...linux(), folder: '/tmp/data', port: 8080, host: '127.0.0.1', system: false, extra: ['--ai-exlude', 'Payroll'] }), /--ai-exlude/);
 });
 test('#177 service generation refuses host and port after separator', () => {
   for (const extra of [['--host', '0.0.0.0'], ['--port', '9000'], ['--port=9000']]) {
-    assert.throws(() => service.serviceFile({ ...service.defaults('linux'), folder: '/tmp/data', port: 8080, host: '127.0.0.1', system: false, extra }), /--host|--port/);
+    assert.throws(() => service.serviceFile({ ...linux(), folder: '/tmp/data', port: 8080, host: '127.0.0.1', system: false, extra }), /--host|--port/);
   }
 });
 test('#167 service generation resolves path options against caller directory', () => {
   for (const option of ['--tls-cert', '--tls-key', '--backup-dir', '--ai-key-file', '--oidc-config']) {
-    const file = service.serviceFile({ ...service.defaults('linux'), folder: '/tmp/data', port: 8080, host: '127.0.0.1', system: false, extra: [option, 'relative-file'] });
-    assert.ok(file.text.includes(resolve('relative-file')), option);
+    const file = service.serviceFile({ ...linux(), folder: '/tmp/data', port: 8080, host: '127.0.0.1', system: false, extra: [option, 'relative-file'] });
+    // A unit file escapes a backslash, so the path of a Windows computer is found with each one doubled.
+    assert.ok(file.text.includes(resolve('relative-file')) || file.text.includes(resolve('relative-file').replaceAll('\\', '\\\\')), option);
   }
 });
 test('#176 folder TLS settings drive health, exposure, refusal and summary', async (t) => {
@@ -72,7 +77,7 @@ test('#179 MCP metadata describes generated credentials, including loopback', ()
   const metadata = JSON.parse(readFileSync(new URL('../../../scripts/reference/settings-cli-metadata.json', import.meta.url), 'utf8'));
   for (const entry of [metadata.environment.TABULARIUS_MCP_TOKEN, metadata.environment.TABULARIUS_MCP_TOKEN_FILE, metadata.serveFlags['--mcp-token'], metadata.serveFlags['--mcp-token-file']]) assert.match(entry.default, /administrator token.*\.openhbam-mcp-token/);
 });
-test('#168 SMTP files honor TABULARIUS_HOME and enforce owner permissions', (t) => {
+test('#168 SMTP files honor TABULARIUS_HOME and enforce owner permissions', { skip: notOnWindows('a Windows file has no group or world read bit to refuse') }, (t) => {
   const dir = folder(t);
   for (const [name, args] of [['smtp', ['--send-mail', '--mail-from', 'test@example.invalid']], ['test-smtp', ['--test-outbound', '--mail-redirect', 'test@example.invalid']]] as const) {
     const file = join(dir, name);
@@ -126,7 +131,7 @@ test('serve option registry covers help, preserves repeated origins and forwarde
     catch (error) { assert.match((error as Error).message, /needs (a non-empty value|a value|an address)/); }
   }
   service.validateServeOptions(['--mcp-origin', 'https://one.example', '--mcp-origin', 'https://two.example']);
-  const text = service.serviceFile({ ...service.defaults('linux'), folder: '/tmp/data', port: 8080, host: '127.0.0.1', system: false, extra: ['--capture-only', 'Staging', '--ai-exclude', 'Payroll', '--allow-plain-http'] }).text;
+  const text = service.serviceFile({ ...linux(), folder: '/tmp/data', port: 8080, host: '127.0.0.1', system: false, extra: ['--capture-only', 'Staging', '--ai-exclude', 'Payroll', '--allow-plain-http'] }).text;
   assert.match(text, /"--capture-only" "Staging" "--ai-exclude" "Payroll" "--allow-plain-http"/);
 });
 test('#178 demo removes its temporary folder on process exit', (t) => {

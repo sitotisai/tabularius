@@ -460,7 +460,8 @@ test('REST reference examples match live status and response shape', async () =>
         const requestBody = parseResponse(body) as { code?: string } | undefined;
         if (requestBody && Object.hasOwn(requestBody, 'code')) body = JSON.stringify({ ...requestBody, code: totp(totpSecret) });
       }
-      body = body.replaceAll('/Volumes/Backup/tabularius', join(f.dir, 'Backups'));
+      // The path goes into a JSON body, where a Windows path's backslashes are written doubled.
+      body = body.replaceAll('/Volumes/Backup/tabularius', JSON.stringify(join(f.dir, 'Backups')).slice(1, -1));
       if (requestTarget.includes('/backups/2026-10-13_084500/')) requestTarget = requestTarget.replace('/backups/2026-10-13_084500/', `/backups/${backupSet || 'missing'}/`);
       if (requestTarget === '/tabularius/admin/v1/restore') body = body.replace(/("at"\s*:\s*)"[^"]+"/, `$1"${new Date().toISOString()}"`);
       if (target === '/tabularius/admin/v1/uploads' && method === 'POST') {
@@ -501,7 +502,9 @@ test('REST reference examples match live status and response shape', async () =>
         if (latest > 0) url.searchParams.set('after', String(latest - 1));
       }
       if (method === 'DELETE' && url.pathname.startsWith('/tabularius/admin/v1/uploads/')) {
-        for (let attempt = 0; attempt < 100; attempt++) {
+        // The conversion takes about a second alone and several times that on a loaded Windows runner, and the backup
+        // examples further on expect the file it hosts, so wait a minute rather than ten seconds.
+        for (let attempt = 0; attempt < 600; attempt++) {
           const progress = await fetch(url, { method: 'GET', headers: { cookie: f.adminCookie, 'x-tabularius-admin': '1' }, signal: AbortSignal.timeout(5000) });
           const state = await progress.json() as { phase?: string };
           if (progress.status !== 200 || !['waiting', 'converting'].includes(state.phase ?? '')) break;
@@ -565,7 +568,8 @@ test('REST reference examples match live status and response shape', async () =>
       }
       if (url.pathname.startsWith('/fmi/odata/') && ['PATCH', 'PUT', 'DELETE'].includes(method)) headers.set('if-match', '*');
       let response: Response;
-      try { response = await fetch(url, { method, headers, redirect: 'manual', signal: AbortSignal.timeout(5000), ...(uploadBody ? { body: uploadBody } : rawBody ? { body: rawBody as unknown as BodyInit } : body ? { body } : {}) }); }
+      // Thirty seconds, not five: a script run on a busy Windows runner took longer than five twice in one run; a hang still fails.
+      try { response = await fetch(url, { method, headers, redirect: 'manual', signal: AbortSignal.timeout(30_000), ...(uploadBody ? { body: uploadBody } : rawBody ? { body: rawBody as unknown as BodyInit } : body ? { body } : {}) }); }
       catch (e) {
         // fetch only says "fetch failed"; the cause (a reset, a refused connection, a timeout) is what tells a server fault from a test one.
         const cause = (e as { cause?: { code?: string; message?: string } }).cause;

@@ -44,7 +44,8 @@ test('the count survives a restart, is private to the server, and a bad file doe
     first.perFile = 2;
     assert.equal(first.take(['Invoices']), undefined);
     assert.equal(first.take(['Invoices']), undefined);
-    assert.equal(statSync(path).mode & 0o077, 0, 'only the server can read it');
+    // Windows has no mode bits to read; the folder's access list is what keeps the file private there.
+    if (process.platform !== 'win32') assert.equal(statSync(path).mode & 0o077, 0, 'only the server can read it');
     // The server restarts: a new object over the same file still knows.
     const second = new MailLimit(path);
     second.perFile = 2;

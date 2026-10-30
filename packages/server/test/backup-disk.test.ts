@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { createStore } from '../../store/src/index.ts';
 import { STORE_EXT } from '../src/host.ts';
 import { backupSets, serve } from '../src/index.ts';
@@ -58,7 +58,7 @@ test('backup folder labels stay unique and sortable after a backward clock chang
   try {
     const times = [new Date(2026, 10, 1, 1, 30).getTime(), new Date(2026, 10, 1, 1, 0).getTime(), new Date(2025, 11, 31, 23, 59).getTime()];
     const names: string[] = [];
-    for (const at of times) names.push((await backupFolder(dir, dest, 7, undefined, { now: () => at })).dir.split('/').at(-1)!);
+    for (const at of times) names.push(basename((await backupFolder(dir, dest, 7, undefined, { now: () => at })).dir));
     assert.deepEqual(names, [...names].sort());
     assert.equal(new Set(names).size, names.length);
     assert.deepEqual(backupSets(dest), names);
@@ -103,7 +103,7 @@ test('free space is read from the nearest folder that exists, sizes are written 
     return { bavail: 10n, bsize: 4096n };
   };
   assert.equal(freeBytes('/x/exists/not/yet/made', statfs), 40960);
-  assert.deepEqual(seen, ['/x/exists/not/yet/made', '/x/exists/not/yet', '/x/exists/not', '/x/exists']);
+  assert.deepEqual(seen.map((p) => p.replace(/^[A-Za-z]:/, '').replaceAll('\\', '/')), ['/x/exists/not/yet/made', '/x/exists/not/yet', '/x/exists/not', '/x/exists']);
   assert.equal(freeBytes('/nothing', () => { throw new Error('no'); }), undefined);
   assert.equal(sizeText(512), '512 bytes');
   assert.equal(sizeText(1536), '1.5 KB');

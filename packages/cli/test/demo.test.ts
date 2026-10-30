@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { demoPassword, notLoopback, startDemo, type Demo } from '../src/demo.ts';
 import { runCli } from './cli-run.ts';
+import { notOnWindows } from '../../store/test/windows.ts';
 
 const main = join(import.meta.dirname, '..', 'src', 'main.ts');
 
@@ -188,7 +189,7 @@ test('the command refuses a public host, an unknown starter and stray arguments,
   for (const r of [pub, bad, port, folder]) assert.doesNotMatch(r.stderr, / at .*\.ts:\d+/, 'no stack trace');
 });
 
-test('the real command prints the address and the password once, answers, and deletes the files on Ctrl-C and on SIGTERM', async () => {
+test('the real command prints the address and the password once, answers, and deletes the files on Ctrl-C and on SIGTERM', { skip: notOnWindows('a stop signal ends a Windows process at once, without its clean exit') }, async () => {
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     const child = spawn(process.execPath, ['--no-warnings', main, 'demo', '--no-open', '--starter', 'inventory'], { stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';

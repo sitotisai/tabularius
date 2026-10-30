@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
+import { retryFileSync } from '../../store/src/file-ops.ts';
 import { cleanupPath, openSync as openChecked, renameSync as renameChecked, writeSync as writeChecked } from '../../store/src/fs-boundary.ts';
 
 export const HOSTED_RECORD_FILE = '.openhbam-hosted.json';
@@ -157,7 +158,8 @@ function publish(temp: string, path: string): void {
   // Another process may replace the record between the boundary's two looks; try again with our own temp.
   // A swapped temp is refused every time.
   for (let attempt = 0; attempt < 50; attempt++) {
-    try { renameChecked(temp, path); return; }
+    // On Windows a reader holding the record for a moment makes the replace fail with a sharing error; it is tried again for up to about a second.
+    try { retryFileSync(() => renameChecked(temp, path), process.platform, undefined, 40); return; }
     catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ESTALE' || attempt === 49) throw e; }
   }
 }

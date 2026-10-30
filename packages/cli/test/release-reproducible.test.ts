@@ -36,7 +36,8 @@ test('a pack does not depend on the order files were made in, their times, or th
     assert.ok(x.equals(y), comparePacks(x, y).join('\n'));
     const files = unpack(x);
     assert.deepEqual(files.map((f) => f.path), ['bin/run', 'node_modules/p/index.js', 'packages/x/a.ts']);
-    assert.deepEqual(files.map((f) => f.mode), [0o755, 0o755, 0o644]);
+    // Windows has no execute bit to read, so a pack made there cannot carry one: releases are built on Linux and macOS.
+    if (process.platform !== 'win32') assert.deepEqual(files.map((f) => f.mode), [0o755, 0o755, 0o644]);
     assert.deepEqual(files.map((f) => f.data.toString()), ['three', 'two', 'one']);
   } finally {
     rmSync(a, { recursive: true, force: true });
@@ -58,7 +59,7 @@ test('two builds that differ are reported by file, and inside a pack by the file
     put(a, 'gone.txt', 'only a');
     put(b, 'new.txt', 'only b');
     assert.deepEqual(comparePacks(pack(a), pack(b)), [
-      'changed.txt: contents differ', 'gone.txt: only in the first pack', 'mode.sh: mode 755 against 644', 'new.txt: only in the second pack',
+      'changed.txt: contents differ', 'gone.txt: only in the first pack', ...(process.platform === 'win32' ? [] : ['mode.sh: mode 755 against 644']), 'new.txt: only in the second pack',
     ]);
   } finally {
     rmSync(a, { recursive: true, force: true });
