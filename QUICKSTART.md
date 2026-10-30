@@ -106,6 +106,8 @@ client and an AI tool over MCP make the same changes (see [docs/design-mode.md](
 - **Over the internet:** add `--https files.example.com` (see
   [Hosting for a team](docs/hosting-for-a-team.md)).
 
+A file that arrives in the hosted folder after the server first started (or a `.fmp12` the server converts from it) is held: people can read it, but it runs no scripts, schedules or automations until you press **Approve** next to it under Hosted files in the admin console. Files you drop on the web page and the demo's own file are approved already. See [docs/security-defaults.md](docs/security-defaults.md).
+
 ## What else is there
 
 - **Integrations.** The FileMaker Data API at `/fmi/data/vLatest`, OData at

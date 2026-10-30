@@ -8536,7 +8536,7 @@ if ('serviceWorker' in navigator && isSecureContext) {
 
 // Scripts that can't reach the network yet (an administrator turns it on per file in the admin console): said until it is dismissed.
 const networkBanner = h('aside', { class: 'network-banner', role: 'status' },
-  h('span', {}, "Scripts can't reach the network yet. An administrator can turn it on when this copy is the live one."),
+  h('span', {}, "Scripts can't reach the network yet: Insert from URL, Send Mail and web calls from plug-ins won't work. An administrator turns this on from the Files page of the admin console."),
   button('Dismiss', () => { networkBannerDismissed = true; networkBanner.remove(); }, { class: 'offline-action' }));
 let networkBannerDismissed = false;
 function showScriptNetwork(meta: LayoutMeta): void {

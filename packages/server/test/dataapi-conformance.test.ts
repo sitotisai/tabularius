@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import type { Server } from 'node:http';
 import { serve } from '../src/index.ts';
 import type { Store } from '../../store/src/index.ts';
+import { approveAll } from './approve-all.ts';
 
 // The Data API checked against Claris's FileMaker Data API Guide
 // (help.claris.com/en/data-api-guide), section by section: paths, the
@@ -28,6 +29,7 @@ before(async () => {
   dir = mkdtempSync(join(tmpdir(), 'tabularius-conformance-'));
   for (const [name, file] of Object.entries(files)) copyFileSync(join(fixtures, file), join(dir, `${name}.fmp12`));
   const s = await serve({ dir, port: 0, watch: false, log: () => {}, listFilesPublicly: true });
+  approveAll(s.host);
   server = s.server;
   base = s.url;
   stores = Object.fromEntries(Object.keys(files).map((n) => [n, s.host.get(n)!]));

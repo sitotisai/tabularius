@@ -405,6 +405,7 @@ export class AutomationRunner {
   }
 
   private changed(store: Store, c: Change): void {
+    if (store.held) return;
     if ((c.kind !== 'create' && c.kind !== 'update' && c.kind !== 'delete') || c.recordId === undefined || c.remote || c.owner?.startsWith(OWNER)) return;
     let hit = cache.get(store);
     if (!hit || performance.now() - hit.at > CACHE_MS) {

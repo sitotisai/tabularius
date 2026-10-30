@@ -14265,6 +14265,7 @@ Source: `packages/server/src/admin.ts`
 | GET | [`/tabularius/admin/v1/files/{name}/external-containers`](#admin-files-get-tabularius-admin-v1-files-name-external-containers) | Which container fields keep their files outside the file, and how many of those files are missing: the folder to bring over from FileMaker Server. |
 | GET | [`/tabularius/admin/v1/files/{name}/orphan-containers`](#admin-files-get-tabularius-admin-v1-files-name-orphan-containers) | Stored container data with no retained reference, plus aggregate integrity counts for missing rows and external files. Nothing is removed. |
 | POST | [`/tabularius/admin/v1/files/{name}/orphan-containers`](#admin-files-post-tabularius-admin-v1-files-name-orphan-containers) | Removes the unreferenced container data the GET lists, including their files stored outside the file. Only with {"purge": true} (400 otherwise); answers what was removed and what is left. |
+| POST | [`/tabularius/admin/v1/files/{name}/approve`](#admin-files-post-tabularius-admin-v1-files-name-approve) | Approves a held file: one that arrived in the hosted folder after the first start, or a different file under an approved name. It stays hosted and readable while held; once approved its scripts, schedules, automations, digests, inbound hooks and connections run. |
 | POST | [`/tabularius/admin/v1/files/{name}/reconvert-preview`](#admin-files-post-tabularius-admin-v1-files-name-reconvert-preview) | A dry run of converting a file again from its .fmp12, in a scratch folder: what would change. Nothing hosted is touched. |
 | POST | [`/tabularius/admin/v1/files/{name}/reconvert`](#admin-files-post-tabularius-admin-v1-files-name-reconvert) | Converts a hosted file again from its .fmp12, carrying over the records created, edited and deleted since; the store as it was is kept beside it. |
 | POST | [`/tabularius/admin/v1/reconvert-all`](#admin-files-post-tabularius-admin-v1-reconvert-all) | Every file an older converter made: {"preview": true} dry-runs each one; {"files": [...]} converts the named ones again. |
@@ -14557,6 +14558,43 @@ Response `200`:
   }
 }
 ```
+
+<a id="admin-files-post-tabularius-admin-v1-files-name-approve"></a>
+
+### `POST /tabularius/admin/v1/files/{name}/approve`
+
+Approves a held file: one that arrived in the hosted folder after the first start, or a different file under an approved name. It stays hosted and readable while held; once approved its scripts, schedules, automations, digests, inbound hooks and connections run.
+
+**Permissions:** Admin console: a console sign-in (the tabularius_admin cookie from POST /tabularius/admin/v1/sign-in), or the admin password by HTTP Basic (any user name), or the folder's local channel token in x-tabularius-local (Tabularius commands on the server machine). With no admin password set, only requests from this machine (loopback) are let in. Not a GET, so it also needs the header x-tabularius-admin: 1 (403 "missing x-tabularius-admin header" without it).
+
+**Parameters:**
+
+| Name | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `name` | path | string | yes | Hosted file (404 when it isn't). |
+
+**Example:**
+
+```http
+POST /tabularius/admin/v1/files/Invoices/approve
+Cookie: tabularius_admin=6b1f0c2e6b1f0c2e6b1f0c2e6b1f0c2e6b1f0c2e6b1f0c2e6b1f0c2e6b1f0c2e
+x-tabularius-admin: 1
+Content-Type: application/json
+
+{}
+```
+
+Response `200`:
+
+```json
+{
+  "name": "Invoices",
+  "held": false,
+  "approved": true
+}
+```
+
+A file that is not held answers {"name": …, "held": false, "approved": false} and nothing changes. A follower server answers 409: approve on the leader.
 
 <a id="admin-files-post-tabularius-admin-v1-files-name-reconvert-preview"></a>
 

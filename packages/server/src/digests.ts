@@ -352,7 +352,7 @@ export class DigestRunner {
   async tick(now = new Date()): Promise<void> {
     for (const name of this.host.names()) {
       const store = this.host.get(name);
-      if (!store) continue;
+      if (!store || store.held) continue;
       const digests = new Digests(store);
       for (const d of digests.list()) {
         if (!d.enabled || this.running.has(d.id)) continue;
@@ -372,6 +372,7 @@ export class DigestRunner {
 
   /** Works the digest's dashboard out, has it summarised, keeps the run and posts it to the webhook. */
   async run(store: Store, d: Digest, scheduled?: Date): Promise<DigestRun> {
+    if (store.held) throw new DigestError(`${store.name} is held (${store.held.reason}): its digests do not run until an administrator approves it`);
     const started = Date.now();
     const run: DigestRun = {
       id: randomBytes(6).toString('hex'), digest: d.id, at: new Date().toISOString(), ...(scheduled ? { scheduled: scheduled.toISOString() } : {}),

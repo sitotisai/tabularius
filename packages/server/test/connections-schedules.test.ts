@@ -10,6 +10,7 @@ import { createServer as netServer, type Server as NetServer } from 'node:net';
 import { serve, setAdminPassword } from '../src/index.ts';
 import type { Host } from '../src/host.ts';
 import { fakeS3 } from './fake-s3.ts';
+import { approveAll } from './approve-all.ts';
 
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
 const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtures';
@@ -28,6 +29,7 @@ before(async () => {
   setAdminPassword(dir, 'secret');
   s3 = await fakeS3({ bucket: 'reports', ...KEYS });
   const s = await serve({ dir, port: 0, scriptNetwork: true, log: () => {} });
+  approveAll(s.host);
   server = s.server;
   host = s.host;
   base = s.url;

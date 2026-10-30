@@ -603,10 +603,12 @@ Scripts run on the server, as FileMaker Server runs them.
 - **Network.** Steps that reach the network (Insert from URL and similar) work
   once you turn on **Script network** for the file in the admin console (Hosted
   files), or start the server with `--allow-script-network` to turn it on for
-  every file. It starts off for every converted file and for `tabularius demo`,
-  so a copy you are testing cannot call outside services; the admin console and
-  the web client say so, and a script that tries gets error 3 with the steps to
-  turn it on. Turn it on when this copy is the live one. Even then a script
+  every file. It starts off for a file converted from a `.fmp12` and for
+  `tabularius demo`, so a copy you are testing cannot call outside services; the
+  admin console and the web client say so and name the steps affected (Insert from
+  URL, Send Mail, plug-in web calls), and a script that tries gets error 3 with the
+  steps to turn it on. A file that has no saved setting (one hosted before this
+  switch existed) is on. Turn it on when this copy is the live one. Even then a script
   cannot reach this machine's own network (loopback, 10.x, 192.168.x and so on)
   unless `--allow-script-network-to` lists the host or range, and never a
   link-local or cloud metadata address: see
