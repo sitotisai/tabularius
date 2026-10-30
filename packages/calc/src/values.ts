@@ -269,9 +269,10 @@ export function formatDate(day: number, order: DateStyle = 'MDY'): string {
   const o = dateOrderOf(order);
   // Year-first systems (Japanese, ISO-like) write months and days with two digits.
   if (o === 'ISO') return `${pad(year, 4)}-${pad(month)}-${pad(d)}`;
-  if (o === 'YMD') return `${year}/${pad(month)}/${pad(d)}`;
+  // Keep early years at four digits so they are not read back as two-digit years.
+  if (o === 'YMD') return `${pad(year, 4)}/${pad(month)}/${pad(d)}`;
   const p = typeof order !== 'string' && order.padded ? pad : String;
-  return o === 'DMY' ? `${p(d)}/${p(month)}/${year}` : `${p(month)}/${p(d)}/${year}`;
+  return o === 'DMY' ? `${p(d)}/${p(month)}/${pad(year, 4)}` : `${p(month)}/${p(d)}/${pad(year, 4)}`;
 }
 
 /** `places`: decimal places kept in the seconds (a timestamp passes fewer: its double has no digits to spare past them). */
