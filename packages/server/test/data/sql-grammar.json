@@ -3103,12 +3103,122 @@
  {
   "id": "cond-07",
   "area": "CAST",
-  "construct": "CAST of a number to VARCHAR is not specified by the container example",
+  "construct": "CAST of a number to VARCHAR prints plain decimal text",
   "source": "https://help.claris.com/en/sql-reference/content/for-update-clause.html",
   "sql": "SELECT CAST(salary AS VARCHAR) FROM emp WHERE emp_id = 'E5'",
-  "expected": "unverified",
-  "paths": [],
-  "note": "the page gives CAST(container AS VARCHAR), but does not state what CAST(number AS VARCHAR) returns; unverified"
+  "rows": [["20000"]],
+  "expected": "derived",
+  "note": "the SQL standard's rule casts a number to its plain decimal text; the cited page does not state a numeric CAST result"
+ },
+ {
+  "id": "cond-08",
+  "area": "CAST",
+  "construct": "CAST of text to CHAR(1) keeps its first character",
+  "source": "https://help.claris.com/en/sql-reference/content/for-update-clause.html",
+  "sql": "SELECT CAST(emp_id AS CHAR(1)) FROM emp WHERE emp_id = 'E5'",
+  "rows": [["E"]],
+  "expected": "derived",
+  "note": "the SQL standard specifies the length; the cited page does not state a character CAST result"
+ },
+ {
+  "id": "cond-09",
+  "area": "CAST",
+  "construct": "CAST of a number to VARCHAR(3) keeps its first three characters",
+  "source": "https://help.claris.com/en/sql-reference/content/for-update-clause.html",
+  "sql": "SELECT CAST(salary AS VARCHAR(3)) FROM emp WHERE emp_id = 'E5'",
+  "rows": [["200"]],
+  "expected": "derived",
+  "note": "the SQL standard specifies plain decimal text and the length; the cited page does not state a numeric CAST result"
+ },
+ {
+  "id": "cond-10",
+  "area": "CAST",
+  "construct": "CAST text as DATE",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-dates.html",
+  "sql": "SELECT CAST('2028-01-30' AS DATE) FROM emp WHERE emp_id = 'E1'",
+  "rows": [["2028-01-30"]],
+  "expected": "derived",
+  "note": "The SQL standard defines this cast; the cited page gives no CAST example."
+ },
+ {
+  "id": "cond-11",
+  "area": "CAST",
+  "construct": "CAST a date field as DATE",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-dates.html",
+  "sql": "SELECT CAST(hire_date AS DATE) FROM emp WHERE emp_id = 'E1'",
+  "rows": [["2020-03-15"]],
+  "expected": "derived",
+  "note": "The SQL standard defines this cast; the cited page gives no CAST example."
+ },
+ {
+  "id": "cond-12",
+  "area": "CAST",
+  "construct": "CAST text as TIMESTAMP",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-dates.html",
+  "sql": "SELECT CAST('2028-01-30 14:35:10' AS TIMESTAMP) FROM emp WHERE emp_id = 'E1'",
+  "rows": [["2028-01-30T14:35:10"]],
+  "expected": "derived",
+  "note": "The SQL standard defines this cast; the cited page gives no CAST example."
+ },
+ {
+  "id": "cond-13",
+  "area": "CAST",
+  "construct": "CAST text as TIME",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-dates.html",
+  "sql": "SELECT CAST('09:00:00' AS TIME) FROM emp WHERE emp_id = 'E1'",
+  "rows": [["09:00:00"]],
+  "expected": "derived",
+  "note": "The SQL standard defines this cast; the cited page gives no CAST example."
+ },
+ {
+  "id": "cond-14",
+  "area": "CAST",
+  "construct": "CAST invalid text as DATE fails",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-dates.html",
+  "sql": "SELECT CAST('2028-13-45' AS DATE) FROM emp WHERE emp_id = 'E1'",
+  "error": true,
+  "expected": "derived",
+  "note": "The SQL standard requires a valid date; the cited page gives no CAST example."
+ },
+ {
+  "id": "cond-15",
+  "area": "CAST",
+  "construct": "DECIMAL(p,s) rounds to its scale",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-numbers.html",
+  "sql": "SELECT CAST(2.567 AS DECIMAL(5,2)) FROM emp WHERE emp_id = 'E1'",
+  "rows": [["2.57"]],
+  "expected": "derived",
+  "note": "The SQL standard supplies this precision and scale rule; the cited page gives no example of this cast."
+ },
+ {
+  "id": "cond-16",
+  "area": "CAST",
+  "construct": "DECIMAL(p) defaults to scale zero",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-numbers.html",
+  "sql": "SELECT CAST(2.5 AS DECIMAL(5)) FROM emp WHERE emp_id = 'E1'",
+  "rows": [["3"]],
+  "expected": "derived",
+  "note": "The SQL standard supplies the default scale and rounding rule; the cited page gives no example of this cast."
+ },
+ {
+  "id": "cond-17",
+  "area": "CAST",
+  "construct": "NUMERIC(p,s) rounds negative halves away from zero",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-numbers.html",
+  "sql": "SELECT CAST(-2.5 AS NUMERIC(5,0)) FROM emp WHERE emp_id = 'E1'",
+  "rows": [["-3"]],
+  "expected": "derived",
+  "note": "The SQL standard supplies this scale rule; the cited page gives no example of this cast."
+ },
+ {
+  "id": "cond-18",
+  "area": "CAST",
+  "construct": "DECIMAL(p,s) reports numeric overflow",
+  "source": "https://help.claris.com/en/sql-reference/content/functions-that-return-numbers.html",
+  "sql": "SELECT CAST(12.5 AS DECIMAL(3,2)) FROM emp WHERE emp_id = 'E1'",
+  "error": true,
+  "expected": "derived",
+  "note": "The SQL standard supplies this precision overflow rule; the cited page gives no example of this cast."
  },
  {
   "id": "cast-02",
