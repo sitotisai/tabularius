@@ -229,3 +229,18 @@ test('invariant: the retrying rename still checks both entries at the moment of 
   }
   assert.deepEqual(waits, [], 'a refused rename is not a sharing violation');
 });
+
+test('a file id is exact: the same file by path, link and descriptor agree, two files differ, a missing one has none', (t) => {
+  const s = setup(t), link = join(s.inside, 'link');
+  fs.linkSync(s.file, link);
+  const fd = fs.openSync(s.file, 'r');
+  t.after(() => fs.closeSync(fd));
+  const id = safe.fileId(s.file);
+  assert.match(id!, /^\d+:\d+$/);
+  assert.equal(safe.fileId(link), id);
+  assert.equal(safe.fileId(fd), id);
+  assert.notEqual(safe.fileId(s.secret), id);
+  assert.equal(safe.fileId(join(s.inside, 'missing')), undefined);
+  // `Stats.ino` is a Number: an NTFS id above 2**53 rounds there, two files then compare equal, and a cleanup removes the wrong one.
+  assert.equal(safe.fileId(s.file), `${fs.lstatSync(s.file, { bigint: true }).dev}:${fs.lstatSync(s.file, { bigint: true }).ino}`);
+});

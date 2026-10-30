@@ -7,8 +7,8 @@
 // Streams, so multi-gigabyte files never sit in memory.
 
 import { createCipheriv, createDecipheriv, randomBytes, scrypt, scryptSync } from 'node:crypto';
-import { cleanupPath, open, openSync, writeSync, writeFileHandle } from '../../store/src/fs-boundary.ts';
-import { closeSync, fstatSync, fsyncSync, lstatSync, readSync, rmSync } from 'node:fs';
+import { cleanupPath, fileId, open, openSync, writeSync, writeFileHandle } from '../../store/src/fs-boundary.ts';
+import { closeSync, fstatSync, fsyncSync, readSync, rmSync } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
 import type { Stats } from 'node:fs';
 
@@ -58,9 +58,8 @@ type FileOperations<T, Result, StatResult> = {
 type SyncFileOperations = FileOperations<number, void, Stats>;
 type AsyncFileOperations = FileOperations<FileHandle, Promise<void>, Promise<Stats>>;
 
-function removeOpenedOutput(dest: string, opened: { dev: number; ino: number }): void {
-  const current = lstatSync(dest, { throwIfNoEntry: false });
-  if (current && current.dev === opened.dev && current.ino === opened.ino) rmSync(dest, { force: true });
+function removeOpenedOutput(dest: string, openedId: string | undefined): void {
+  if (openedId !== undefined && fileId(dest) === openedId) rmSync(dest, { force: true });
 }
 
 function throwFileErrors(errors: unknown[]): void {
@@ -76,19 +75,21 @@ function withFilesSync(src: string, dest: string, work: (input: number, output: 
   let input: number | undefined;
   let output: number | undefined;
   let cleanup: (() => void) | undefined;
+  let openedId: string | undefined;
   let complete = false;
   const errors: unknown[] = [];
   try {
     input = openSync(src, 'r');
     // The guarded open already verified this inode. Retain that identity before
     // any later stat or cleanup capture can fail, even if the path is replaced.
-    output = openSync(dest, 'w', mode, (opened) => {
-      cleanup = () => removeOpenedOutput(dest, opened);
+    output = openSync(dest, 'w', mode, (_, id) => {
+      openedId = id;
+      cleanup = () => removeOpenedOutput(dest, id);
     });
-    const opened = stat(output);
+    stat(output);
     try { cleanup = captureCleanup(dest); }
     catch (error) {
-      cleanup = () => removeOpenedOutput(dest, opened);
+      cleanup = () => removeOpenedOutput(dest, openedId);
       throw error;
     }
     work(input, output);
@@ -118,19 +119,21 @@ async function withFiles(src: string, dest: string, work: (input: FileHandle, ou
   let input: FileHandle | undefined;
   let output: FileHandle | undefined;
   let cleanup: (() => void) | undefined;
+  let openedId: string | undefined;
   let complete = false;
   const errors: unknown[] = [];
   try {
     input = await open(src, 'r');
     // The guarded open already verified this inode. Retain that identity before
     // any later stat or cleanup capture can fail, even if the path is replaced.
-    output = await open(dest, 'w', mode, (opened) => {
-      cleanup = () => removeOpenedOutput(dest, opened);
+    output = await open(dest, 'w', mode, (_, id) => {
+      openedId = id;
+      cleanup = () => removeOpenedOutput(dest, id);
     });
-    const opened = await stat(output);
+    await stat(output);
     try { cleanup = captureCleanup(dest); }
     catch (error) {
-      cleanup = () => removeOpenedOutput(dest, opened);
+      cleanup = () => removeOpenedOutput(dest, openedId);
       throw error;
     }
     await work(input, output);
