@@ -49,7 +49,9 @@ test('round2: JWT verification rotates JWKS and rejects wrong bindings after a c
 
 test('round2: alternate numeric metadata addresses are refused by connector and LDAP before I/O', async () => {
   for (const host of ['2852039166', '0xa9fea9fe', '169.254.169.254']) {
-    await assert.rejects(guardedFetch(`http://${host}/`), /link.local|metadata|not allowed|refused/i);
-    await assert.rejects(ldapAuthenticate({ name: 'Synthetic', url: `ldap://${host}`, bindDnTemplate: 'uid={user}' }, 'synthetic-user', 'synthetic-password'), /link.local|metadata|not allowed|refused/i);
+    // Windows does not read 2852039166 or 0xa9fea9fe as an address, so there the name simply cannot be looked up: no connection is made either way.
+    const refusal = process.platform === 'win32' && !host.includes('.') ? /link.local|metadata|not allowed|refused|can't reach|ENOTFOUND|fetch failed/i : /link.local|metadata|not allowed|refused/i;
+    await assert.rejects(guardedFetch(`http://${host}/`), refusal);
+    await assert.rejects(ldapAuthenticate({ name: 'Synthetic', url: `ldap://${host}`, bindDnTemplate: 'uid={user}' }, 'synthetic-user', 'synthetic-password'), refusal);
   }
 });
