@@ -677,9 +677,8 @@ export function pgSyntax(sql: string): string {
     p = p.replace(/\bcurrent_schemas\(\s*\w*\s*\)/gi, `'{public}'`);
     parts[i] = p;
   }
-  // These span string literals.
-  let out = parts.join('').replace(/\btrim\s*\(\s*(BOTH|LEADING|TRAILING)?\s*('(?:[^']|'')*')\s+FROM\s+([^()]*(?:\([^()]*\)[^()]*)*)\)/gi,
-    (_, side: string | undefined, chars: string, value: string) => `${{ LEADING: 'ltrim', TRAILING: 'rtrim' }[side?.toUpperCase() ?? ''] ?? 'trim'}(${value}, ${chars})`);
+  // Standard TRIM forms pass through to the store's SQL syntax rewrite on every SQL path.
+  let out = parts.join('');
   out = arrayAgg(out);
   if (catalog) {
     out = valuesColumnNames(availableExtensions(partitionAncestors(orderByOutputNames(out))))
