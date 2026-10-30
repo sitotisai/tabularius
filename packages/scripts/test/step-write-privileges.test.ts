@@ -40,6 +40,40 @@ function setup() {
 
 const field = (name: string) => ({ tableOccurrence: { id: 0, name: 'Tasks' }, field: { id: 0, name } });
 
+test('Set Field reports denied record edits at the step', async () => {
+  const s = setup();
+  try {
+    s.store.savePrivilegeSet({ ...s.reader, layouts: 'modifiable' });
+    const before = s.rows();
+    const r = await s.run('Set Field [ Tasks::Title ; "changed" ]\nSet Variable [ $stepError ; Value: Get ( LastError ) ]\nRevert Record/Request [ With dialog: Off ]\nExit Script [ Text Result: $stepError ]');
+    assert.equal(r.result, '200');
+    assert.deepEqual(s.rows(), before);
+  } finally { s.close(); }
+});
+
+test('Set Field reports view-only fields at the step', async () => {
+  const s = setup();
+  try {
+    s.store.savePrivilegeSet({ ...s.reader, layouts: 'modifiable', records: { ...s.reader.records, edit: true, fields: { Title: 'viewOnly' } } });
+    const before = s.rows();
+    const r = await s.run('Set Field [ Tasks::Title ; "changed" ]\nSet Variable [ $stepError ; Value: Get ( LastError ) ]\nRevert Record/Request [ With dialog: Off ]\nExit Script [ Text Result: $stepError ]');
+    assert.equal(r.result, '201');
+    assert.deepEqual(s.rows(), before);
+  } finally { s.close(); }
+});
+
+test('a failed final commit reports its validation error', async () => {
+  const s = setup();
+  try {
+    s.store.savePrivilegeSet({ ...s.reader, layouts: 'modifiable', records: { ...s.reader.records, edit: true } });
+    s.store.applyDesign([{ op: 'updateField', table: 'Tasks', field: 'Title', options: { validation: { always: true, notEmpty: true } } }]);
+    const before = s.rows();
+    const r = await s.run('Set Field [ Tasks::Title ; "" ]');
+    assert.equal(r.error, 509);
+    assert.deepEqual(s.rows(), before);
+  } finally { s.close(); }
+});
+
 test('Truncate Table refuses a Reader with error 200 and preserves every row', async () => {
   const s = setup();
   try {
