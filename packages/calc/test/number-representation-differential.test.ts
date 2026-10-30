@@ -109,7 +109,7 @@ test('number operators and functions agree with a seeded scaled-integer oracle',
     const increment = b / SCALE;
     check('SerialIncrement', `SerialIncrement ( "${serial}" ; ${increment} )`, String(serial + increment).padStart(serial.toString().length, '0'), i);
   }
-  assert.equal(evaluate('Sum ( 0.1234567890123456 )'), '0.123456789012346');
+  assert.equal(evaluate('Sum ( 0.1234567890123456 )'), '0.1234567890123456');
   assert.equal(evaluate('Average ( 100000000000000000007 ; 100000000000000000008 )'), '100000000000000000000');
   assert.deepEqual(Object.fromEntries(disagreements), {}, `differential disagreements: ${JSON.stringify(Object.fromEntries(disagreements))}`);
 });
