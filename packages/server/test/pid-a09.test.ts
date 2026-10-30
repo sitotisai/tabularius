@@ -1,7 +1,7 @@
 import './backup-review-guard.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { claimFolder, processIdentity, runningServer } from '../src/backup.ts';
@@ -18,6 +18,7 @@ test('#174 a reused PID neither blocks a claim nor signals an unrelated process'
   const release = claimFolder(dir);
   try { assert.equal(runningServer(dir), process.pid); } finally { release(); }
   assert.equal(runningServer(dir), undefined);
+  assert.deepEqual(readdirSync(dir).filter((f) => f.startsWith('.openhbam-pid')), [], 'a released claim leaves neither the pid file nor its owner record');
 });
 
 import { readFileSync } from 'node:fs';
