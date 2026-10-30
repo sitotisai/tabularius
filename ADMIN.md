@@ -49,6 +49,7 @@ send them elsewhere, backups:
 | `<name>.fmp12` | The FileMaker file you dropped in. Left as it is. |
 | `<name>.openhbam.sqlite` | The hosted file. Everything people change is here. |
 | `.openhbam.pid` | PID of the process currently hosting this folder. |
+| `.openhbam-pid-owner.json` | Start identity (start time, command line) of the process in `.openhbam.pid`, so a recycled process id is not taken for the server; removed with the PID file. |
 | `.openhbam-pid-<uuid>.tmp` | Temporary complete PID file used while claiming the folder. |
 | `.openhbam-claim.sqlite` | SQLite lock that serializes folder claims. |
 | `Backups/` | Backup sets, one folder per backup (`--backup-dir` or the console's Backups folder box moves them) |
