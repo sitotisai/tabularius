@@ -93,6 +93,49 @@ function topLevelIn(s: string): number {
   return -1;
 }
 
+/** Top-level position of a word, outside strings, comments and nested calls. */
+function topLevelWord(s: string, word: string): number {
+  for (let i = 0, depth = 0; i < s.length;) {
+    const c = s[i];
+    if (c === "'" || c === '"') i += quoted(s, i).length;
+    else if (s.startsWith('--', i) || s.startsWith('/*', i)) {
+      const line = s[i + 1] === '-';
+      const end = line ? s.indexOf('\n', i + 2) : s.indexOf('*/', i + 2);
+      i = end < 0 ? s.length : end + (line ? 0 : 2);
+    }
+    else if (c === '(') depth++, i++;
+    else if (c === ')') depth--, i++;
+    else if (depth === 0 && s.slice(i, i + word.length).toUpperCase() === word &&
+      (i === 0 || !/[\w]/.test(s[i - 1])) && (i + word.length === s.length || !/[\w]/.test(s[i + word.length]))) return i;
+    else i++;
+  }
+  return -1;
+}
+
+/** A standard TRIM call whose argument order will change in the SQLite rewrite. */
+function hasStandardTrim(sql: string): boolean {
+  let pos = 0;
+  for (const [text, isCode] of pieces(sql)) {
+    if (isCode) for (const match of text.matchAll(/\bTRIM\s*\(/gi)) {
+      const open = sql.indexOf('(', pos + match.index);
+      const end = closing(sql, open + 1);
+      if (end >= 0 && topLevelWord(sql.slice(open + 1, end), 'FROM') >= 0) return true;
+    }
+    pos += text.length;
+  }
+  return false;
+}
+
+/** Give plain placeholders their SQLite positions before moving TRIM's arguments. */
+function numberSqlParameters(sql: string): string {
+  let highest = 0;
+  return sqlTokens(sql).map((token) => {
+    if (token.kind === 'parameter' && token.text[0] === '?') highest = Math.max(highest, Number(token.text.slice(1)));
+    else if (token.kind === 'symbol' && token.text === '?') return `?${++highest}`;
+    return token.text;
+  }).join('');
+}
+
 const LITERAL_LEAD = /(?:(\{\s*)(d|t|ts)|\b(DATE|TIMESTAMP|TIME))\s*$/i;
 const LEAD_TAIL = 256;
 
@@ -121,11 +164,12 @@ function holdsLead(tail: string): boolean {
 /**
  * Date and time literals ({d '2026-01-01'}, {t '10:30:00'}, {ts '...'}, DATE '...',
  * TIME '...', TIMESTAMP '...'), the ROWMODID column, EXTRACT ( unit FROM x ) and
- * POSITION ( a IN b ), CURRENT_DATE / CURRENT_TIME / CURRENT_TIMESTAMP (the local time, where
+ * POSITION ( a IN b ), SUBSTRING and TRIM, CURRENT_DATE / CURRENT_TIME / CURRENT_TIMESTAMP (the local time, where
  * SQLite's own are UTC) and `x + INTERVAL n UNIT`, written the way SQLite reads them.
  */
 export function fileMakerSqlSyntax(sql: string, columnKind?: (name: string) => 'string' | 'date' | undefined): string {
-  if (!/[{+\-^]|\*\*|\b(?:DATE|TIME|TIMESTAMP|ROWMODID|EXTRACT|POSITION|STRVAL|CURRENT_DATE|CURRENT_TIME|CURRENT_TIMESTAMP|INTERVAL)\b/i.test(sql)) return sql;
+  if (!/[{+\-^]|\*\*|\b(?:DATE|TIME|TIMESTAMP|ROWMODID|EXTRACT|POSITION|SUBSTR|SUBSTRING|TRIM|STRVAL|CURRENT_DATE|CURRENT_TIME|CURRENT_TIMESTAMP|INTERVAL)\b/i.test(sql)) return sql;
+  if (sql.includes('?') && hasStandardTrim(sql)) sql = numberSqlParameters(sql);
   sql = withBooleanStrval(withOperators(withPower(sql), columnKind));
   const parts = pieces(sql);
   let out = '';
@@ -186,6 +230,47 @@ export function fileMakerSqlSyntax(sql: string, columnKind?: (name: string) => '
     }
     const inner = out.slice(open + 1, end);
     out = `${out.slice(0, at)}instr(${inner.slice(split + 4)}, ${inner.slice(0, split)})${out.slice(end + 1)}`;
+    from = at;
+  }
+  // The FROM spellings and positions before 1 follow SQL standard semantics; acceptance by FileMaker is unverified.
+  for (let from = 0, at: number; ;) {
+    at = -1;
+    let name = '';
+    let pos = 0;
+    for (const [text, isCode] of pieces(out)) {
+      if (isCode && at < 0) {
+        const start = Math.max(0, from - pos);
+        const found = /\b(SUBSTRING|SUBSTR|TRIM)\s*\(/i.exec(text.slice(start));
+        if (found) {
+          at = pos + start + found.index;
+          name = found[1].toUpperCase();
+        }
+      }
+      pos += text.length;
+    }
+    if (at < 0) break;
+    const open = out.indexOf('(', at);
+    const end = closing(out, open + 1);
+    if (end < 0) break;
+    const inner = out.slice(open + 1, end);
+    const split = topLevelWord(inner, 'FROM');
+    if (name === 'TRIM') {
+      if (split < 0) { from = open + 1; continue; }
+      const before = inner.slice(0, split);
+      const direction = /^\s*(LEADING|TRAILING|BOTH)\b/i.exec(before);
+      const mode = direction?.[1].toLowerCase() ?? 'both';
+      const chars = before.slice(direction?.[0].length ?? 0).trim();
+      out = `${out.slice(0, at)}fm_trim(${inner.slice(split + 4)}, '${mode}', ${chars || 'NULL'})${out.slice(end + 1)}`;
+    } else if (split >= 0) {
+      const after = inner.slice(split + 4);
+      const forAt = topLevelWord(after, 'FOR');
+      const start = forAt < 0 ? after : after.slice(0, forAt);
+      const length = forAt < 0 ? '' : `, ${after.slice(forAt + 3)}`;
+      out = `${out.slice(0, at)}fm_substr(${inner.slice(0, split)}, ${start}${length})${out.slice(end + 1)}`;
+    } else {
+      out = `${out.slice(0, at)}fm_substr${out.slice(at + name.length)}`;
+    }
+    // Revisit the arguments: they may contain another call in either spelling.
     from = at;
   }
   return out;
@@ -766,6 +851,31 @@ export const sqlDateFunctions = (now: () => Date = () => new Date()): Record<str
     if (v === null || n === null) return null;
     const chars = [...String(v)];
     return chars.slice(Math.max(0, chars.length - Math.max(0, Math.trunc(Number(n))))).join('');
+  },
+  fm_substr: (v, start, length) => {
+    if (v === null || start === null || length === null) return null;
+    const position = Number(start);
+    if (!Number.isFinite(position)) throw new CalcError(ERR.calculation, 'SUBSTRING start must be a number');
+    const first = Math.trunc(position);
+    const chars = [...String(v)];
+    if (length === undefined) return chars.slice(Math.max(first - 1, 0)).join('');
+    const count = Number(length);
+    if (!Number.isFinite(count)) throw new CalcError(ERR.calculation, 'SUBSTRING length must be a number');
+    const size = Math.trunc(count);
+    if (size < 0) throw new CalcError(ERR.calculation, "SUBSTRING length can't be negative");
+    const begin = Math.max(first - 1, 0);
+    return chars.slice(begin, Math.max(begin, first + size - 1)).join('');
+  },
+  fm_trim: (v, mode, chars) => {
+    if (v === null || mode === null) return null;
+    const remove = chars === null || chars === undefined ? ' ' : String(chars);
+    if ([...remove].length !== 1) throw new CalcError(ERR.calculation, 'TRIM needs a one-character string to remove');
+    const text = [...String(v)];
+    let start = 0;
+    let end = text.length;
+    if (mode !== 'trailing') while (start < end && text[start] === remove) start++;
+    if (mode !== 'leading') while (end > start && text[end - 1] === remove) end--;
+    return text.slice(start, end).join('');
   },
   SPACE: (n) => (n === null ? null : ' '.repeat(Math.min(Math.max(0, Math.trunc(Number(n))), 1_000_000))),
   CHR: (n) => (typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 127 ? String.fromCharCode(n) : null),
