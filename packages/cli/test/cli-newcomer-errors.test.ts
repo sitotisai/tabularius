@@ -5,7 +5,7 @@ import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cpSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { runCli } from './cli-run.ts';
 import { problems } from '../../../scripts/error-strings-lib.ts';
 
@@ -47,7 +47,8 @@ describe('command line: wrong values are answered in sentences', { concurrency: 
         cpSync(made, folder, { recursive: true });
         const r = await cli(c.args.map((a) => (a === '@' ? folder : a)), c.env);
         assert.equal(r.status, 1, r.stdout + r.stderr);
-        const first = r.stderr.split('\n')[0].replaceAll(folder, '<folder>');
+        // A file named by a relative path is reported by the full path on Windows; the folder the command ran in is not part of what the person sees.
+        const first = r.stderr.split('\n')[0].replaceAll(folder, '<folder>').replaceAll(`${process.cwd()}${sep}`, '');
         assert.match(first, c.says);
         assert.deepEqual(problems(first), [], first);
         assert.doesNotMatch(r.stderr, /\n\s+at .*:\d+:\d+/, 'no stack trace');
