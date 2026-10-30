@@ -11,19 +11,20 @@ test('#153 non-JSON gateway failures are actionable API errors', async (t) => {
   }
 });
 
-test('#154 both boot paths only discard saved sessions on HTTP 401', async () => {
+test('#154 the classic boot path only discards a saved session on HTTP 401', async () => {
   const { readFileSync } = await import('node:fs');
-  for (const path of ['../src/main.ts', '../next/main.ts']) {
+  for (const path of ['../src/main.ts']) {
     const source = readFileSync(new URL(path, import.meta.url), 'utf8');
     assert.match(source, /catch \(e\) \{\s*if \(e instanceof ApiError && e.status === 401\)/);
   }
 });
 
-test('#154 transient boot errors retain the token and offline key; HTTP 401 removes them', async () => {
+test('#154 classic: transient boot errors retain the token and offline key; HTTP 401 removes them', async () => {
   const { readFileSync } = await import('node:fs');
   const { stripTypeScriptTypes } = await import('node:module');
   const { default: vm } = await import('node:vm');
-  for (const client of ['src', 'next']) {
+  // The next client classifies a failed boot with sessionFailure (next/signin.ts), which has its own tests.
+  for (const client of ['src']) {
     const source = readFileSync(new URL(`../${client}/main.ts`, import.meta.url), 'utf8');
     const start = source.indexOf(client === 'src' ? "  const saved = sessionStorageGet('tabularius.session');" : '  const saved = stored(SESSION);');
     const end = source.indexOf(client === 'src' ? '  await showLogin();' : '\n  signIn();', start);
@@ -39,22 +40,5 @@ test('#154 transient boot errors retain the token and offline key; HTTP 401 remo
       });
       assert.equal(saved, failure instanceof ApiError && failure.status === 401 ? undefined : original);
     }
-  }
-});
-
-test('#154 next model loading retains the saved session on transient failure', async () => {
-  const { readFileSync } = await import('node:fs');
-  const { stripTypeScriptTypes } = await import('node:module');
-  const { default: vm } = await import('node:vm');
-  const source = readFileSync(new URL('../next/main.ts', import.meta.url), 'utf8');
-  const start = source.indexOf('async function open(api: Api)');
-  const end = source.indexOf('\n}', start) + 2;
-  for (const failure of [new TypeError('offline'), new ApiError(-1, 'restart', undefined, 503), new ApiError(952, 'expired', undefined, 401)]) {
-    let removed = false;
-    await vm.runInNewContext(stripTypeScriptTypes(`${source.slice(start, end)}\nopen({ db: 'Synthetic' });`), {
-      ApiError, h: () => ({}), app: { replaceChildren() {} }, readModel: async () => { throw failure; },
-      SESSION: 'tabularius.session', store: () => { removed = true; }, signIn() {},
-    });
-    assert.equal(removed, failure instanceof ApiError && failure.status === 401);
   }
 });

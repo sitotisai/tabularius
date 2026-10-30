@@ -138,7 +138,7 @@
       "gzip": 1749
     },
     "packages/web/src/device-data.ts": {
-      "raw": 5100,
+      "raw": 5300,
       "gzip": 1980
     },
     "packages/web/src/watch-storage.ts": {
