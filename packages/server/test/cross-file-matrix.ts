@@ -36,7 +36,8 @@ export async function openIsolation() {
     store.setAiPolicy(false);
     store.savePrivilegeSet({ ...store.privilegeSet('[Full Access]')!, extendedPrivileges: keys });
     store.savePrivilegeSet({ name: 'Reader', records: { view: true, edit: false, create: false, delete: false }, layouts: 'viewOnly', scripts: 'viewOnly', valueLists: 'viewOnly', extendedPrivileges: keys });
-    store.setPassword('Shared', `password-${i}`, i === 0 ? '[Full Access]' : 'Reader');
+    // One password in both files: a sign-in to either proves Shared is the same account in the other (see cross-file.ts).
+    store.setPassword('Shared', 'password-shared', i === 0 ? '[Full Access]' : 'Reader');
     store.setPassword(`Only${i}`, `only-${i}`, '[Full Access]');
     store.applyDesign([
       { op: 'createTable', name: 'Items', fields: [{ name: 'Key', type: 'number' }, { name: 'Value' }, { name: 'Blob', type: 'container' }] },
@@ -68,7 +69,7 @@ export async function openIsolation() {
     try { data = JSON.parse(text); } catch { /* Some authorized surfaces return text. */ }
     return { status: r.status, text, data };
   }
-  async function login(i: number, account = 'Shared', password = `password-${i}`, extra = {}) {
+  async function login(i: number, account = 'Shared', password = 'password-shared', extra = {}) {
     const r = await request(rest(encodeURIComponent(stores[i].name)) + '/sessions', basic(account, password), 'POST', extra);
     assert.equal(r.status, 200, r.text);
     return 'Bearer ' + r.data.response.token;

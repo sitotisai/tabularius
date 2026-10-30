@@ -10,15 +10,15 @@ before(async () => {
   const [, b] = m.stores;
   // In the second file this account has a set that does not read every record; in the first it has full access.
   b.savePrivilegeSet({ name: 'Partial', records: { view: true, edit: false, create: false, delete: false, fieldsDefault: 'none' }, layouts: 'viewOnly', scripts: 'viewOnly', valueLists: 'viewOnly', extendedPrivileges: ['fmxdbc'] });
-  b.setPassword('Shared', 'password-1', 'Partial');
+  b.setPassword('Shared', 'password-shared', 'Partial');
   m.stores[0].applyDesign([{ op: 'createOccurrence', name: 'ExternalOther', file: 'Destination', externalTable: b.schema.tables[0].id }]);
 });
 after(async () => { await m?.close(); });
 
 const path = () => `/tabularius/sql/v1/databases/${encodeURIComponent(m.stores[0].name)}`;
 const ask = (sql: string, get = false) => get
-  ? m.request(`${path()}?q=${encodeURIComponent(sql)}`, basic('Shared', 'password-0'))
-  : m.request(path(), basic('Shared', 'password-0'), 'POST', { sql });
+  ? m.request(`${path()}?q=${encodeURIComponent(sql)}`, basic('Shared', 'password-shared'))
+  : m.request(path(), basic('Shared', 'password-shared'), 'POST', { sql });
 
 test('a refused table of another file answers like a table that is not there', async () => {
   for (const get of [false, true]) {
@@ -65,7 +65,7 @@ test('the answer names the table the query used, not another name that is in the
 });
 
 test('a table of another file the account may read still answers', async () => {
-  m.stores[1].setPassword('Shared', 'password-1', 'Reader');
+  m.stores[1].setPassword('Shared', 'password-shared', 'Reader');
   const r = await ask('SELECT Value FROM ExternalItems');
   assert.equal(r.status, 200, r.text);
   assert.deepEqual(r.data.rows, [['SENTINEL_1']]);

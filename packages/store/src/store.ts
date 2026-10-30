@@ -3941,7 +3941,7 @@ export class Store {
   setPassword(account: string, password: string, privilegeSet?: string, opts: { mustChange?: boolean; keepPasskeys?: boolean } = {}): void {
     this.setPasswordOnly(account, password, privilegeSet, opts);
     // The new password is tried in the files this one refers to, so a token or a later sign-in reaches them as this person.
-    this.crossFile.proveSync(this.canonicalAccount(account) ?? account, password, '');
+    this.crossFile.proveSync(this.canonicalAccount(account) ?? account, password, '', false);
   }
 
   private setPasswordOnly(account: string, password: string, privilegeSet?: string, opts: { mustChange?: boolean; keepPasskeys?: boolean } = {}): void {
@@ -3993,7 +3993,7 @@ export class Store {
   /** Add a local account with its initial security state as one atomic change. */
   createAccount(account: string, password: string, privilegeSet: string, opts: { inactive?: boolean; mustChange?: boolean } = {}): void {
     this.createAccountOnly(account, password, privilegeSet, opts);
-    this.crossFile.proveSync(this.canonicalAccount(account) ?? account, password, '');
+    this.crossFile.proveSync(this.canonicalAccount(account) ?? account, password, '', false);
   }
 
   private createAccountOnly(account: string, password: string, privilegeSet: string, opts: { inactive?: boolean; mustChange?: boolean } = {}): void {
@@ -6360,7 +6360,7 @@ export class Store {
    * not in this file) get no access. Pass them in FindOptions/WriteOptions.
    * `via` names the external account someone signed in through: its set applies.
    */
-  privileges(account: string, via?: string, person?: string): Privileges {
+  privileges(account: string, via?: string, person?: string, groups: string[] = []): Privileges {
     // A prepared scalar read makes a remote revocation effective on the next use.
     // data_version is a cheap fallback for other-process/raw writes outside the
     // tracked tables. Triggers cover raw writes through this connection too.
@@ -6370,7 +6370,7 @@ export class Store {
       this.privilegeCache.invalidate((cache) => cache.clear());
       this.privilegeVersion.value = version;
     }
-    const key = `${account.toLowerCase()}\u0000${via?.toLowerCase() ?? ''}\u0000${person?.toLowerCase() ?? ''}`;
+    const key = `${account.toLowerCase()}\u0000${via?.toLowerCase() ?? ''}\u0000${person?.toLowerCase() ?? ''}\u0000${groups.map((g) => g.toLowerCase()).sort().join('\u0001')}`;
     const cached = this.privilegeCache.value.get(key);
     if (cached && cached.account === account) return cached;
     const name = this.accountPrivilegeSet(via ?? account);
@@ -6379,12 +6379,17 @@ export class Store {
     } satisfies PrivilegeDefinition;
     const p = new Privileges(account, set, this, (file) => {
       const other = file as Store;
-      // The same name in another file is the same person only when it was proved: an external sign-in (a directory or
-      // identity provider vouched for the person, and the other file maps that identity too), or a local account whose
-      // password matched there as well (crossFileProven), as FileMaker opens an external file with the same name and
-      // password and asks otherwise. A name alone gives nothing.
-      const same = via !== undefined || person !== undefined || this.crossFileProven(account, other);
-      return same && other.identityAllowed(account, via, undefined, person) ? other.privileges(account, via, person) : other.privileges('\u0000inactive-account');
+      // The same name in another file is the same person only when it was proved. An external sign-in (a directory or
+      // identity provider vouched for the person) reaches the other file as the person the provider vouched for: that file
+      // maps the person's email, domain or groups itself, as it would at a sign-in there, and the mapping's name here says
+      // nothing about it (whoever has Full Access here can name a mapping anything). A local account reaches the other file
+      // when its password matched there as well (crossFileProven), as FileMaker opens an external file with the same name
+      // and password and asks otherwise. A name alone gives nothing.
+      if (via !== undefined || person !== undefined) {
+        const theirs = other.externalAccount(person ?? account, groups);
+        return theirs !== undefined && other.identityAllowed(account, theirs, undefined, person) ? other.privileges(account, theirs, person, groups) : other.privileges('\u0000inactive-account');
+      }
+      return this.crossFileProven(account, other) && other.identityAllowed(account) ? other.privileges(account) : other.privileges('\u0000inactive-account');
     }).withVia(via);
     this.privilegeCache.value.set(key, p);
     return p;

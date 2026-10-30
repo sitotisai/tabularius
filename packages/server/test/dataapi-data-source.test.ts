@@ -118,7 +118,7 @@ test('implicit cross-file privileges preserve and validate the trusted directory
     a.setExternalAccount('Team', '[Full Access]');
     b.setExternalAccount('Team', '[Full Access]');
     const privileges = sessionPrivileges(a, {
-      token: 'test-session', db: 'A', account: 'alias', via: 'Team', externalIdentity: { person: 'pat@example.test', mapping: 'Team' },
+      token: 'test-session', db: 'A', account: 'alias', via: 'Team', externalIdentity: { person: 'pat@example.test', groups: ['Team'], mapping: 'Team' },
       started: Date.now(), lastUsed: Date.now(), scripts: {} as never, client: 'web',
     });
     assert.equal(privileges.in(b).full, true);
