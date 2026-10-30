@@ -128,9 +128,11 @@ test('a child run removes converted copies after timeout, crash and success', as
       const dir = mkdtempSync(join(tmpdir(), 'corpus-child-cleanup-'));
       const scratch = join(dir, 'scratch');
       mkdirSync(scratch);
-      const originalTmpdir = process.env.TMPDIR;
+      // os.tmpdir() reads TMPDIR on macOS and Linux, TEMP and TMP on Windows.
+      const names = ['TMPDIR', 'TEMP', 'TMP'];
+      const originals = names.map((n) => process.env[n]);
       try {
-        process.env.TMPDIR = scratch;
+        for (const n of names) process.env[n] = scratch;
         const entry = join(dir, 'child.mjs');
         const started = join(dir, 'started');
         writeFileSync(entry, `import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'tabularius-corpus-')); fs.writeFileSync(path.join(folder, 'converted.sqlite'), 'synthetic records'); fs.writeFileSync(${JSON.stringify(started)}, 'yes'); ${finish}`);
@@ -139,8 +141,7 @@ test('a child run removes converted copies after timeout, crash and success', as
         assert.equal(existsSync(started), true, 'stub child created a converted copy');
         assert.deepEqual(readdirSync(scratch), []);
       } finally {
-        if (originalTmpdir === undefined) delete process.env.TMPDIR;
-        else process.env.TMPDIR = originalTmpdir;
+        names.forEach((n, i) => { if (originals[i] === undefined) delete process.env[n]; else process.env[n] = originals[i]; });
         rmSync(dir, { recursive: true, force: true });
       }
     });

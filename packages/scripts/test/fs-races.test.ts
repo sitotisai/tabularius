@@ -95,7 +95,7 @@ test('Insert File refuses a leaf swap without changing its container field', asy
   const s = setup(t), file = join(s.docs, 'source.txt'); fs.writeFileSync(file, 'inside');
   let hit = false;
   await assert.rejects(withFilesystemHook((e) => {
-    if (e.phase !== 'checked' || !e.path.endsWith('/source.txt')) return;
+    if (e.phase !== 'checked' || !/[\\/]source\.txt$/.test(e.path)) return;
     hit = true; fs.unlinkSync(file); fs.symlinkSync(s.secret, file);
   }, () => s.text('Insert File [ Items::Doc ; “source.txt” ]')));
   assert.ok(hit);

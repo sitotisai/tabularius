@@ -3,7 +3,8 @@
 // Windows refuses to delete a file that a process still holds open, and most tests remove their
 // temporary folder while the store they opened in it is still open (Linux and macOS allow it). Rather
 // than touch a thousand tests, this keeps a list of the SQLite files opened in the process and, when a
-// delete fails because the file is in use, closes the ones under that path and tries once more.
+// delete fails because the file is in use, closes the ones under that path and keeps trying for a couple of seconds (a process
+// that has just exited lets go of its files a moment after).
 // It changes nothing about what a test asserts, and does nothing when the delete works. Only a recursive delete made by
 // test code is retried, which is how a test tears down its folder: a test that deletes a file on purpose while its server is
 // running, and the server's own deletes, must keep failing as they would for a person (some are meant to, and are handled).
@@ -67,7 +68,12 @@ export function trackDatabases(sqlite: { DatabaseSync: DatabaseClass }, caseBlin
 /** Makes a delete that fails because a file is in use close the databases under it and retry once. */
 export const tearsDownFolder = (options: unknown): boolean => !!options && typeof options === 'object' && (options as { recursive?: unknown }).recursive === true;
 
-export function retryDeletes(fs: FsLike, closeUnder: (path: unknown) => number, allowed: (options: unknown) => boolean = (options) => tearsDownFolder(options) && calledFromTest()): void {
+/** How long a delete that fails because a file is in use keeps trying: a process that has just exited, or is exiting, lets go of its files a moment later. */
+export type Patience = { attempts: number; waitMs: number };
+const PATIENCE: Patience = { attempts: 20, waitMs: 100 };
+const sleepSync = (ms: number) => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); };
+
+export function retryDeletes(fs: FsLike, closeUnder: (path: unknown) => number, allowed: (options: unknown) => boolean = (options) => tearsDownFolder(options) && calledFromTest(), patience: Patience = PATIENCE): void {
   for (const name of SYNC_DELETES) {
     const original = fs[name];
     if (typeof original !== 'function') continue;
@@ -76,8 +82,15 @@ export function retryDeletes(fs: FsLike, closeUnder: (path: unknown) => number, 
       try {
         return original.call(this, path, ...rest);
       } catch (error) {
-        if (!mine || !IN_USE.has((error as NodeJS.ErrnoException)?.code ?? '') || closeUnder(path) === 0) throw error;
-        return original.call(this, path, ...rest);
+        if (!mine || !IN_USE.has((error as NodeJS.ErrnoException)?.code ?? '')) throw error;
+        closeUnder(path);
+        for (let attempt = 0; ; attempt++) {
+          try { return original.call(this, path, ...rest); }
+          catch (again) {
+            if (attempt >= patience.attempts || !IN_USE.has((again as NodeJS.ErrnoException)?.code ?? '')) throw again;
+            sleepSync(patience.waitMs);
+          }
+        }
       }
     };
   }
@@ -89,8 +102,15 @@ export function retryDeletes(fs: FsLike, closeUnder: (path: unknown) => number, 
       try {
         return await original.call(this, path, ...rest);
       } catch (error) {
-        if (!mine || !IN_USE.has((error as NodeJS.ErrnoException)?.code ?? '') || closeUnder(path) === 0) throw error;
-        return original.call(this, path, ...rest);
+        if (!mine || !IN_USE.has((error as NodeJS.ErrnoException)?.code ?? '')) throw error;
+        closeUnder(path);
+        for (let attempt = 0; ; attempt++) {
+          try { return await original.call(this, path, ...rest); }
+          catch (again) {
+            if (attempt >= patience.attempts || !IN_USE.has((again as NodeJS.ErrnoException)?.code ?? '')) throw again;
+            await new Promise((ok) => setTimeout(ok, patience.waitMs));
+          }
+        }
       }
     };
   }
