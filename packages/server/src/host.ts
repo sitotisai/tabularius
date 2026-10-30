@@ -28,6 +28,7 @@ import { FileDamaged, STORE_FORMAT, createStore, importFmp12, needsDesigns, NATI
 import { decryptFileSync, encryptFileSync, ENCRYPTED_EXT } from './encrypt.ts';
 import type { ScriptProfile } from '../../scripts/src/index.ts';
 import { ScriptQueue } from './server-queue.ts';
+import { OpenFailures } from './open-failures.ts';
 import type { ServerLogs } from './server-logs.ts';
 import type { ConversionGuide } from './conversion-guide.ts';
 import { loadPlugins, PluginRegistry } from '../../plugins/src/index.ts';
@@ -386,6 +387,8 @@ export class Host {
    * opened so they let go of it or pick it up.
    */
   private readonly sharedLocks?: (store: Store) => RecordLocks;
+  /** Files a cluster worker could not open (kept by the leader, shown in the admin status). */
+  readonly openFailures = new OpenFailures();
   peers?: { sync(name: string, action: 'close' | 'pause' | 'open' | 'offline', detail?: string): Promise<void> };
 
   /**
