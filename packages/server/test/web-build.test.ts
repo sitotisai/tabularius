@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { serve } from '../src/index.ts';
 import { WebBuild, staticImports, versionPage, versionScript } from '../src/web-build.ts';
 
@@ -50,14 +50,15 @@ test('staticImports lists what the browser fetches before the module runs, not i
 });
 
 test('versionPage versions the scripts and styles a page names and preloads its entry\'s static modules', async () => {
-  const root = '/w';
+  const at = (path: string) => resolve(path);
+  const root = at('/w');
   const graph: Record<string, string[]> = {
-    '/w/src/main.ts': ['/w/src/a.ts', '/w/src/b.ts'],
-    '/w/src/a.ts': ['/w/src/b.ts'],
-    '/w/src/b.ts': [],
+    [at('/w/src/main.ts')]: [at('/w/src/a.ts'), at('/w/src/b.ts')],
+    [at('/w/src/a.ts')]: [at('/w/src/b.ts')],
+    [at('/w/src/b.ts')]: [],
   };
   const html = `<head><link rel="stylesheet" href="app.css"><link rel="icon" href="data:image/svg+xml,%3Csvg%3E"><link rel="icon" href="favicon.svg">\n  <script type="module" src="src/main.ts"></script></head>`;
-  const out = await versionPage(html, ID, '/w/index.html', root, async (m) => graph[m] ?? []);
+  const out = await versionPage(html, ID, at('/w/index.html'), root, async (m) => graph[m] ?? []);
   assert.match(out, new RegExp(`href="app\\.css\\?v=${ID}"`));
   assert.match(out, new RegExp(`href="favicon\\.svg\\?v=${ID}"`));
   assert.match(out, /href="data:image\/svg\+xml,%3Csvg%3E"/);
@@ -66,7 +67,7 @@ test('versionPage versions the scripts and styles a page names and preloads its 
   assert.deepEqual(preloads, [`src/main.ts?v=${ID}`, `src/a.ts?v=${ID}`, `src/b.ts?v=${ID}`]);
   assert.ok(out.indexOf('modulepreload') < out.indexOf('<script type="module"'));
 
-  const next = await versionPage(`<script type="module" src="/app/next/main.ts"></script>`, ID, '/w/next/index.html', root, async () => []);
+  const next = await versionPage(`<script type="module" src="/app/next/main.ts"></script>`, ID, at('/w/next/index.html'), root, async () => []);
   assert.match(next, new RegExp(`<link rel="modulepreload" href="/app/next/main\\.ts\\?v=${ID}">`));
   assert.match(next, new RegExp(`src="/app/next/main\\.ts\\?v=${ID}"`));
 });
