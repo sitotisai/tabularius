@@ -12,6 +12,7 @@ import { verifySet } from '../src/backup-verify.ts';
 import { Host } from '../src/host.ts';
 import { Admin } from '../src/admin.ts';
 import { DataApi } from '../src/dataapi.ts';
+import { expectMode } from '../../store/test/windows.ts';
 
 function setup(t: { after(fn: () => void): void }): string {
   const dir = fs.mkdtempSync(join(tmpdir(), 'tabularius-a09-'));
@@ -28,7 +29,7 @@ test('#164 new stores and WAL sidecars are private under a permissive umask', (t
     const db = new DatabaseSync(path);
     try {
       db.exec('CREATE TABLE privacy (n INTEGER); INSERT INTO privacy VALUES (1)');
-      for (const suffix of ['', '-wal', '-shm']) assert.equal(fs.statSync(path + suffix).mode & 0o777, 0o600, suffix || 'store');
+      for (const suffix of ['', '-wal', '-shm']) expectMode(fs.statSync(path + suffix).mode & 0o777, 0o600, suffix || 'store');
     } finally { db.close(); }
   } finally { process.umask(mask); }
 });

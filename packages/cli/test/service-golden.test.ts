@@ -3,7 +3,7 @@ import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, posix } from 'node:path';
 import { commandStubEnv } from '../../../scripts/test-command-stubs.ts';
 import { defaultServiceHost, serviceFile, serviceSummary, type Platform, type ServiceOptions } from '../src/service.ts';
 import { readSecretFile } from '../src/secret-file.ts';
@@ -168,7 +168,7 @@ for (const platform of platforms) {
         assert.deepEqual(systemdWords(values.get('ReadWritePaths')![0]), [`-${o.folder}`, `-${o.home}`, '-/srv/tabularius']);
       } else if (platform === 'darwin') {
         assert.deepEqual(values.get('UserName'), system ? [o.user] : undefined);
-        for (const key of ['StandardOutPath', 'StandardErrorPath']) assert.deepEqual(values.get(key), [join(o.home, 'logs', 'server.log')]);
+        for (const key of ['StandardOutPath', 'StandardErrorPath']) assert.deepEqual(values.get(key), [posix.join(o.home, 'logs', 'server.log')]);
       } else {
         assert.deepEqual(values.get('UserId'), system ? ['S-1-5-18'] : [o.user, o.user]);
         assert.deepEqual(values.get('LogonType'), system ? undefined : ['InteractiveToken']);
