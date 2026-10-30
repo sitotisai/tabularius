@@ -24,7 +24,7 @@ import { createHash } from 'node:crypto';
 import { copyFileSync, createReadStream } from '../../store/src/fs-boundary.ts';
 import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { backupInventory, checkedBackupCopies } from './backup-inventory.ts';
 import { pipeline } from 'node:stream/promises';
 import { STORE_EXT } from './host.ts';
@@ -197,8 +197,17 @@ export async function integrityAsync(path: string, quick = false): Promise<strin
   }
 }
 
-/** Checks every file's copy in a backup set and records the outcome in it. */
-export async function verifySet(setDir: string, passphrase = backupKey(), options: { sign?: boolean } = {}): Promise<SetCheck> {
+const checking = new Map<string, Promise<unknown>>();
+
+/** Checks every file's copy in a backup set and records the outcome in it. Checks of one set run one at a time, so the outcome kept is that of the check that began last (one read before damage cannot overwrite the one that found it). */
+export function verifySet(setDir: string, passphrase = backupKey(), options: { sign?: boolean } = {}): Promise<SetCheck> {
+  const key = resolve(setDir);
+  const run = (checking.get(key) ?? Promise.resolve()).catch(() => {}).then(() => verifySetNow(setDir, passphrase, options));
+  checking.set(key, run);
+  return run.finally(() => { if (checking.get(key) === run) checking.delete(key); });
+}
+
+async function verifySetNow(setDir: string, passphrase: string | undefined, options: { sign?: boolean }): Promise<SetCheck> {
   const started = Date.now();
   let info: SetInfo;
   try { info = readInfo(setDir); } catch (e) {
