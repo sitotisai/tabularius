@@ -74,7 +74,8 @@ for (const failure of ['refusal', 'commit'] as const) test(`a ${failure} failure
   const path = join(dir, 'Shop.sqlite');
   createStore(path);
   const store = new Store(path, 'Shop');
-  t.after(() => { store.close(); rmSync(dir, { recursive: true, force: true }); });
+  let observer: Store | undefined;
+  t.after(() => { observer?.close(); store.close(); rmSync(dir, { recursive: true, force: true }); });
   store.applyDesign([
     { op: 'createTable', name: 'T', fields: [{ name: 'Value', type: 'number' }] },
     { op: 'createField', table: 'T', name: 'Double', type: 'number', kind: 'calculation', calculation: 'Value * 2', options: { unstored: true } },
@@ -112,8 +113,7 @@ for (const failure of ['refusal', 'commit'] as const) test(`a ${failure} failure
   t.mock.restoreAll();
   // Reuse the rolled-back data version with different data: no result from the failed write may stand in.
   store.update('T', recordId, { Value: '11' });
-  const observer = new Store(path, 'Shop');
-  t.after(() => observer.close());
+  observer = new Store(path, 'Shop');
   observer.shareResults();
   for (const reader of [store, observer]) {
     const data = reader.get('T', recordId).fieldData;
