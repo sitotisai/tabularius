@@ -10,8 +10,8 @@ import { containerFixture, fillPattern, pattern, type ContainerFixture } from '.
 
 const SIZE = 200 * 1024 * 1024;
 const PIECE = 4 * 1024 * 1024;
-/** How much the peak resident memory may grow over the whole round trip. */
-const BUDGET = 100 * 1024 * 1024;
+/** How much the peak resident memory may grow over the whole round trip. The peak is a process-wide high-water mark, so what the process had already loaded before the test moves the figure by tens of MB; a file held whole would grow it by 200 MB or more. */
+const BUDGET = 140 * 1024 * 1024;
 
 let f: ContainerFixture;
 before(async () => { f = await containerFixture(); });
@@ -29,6 +29,12 @@ test('200 MB goes in by pieces, comes out whole and in ranges, and the peak memo
     const r = await fetch(`${f.api}${path}`, { method, headers: { authorization: auth, ...(body === undefined || raw ? {} : { 'content-type': 'application/json' }) }, body: body === undefined ? undefined : raw ? (body as unknown as BodyInit) : JSON.stringify(body) });
     return (await r.json()) as { response: Record<string, any>; messages: { code: string; message: string }[] };
   };
+  // Code a first upload loads is not what is being measured: send a small file through the same routes first, so the baseline is taken with it loaded.
+  const warm = await call('POST', `/layouts/Contacts/records/${f.contact(2)}/container-uploads/Photo/1`, { filename: 'warm.bin', mime: 'application/octet-stream', size: 1024 });
+  assert.equal(warm.messages[0].code, '0');
+  assert.equal((await call('PUT', `/layouts/Contacts/container-uploads/${warm.response.uploadId}?offset=0`, new Uint8Array(1024))).messages[0].code, '0');
+  assert.equal((await call('POST', `/layouts/Contacts/container-uploads/${warm.response.uploadId}/finish`, {})).messages[0].code, '0');
+  await (await fetch(f.store.present(f.store.containerId('Contacts', Number(f.contact(2)), 'Photo')!, 'container', 'iso') as string)).arrayBuffer();
   const started = performance.now();
   collect();
   const before = peak();
