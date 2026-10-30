@@ -835,6 +835,25 @@ An account whose view of a table depends on a rule can put back changes to
 records it can see, but not a deleted record: with no values left to judge the
 rule on, only an account that may view the whole table can.
 
+### Security event kinds
+
+**Security events only** in the **Audit log** shows the entries below (and more) by their kind, which is also the `kind` of an entry from `GET /tabularius/admin/v1/audit`. The table lists the kinds for second factors, passkeys, recovery codes, tokens and cleared sign-in blocks; the other kinds are described in the console beside each entry.
+
+| Kind | Recorded when |
+| --- | --- |
+| `lockout-cleared` | A sign-in block ended: an administrator cleared it in the console, or its time ran out. The entry names the account or the address and says which. |
+| `two-factor-enrolled` | An account began setting up an authenticator app. The second factor does not apply until its first code is confirmed. |
+| `two-factor-confirmed` | The account confirmed a code from its authenticator app, so the second factor now applies. |
+| `two-factor-disabled` | An account's authenticator app was turned off. |
+| `passkey-registered` | A passkey was added to an account; the entry shows the passkey's label when it has one. |
+| `passkey-removed` | A passkey was removed from an account. |
+| `recovery-codes-generated` | A new set of recovery codes was made for an account; the entry shows how many. The account's earlier codes stop working. |
+| `recovery-code-used` | An account signed in with a recovery code. |
+| `api-token-issued` | An API token was issued to an account; the entry shows its label and what it is limited to (read-only, the interfaces it may be used on, the layouts it may open). The token itself is never logged. |
+| `api-token-revoked` | An API token was revoked; the entry shows its id. |
+| `scim-token-issued` | A provisioning (SCIM) token was issued, so an identity provider can add, change and remove accounts; the entry shows when it expires. |
+| `scim-token-revoked` | The provisioning (SCIM) token was revoked. |
+
 ## Putting a record back
 
 In the admin console's **Audit log**, **History** on any record change lists
