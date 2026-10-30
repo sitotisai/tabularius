@@ -265,10 +265,20 @@ export async function verifySet(setDir: string, passphrase = backupKey(), option
     if (options.sign && check.ok && passphrase) { const logs = logInventory(setDir); await signManifest(setDir, passphrase, (i) => { if (Object.keys(logs).length) i.logs = logs; }); unsigned = false; }
     if (unsigned) check.unsigned = true;
   }
+  recordCheck(setDir, check, started);
+  return check;
+}
+
+/**
+ * Stores a set's check, unless a check that began later is already stored: a slow check that read the copies
+ * before damage must not hide what a manual check, begun after it and finished before it, found.
+ */
+export function recordCheck(setDir: string, check: SetCheck, started: number): void {
   updateInfo(setDir, (i) => {
+    const kept = i.verified;
+    if (kept && Date.parse(kept.at) - kept.ms > started) return;
     i.verified = check;
   });
-  return check;
 }
 
 /** What a failed check says, in one line. */
