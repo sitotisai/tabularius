@@ -8,6 +8,6 @@ The account used to find a person before they sign in.
 | Accepted values | LDAP distinguished name, template, attribute, or password as named by the variable |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1447](../../../../packages/cli/src/main.ts#L1447) |
+| Code | [packages/cli/src/main.ts:1455](../../../../packages/cli/src/main.ts#L1455) |
 
 [All environment variables](../../../environment-variables.md)
