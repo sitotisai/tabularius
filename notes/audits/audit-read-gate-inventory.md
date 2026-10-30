@@ -193,7 +193,7 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/scripts/src/engine.ts:5410](../../packages/scripts/src/engine.ts#L5410) `ScriptEngine/newCalcContext/persistentData` | `Store.persistentData` (5410) | SCRIPT |
 | [packages/scripts/src/engine.ts:5411](../../packages/scripts/src/engine.ts#L5411) `ScriptEngine/newCalcContext/persistentDataIds` | `Store.persistentDataIds` (5411) | SCRIPT |
 | [packages/scripts/src/engine.ts:8640](../../packages/scripts/src/engine.ts#L8640) `ScriptEngine/newRecord` | `Store.findIds` (8640) | SCRIPT |
-| [packages/scripts/src/engine.ts:9011](../../packages/scripts/src/engine.ts#L9011) `ScriptEngine/quickFind` | `Store.get` (9011) | SCRIPT |
+| [packages/scripts/src/engine.ts:9018](../../packages/scripts/src/engine.ts#L9018) `ScriptEngine/quickFind` | `Store.get` (9018) | SCRIPT |
 | [packages/scripts/src/engine.ts:5810](../../packages/scripts/src/engine.ts#L5810) `ScriptEngine/record` | `Store.get` (5810) | SCRIPT |
 | [packages/scripts/src/engine.ts:5971](../../packages/scripts/src/engine.ts#L5971) `ScriptEngine/relatedIds` | `Store.findIds` (5971); `rowsById` (5979); `Store.select` (5983); `Store.matchIds` (5997); `Store.viewableIds` (6020) | SCRIPT |
 | [packages/scripts/src/engine.ts:6005](../../packages/scripts/src/engine.ts#L6005) `ScriptEngine/relatedIds/matching` | `Store.matchIds` (6005) | SCRIPT |
@@ -206,7 +206,7 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/scripts/src/engine.ts:3335](../../packages/scripts/src/engine.ts#L3335) `ScriptEngine/sqlByNaturalLanguage` | `Calculations.translateSQL` (3335); `Calculations.executeSQL` (3342) | SCRIPT |
 | [packages/scripts/src/engine.ts:4127](../../packages/scripts/src/engine.ts#L4127) `ScriptEngine/step` | `Store.fieldIndex` (4127) | SCRIPT |
 | [packages/scripts/src/engine.ts:5843](../../packages/scripts/src/engine.ts#L5843) `ScriptEngine/valueOf` | `Store.findIds` (5843, 5843); `Store.containerId` (5851) | SCRIPT |
-| [packages/scripts/src/engine.ts:9403](../../packages/scripts/src/engine.ts#L9403) `clearRecords` | `SQLite.all` (9403); `SQLite.prepare` (9403) | SCRIPT |
+| [packages/scripts/src/engine.ts:9410](../../packages/scripts/src/engine.ts#L9410) `clearRecords` | `SQLite.all` (9410); `SQLite.prepare` (9410) | SCRIPT |
 | [packages/scripts/src/recorder.ts:83](../../packages/scripts/src/recorder.ts#L83) `lastSeq` | `Store.auditLog` (83) | DESIGN |
 | [packages/scripts/src/recorder.ts:121](../../packages/scripts/src/recorder.ts#L121) `recordRun` | `Store.auditLog` (121) | DESIGN |
 | [packages/scripts/src/script-tests.ts:213](../../packages/scripts/src/script-tests.ts#L213) `runCase` | `Store.findIds` (213); `Store.auditLog` (220, 221, 265); `Store.evaluateEach` (248) | DESIGN |
