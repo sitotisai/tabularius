@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { homedir } from 'node:os';
+import { sep } from 'node:path';
 import { faultLog, redactPaths } from '../src/fault-log.ts';
 
 test('a logged fault hides the folders of a path and keeps the file name', () => {
@@ -41,9 +42,9 @@ test('folder names with spaces are hidden, quoted or not', () => {
 
 test('the home folder matches whole names only', () => {
   const home = homedir();
-  const longer = `${home}x/data/file.db`;
+  const longer = `${home}x${sep}data${sep}file.db`;
   assert.ok(!redactPaths(`open ${longer}`).includes('[home]'));
-  assert.equal(redactPaths(`open ${longer}`), 'open [path]/file.db');
+  assert.equal(redactPaths(`open ${longer}`), `open [path]${sep}file.db`);
 });
 
 test('a Windows path loses its folders too', () => {
