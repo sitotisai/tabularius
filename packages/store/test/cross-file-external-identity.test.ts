@@ -67,6 +67,13 @@ test('a directory sign-in without an email reaches no other file', (t) => {
   // The session is "worker" through Team; no person email and no groups carried: nothing to map in B.
   assert.equal(a.privileges('worker', 'Team').in(b).full, false);
   assert.equal(a.privileges('worker', 'Team', undefined, ['Team']).in(b).full, true);
+  // An account name that is not an address is no key in B, even when B has an external account of that very name.
+  b.setExternalAccount('worker', '[Full Access]');
+  assert.equal(a.privileges('worker', 'Team').in(b).full, false);
+  assert.equal(a.privileges('worker', 'Team', undefined, ['Other']).in(b).full, false);
+  // An address as the account name (an identity-provider sign-in) is the person's email.
+  b.setExternalAccount('@example.test', '[Full Access]');
+  assert.equal(a.privileges('kim@example.test', 'Team').in(b).full, true);
 });
 
 test('a password set in one file is not a guess at the other file\'s lockout', (t) => {
