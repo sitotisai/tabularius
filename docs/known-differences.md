@@ -7,7 +7,13 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**186 entries in 23 areas.** Waiting on: 22 on a sample file, 96 on a FileMaker run or Design Report, 14 on a Claris answer, 17 on a decision by the owner (an entry can wait on more than one).
+**187 entries in 24 areas.** Waiting on: 22 on a sample file, 97 on a FileMaker run or Design Report, 14 on a Claris answer, 17 on a decision by the owner (an entry can wait on more than one).
+
+## Cross-file access
+
+| What differs or is unknown | How it shows | What would settle it | Where it is written |
+| --- | --- | --- | --- |
+| Compatibility of cross-file privilege and missing-layout responses is unverified | An account without data-file access sees a missing layout and no values in Tabularius | Compare equivalent two-file accounts and layouts in FileMaker | [docs/design-mode.md › External data sources](design-mode.md) — “FileMaker is unverified offline.” |
 
 ## Data API
 
