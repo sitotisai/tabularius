@@ -622,7 +622,8 @@ export async function serveCluster(opts: ServeOptions, workers: number, blankFro
         const go = () => { if (call.destroyed) return; sending = true; req.pipe(call); };
         if (socket.connecting) socket.once('connect', go); else go();
       });
-      call.on('error', () => {
+      call.on('error', (e) => {
+        process.stderr.write('PROXY-ERR attempt ' + attempt + ' sending ' + sending + ' ' + (e as NodeJS.ErrnoException).code + '\n');
         // A Windows named pipe can turn away some of a burst of connections; nothing of the request has been sent yet, so ask again.
         if (!sending && !gone && !res.headersSent && process.platform === 'win32' && attempt < 8) {
           setTimeout(() => { if (!gone) send(attempt + 1); }, 15 * (attempt + 1));
