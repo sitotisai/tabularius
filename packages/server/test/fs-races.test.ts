@@ -1,4 +1,4 @@
-import { expectMode } from '../../store/test/windows.ts';
+import { expectMode, notOnWindows } from '../../store/test/windows.ts';
 import '../../store/test/support/stub-path.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -249,7 +249,8 @@ test('backup reuse copies permissive old files into private files and never link
   await backupExternal(dir, ['Synthetic'], second, first);
   const fresh = join(second, 'RC_Data_FMS', 'Synthetic', 'data');
   expectMode(fs.statSync(fresh).mode & 0o777, 0o600);
-  assert.notEqual(fs.statSync(fresh).ino, fs.statSync(old).ino);
+  // Windows has no mode bits, so no old copy counts as permissive and it is linked, as a private one is.
+  if (process.platform !== 'win32') assert.notEqual(fs.statSync(fresh).ino, fs.statSync(old).ino);
   expectMode(fs.statSync(old).mode & 0o777, 0o644);
   fs.unlinkSync(old); fs.symlinkSync(secret, old);
   await assert.rejects(backupExternal(dir, ['Synthetic'], third, first));
@@ -262,7 +263,7 @@ test('native SQLite backups keep staging and published plaintext private', async
   const dest = join(dir, 'Backups'); fs.mkdirSync(dest);
   let hit = false;
   const result = await withFilesystemHook((e) => {
-    if (e.operation !== 'native' || !e.path.includes('.partial/')) return;
+    if (e.operation !== 'native' || !e.path.replaceAll('\\', '/').includes('.partial/')) return;
     hit = true;
     expectMode(fs.statSync(e.path).mode & 0o777, 0o600);
     expectMode(fs.statSync(dirname(e.path)).mode & 0o777, 0o700);
@@ -289,7 +290,7 @@ test('encrypted copy closes its input when opening the output is refused', async
   }
 });
 
-test('thumbnail tool output rejects a swapped link and removes only its private scratch folder', async (t) => {
+test('thumbnail tool output rejects a swapped link and removes only its private scratch folder', { skip: notOnWindows('its stand-in converter is a script that starts with a #! line, which Windows does not run') }, async (t) => {
   const { dir, secret } = setup(t), executable = join(dir, 'synthetic-converter.mjs');
   fs.writeFileSync(executable, `#!${process.execPath}
 import fs from 'node:fs';

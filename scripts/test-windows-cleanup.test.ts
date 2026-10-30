@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { calledFromTest, retryDeletes, tearsDownFolder, trackDatabases } from './test-windows-cleanup.ts';
 
+const QUICK = { attempts: 0, waitMs: 0 };
+
 class FakeDatabase {
   isOpen = true;
   location: string;
@@ -67,16 +69,27 @@ test('the async delete retries the same way', async () => {
 
 test('a delete that fails with nothing open there, or for another reason, still fails', () => {
   const busy = { rmSync() { throw inUse(); } };
-  retryDeletes(busy, () => 0);
+  retryDeletes(busy, () => 0, undefined, QUICK);
   assert.throws(() => busy.rmSync(), { code: 'EBUSY' });
   const denied = { rmSync() { throw Object.assign(new Error('EACCES'), { code: 'EACCES' }); } };
-  retryDeletes(denied, () => 1);
+  retryDeletes(denied, () => 1, undefined, QUICK);
   assert.throws(() => denied.rmSync(), { code: 'EACCES' });
   const server = { rmSync() { throw inUse(); } };
   let closed = 0;
-  retryDeletes(server, () => ++closed, () => false);
+  retryDeletes(server, () => ++closed, () => false, QUICK);
   assert.throws(() => server.rmSync(), { code: 'EBUSY' });
   assert.equal(closed, 0, 'nothing is closed for a delete the server made');
+});
+
+test('a delete held by something this process does not own is retried for a while, then fails', () => {
+  let failures = 2;
+  const held = { rmSync() { if (failures-- > 0) throw inUse(); return 'removed'; } };
+  retryDeletes(held, () => 0, () => true, { attempts: 5, waitMs: 1 });
+  assert.equal(held.rmSync(), 'removed');
+  const stuck = { calls: 0, rmSync() { stuck.calls++; throw inUse(); } };
+  retryDeletes(stuck, () => 0, () => true, { attempts: 3, waitMs: 1 });
+  assert.throws(() => stuck.rmSync(), { code: 'EBUSY' });
+  assert.equal(stuck.calls, 5, 'the first try, the retry after closing, and three more');
 });
 
 test('only a recursive delete is a teardown: a file deleted on purpose is left to fail', () => {
