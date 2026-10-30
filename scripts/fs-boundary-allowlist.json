@@ -56,10 +56,6 @@
     "reason": "does not write a key, token or approval record: streams a download to a partial file, then renames it"
   },
   {
-    "file": "packages/server/src/standby.ts",
-    "reason": "does not write a key, token or approval record: streams a download to a partial file, then renames it"
-  },
-  {
     "file": "packages/server/src/sync-console.ts",
     "reason": "does not write a key, token or approval record: renames an unreadable setup aside"
   },
