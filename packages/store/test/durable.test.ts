@@ -107,15 +107,22 @@ test('four processes keep all 2000 interleaved JSON state updates', async () => 
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-json-lock-'));
   const file = join(dir, 'counter.json');
   const moduleUrl = pathToFileURL(join(process.cwd(), 'packages/store/src/durable.ts')).href;
+  // This test is about lost updates, not the wait limit. A process that has just released the lock often takes it again before
+  // a waiting one wakes, so on a loaded Windows runner one child can wait longer than the 30 s default for the other three to
+  // finish; five minutes keeps that from failing the run.
   const source = `import { updateJsonStateSync } from ${JSON.stringify(moduleUrl)};\n` +
-    `for (let i = 0; i < 500; i++) updateJsonStateSync(process.argv[1], { count: 0 }, (x) => ({ count: x.count + 1 }));`;
+    `for (let i = 0; i < 500; i++) updateJsonStateSync(process.argv[1], { count: 0 }, (x) => ({ count: x.count + 1 }), { lockWaitMs: 300_000 });`;
   try {
     const run = () => new Promise<void>((resolve, reject) => {
       const child = spawn(process.execPath, ['--input-type=module', '-e', source, file], { stdio: 'inherit' });
       child.once('error', reject);
       child.once('exit', (code) => code === 0 ? resolve() : reject(new Error(`increment child exited ${code}`)));
     });
-    await Promise.all([run(), run(), run(), run()]);
+    // Wait for every child before the folder is removed: one failing early must not pull the folder out from under the others,
+    // which then fail on a missing file and hide the first error.
+    const results = await Promise.allSettled([run(), run(), run(), run()]);
+    const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+    if (failed) throw failed.reason;
     assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')), { count: 2000 });
     assert.deepEqual(readdirSync(dir).sort(), ['counter.json', 'counter.json.lock.db']);
   } finally { rmSync(dir, { recursive: true, force: true }); }
