@@ -267,7 +267,7 @@ for (const [platform, rel] of [['linux', '.config/systemd/user/openhbam.service'
       assert.deepEqual(fake.calls(), firstCalls, 'and asks the manager the same things');
 
       for (let i = 0; i < 2; i++) {
-        r = fake.drive(`s.uninstallService({ platform: ${JSON.stringify(platform)}, home: ${JSON.stringify(join(fake.home, '.openhbam'))}, user: 'jo' });`);
+        r = fake.drive(`s.uninstallService({ platform: ${JSON.stringify(platform)}, home: ${JSON.stringify(join(fake.home, '.openhbam'))}, user: 'jo', systemRoot: ${JSON.stringify(join(fake.dir, 'root'))} });`);
         assert.equal(r.status, 0, `uninstall #${i + 1}: ${r.stderr}`);
       }
       assert.ok(!existsSync(file), 'the service file is gone');
