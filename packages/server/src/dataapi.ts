@@ -2021,9 +2021,13 @@ export class DataApi {
       return info;
     };
     if (p.length === 3 && method === 'GET') {
-      const tables = new Map(store.layouts().map((l) => [l.name, l.table]));
+      const all = store.layouts();
+      const tables = new Map(all.map((l) => [l.name, l.table]));
+      // Only a layout over another file's table needs that file's privileges, and looking it up loads the design.
+      const external = new Set(all.filter((l) => l.file !== undefined).map((l) => l.name));
       return { layouts: catalogTree(store.schema.layoutOrder, [...tables.keys()], (n) => {
         if (!inScope(n) || privileges.layout(n).layout === 'none') return false;
+        if (!external.has(n)) return true;
         try { readableLayout(n); return true; } catch { return false; }
       }, 'folderLayoutNames', false, tables) };
     }
