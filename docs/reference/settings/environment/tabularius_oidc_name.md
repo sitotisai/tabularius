@@ -8,6 +8,6 @@ The name shown on the sign-in button.
 | Accepted values | Claim or display name |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1423](../../../../packages/cli/src/main.ts#L1423) |
+| Code | [packages/cli/src/main.ts:1431](../../../../packages/cli/src/main.ts#L1431) |
 
 [All environment variables](../../../environment-variables.md)

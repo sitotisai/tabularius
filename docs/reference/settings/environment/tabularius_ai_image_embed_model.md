@@ -8,6 +8,6 @@ The model used for Perform Semantic Find by image.
 | Accepted values | Image embedding model id |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1457](../../../../packages/cli/src/main.ts#L1457) |
+| Code | [packages/cli/src/main.ts:1465](../../../../packages/cli/src/main.ts#L1465) |
 
 [All environment variables](../../../environment-variables.md)
