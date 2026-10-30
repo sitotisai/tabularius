@@ -12,12 +12,12 @@ const main = join(import.meta.dirname, '..', 'src', 'main.ts');
 const print = (...args: string[]) => execFileSync(process.execPath, ['--no-warnings', main, 'service', 'print', ...args], { stdio: ['ignore', 'pipe', 'pipe'] }).toString();
 
 test('Windows: a Task Scheduler task at logon, or at boot as the system account, started again when it stops', () => {
-  const user = print('C:\\Data bases', '--platform', 'win32', '--', '--name', 'Sales "East"');
+  const user = print('C:\\Data bases', '--platform', 'win32', '--', '--mail-from', 'Sales "East"');
   assert.match(user, /<LogonTrigger><Enabled>true<\/Enabled><UserId>[^<]+<\/UserId><\/LogonTrigger>/);
   assert.match(user, /<LogonType>InteractiveToken<\/LogonType>/);
   assert.match(user, /<RestartOnFailure><Interval>PT1M<\/Interval><Count>255<\/Count><\/RestartOnFailure>/);
   assert.match(user, /<ExecutionTimeLimit>PT0S<\/ExecutionTimeLimit>/, 'no time limit: a server runs for good');
-  assert.match(user, /<Arguments>--no-warnings --eval .* \S+main\.ts serve "C:\\Data bases" --port 8080 --host 127\.0\.0\.1 --name "Sales \\"East\\""<\/Arguments>/);
+  assert.match(user, /<Arguments>--no-warnings --eval .* \S+main\.ts serve "C:\\Data bases" --port 8080 --host 127\.0\.0\.1 --mail-from "Sales \\"East\\""<\/Arguments>/);
   assert.match(user, /<WorkingDirectory>C:\\Data bases<\/WorkingDirectory>/);
   const system = print('C:\\Data', '--platform', 'win32', '--system', '--port', '443');
   assert.match(system, /<BootTrigger><Enabled>true<\/Enabled><\/BootTrigger>/);

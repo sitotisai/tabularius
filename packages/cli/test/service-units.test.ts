@@ -189,8 +189,8 @@ test('refusing what a service file cannot carry', () => {
   };
   for (const platform of ['darwin', 'linux', 'win32'] as const) {
     refused(platform, { folder: options(platform, false).folder + '\nExecStartPre=/bin/sh' }, /line break or another control character/);
-    refused(platform, { extra: ['--name', 'a\u0000b'] }, /control character/);
-    refused(platform, { extra: ['--name', 'x\u2028y'] }, /control character/);
+    refused(platform, { extra: ['--mail-from', 'a\u0000b'] }, /control character/);
+    refused(platform, { extra: ['--mail-from', 'x\u2028y'] }, /control character/);
     refused(platform, { host: '0.0.0.0 evil' }, /holds a space/);
     refused(platform, { port: 0 }, /port/);
     refused(platform, { port: 70000 }, /port/);

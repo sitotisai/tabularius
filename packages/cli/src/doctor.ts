@@ -278,7 +278,7 @@ export async function runDoctor(folder: string, opts: { full?: boolean; port?: n
     const up = await checkHealth(healthUrl(svc));
     checks.push(up
       ? { name: 'Service', level: 'ok', message: `installed, answering on port ${svc.port} (up ${Math.round(up.uptimeSeconds)} s)` }
-      : { name: 'Service', level: 'problem', message: `installed for ${svc.folder} but nothing answers on port ${svc.port}`, fix: `Start it (macOS: launchctl kickstart; Linux: systemctl --user start Tabularius; Windows: Task Scheduler), or look at its log. To start over: tabularius service uninstall` });
+      : { name: 'Service', level: 'problem', message: `installed for ${svc.folder} but nothing answers on port ${svc.port}`, fix: `Start it (macOS: launchctl kickstart; Linux: ${svc.system ? 'sudo systemctl' : 'systemctl --user'} start openhbam.service; Windows: Task Scheduler), or look at its log. To start over: tabularius service uninstall` });
   }
   // The installed service owns its own port; a --port that names another one is still asked about.
   if (!svc || port !== svc.port) {

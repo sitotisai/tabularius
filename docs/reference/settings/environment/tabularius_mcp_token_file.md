@@ -4,10 +4,10 @@ A private regular file holding the MCP access token.
 
 | Setting | Value |
 | --- | --- |
-| Default | Unset; loopback administration only |
+| Default | Unset: the server makes an administrator token on first start (.openhbam-mcp-token); every /mcp request needs credentials |
 | Accepted values | File path (the file must not be readable by other users) |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1323](../../../../packages/cli/src/main.ts#L1323) |
+| Code | [packages/cli/src/main.ts:1336](../../../../packages/cli/src/main.ts#L1336) |
 
 [All environment variables](../../../environment-variables.md)

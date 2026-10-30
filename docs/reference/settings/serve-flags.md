@@ -54,8 +54,8 @@ These are the options named by `tabularius help serve`. A flag takes precedence 
 | [`--mail-from`](serve/mail-from.md) | Unset | Email address | [docs/moving-a-solution.md](../../moving-a-solution.md) |
 | [`--mail-redirect`](serve/mail-redirect.md) | Unset | Email address | [docs/privacy.md](../../privacy.md) |
 | [`--mcp-origin`](serve/mcp-origin.md) | No additional origins | Repeatable HTTPS origin without path | [docs/security-defaults.md](../../security-defaults.md) |
-| [`--mcp-token`](serve/mcp-token.md) | unset; loopback administration only | Token string | [docs/hosting-and-connecting.md](../../hosting-and-connecting.md) |
-| [`--mcp-token-file`](serve/mcp-token-file.md) | Unset; loopback administration only | File path (a private regular file holding the token) | [docs/environment-variables.md](../../environment-variables.md) |
+| [`--mcp-token`](serve/mcp-token.md) | Unset: the server makes an administrator token on first start (.openhbam-mcp-token); every /mcp request needs credentials | Token string | [docs/hosting-and-connecting.md](../../hosting-and-connecting.md) |
+| [`--mcp-token-file`](serve/mcp-token-file.md) | Unset: the server makes an administrator token on first start (.openhbam-mcp-token); every /mcp request needs credentials | File path (a private regular file holding the token) | [docs/environment-variables.md](../../environment-variables.md) |
 | [`--no-backups`](serve/no-backups.md) | Backups on | Switch; present disables scheduled backups | [docs/hosting-for-a-team.md](../../hosting-for-a-team.md) |
 | [`--oidc-client-id`](serve/oidc-client-id.md) | OIDC sign-in off | Client id | [docs/hosting-and-connecting.md](../../hosting-and-connecting.md) |
 | [`--oidc-config`](serve/oidc-config.md) | Unset | JSON file path | [docs/hosting-and-connecting.md](../../hosting-and-connecting.md) |
