@@ -10,6 +10,10 @@ import { createStore, designObjects, designText, importTables, planImportTables,
 import { importDesigns } from '../src/import.ts';
 import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
+// The worker makes a store and imports a sheet: about 3 s on a Windows runner with other test files running at once, so
+// 5 s was too close. A hang is what the limit looks for, and 30 s still catches one.
+const WORKER_BUDGET = process.platform === 'win32' ? 30_000 : 5000;
+
 function fresh(t: { after(fn: () => void): void }): { store: Store; path: string; dir: string } {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-design-io-'));
   const path = join(dir, 'test.sqlite');
@@ -130,7 +134,7 @@ test('AR-store-design-io-04', (t) => {
 });
 
 test('AR-store-design-io-05', () => {
-  const child = spawnSync(process.execPath, ['--no-warnings', join(import.meta.dirname, 'design-io-list-worker.ts')], { timeout: 5000, encoding: 'utf8' });
+  const child = spawnSync(process.execPath, ['--no-warnings', join(import.meta.dirname, 'design-io-list-worker.ts')], { timeout: WORKER_BUDGET, encoding: 'utf8' });
   assert.equal(child.error, undefined, String(child.error));
   assert.equal(child.status, 0, child.stderr);
 });
