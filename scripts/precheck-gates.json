@@ -50,5 +50,9 @@
   {
     "file": "packages/web/test/boot-guard.test.ts",
     "reason": "Checks browser boot guard source without opening a browser"
+  },
+  {
+    "file": "packages/server/test/check-solution-docs.test.ts",
+    "reason": "Checks that every kind of check-solution finding and its severity match docs/check-solution.md"
   }
 ]
