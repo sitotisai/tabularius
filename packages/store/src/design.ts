@@ -2283,10 +2283,12 @@ function applyOneOp(st: DesignState, op: DesignOp, deleted?: DeletedLookup): { o
         if (op.openLayout === null) {
           delete fo.openLayoutId;
           delete fo.openLayout;
+          delete fo.switchToLayout;
         } else {
           const l = find(s.layouts, op.openLayout, 'Layout', 105);
           fo.openLayoutId = l.id;
           fo.openLayout = l.name;
+          delete fo.switchToLayout;
         }
         resolved.openLayout = op.openLayout === null ? null : fo.openLayoutId;
       }

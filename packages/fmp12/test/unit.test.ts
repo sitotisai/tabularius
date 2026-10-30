@@ -182,9 +182,29 @@ test('readFileOptions: open and close scripts, and the layout to open on', async
   assert.deepEqual(readFileOptions(hex('00000483 0201 03028785 03028786 030282c8 0001'), scripts, [{ id: 840, name: 'Splash' }]), {
     onFirstWindowOpen: { scriptId: 2053, script: 'Trigger: OnFirstWindowOpen' },
     onLastWindowClose: { scriptId: 2054, script: 'Trigger: OnCloseLastWindow' },
-    openLayoutId: 840, openLayout: 'Splash',
+    openLayoutId: 840, openLayout: 'Splash', switchToLayout: false,
   });
-  assert.deepEqual(readFileOptions(hex('00008403 0101 00 00 020102 0001'), [], []), { openLayoutId: 2 });
+  assert.deepEqual(readFileOptions(hex('00008403 0101 00 00 020102 0001'), [], []), { openLayoutId: 2, switchToLayout: false });
+});
+
+test('readFileOptions: Switch to layout is ticked when bit 0x40 of the fourth flag byte is set', async () => {
+  const { readFileOptions } = await import('../src/schema.ts');
+  const hex = (s: string) => Buffer.from(s.replace(/\s+/g, ''), 'hex');
+  const scripts = [{ id: 2053, name: 'Trigger: OnFirstWindowOpen' }, { id: 2054, name: 'Trigger: OnCloseLastWindow' }];
+  const layouts = [{ id: 840, name: 'Splash' }];
+  assert.deepEqual(readFileOptions(hex('00000483 0201 03028785 03028786 030282c8 0001'), scripts, layouts), {
+    onFirstWindowOpen: { scriptId: 2053, script: 'Trigger: OnFirstWindowOpen' },
+    onLastWindowClose: { scriptId: 2054, script: 'Trigger: OnCloseLastWindow' },
+    openLayoutId: 840, openLayout: 'Splash', switchToLayout: false,
+  });
+  assert.deepEqual(readFileOptions(hex('000004c3 0201 03028785 03028786 030282c8 0001'), scripts, layouts), {
+    onFirstWindowOpen: { scriptId: 2053, script: 'Trigger: OnFirstWindowOpen' },
+    onLastWindowClose: { scriptId: 2054, script: 'Trigger: OnCloseLastWindow' },
+    openLayoutId: 840, openLayout: 'Splash', switchToLayout: true,
+  });
+  assert.deepEqual(readFileOptions(hex('00008403 0101 00 00 020102 0001'), [], []), { openLayoutId: 2, switchToLayout: false });
+  assert.deepEqual(readFileOptions(hex('00008443 0101 00 00 020102 0001'), [], []), { openLayoutId: 2, switchToLayout: true });
+  assert.equal(readFileOptions(hex('000004c3 0201 00 00 00 0001'), scripts, layouts), undefined);
 });
 
 test('field options: prohibit modification and strict data type', async () => {
