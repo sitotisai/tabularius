@@ -8,6 +8,6 @@ Size at which a server log is rotated.
 | Accepted values | Byte size such as 40MB |
 | Restart needed | Yes for a running server. |
 | Explained in | [ADMIN.md](../../../../ADMIN.md) |
-| Code | [packages/cli/src/main.ts:1388](../../../../packages/cli/src/main.ts#L1388) |
+| Code | [packages/cli/src/main.ts:1401](../../../../packages/cli/src/main.ts#L1401) |
 
 [All environment variables](../../../environment-variables.md)
