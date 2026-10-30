@@ -21,10 +21,10 @@ test('moving-a-solution.md says what the idle-disconnect option does', () => {
 
 test('a set with idle-disconnect off keeps a web-client session, and nothing else, past the idle limit', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-idle-docs-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   createStore(join(dir, 'Idle.openhbam.sqlite'));
   const host = new Host(dir, () => {});
   t.after(() => host.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   let now = performance.now();
   t.mock.method(performance, 'now', () => now);
   const api = new DataApi(host);
