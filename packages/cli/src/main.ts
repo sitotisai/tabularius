@@ -4,6 +4,7 @@ import { encryptionKeyFromEnv, positiveWholeNumber } from '../../server/src/sett
 import { checkSqlExportPath } from '../../store/src/portable-path.ts';
 import { listenForStop } from './stop-request.ts';
 import { auditJsonLine } from '../../store/src/audit-output.ts';
+import { writeFileSync as writeChecked } from '../../store/src/fs-boundary.ts';
 // tabularius: inspect and convert FileMaker .fmp12 files.
 
 import '../../store/src/legacy-env.ts';
@@ -2581,7 +2582,7 @@ function main(argv: string[]): number {
         if (!file) throw new Error('plugins keygen: give a file for the private key');
         if (existsSync(file)) throw new Error(`${file} is already there`);
         const key = generateKey();
-        writeFileSync(file, key.privatePem, { mode: 0o600 });
+        writeChecked(file, key.privatePem, { mode: 0o600, flag: 'wx' });
         console.log(`Private key written to ${file} (keep it secret and backed up).\nPublisher fingerprint: ${key.fingerprint}`);
         return 0;
       }

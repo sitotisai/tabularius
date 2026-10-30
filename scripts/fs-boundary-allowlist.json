@@ -8,10 +8,6 @@
     "reason": "does not write a key, token or approval record: the redacted diagnostics bundle and a read-only open"
   },
   {
-    "file": "packages/cli/src/main.ts",
-    "reason": "writes a credential, key, token or approval record; to move onto fs-boundary"
-  },
-  {
     "file": "packages/cli/src/stop-request.ts",
     "reason": "does not write a key, token or approval record: a pid marker file"
   },
