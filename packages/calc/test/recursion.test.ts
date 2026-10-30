@@ -28,10 +28,12 @@ test('FileMaker\'s limit of 10,000 levels still ends a runaway function, and Set
   assert.equal(evaluateText('SetRecursion ( Sum2 ( 50 ; 0 ) ; 100 )', ctx), '1275');
 });
 
-test('a function that waits for its own call still works as far as the server\'s stack allows, and says where it stopped', () => {
+test('a function that waits for its own call recurses as deep as FileMaker allows, and its runaway ends with the same error', () => {
   assert.equal(evaluateText('Sum1 ( 500 )', ctx), '125250');
   assert.equal(evaluateText('Sum4 ( 200 ; 0 )', ctx), '20100');
-  assert.throws(() => evaluate('Sum1 ( 9000 )', ctx), /recursed too deeply \(this server's stack ran out at level \d+; FileMaker allows 10000\)/);
+  assert.equal(evaluateText('Sum1 ( 9000 )', ctx), '40504500');
+  assert.equal(evaluateText('Sum4 ( 9990 ; 0 )', ctx), '49905045');
+  assert.throws(() => evaluate('Sum1 ( 10100 )', ctx), (e) => e instanceof Error && e.message === 'Sum1 recursed too deeply');
 });
 
 test('the debugger\'s trace still sees every step of a recursive function', () => {

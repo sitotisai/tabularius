@@ -29,7 +29,7 @@ To read these pages offline with search, build the site: `npm run docs:build` wr
 - [How text is compared](text-comparison.md) — See where case, accents and different spellings of the same letter count as equal.
 - [Text size limit](text-size-limit.md) — See which functions refuse a result past 8,000,000 characters, and how Char treats a huge number.
 - [Numbers and precision](numbers-and-precision.md) — See how calculations, stored number fields and server output handle large and decimal values.
-- [Calculation limits](calculation-limits.md) — See when a calculation gives ? because JSON text or Evaluate calls are nested too deeply.
+- [Calculation limits](calculation-limits.md) — See when a calculation gives ? because JSON text or Evaluate calls are nested too deeply, and how deep a custom function may recurse.
 - [Languages for sorting](sort-languages.md) — See how a field's Default language orders sorts, ranges, SQL and groups, and how far each language is checked.
 - [Web client coverage](web-client.md) — Check which Browse, Find and Preview features work in the browser.
 - [Walkthrough recorder](walkthrough-recorder.md) — Capture a synthetic browser walkthrough as an accessible standalone SVG.
