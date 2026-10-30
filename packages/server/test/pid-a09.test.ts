@@ -42,3 +42,10 @@ test('on Linux a process is identified from /proc, so a container image without 
   assert.ok(mine?.command.includes('node'));
   assert.equal(processIdentity(2 ** 22 + 12345), undefined);
 });
+
+test('on Windows a process is identified by its start time, and a process that is not there has none', { skip: process.platform !== 'win32' }, () => {
+  const mine = processIdentity(process.pid);
+  assert.match(mine?.started ?? '', /^\d{13}$/);
+  assert.ok(Math.abs(Number(mine!.started) - (Date.now() - process.uptime() * 1000)) < 60_000, 'the start time is when this process began');
+  assert.equal(processIdentity(2 ** 22 + 12345), undefined);
+});
