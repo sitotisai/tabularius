@@ -33,6 +33,9 @@ const section = (name: string): string => {
   return text;
 };
 
+/** A path as a pattern, where either slash matches either slash (Windows prints both). */
+const inPattern = (path: string): string => path.replace(/[\\/]|[.*+?^${}()|[\]]/g, (c) => (c === '/' || c === '\\' ? '[\\\\/]' : `\\${c}`));
+
 /** The commands and calls the page has run, as written, so the last test can find any that no scenario ran. */
 const ran = new Set<string>();
 const quoted = new Set<string>();
@@ -816,9 +819,9 @@ test('the folder was moved', async () => {
   writeFileSync(join(home, 'service.json'), JSON.stringify({ platform: process.platform, folder: oldFolder, port: await freePort(), host: '127.0.0.1', system: false, extra: [] }));
   renameSync(oldFolder, newFolder);
   const doctor = runStep(where, 'tabularius doctor <new-folder>', { 'new-folder': newFolder }, { env: { TABULARIUS_HOME: home } });
-  assert.match(doctor.stdout, new RegExp(`check\\s+Backups: no backup folder yet \\(${oldFolder.replace(/[/.]/g, '\\$&')}/Backups\\)`));
+  assert.match(doctor.stdout, new RegExp(`check\\s+Backups: no backup folder yet \\(${inPattern(join(oldFolder, 'Backups'))}\\)`));
   sees(where, 'no backup folder yet', doctor.stdout);
-  assert.match(doctor.stdout, new RegExp(`PROBLEM Service: installed for ${oldFolder.replace(/[/.]/g, '\\$&')} but nothing answers on port \\d+`));
+  assert.match(doctor.stdout, new RegExp(`PROBLEM Service: installed for ${inPattern(oldFolder)} but nothing answers on port \\d+`));
   sees(where, 'installed for <old folder> but nothing answers', doctor.stdout.replaceAll(oldFolder, '<old folder>'));
   // The settings file names the old place; the page says to edit it.
   const settings = JSON.parse(readFileSync(join(newFolder, '.openhbam-settings.json'), 'utf8')) as { backupDir: string };
@@ -914,7 +917,9 @@ test('two servers both took writes: the standby refuses a folder with its own fi
   await until('the standby to start', () => standby.out().includes(`standby of ${primary} in ${folder}`));
   await stopChild(standby.child);
   const code = await standby.exited;
-  assert.equal(code, 0, `the standby ended with ${standby.child.signalCode ?? `code ${code}`}: ${standby.out()}`);
+  // Windows ends a process that is sent SIGINT at once, so there is no clean exit to see there.
+  if (process.platform === 'win32') assert.equal(standby.child.signalCode, 'SIGINT');
+  else assert.equal(code, 0, `the standby ended with ${standby.child.signalCode ?? `code ${code}`}: ${standby.out()}`);
 });
 
 // --- the page and the tests agree ------------------------------------------------------------------------------
