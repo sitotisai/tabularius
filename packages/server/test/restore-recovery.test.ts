@@ -91,6 +91,25 @@ test('a claim has dropped its pending name by the time it lets go of the lock', 
   }
 });
 
+test('the pid file has one name from the moment it is published', (t) => {
+  // A second name (link count 2) that disappears moments later can fail a rival's read of the file as "path changed"
+  // (on macOS, in the CI run that found this); publishing it by rename never has one.
+  for (const stale of [false, true]) {
+    const folder = mkdtempSync(join(tmpdir(), 'restore-claim-published-'));
+    t.after(() => rmSync(folder, { recursive: true, force: true }));
+    if (stale) writeFileSync(join(folder, '.openhbam.pid'), '99999999');
+    const result = spawnSync(process.execPath, ['--no-warnings', '--input-type=module', '-e', `
+      import { claimFolder } from ${JSON.stringify(new URL('../src/backup.ts', import.meta.url).href)};
+      import { armCrashPointForTest } from ${JSON.stringify(new URL('../../store/src/crash-point.ts', import.meta.url).href)};
+      armCrashPointForTest('claim:published');
+      claimFolder(process.argv[1]);
+    `, folder], { encoding: 'utf8', timeout: 30_000 });
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 73, result.stderr);
+    assert.equal(statSync(join(folder, '.openhbam.pid')).nlink, 1, `stale=${stale}`);
+  }
+});
+
 test('a pid file naming our own pid is left from a restart and does not block startup', (t) => {
   // In a container the server is always pid 1, so the previous run's file names us.
   const folder = mkdtempSync(join(tmpdir(), 'restore-claim-own-'));
