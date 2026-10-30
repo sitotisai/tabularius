@@ -40,9 +40,10 @@ const concurrency = Number(process.env.TEST_CI_CONCURRENCY) || (process.platform
 // A file gets ten minutes: docs-run.test.ts runs the hand-written pages'
 // examples (131 s here on a many-core machine, over 300 s on a two-core runner twice running) and asks for 600 s itself.
 // On Windows a delete of a file a test left open fails, where elsewhere it works: the cleanup preload closes those databases and tries again.
+// A test that blocks its own process (the server runs in it) past the server's idle time finds `fetch`'s kept connection closed: the fetch preload gives each request its own.
 // Every Node process a test starts there also learns to import a `D:\...` path (scripts/test-windows-paths.ts).
 const win = process.platform === 'win32';
-const preload = win ? ['--import', pathToFileURL(join(ROOT, 'scripts', 'test-windows-cleanup.ts')).href] : [];
+const preload = win ? ['cleanup', 'fetch'].flatMap((name) => ['--import', pathToFileURL(join(ROOT, 'scripts', `test-windows-${name}.ts`)).href]) : [];
 const env = win ? { ...process.env, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --import=${pathToFileURL(join(ROOT, 'scripts', 'test-windows-paths.ts')).href}`.trim() } : process.env;
 const result = spawnSync(process.execPath, [
   ...preload, '--test', `--test-concurrency=${concurrency}`, '--test-timeout=600000', '--test-reporter=spec', ...files,
