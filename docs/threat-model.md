@@ -69,6 +69,7 @@ These checks are not `openat(2)` and do not make path-based operations atomic. T
 - `packages/server/src/oauth.ts`
 - `packages/server/src/restore-files.ts`
 - `packages/server/src/server-logs.ts`
+- `packages/server/src/standby.ts`
 - `packages/server/src/stats-log.ts`
 - `packages/server/src/uploads.ts`
 - `packages/store/src/durable.ts`
