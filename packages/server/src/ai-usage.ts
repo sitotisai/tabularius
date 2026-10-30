@@ -127,10 +127,14 @@ export class MemoryUsage implements UsageCounts {
   }
 }
 
+/** How many more times a write asks for the lock after a wait for it ran out. */
+const BEGIN_RETRIES = 3;
+
 export class AiUsage implements UsageCounts {
   private readonly db: DatabaseSync;
 
-  constructor(dir: string) {
+  /** `busyMs` is how long one attempt at the write lock waits for another process to let go of it. */
+  constructor(dir: string, busyMs = 5000) {
     const file = join(dir, USAGE_DB);
     // Account and file names are in it: readable by the server's user only, like the files themselves. SQLite gives
     // its -wal and -shm files the same permissions.
@@ -148,7 +152,7 @@ export class AiUsage implements UsageCounts {
       }
     }
     this.db = new DatabaseSync(file);
-    this.db.exec('PRAGMA busy_timeout = 5000');
+    this.db.exec(`PRAGMA busy_timeout = ${Math.floor(busyMs)}`);
     // Several workers starting at once can find the file mid-setup, and switching it to WAL doesn't wait its turn:
     // tried again for a moment.
     for (let tries = 0; ; tries++) {
@@ -217,7 +221,16 @@ export class AiUsage implements UsageCounts {
   }
 
   private tx(fn: () => void): void {
-    this.db.exec('BEGIN IMMEDIATE');
+    // The wait for the write lock can run out when several processes write at once (seen on a busy Windows machine,
+    // where SQLite's waiting has no queue and one process can lose every turn): asked for again before giving up.
+    for (let tries = 0; ; tries++) {
+      try {
+        this.db.exec('BEGIN IMMEDIATE');
+        break;
+      } catch (e) {
+        if (tries >= BEGIN_RETRIES || !/locked|busy/i.test((e as Error).message)) throw e;
+      }
+    }
     try {
       fn();
       this.db.exec('COMMIT');
