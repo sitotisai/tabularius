@@ -3653,7 +3653,8 @@ Result:
   "functions": {
     "notYet": [],
     "undecoded": [],
-    "plugIns": []
+    "plugIns": [],
+    "recursive": []
   },
   "steps": {
     "notYet": [],

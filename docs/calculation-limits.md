@@ -45,8 +45,8 @@ usual.
 ## Custom function recursion
 
 A custom function may call itself, directly or through other custom functions, up to 10,000 calls deep, as in FileMaker.
-The 10,001st call gives error 1200 with the message `Name recursed too deeply`, and `SetRecursion` lowers the limit for
-one expression. The shape of the function makes no difference: one that waits for its own result (`n + Sum1 ( n - 1 )`),
+The 10,001st call gives error 1200 with the message `Name recursed too deeply: it passed Tabularius's limit of 10,000 nested calls. Rewrite Name as a loop with While.`
+`SetRecursion` can lower the limit for one expression; then the message says `Name recursed too deeply: it passed 20 nested calls, the limit SetRecursion set. Raise the limit in SetRecursion (up to 10,000), or rewrite Name as a loop with While.` (with the limit actually set in place of 20). The shape of the function makes no difference: one that waits for its own result (`n + Sum1 ( n - 1 )`),
 one whose call sits inside a `Let`, one that builds a list with `List ( item ; Rest ( n - 1 ) )` or a document with
 `JSONSetElement`, and one that only passes a running total along all reach 10,000 calls. The evaluator keeps a stack of
 its own for the parts of a formula and does not use the server's, so a formula's own nesting is not limited by the
@@ -57,8 +57,10 @@ A built-in that reads its arguments itself rather than taking their values (`Whi
 `GetSummary`, `NPV`, `ExecuteSQL`, the design functions and the plug-in functions that take a formula) uses the server's
 stack once for each level of recursion that passes through it. A function that calls itself inside one of these works a
 few hundred levels at least, and when the server's stack does run out the result is the same error 1200, `Name recursed
-too deeply (this server's stack ran out at level N; FileMaker allows 10000)`, not a failure of the read or write that
+too deeply: this server's stack ran out at level N (Tabularius allows 10,000 nested calls). Rewrite Name as a loop with While.`, not a failure of the read or write that
 ran the formula.
+
+A loop with `While` is the way past the custom-function limit: it allows 50,000 iterations by default, within the calculation's work budget; `SetRecursion` changes the iteration limit too. The conversion report lists custom functions that call themselves directly or through other custom functions, so a developer can review them before users encounter the limit. This list uses parsed calls; it cannot see calls built as text for `Evaluate`.
 
 Before this, a function that waited for its own result stopped where the server's stack ran out, near 500 calls, and
 the number functions that keep a decimal argument's digits (`Abs`, `Int`, `Round`, `Truncate`, `Mod`, `Div`, `Sum`,
