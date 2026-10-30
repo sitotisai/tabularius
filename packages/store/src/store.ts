@@ -6386,7 +6386,10 @@ export class Store {
       // when its password matched there as well (crossFileProven), as FileMaker opens an external file with the same name
       // and password and asks otherwise. A name alone gives nothing.
       if (via !== undefined || person !== undefined) {
-        const theirs = other.externalAccount(person ?? account, groups);
+        // The person's email is what the provider vouched for; an account name that is not an address (a directory user
+        // name, a provider's subject) is no key in the other file, or a name alone would open it again.
+        const email = person ?? (account.includes('@') ? account : undefined);
+        const theirs = email === undefined && !groups.length ? undefined : other.externalAccount(email, groups);
         return theirs !== undefined && other.identityAllowed(account, theirs, undefined, person) ? other.privileges(account, theirs, person, groups) : other.privileges('\u0000inactive-account');
       }
       return this.crossFileProven(account, other) && other.identityAllowed(account) ? other.privileges(account) : other.privileges('\u0000inactive-account');
