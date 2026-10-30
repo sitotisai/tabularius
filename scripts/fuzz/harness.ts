@@ -8,6 +8,9 @@ import { MAX_INPUT, mutate, random, seeds, type Target } from './generate.ts';
 import type { Job, Reply } from './worker.ts';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
+/** A frame's path with forward slashes and without the leading slash a Windows file URL leaves before the drive. */
+const plainPath = (path: string): string => path.replace(/^\/(?=[A-Za-z]:)/, '').replaceAll('\\', '/');
+const ROOT_PLAIN = plainPath(ROOT);
 const WORKER = fileURLToPath(new URL('./worker.ts', import.meta.url));
 const MAX_CORPUS = 64;
 
@@ -37,7 +40,8 @@ export function signature(stack: string): string {
   for (const line of frames) {
     const m = /^\s*at (?:(.*?) \()?(?:file:\/\/)?(.*?):(\d+):\d+\)?$/.exec(line);
     if (!m) continue;
-    const path = m[2].startsWith(ROOT) ? m[2].slice(ROOT.length) : m[2];
+    const full = plainPath(m[2]);
+    const path = full.startsWith(ROOT_PLAIN) ? full.slice(ROOT_PLAIN.length) : full;
     if (path.startsWith('scripts/fuzz/') || path.startsWith('node:')) continue;
     ours.push(`${m[1] ?? '<anonymous>'}@${path}:${m[3]}`);
     if (ours.length === 3) break;
