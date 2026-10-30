@@ -7,6 +7,7 @@ import { createStore, Store } from '../../store/src/index.ts';
 import { claimFolder } from '../../server/src/backup.ts';
 import { STORE_EXT, ENCRYPTED_EXT, encryptFileSync } from '../../server/src/index.ts';
 import { runCli } from './cli-run.ts';
+import { writePidOwner } from '../../server/test/pid-fixture.ts';
 
 const main = join(import.meta.dirname, '../src/main.ts');
 const key = 'synthetic-encryption-key';
@@ -22,7 +23,7 @@ for (const command of ['encrypt', 'decrypt']) test(`AR-cli-plugins-tooling-01 ${
   const { dir, file } = setup();
   if (command === 'decrypt') encryptFileSync(file, file + ENCRYPTED_EXT, key);
   const store = new Store(file, 'Synthetic');
-  writeFileSync(join(dir, '.openhbam.pid'), String(process.pid));
+  writePidOwner(dir, process.pid);
   const before = new Map(readdirSync(dir).map((name) => [name, readFileSync(join(dir, name))]));
   try {
     const result = await cli(command, dir);
