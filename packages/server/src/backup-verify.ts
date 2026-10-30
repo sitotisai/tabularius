@@ -186,7 +186,9 @@ export function restoreTestDue(dest: string, every = RESTORE_TEST_EVERY_MS, now 
 
 /** Backup checks read the whole database in a worker, leaving requests responsive. The worker loads only the check module, not the server. */
 export async function integrityAsync(path: string, quick = false): Promise<string> {
-  const worker = new Worker(new URL('./integrity-worker.ts', import.meta.url), { workerData: { path, quick, backup: true } });
+  // A server started with node --input-type=module -e (a test, a script) passes that flag on, and a thread given a file refuses it.
+  const execArgv = process.execArgv.filter((a) => !a.startsWith('--input-type'));
+  const worker = new Worker(new URL('./integrity-worker.ts', import.meta.url), { workerData: { path, quick, backup: true }, execArgv });
   return workerResult(worker, (value) => typeof value === 'string' ? value : undefined, new AbortController().signal);
 }
 
