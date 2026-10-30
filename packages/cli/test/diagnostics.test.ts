@@ -17,7 +17,8 @@ import { diagnostics, Scrubber, tailLines, writeBundle } from '../src/diagnostic
 
 const main = join(import.meta.dirname, '..', 'src', 'main.ts');
 
-const HOME = '/home/jdoe';
+// A home folder as this system writes one: a path in the other form is resolved to a drive on Windows and is not the one the bundle was told to hide.
+const HOME = process.platform === 'win32' ? 'C:\\Users\\jdoe' : '/home/jdoe';
 const SEEDS = {
   file: 'Acme Payroll',
   table: 'SalaryRecords',
