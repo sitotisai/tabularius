@@ -158,7 +158,7 @@ test('a store file put in place of another (reconverted, restored) never reuses 
   sql.exec('UPDATE Orders SET Total = Total + 1');
   sql.prepare('UPDATE _fm_data_version SET n = ?').run(n);
   sql.close();
-  for (const side of ['-wal', '-shm']) rmSync(path + side, { force: true });
+  for (const side of ['-wal', '-shm']) rmSync(path + side, { force: true, maxRetries: 20, retryDelay: 50 });
   renameSync(copy, path);
   const b = open();
   try {
