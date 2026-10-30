@@ -61,7 +61,8 @@ test('two checks of one set run one after the other, so the later result is the 
   const first = verifySet(set, '');
   const second = verifySet(set, '');
   const [one, two] = await Promise.all([first, second]);
-  assert.ok(Date.parse(two.at) - two.ms >= Date.parse(one.at), `the second check began at ${Date.parse(two.at) - two.ms}, before the first ended at ${Date.parse(one.at)}`);
+  // `at` and `ms` are read a moment apart, so the start worked out from them may be a millisecond early.
+  assert.ok(Date.parse(two.at) - two.ms >= Date.parse(one.at) - 1, `the second check began at ${Date.parse(two.at) - two.ms}, before the first ended at ${Date.parse(one.at)}`);
   assert.deepEqual(lastCheck(set), two);
 });
 
