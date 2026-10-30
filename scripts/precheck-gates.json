@@ -82,5 +82,9 @@
   {
     "file": "packages/store/test/docs-empty-rule.test.ts",
     "reason": "Checks the documented behaviour of do not evaluate if all referenced fields are empty against the code"
+  },
+  {
+    "file": "packages/server/test/docs-idle-disconnect.test.ts",
+    "reason": "Checks the documented effect of the idle-disconnect privilege option against the session code"
   }
 ]
