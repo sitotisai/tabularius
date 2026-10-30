@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createStore, Store } from '../src/index.ts';
 import { fileMakerSqlSyntax } from '../src/sql-dates.ts';
-import { anyAllToIn, containerCastsToName, expandStars, fetchToLimit, refuseUnsupportedJoins } from '../src/sql-grammar.ts';
+import { anyAllToIn, castsToTypes, containerCastsToName, expandStars, fetchToLimit, refuseUnsupportedJoins } from '../src/sql-grammar.ts';
 
 let dir: string;
 let store: Store;
@@ -248,6 +248,72 @@ test('container CAST uses the file name and leaves other CASTs, quoted text, and
     'SELECT (SELECT filename FROM _fm_containers WHERE id = "Pic") -- CAST(Pic AS VARCHAR)');
 });
 
+test('character CAST prints numbers as decimal text and keeps at most its stated length', () => {
+  for (const [query, expected] of [
+    ["SELECT CAST(N AS VARCHAR) FROM W WHERE Name = 'a'", [['1']]],
+    ["SELECT CAST(N AS CHAR(5)) FROM W WHERE Name = 'a'", [['1']]],
+    ["SELECT CAST(N * 0.5 AS VARCHAR) FROM W WHERE Name = 'a'", [['0.5']]],
+    ['SELECT CAST(1e20 AS VARCHAR)', [['100000000000000000000']]],
+    ['SELECT CAST(1234567.0 AS CHAR(20))', [['1234567']]],
+    ["SELECT CAST(N AS VARCHAR(0)) FROM W WHERE Name = 'a'", [['']]],
+    ["SELECT CAST('añb' AS VARCHAR(2))", [['añ']]],
+    ["SELECT CAST('abc' AS VARCHAR(2))", [['ab']]],
+    ['SELECT CAST(NULL AS VARCHAR(3))', [[null]]],
+    ['SELECT CAST(CAST(12345 AS VARCHAR(4)) AS VARCHAR(2))', [['12']]],
+    ['SELECT CAST(0.1 + 0.2 AS VARCHAR)', [['0.30000000000000004']]],
+    ['SELECT CAST(12345 AS CHARACTER(3))', [['123']]],
+    ["SELECT CAST('x' AS CHAR(1000001))", [['x']]],
+    ["SELECT 'CAST(1.0 AS VARCHAR)'", [['CAST(1.0 AS VARCHAR)']]],
+  ] as const) assert.deepEqual(rows(query), expected, query);
+  const untouched = 'SELECT CAST(N AS INT), CAST(N AS TEXT) FROM W';
+  assert.equal(castsToTypes(untouched), untouched);
+  // A CAST left to SQLite still has its operand rewritten.
+  assert.equal(castsToTypes('SELECT CAST(CAST(N AS VARCHAR) AS TEXT) FROM W'), 'SELECT CAST(fm_cast_text(N , -1) AS TEXT) FROM W');
+  const hidden = "SELECT 'CAST(1.0 AS VARCHAR)' -- CAST(N AS CHAR(2)";
+  assert.equal(castsToTypes(hidden), hidden);
+  assert.equal(castsToTypes('SELECT CAST(CAST(12345 AS VARCHAR(4)) AS CHAR(2))'),
+    'SELECT fm_cast_text(fm_cast_text(12345 , 4) , 2)');
+  assert.equal(castsToTypes('SELECT CAST(? AS VARCHAR(3))'), 'SELECT fm_cast_text(? , 3)');
+  assert.deepEqual(run('SELECT CAST(? AS VARCHAR(3))', ['abcde']).rows, [['abc']]);
+});
+
+test('CAST to date, time, and timestamp preserves and validates temporal values', () => {
+  for (const [query, expected] of [
+    ["SELECT CAST('2020-01-02' AS DATE)", [['2020-01-02']]],
+    ["SELECT CAST('3/15/2000' AS DATE)", [['2000-03-15']]],
+    ['SELECT First, CAST(Born AS DATE) FROM P ORDER BY First', [['Ann', '2000-03-15'], ['Bo', '1999-12-31']]],
+    ["SELECT CAST(Born AS TIMESTAMP) FROM P WHERE First = 'Bo'", [['1999-12-31T00:00:00']]],
+    ["SELECT CAST('2020-01-02 03:04:05' AS TIMESTAMP)", [['2020-01-02T03:04:05']]],
+    ["SELECT CAST('2020-01-02T03:04:05' AS TIMESTAMP(3))", [['2020-01-02T03:04:05']]],
+    ["SELECT CAST(TIMESTAMP '2020-01-02 03:04:05' AS DATE)", [['2020-01-02']]],
+    ["SELECT CAST(TIMESTAMP '2020-01-02 03:04:05' AS TIME(3))", [['03:04:05']]],
+    ["SELECT CAST('03:04:05' AS TIME)", [['03:04:05']]],
+    ["SELECT CAST(Born AS DATE) + 1 FROM P WHERE First = 'Ann'", [['2000-03-16']]],
+    ["SELECT CAST(NULL AS DATE)", [[null]]],
+    ["SELECT CAST('' AS DATE)", [[null]]],
+    ["SELECT CAST(CAST('2020-01-02' AS DATE) AS TIMESTAMP)", [['2020-01-02T00:00:00']]],
+    ["SELECT CAST(DATE '2020-01-02' AS TIMESTAMP)", [['2020-01-02T00:00:00']]],
+  ] as const) assert.deepEqual(rows(query), expected, query);
+
+  assert.deepEqual(run('SELECT CAST(? AS TIME(3)), CAST(? AS TIMESTAMP(6))', ['09:00:00', '2020-01-02']).rows,
+    [['09:00:00', '2020-01-02T00:00:00']]);
+  assert.equal(castsToTypes("SELECT 'CAST(1 AS DATE)'"), "SELECT 'CAST(1 AS DATE)'");
+  assert.equal(castsToTypes('SELECT CAST(1 AS INTEGER), CAST(1 AS TEXT), CAST(1 AS BOOLEAN)'),
+    'SELECT CAST(1 AS INTEGER), CAST(1 AS TEXT), CAST(1 AS BOOLEAN)');
+  assert.equal(castsToTypes('SELECT CAST(CAST(? AS DATE) AS TIMESTAMP(3))'),
+    'SELECT fm_cast_timestamp(fm_cast_date(? ) , 3)');
+  assert.equal(castsToTypes('SELECT CAST(? AS TIME(3, 2))'), 'SELECT fm_cast_time(? , 3, 2)');
+
+  for (const query of [
+    "SELECT CAST('2020-13-45' AS DATE)", "SELECT CAST('abc' AS TIME)",
+    "SELECT CAST('25:00:00' AS TIME)", "SELECT CAST('2020-01-02 03:99:05' AS TIMESTAMP)",
+    "SELECT CAST('2020-01-02' AS TIME)", "SELECT CAST('03:04:05' AS DATE)",
+    "SELECT CAST('03:04:05' AS TIMESTAMP)",
+    'SELECT CAST(N AS DATE) FROM W',
+  ]) assert.throws(() => rows(query), /Invalid/, query);
+  assert.deepEqual(rows("SELECT CAST('2020-13-45' AS DATE) FROM W WHERE 0"), []);
+});
+
 test('OFFSET and FETCH FIRST become LIMIT and OFFSET at the top of the query only', () => {
   assert.match(fetchToLimit('SELECT a FROM t ORDER BY a OFFSET 5 ROWS'), /^SELECT a FROM t ORDER BY a\s+LIMIT -1 OFFSET 5$/);
   assert.match(fetchToLimit('SELECT a FROM t FETCH FIRST ROW ONLY'), /LIMIT 1 OFFSET 0$/);
@@ -405,6 +471,44 @@ test('ROUND rounds half away from zero, in decimal, and accepts negative digits'
   assert.equal(one('SELECT ROUND(2.5) FROM P'), 3);
   assert.equal(one('SELECT ROUND(NULL, 2) FROM P'), null);
   assert.equal(one("SELECT 'ROUND(' FROM P"), 'ROUND(');
+});
+
+test('parameterized DECIMAL and NUMERIC casts round, validate, and preserve other casts', () => {
+  const untouched = 'SELECT CAST(N AS DECIMAL), CAST(N AS INT) FROM W';
+  assert.equal(castsToTypes(untouched), untouched);
+  assert.equal(castsToTypes("SELECT 'CAST(2 AS DECIMAL(2))', CAST(? AS NUMERIC(5, 2)) -- CAST(3 AS DECIMAL(3))"),
+    "SELECT 'CAST(2 AS DECIMAL(2))', fm_cast_decimal(? , 5, 2) -- CAST(3 AS DECIMAL(3))");
+  assert.equal(castsToTypes('SELECT CAST(CAST(? AS DECIMAL(5,2)) AS NUMERIC(5,1))'),
+    'SELECT fm_cast_decimal(fm_cast_decimal(? , 5, 2) , 5, 1)');
+  assert.deepEqual(run('SELECT CAST(? AS DECIMAL(5,2))', ['2.567']).rows, [[2.57]]);
+  for (const [expression, expected] of [
+    ['CAST(2.567 AS DECIMAL(5,2))', 2.57],
+    ['CAST(2.5 AS DECIMAL(5,0))', 3],
+    ['CAST(2.5 AS DECIMAL(5))', 3],
+    ['CAST(-2.5 AS NUMERIC(5,0))', -3],
+    ['CAST(-2.5 AS NUMERIC(5))', -3],
+    ['CAST(1.005 AS DECIMAL(5,2))', 1.01],
+    ["CAST('2.567' AS DECIMAL(5,2))", 2.57],
+    ["CAST(' 7 ' AS DECIMAL(3))", 7],
+    ["CAST('1e1' AS NUMERIC(3,1))", 10],
+    ['CAST(99.99 AS DECIMAL(4,2))', 99.99],
+    ['CAST(2.5 AS INT)', 2],
+    ['CAST(-2.5 AS INT)', -2],
+    ['CAST(CAST(2.567 AS DECIMAL(5,2)) AS DECIMAL(5,1))', 2.6],
+  ] as const) assert.deepEqual(rows(`SELECT ${expression}`), [[expected]], expression);
+  assert.deepEqual(rows("SELECT CAST(N AS DECIMAL(4,1)) FROM W WHERE Name = 'e'"), [[3]]);
+  for (const expression of ['CAST(NULL AS DECIMAL(5,2))', "CAST('' AS DECIMAL(5,2))"]) {
+    assert.deepEqual(rows(`SELECT ${expression}`), [[null]], expression);
+  }
+  for (const [expression, message] of [
+    ['CAST(99.995 AS DECIMAL(4,2))', /out of range/],
+    ['CAST(12.5 AS DECIMAL(3,2))', /out of range/],
+    ["CAST('abc' AS DECIMAL(5,2))", /Invalid number/],
+    ['CAST(1 AS DECIMAL(0))', /precision/],
+    ['CAST(1 AS DECIMAL(39))', /precision/],
+    ['CAST(1 AS DECIMAL(2,3))', /precision/],
+  ] as const) assert.throws(() => rows(`SELECT ${expression}`), message, expression);
+  assert.deepEqual(rows('SELECT CAST(12.5 AS DECIMAL(3,2)) FROM W WHERE 0'), []);
 });
 
 test('+ and - join strings (and - moves the blanks to the end)', () => {
