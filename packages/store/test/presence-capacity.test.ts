@@ -71,7 +71,7 @@ for (const shared of [false, true]) {
 }
 
 // Two processes writing one SQLite file wait on each other far longer on Windows, whose lock sleeps are coarse.
-const PATIENCE = process.platform === 'win32' ? 6 : 1;
+const PATIENCE = process.platform === 'win32' ? 12 : 1;
 
 test('AR-store-security-05: concurrent connections', () => {
   const moduleUrl = new URL('../src/activity.ts', import.meta.url).href;
