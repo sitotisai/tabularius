@@ -16,7 +16,9 @@ test('every enumerated store, calculation and raw SQL read is explicitly classif
     assert.ok(report.includes(`| ${reader.gate} |`), `documented gate: ${reader.gate}`);
     assert.ok(reader.sites.length > 0);
   }
-  assert.ok(report.includes(inventoryMarkdown(sites, allow)), 'generated function/line inventory is current');
+  const inventory = inventoryMarkdown(sites, allow);
+  const stale = report.includes(inventory) ? undefined : inventory.split('\n').find((line) => !report.includes(line));
+  assert.equal(stale, undefined, 'generated function/line inventory is current: the first line the page does not have');
 });
 
 test('the allow-list rejects duplicate and changed read sites', () => {

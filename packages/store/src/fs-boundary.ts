@@ -236,7 +236,8 @@ export const linkSync: typeof fs.linkSync = (from, to) => {
   const path = name(from), target = name(to), source = leaf(path);
   const checkFrom = parents(path), checkTo = parents(target);
   if (!source?.isFile() || leaf(target)) refused();
-  if (source.mode & 0o077) throw Object.assign(new Error('Backup needs a private copy'), { code: 'EPRIVATECOPY' });
+  // Windows has no mode bits to read (every file shows 0o666); a backup folder's privacy there is its access list.
+  if (process.platform !== 'win32' && source.mode & 0o077) throw Object.assign(new Error('Backup needs a private copy'), { code: 'EPRIVATECOPY' });
   boundary({ operation: 'link', phase: 'checked', path, target });
   checkFrom(); checkTo();
   const next = leaf(path);

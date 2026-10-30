@@ -7,6 +7,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { notOnWindows } from '../../store/test/windows.ts';
 import { Store } from '../../store/src/index.ts';
 
 const root = join(import.meta.dirname, '..', '..', '..');
@@ -19,7 +20,7 @@ const freePort = () => new Promise<number>((ok, no) => {
   s.listen(0, '127.0.0.1', () => { const p = (s.address() as { port: number }).port; s.close(() => ok(p)); });
 });
 
-test('the backup-and-restore tutorial works as written', { timeout: 120_000 }, async () => {
+test('the backup-and-restore tutorial works as written', { timeout: 120_000, skip: notOnWindows('it stops its server with Ctrl-C (SIGINT) and checks for a clean exit, which Windows cannot give') }, async () => {
   const work = mkdtempSync(join(tmpdir(), 'tabularius-tutorial-backup-'));
   const folder = join(work, 'tabularius-backup-tutorial');
   const file = join(folder, 'Contacts.openhbam.sqlite');
