@@ -421,6 +421,8 @@ export interface Schema {
   tables: Table[];
   tableOccurrences: TableOccurrence[];
   relationships: Relationship[];
+  /** Relationships left out because a predicate could not be read; fewer join predicates would relate more records than the file does. */
+  unreadRelationships?: { id: number; reason: string }[];
   layouts: Layout[];
   layoutOrder: OrderedItem[];
   scripts: Script[];
@@ -1153,7 +1155,9 @@ function readRef(b: Uint8Array, at: number): { tag: number; value: number | unde
   return { tag: b[at], value: pathValue(b.subarray(at + 2, at + 2 + len)), next: at + 2 + len };
 }
 
-function readRelationships(n: Node | undefined, tos: TableOccurrence[], tables: Table[]): Relationship[] {
+export function readRelationships(
+  n: Node | undefined, tos: TableOccurrence[], tables: Table[], unread: { id: number; reason: string }[] = [],
+): Relationship[] {
   if (!n) return [];
   const occurrencesById = new Map(tos.map((to) => [to.id, to]));
   const fieldsByTableId = new Map(tables.map((table) => [table.id, new Map(table.fields.map((field) => [field.id, field.name]))]));
@@ -1186,17 +1190,34 @@ function readRelationships(n: Node | undefined, tos: TableOccurrence[], tables: 
     if (options & 0x02) rel.leftDelete = true;
     if (options & 0x01) rel.rightDelete = true;
     // Each predicate: operator byte, then the left and right field references.
-    for (const [, p] of [...(r.child(3)?.kv ?? new Map())].sort((a, b) => a[0] - b[0])) {
+    let unreadReason: string | undefined;
+    for (const [key, p] of [...(r.child(3)?.kv ?? new Map())].sort((a, b) => a[0] - b[0])) {
+      if (p.length === 0) {
+        unreadReason = `predicate ${key} names a field in a form no sample shows`;
+        break;
+      }
+      const operator = JOIN_OPERATORS[p[0]];
+      if (operator === undefined) {
+        unreadReason = `predicate ${key} has operator byte 0x${p[0].toString(16).padStart(2, '0')}`;
+        break;
+      }
       const lf = readRef(p, 1);
       const rf = readRef(p, lf.next);
-      if (lf.value === undefined || rf.value === undefined) continue;
+      if (lf.value === undefined || rf.value === undefined) {
+        unreadReason = `predicate ${key} names a field in a form no sample shows`;
+        break;
+      }
       rel.predicates.push({
         leftFieldId: lf.value,
-        operator: JOIN_OPERATORS[p[0]] ?? '=',
+        operator,
         rightFieldId: rf.value,
         leftField: fieldName(left.value, lf.value),
         rightField: fieldName(right.value, rf.value),
       });
+    }
+    if (unreadReason !== undefined) {
+      unread.push({ id, reason: unreadReason });
+      continue;
     }
     out.push(rel);
   }
@@ -1380,11 +1401,14 @@ export function readSchema(file: FmpFile): Schema {
   );
   const fileOptions = readFileOptions(root.child(2)?.kv.get(24), scripts, layouts);
   const pageSetup = readPageSetup(root.child(2, 135));
+  const unreadRelationships: { id: number; reason: string }[] = [];
+  const relationships = readRelationships(root.child(3, 251, 5), tableOccurrences, tables, unreadRelationships);
   return {
     header: file.header,
     tables,
     tableOccurrences,
-    relationships: readRelationships(root.child(3, 251, 5), tableOccurrences, tables),
+    relationships,
+    ...(unreadRelationships.length ? { unreadRelationships } : {}),
     layouts,
     layoutOrder,
     scripts,
