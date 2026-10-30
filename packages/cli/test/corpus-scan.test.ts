@@ -1,5 +1,6 @@
 // tabularius corpus-scan: counts what a collection of .fmp12 files uses, with
 // nothing from inside them beyond counts and masked formula shapes.
+import { notOnWindows } from '../../store/test/windows.ts';
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -275,7 +276,7 @@ test('dedupe compares only same-size files, by their start and then whole', asyn
   }
 });
 
-test('findFiles skips folders it may not read and counts them', { skip: process.getuid?.() === 0 && 'root reads everything' }, async () => {
+test('findFiles skips folders it may not read and counts them', { skip: process.getuid?.() === 0 ? 'root reads everything' : notOnWindows('a folder cannot be made unreadable with chmod') }, async () => {
   const { findFiles } = await import('../src/corpus-scan.ts');
   const { chmodSync, writeFileSync } = await import('node:fs');
   const dir = mkdtempSync(join(tmpdir(), 'corpus-find-'));
