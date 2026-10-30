@@ -471,8 +471,9 @@ test('discard removes the stage, audits it, and refuses a missing stage, a symli
   // Windows has no mode bits to widen, so there is no stage other users can open to refuse.
   if (process.platform !== 'win32') await assert.rejects(discardExitBundle(store, target, asAdmin()), (e: ExitBundleError) => e.status === 409 && /other users/.test(e.message));
   chmodSync(`${target}.partial`, 0o700);
-  let chowned = true;
-  try { chownSync(`${target}.partial`, 12345, 12345); } catch { chowned = false; }
+  // Windows has no owners to change: chown there does nothing and fails nothing.
+  let chowned = process.platform !== 'win32';
+  if (chowned) try { chownSync(`${target}.partial`, 12345, 12345); } catch { chowned = false; }
   if (chowned) await assert.rejects(discardExitBundle(store, target, asAdmin()), (e: ExitBundleError) => e.status === 409 && /another user/.test(e.message));
   if (chowned) chownSync(`${target}.partial`, process.getuid!(), process.getgid!());
   rmSync(`${target}.partial`, { recursive: true, force: true });
