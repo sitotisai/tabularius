@@ -8,6 +8,6 @@ The primary server a `standby` follows.
 | Accepted values | Primary server URL |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1757](../../../../packages/cli/src/main.ts#L1757) |
+| Code | [packages/cli/src/main.ts:1765](../../../../packages/cli/src/main.ts#L1765) |
 
 [All environment variables](../../../environment-variables.md)
