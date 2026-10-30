@@ -75,7 +75,10 @@ test('a worker that finds the usage database missing while another makes it carr
 test('several worker processes adding at once add up exactly', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-ai-usage-'));
   try {
-    await Promise.all([1, 2, 3, 4, 5].map((n) => worker(dir, n, 200)));
+    // Wait for every worker, not just the first to fail: the folder is removed below, and a worker still running holds its file.
+    const done = await Promise.allSettled([1, 2, 3, 4, 5].map((n) => worker(dir, n, 200)));
+    const failed = done.flatMap((d) => (d.status === 'rejected' ? [String((d.reason as Error).message)] : []));
+    assert.deepEqual(failed, [], 'every worker finished');
     const u = new AiUsage(dir);
     assert.equal(u.today(), 5 * 200 * 10, 'the server total');
     assert.equal(u.today('Charts/clerk'), 5 * 200 * 10, 'the account total');

@@ -562,7 +562,8 @@ test('REST reference examples match live status and response shape', async () =>
       }
       if (url.pathname.startsWith('/fmi/odata/') && ['PATCH', 'PUT', 'DELETE'].includes(method)) headers.set('if-match', '*');
       let response: Response;
-      try { response = await fetch(url, { method, headers, redirect: 'manual', signal: AbortSignal.timeout(5000), ...(uploadBody ? { body: uploadBody } : rawBody ? { body: rawBody as unknown as BodyInit } : body ? { body } : {}) }); }
+      // Thirty seconds, not five: a script run on a busy Windows runner took longer than five twice in one run; a hang still fails.
+      try { response = await fetch(url, { method, headers, redirect: 'manual', signal: AbortSignal.timeout(30_000), ...(uploadBody ? { body: uploadBody } : rawBody ? { body: rawBody as unknown as BodyInit } : body ? { body } : {}) }); }
       catch (e) {
         // fetch only says "fetch failed"; the cause (a reset, a refused connection, a timeout) is what tells a server fault from a test one.
         const cause = (e as { cause?: { code?: string; message?: string } }).cause;

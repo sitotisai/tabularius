@@ -103,6 +103,17 @@ test('fragmented valid headers and chunk framing work; fragmented obs-fold is re
   }
 });
 
+test('a refused request is answered even while the client keeps sending, and the connection then closes', async t => {
+  stubCommands(t);
+  const port = await listen(t, createEdgeServer((req, res) => { req.resume(); req.on('end', () => res.end('ok')); }));
+  const c = await new RawClient(port).ready();
+  c.send('GET / HTTP/1.1\r\nHost: localhost\r\nX-Note: first\r\n second\r\n\r\n');
+  // The refusal is written at once; what the client sends after it must not turn the close into a reset that discards it.
+  for (let i = 0; i < 40 && !c.socket.destroyed; i++) { c.send('x'.repeat(1024)); await sleep(2); }
+  const text = await c.end();
+  assert.match(text, /^HTTP\/1\.1 400 /, `received ${JSON.stringify(text)}`);
+});
+
 test('ignored chunk extension metadata cannot change a body or swallow the following request', async t => {
   stubCommands(t);
   const received: string[] = [];
