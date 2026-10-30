@@ -175,10 +175,10 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | --- | --- | --- |
 | [packages/cli/src/diagnostics.ts:205](../../packages/cli/src/diagnostics.ts#L205) `designCopy` | `SQLite.all` (205); `SQLite.prepare` (205, 208) | OPERATOR |
 | [packages/cli/src/diagnostics.ts:445](../../packages/cli/src/diagnostics.ts#L445) `diagnostics` | `SQLite.get` (445); `SQLite.prepare` (445, 449); `SQLite.all` (449) | OPERATOR |
-| [packages/cli/src/doctor.ts:139](../../packages/cli/src/doctor.ts#L139) `accountChecks` | `SQLite.all` (139); `SQLite.prepare` (139) | OPERATOR |
+| [packages/cli/src/doctor.ts:140](../../packages/cli/src/doctor.ts#L140) `accountChecks` | `SQLite.all` (140); `SQLite.prepare` (140) | OPERATOR |
 | [packages/cli/src/main.ts:712](../../packages/cli/src/main.ts#L712) `accountsWithPasswordOff` | `SQLite.all` (712); `SQLite.prepare` (712) | OPERATOR |
 | [packages/cli/src/main.ts:741](../../packages/cli/src/main.ts#L741) `hostedRead` | `SQLite.all` (741, 744); `SQLite.prepare` (741, 744); `Store.sql` (741, 744) | OPERATOR |
-| [packages/cli/src/main.ts:2426](../../packages/cli/src/main.ts#L2426) `main` | `Store.orphanContainerReport` (2426); `Store.auditLog` (2899); `SQLite.get` (3161); `SQLite.prepare` (3161) | OPERATOR |
+| [packages/cli/src/main.ts:2427](../../packages/cli/src/main.ts#L2427) `main` | `Store.orphanContainerReport` (2427); `Store.auditLog` (2900); `SQLite.get` (3162); `SQLite.prepare` (3162) | OPERATOR |
 | [packages/scripts/src/data-api-step.ts:104](../../packages/scripts/src/data-api-step.ts#L104) `respond` | `Store.get` (104, 131, 140); `Store.find` (105, 117) | SCRIPT |
 | [packages/scripts/src/engine.ts:8150](../../packages/scripts/src/engine.ts#L8150) `ScriptEngine/containerFile` | `Store.get` (8150); `Store.containerId` (8151); `Store.container` (8152) | SCRIPT |
 | [packages/scripts/src/engine.ts:5744](../../packages/scripts/src/engine.ts#L5744) `ScriptEngine/design` | `Store.valueListItems` (5744) | SCRIPT |
@@ -214,10 +214,10 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/scripts/src/testrun.ts:199](../../packages/scripts/src/testrun.ts#L199) `seedSelections` | `Calculations.globalValue` (199); `Store.find` (204) | DESIGN |
 | [packages/scripts/src/testrun.ts:338](../../packages/scripts/src/testrun.ts#L338) `testRun` | `Store.evaluateEach` (338) | DESIGN |
 | [packages/scripts/src/testrun.ts:270](../../packages/scripts/src/testrun.ts#L270) `testScript` | `Store.findIds` (270) | DESIGN |
-| [packages/server/src/admin.ts:2371](../../packages/server/src/admin.ts#L2371) `Admin/audit` | `Store.auditLog` (2371) | ADMIN |
-| [packages/server/src/admin.ts:1091](../../packages/server/src/admin.ts#L1091) `Admin/handle` | `Store.externalContainerReport` (1091); `Store.orphanContainerReport` (1096, 1100) | ADMIN |
-| [packages/server/src/admin.ts:2811](../../packages/server/src/admin.ts#L2811) `Admin/status` | `Store.externalContainerCount` (2811) | ADMIN |
-| [packages/server/src/admin.ts:2454](../../packages/server/src/admin.ts#L2454) `Admin/viewAs` | `Store.find` (2454) | ADMIN |
+| [packages/server/src/admin.ts:2418](../../packages/server/src/admin.ts#L2418) `Admin/audit` | `Store.auditLog` (2418) | ADMIN |
+| [packages/server/src/admin.ts:1138](../../packages/server/src/admin.ts#L1138) `Admin/handle` | `Store.externalContainerReport` (1138); `Store.orphanContainerReport` (1143, 1147) | ADMIN |
+| [packages/server/src/admin.ts:2858](../../packages/server/src/admin.ts#L2858) `Admin/status` | `Store.externalContainerCount` (2858) | ADMIN |
+| [packages/server/src/admin.ts:2501](../../packages/server/src/admin.ts#L2501) `Admin/viewAs` | `Store.find` (2501) | ADMIN |
 | [packages/server/src/agent.ts:316](../../packages/server/src/agent.ts#L316) `dryRunPlan` | `Store.findIds` (316) | DESIGN |
 | [packages/server/src/agent.ts:339](../../packages/server/src/agent.ts#L339) `runApprovedStep` | `Store.findIds` (339) | DESIGN |
 | [packages/server/src/agent.ts:162](../../packages/server/src/agent.ts#L162) `runStep` | `Store.findIds` (162); `Store.auditLog` (230); `Store.canViewRecord` (242) | DESIGN |
@@ -243,19 +243,16 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/server/src/automations.ts:168](../../packages/server/src/automations.ts#L168) `Saved/table` | `Store.sql` (168, 169) | AUTOMATION |
 | [packages/server/src/automations.ts:308](../../packages/server/src/automations.ts#L308) `dryRunAutomation` | `Store.canViewRecord` (308); `Store.findIds` (308); `Store.auditLog` (324, 352, 360); `Store.select` (337); `Store.evaluate` (353) | AUTOMATION |
 | [packages/server/src/automations.ts:307](../../packages/server/src/automations.ts#L307) `dryRunAutomation/truth` | `Store.evaluateEach` (307) | AUTOMATION |
-| [packages/server/src/backup-verify.ts:188](../../packages/server/src/backup-verify.ts#L188) `integrity` | `SQLite.all` (188); `SQLite.prepare` (188, 192); `SQLite.get` (192) | OPERATOR |
-| [packages/server/src/backup-verify.ts:218](../../packages/server/src/backup-verify.ts#L218) `pageCheck` | `SQLite.all` (218); `SQLite.prepare` (218, 221); `SQLite.get` (221) | OPERATOR |
-| [packages/server/src/backup-verify.ts:148](../../packages/server/src/backup-verify.ts#L148) `testRestore` | `Store.recordCount` (148) | OPERATOR |
-| [packages/server/src/backup.ts:1015](../../packages/server/src/backup.ts#L1015) `accountDifferences/read` | `SQLite.all` (1015, 1017); `SQLite.prepare` (1015, 1017) | OPERATOR |
-| [packages/server/src/backup.ts:278](../../packages/server/src/backup.ts#L278) `backupOnceHeld` | `SQLite.get` (278); `SQLite.prepare` (278) | OPERATOR |
-| [packages/server/src/backup.ts:1128](../../packages/server/src/backup.ts#L1128) `columnInfo` | `SQLite.all` (1128); `SQLite.prepare` (1128) | OPERATOR |
-| [packages/server/src/backup.ts:1072](../../packages/server/src/backup.ts#L1072) `credentialsReadable` | `SQLite.all` (1072); `SQLite.prepare` (1072) | OPERATOR |
-| [packages/server/src/backup.ts:1042](../../packages/server/src/backup.ts#L1042) `readNames` | `SQLite.all` (1042); `SQLite.prepare` (1042) | OPERATOR |
-| [packages/server/src/backup.ts:1163](../../packages/server/src/backup.ts#L1163) `reconcileCredentials` | `SQLite.all` (1163, 1185, 1200, 1210, 1216); `SQLite.prepare` (1163, 1171, 1185, 1187, 1200, 1201, 1208, 1210, 1211, 1216, 1217, 1221, 1222, 1223); `SQLite.get` (1171, 1221) | OPERATOR |
-| [packages/server/src/backup.ts:1190](../../packages/server/src/backup.ts#L1190) `reconcileCredentials/accountColumns` | `SQLite.all` (1190); `SQLite.prepare` (1190) | OPERATOR |
-| [packages/server/src/backup.ts:1166](../../packages/server/src/backup.ts#L1166) `reconcileCredentials/has` | `SQLite.all` (1166); `SQLite.prepare` (1166) | OPERATOR |
-| [packages/server/src/backup.ts:1099](../../packages/server/src/backup.ts#L1099) `retainCurrentRecordIdMarks` | `SQLite.prepare` (1099, 1110, 1111, 1112); `SQLite.all` (1101, 1111); `SQLite.get` (1110) | OPERATOR |
-| [packages/server/src/backup.ts:1338](../../packages/server/src/backup.ts#L1338) `stageRestorePoint` | `SQLite.get` (1338, 1340, 1341); `SQLite.prepare` (1338, 1340, 1341) | OPERATOR |
+| [packages/server/src/backup-verify.ts:152](../../packages/server/src/backup-verify.ts#L152) `testRestore` | `Store.recordCount` (152) | OPERATOR |
+| [packages/server/src/backup.ts:1066](../../packages/server/src/backup.ts#L1066) `accountDifferences/read` | `SQLite.all` (1066, 1068); `SQLite.prepare` (1066, 1068) | OPERATOR |
+| [packages/server/src/backup.ts:1179](../../packages/server/src/backup.ts#L1179) `columnInfo` | `SQLite.all` (1179); `SQLite.prepare` (1179) | OPERATOR |
+| [packages/server/src/backup.ts:1123](../../packages/server/src/backup.ts#L1123) `credentialsReadable` | `SQLite.all` (1123); `SQLite.prepare` (1123) | OPERATOR |
+| [packages/server/src/backup.ts:1093](../../packages/server/src/backup.ts#L1093) `readNames` | `SQLite.all` (1093); `SQLite.prepare` (1093) | OPERATOR |
+| [packages/server/src/backup.ts:1214](../../packages/server/src/backup.ts#L1214) `reconcileCredentials` | `SQLite.all` (1214, 1236, 1251, 1261, 1267); `SQLite.prepare` (1214, 1222, 1236, 1238, 1251, 1252, 1259, 1261, 1262, 1267, 1268, 1272, 1273, 1274); `SQLite.get` (1222, 1272) | OPERATOR |
+| [packages/server/src/backup.ts:1241](../../packages/server/src/backup.ts#L1241) `reconcileCredentials/accountColumns` | `SQLite.all` (1241); `SQLite.prepare` (1241) | OPERATOR |
+| [packages/server/src/backup.ts:1217](../../packages/server/src/backup.ts#L1217) `reconcileCredentials/has` | `SQLite.all` (1217); `SQLite.prepare` (1217) | OPERATOR |
+| [packages/server/src/backup.ts:1150](../../packages/server/src/backup.ts#L1150) `retainCurrentRecordIdMarks` | `SQLite.prepare` (1150, 1161, 1162, 1163); `SQLite.all` (1152, 1162); `SQLite.get` (1161) | OPERATOR |
+| [packages/server/src/backup.ts:1389](../../packages/server/src/backup.ts#L1389) `stageRestorePoint` | `SQLite.get` (1389, 1391, 1392); `SQLite.prepare` (1389, 1391, 1392) | OPERATOR |
 | [packages/server/src/calendar.ts:389](../../packages/server/src/calendar.ts#L389) `CalendarFeeds/feed` | `Store.find` (389) | CALENDAR |
 | [packages/server/src/changes.ts:195](../../packages/server/src/changes.ts#L195) `ChangeFeed/visible` | `Store.canViewRecord` (195) | CHANGE |
 | [packages/server/src/cleanup.ts:1051](../../packages/server/src/cleanup.ts#L1051) `CleanupJournal/add` | `SQLite.prepare` (1051); `Store.sql` (1051) | CLEANUP |
@@ -331,6 +328,8 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/server/src/insight.ts:859](../../packages/server/src/insight.ts#L859) `layoutProfile/viewableIds` | `Store.viewableIds` (859) | PROFILE |
 | [packages/server/src/insight.ts:1201](../../packages/server/src/insight.ts#L1201) `solutionOverview/counts` | `Store.query` (1201) | DESIGN |
 | [packages/server/src/insight.ts:396](../../packages/server/src/insight.ts#L396) `webViewerScripts` | `Store.query` (396) | DESIGN |
+| [packages/server/src/integrity-check.ts:13](../../packages/server/src/integrity-check.ts#L13) `integrity` | `SQLite.all` (13); `SQLite.prepare` (13, 17); `SQLite.get` (17) | OPERATOR |
+| [packages/server/src/integrity-check.ts:43](../../packages/server/src/integrity-check.ts#L43) `pageCheck` | `SQLite.all` (43); `SQLite.prepare` (43, 46); `SQLite.get` (46) | OPERATOR |
 | [packages/server/src/live.ts:206](../../packages/server/src/live.ts#L206) `Live/handle` | `Store.canView` (206) | LIVE |
 | [packages/server/src/live.ts:280](../../packages/server/src/live.ts#L280) `Live/visibleRecord` | `Store.canViewRecord` (280) | LIVE |
 | [packages/server/src/logs.ts:77](../../packages/server/src/logs.ts#L77) `LogShipper/follow` | `SQLite.get` (77); `SQLite.prepare` (77); `Store.sql` (77, 78, 79, 80) | ADMIN |
@@ -578,15 +577,15 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/store/src/foreign-keys.ts:165](../../packages/store/src/foreign-keys.ts#L165) `parentHas` | `SQLite.get` (165) | CORE |
 | [packages/store/src/import.ts:95](../../packages/store/src/import.ts#L95) `addExternalSizeColumn` | `SQLite.all` (95); `SQLite.prepare` (95) | OPERATOR |
 | [packages/store/src/import.ts:243](../../packages/store/src/import.ts#L243) `applyFileAccountStatus` | `SQLite.get` (243, 245); `SQLite.prepare` (243, 245, 247, 259) | OPERATOR |
-| [packages/store/src/import.ts:280](../../packages/store/src/import.ts#L280) `createStore` | `SQLite.prepare` (280, 292) | OPERATOR |
+| [packages/store/src/import.ts:288](../../packages/store/src/import.ts#L288) `createStore` | `SQLite.prepare` (288, 300) | OPERATOR |
 | [packages/store/src/import.ts:199](../../packages/store/src/import.ts#L199) `importDesigns` | `SQLite.all` (199); `SQLite.prepare` (199, 213, 216, 219, 221); `SQLite.get` (213, 216) | OPERATOR |
-| [packages/store/src/import.ts:416](../../packages/store/src/import.ts#L416) `importFmp12` | `SQLite.prepare` (416, 427, 433, 439, 443, 458, 469, 559, 560, 561); `SQLite.get` (433, 458); `SQLite.all` (439) | OPERATOR |
-| [packages/store/src/import.ts:407](../../packages/store/src/import.ts#L407) `importFmp12/save` | `SQLite.prepare` (407) | OPERATOR |
-| [packages/store/src/import.ts:517](../../packages/store/src/import.ts#L517) `importFmp12/skipped` | `SQLite.get` (517); `SQLite.prepare` (517) | OPERATOR |
+| [packages/store/src/import.ts:424](../../packages/store/src/import.ts#L424) `importFmp12` | `SQLite.prepare` (424, 435, 441, 447, 451, 466, 477, 567, 568, 569); `SQLite.get` (441, 466); `SQLite.all` (447) | OPERATOR |
+| [packages/store/src/import.ts:415](../../packages/store/src/import.ts#L415) `importFmp12/save` | `SQLite.prepare` (415) | OPERATOR |
+| [packages/store/src/import.ts:525](../../packages/store/src/import.ts#L525) `importFmp12/skipped` | `SQLite.get` (525); `SQLite.prepare` (525) | OPERATOR |
 | [packages/store/src/import.ts:149](../../packages/store/src/import.ts#L149) `moveAddedImages` | `SQLite.prepare` (149, 159, 175, 176); `SQLite.get` (152); `SQLite.all` (176) | OPERATOR |
-| [packages/store/src/import.ts:304](../../packages/store/src/import.ts#L304) `needsDesigns` | `SQLite.get` (304); `SQLite.prepare` (304) | OPERATOR |
+| [packages/store/src/import.ts:312](../../packages/store/src/import.ts#L312) `needsDesigns` | `SQLite.get` (312); `SQLite.prepare` (312) | OPERATOR |
 | [packages/store/src/import.ts:135](../../packages/store/src/import.ts#L135) `nextImageId` | `SQLite.get` (135); `SQLite.prepare` (135) | OPERATOR |
-| [packages/store/src/import.ts:351](../../packages/store/src/import.ts#L351) `readState` | `SQLite.get` (351); `SQLite.prepare` (351) | OPERATOR |
+| [packages/store/src/import.ts:359](../../packages/store/src/import.ts#L359) `readState` | `SQLite.get` (359); `SQLite.prepare` (359) | OPERATOR |
 | [packages/store/src/import.ts:107](../../packages/store/src/import.ts#L107) `writeDesign` | `SQLite.prepare` (107, 111) | OPERATOR |
 | [packages/store/src/layout-speed.ts:56](../../packages/store/src/layout-speed.ts#L56) `layoutCost/recordCount` | `Store.recordCount` (56) | DESIGN |
 | [packages/store/src/layout-speed.ts:419](../../packages/store/src/layout-speed.ts#L419) `speedContext` | `Store.recordCount` (419) | DESIGN |
