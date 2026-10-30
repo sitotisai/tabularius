@@ -498,3 +498,35 @@ test('a remembered proof ends at once when the LAN blank-password opt-in is swit
   store.setAllowBlankPasswordFromLan(true);
   assert.equal(await describe(), true, 'admitted again once it is back on');
 });
+
+/** An open event stream from another local address (127.0.0.2); resolves with its status once the headers arrive, and is closed by `end`. */
+const holdStream = (base: string, authorization: string, localAddress: string) => new Promise<{ status: number; end: () => void }>((resolve, reject) => {
+  const url = new URL(base);
+  const req = request({ host: url.hostname, port: url.port, path: '/mcp', method: 'GET', localAddress, headers: { authorization, accept: 'text/event-stream', 'mcp-protocol-version': '2025-06-18' } }, (res) => {
+    res.resume();
+    resolve({ status: res.statusCode ?? 0, end: () => req.destroy() });
+  });
+  req.on('error', (e) => { if ((e as NodeJS.ErrnoException).code !== 'ECONNRESET') reject(e); });
+  req.end();
+});
+
+test('streams opened with a made-up password for an account do not take that account\'s own streams or calls', async (t) => {
+  const s = await start(t);
+  assert.equal((await proveAlice(s.url)).status, 200);
+  const open: { end: () => void }[] = [];
+  t.after(() => { for (const stream of open) stream.end(); });
+  // Someone at another address names alice with passwords that are not hers, more times than one account may hold streams.
+  const statuses: number[] = [];
+  for (let i = 0; i < 12; i++) {
+    const stream = await holdStream(s.url, basic('alice', 'guess-same'), '127.0.0.2');
+    open.push(stream);
+    statuses.push(stream.status);
+  }
+  assert.ok(statuses.includes(200), `the attacker's streams were held: ${statuses.join(',')}`);
+  assert.ok(statuses.includes(503), `and stopped at the cap for one identity: ${statuses.join(',')}`);
+  // Alice, with her real password, is not turned away: not for a stream, and not for a call.
+  const mine = await holdStream(s.url, basic('alice', 'alice-password'), '127.0.0.1');
+  open.push(mine);
+  assert.equal(mine.status, 200, 'alice\'s own stream opens while the made-up ones are held');
+  assert.equal((await rpc(s.url, basic('alice', 'alice-password'))).status, 200, 'and so does her call');
+});
