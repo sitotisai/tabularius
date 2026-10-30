@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { createStore } from '../../store/src/index.ts';
 import { STORE_EXT } from '../src/host.ts';
 import { backupFolder, backupSets, scheduleProgressive } from '../src/backup.ts';
@@ -40,9 +40,9 @@ test('backup set names stay unique and ordered through a zone change and year bo
   const now = Date.parse('2026-12-31T23:59:59Z');
   try {
     process.env.TZ = 'Asia/Kolkata';
-    const first = (await backupFolder(dir, dest, 7, undefined, { now: () => now })).dir.split('/').at(-1)!;
+    const first = basename((await backupFolder(dir, dest, 7, undefined, { now: () => now })).dir);
     process.env.TZ = 'America/New_York';
-    const second = (await backupFolder(dir, dest, 7, undefined, { now: () => now + 1000 })).dir.split('/').at(-1)!;
+    const second = basename((await backupFolder(dir, dest, 7, undefined, { now: () => now + 1000 })).dir);
     assert.ok(second > first);
     assert.deepEqual(backupSets(dest), [first, second]);
   } finally {
