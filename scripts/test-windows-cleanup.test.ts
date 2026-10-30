@@ -7,7 +7,10 @@ class FakeDatabase {
   isOpen = true;
   location: string;
   constructor(location: string) { this.location = location; }
-  close() { this.isOpen = false; }
+  close() {
+    if (!this.isOpen) throw new Error('database is not open');
+    this.isOpen = false;
+  }
 }
 
 const RECURSIVE = { recursive: true };
@@ -104,4 +107,12 @@ test('the database -wal file and the folder it is in are both covered, and :memo
   assert.equal(file.isOpen, false);
   assert.equal(closeUnder('/tmp/e'), 0);
   assert.equal(memory.isOpen, true);
+});
+
+test('a test that closes a database after the helper closed it for a delete does not fail', () => {
+  const { fs, open } = setup();
+  const db = open('/tmp/g/x.sqlite');
+  fs.rmSync('/tmp/g', RECURSIVE);
+  assert.equal(db.isOpen, false);
+  assert.doesNotThrow(() => db.close());
 });
