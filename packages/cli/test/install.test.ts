@@ -25,12 +25,12 @@ test('systemd: a user service, or a system one that starts at boot and may use p
   assert.match(user, /^WantedBy=default\.target$/m);
   assert.doesNotMatch(user, /^User=/m);
 
-  const system = print('Linux', '--system', '--port', '443', '--', '--name', 'Sales "East" 100%');
+  const system = print('Linux', '--system', '--port', '443', '--', '--mail-from', 'Sales "East" 100%');
   assert.match(system, /^WantedBy=multi-user\.target$/m);
   assert.match(system, /^User=\S+$/m);
   assert.match(system, /^AmbientCapabilities=CAP_NET_BIND_SERVICE$/m);
   // Quotes escaped, % doubled, as systemd reads them.
-  assert.match(system, / "--name" "Sales \\"East\\" 100%%"$/m);
+  assert.match(system, / "--mail-from" "Sales \\"East\\" 100%%"$/m);
 
   // systemd itself agrees, where it is installed.
   if (spawnSync('systemd-analyze', ['--version']).status === 0) {

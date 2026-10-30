@@ -111,7 +111,7 @@ test('MBS List: sorting', () => {
 
 test('MBS List through MBS ( … )', () => {
   assert.equal(evaluateText('MBS ( "List.Find" ; "Hello¶World¶Test" ; "World" ) + 1', {}), '2');
-  assert.match(evaluateText('MBS ( "List.CSVSplit" ; "a,b" )', {}), /not available/);
+  assert.equal(evaluateText('MBS ( "List.CSVSplit" ; "a,b" )', {}), 'a\tb\r');
 });
 
 test('MBS List.BestMatch refuses a call that would compare too much', () => {

@@ -116,23 +116,31 @@ test('release selection keeps lookalike runtime names and excludes nested toolin
 
 test('dependency installation suppresses scripts on all platform and npm-location branches', () => {
   const source = ts.createSourceFile('service.ts', readFileSync(join(root, 'packages/cli/src/service.ts'), 'utf8'), ts.ScriptTarget.Latest, true);
-  const fn = source.statements.find((node): node is ts.FunctionDeclaration => ts.isFunctionDeclaration(node) && node.name?.text === 'installDependencies');
-  assert.ok(fn);
-  const javascript = ts.transpileModule(fn.getText(source), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
-  for (const platform of ['linux', 'darwin', 'win32']) for (const local of [false, true]) for (const status of [0, 99, null]) {
+  const functions = ['dependencyCommand', 'installDependencies'].map((name) => {
+    const fn = source.statements.find((node): node is ts.FunctionDeclaration => ts.isFunctionDeclaration(node) && node.name?.text === name);
+    assert.ok(fn, name);
+    return ts.transpileModule(fn.getText(source), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
+  }).join('\n');
+  for (const platform of ['linux', 'darwin', 'win32'] as const) for (const local of [false, true]) for (const status of [0, 99, null]) {
     const paths = platform === 'win32' ? win32 : posix;
     const execPath = platform === 'win32' ? 'C:\\Program Files\\Synthetic\\node.exe' : '/synthetic runtime/node';
     let calls = 0;
-    const invoke = () => runInNewContext(`${javascript}\ninstallDependencies('synthetic app');`, {
-      join: paths.join, dirname: paths.dirname, existsSync: () => local,
+    const invoke = () => runInNewContext(`${functions}\ninstallDependencies('synthetic app', ${JSON.stringify(platform)});`, {
+      exports: {}, join: paths.join, dirname: paths.dirname, win32, existsSync: () => local,
       process: { platform, execPath, env: { PATH: guard, npm_config_ignore_scripts: 'false' } },
       spawnSync: (command: string, args: string[], options: { cwd: string; shell: boolean }) => {
         calls++;
-        const npm = platform === 'win32' ? 'npm.cmd' : 'npm';
-        assert.equal(command, local ? paths.join(paths.dirname(execPath), npm) : npm);
-        assert.deepEqual(Array.from(args), ['ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund']);
+        const flags = ['ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'];
+        // Windows runs npm's own script through Node, so no shell (cmd.exe) ever parses the arguments.
+        if (platform === 'win32') {
+          assert.equal(command, execPath);
+          assert.deepEqual(Array.from(args), [win32.join(win32.dirname(execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'), ...flags]);
+        } else {
+          assert.equal(command, local ? paths.join(paths.dirname(execPath), 'npm') : 'npm');
+          assert.deepEqual(Array.from(args), flags);
+        }
         assert.equal(options.cwd, 'synthetic app');
-        assert.equal(options.shell, platform === 'win32');
+        assert.equal(options.shell, false);
         return { status };
       },
     });

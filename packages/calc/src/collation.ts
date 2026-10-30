@@ -16,6 +16,8 @@
 // weight, so a contraction (Czech and Slovak "ch", traditional Spanish "ch" and "ll", Hungarian "cs") and a
 // language-specific rule that depends on the neighbours are not applied.
 
+import { kanaZenkaku, romanHankaku } from './japanese.ts';
+
 type Range = [number, number];
 
 const LATIN: Range[] = [[0x20, 0x7e], [0xa0, 0x24f], [0x2010, 0x2027], [0x2030, 0x205e], [0x20a0, 0x20bf]];
@@ -135,6 +137,9 @@ const asChar = (w: number) => String.fromCodePoint(w < 0xd800 ? w : Math.min(w +
 /** A key whose code point (and UTF-8 byte) order is FileMaker's text order. */
 export function sortKey(text: string, language: SortLanguage = 'en'): string {
   const id = sortLanguage(language);
+  // Compose half-width voiced kana before weighing characters: ﾊﾟ is one letter, like パ.
+  // The Roman helper also gives full-width letters and digits their ordinary weights.
+  if (id === 'ja') text = romanHankaku(kanaZenkaku(text));
   const { weights: t, after } = weights(id);
   const expansions = (byId.get(id) ?? byId.get('en')!).expansions;
   let out = '';
