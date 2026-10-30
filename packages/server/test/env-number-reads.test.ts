@@ -4,7 +4,8 @@ import { uploadIdleMs, requestQueueLimit, containerLinkTtlMs, maxUpload, pgwireM
 import { MAX_UPLOAD } from '../src/uploads.ts';
 import { PgServer } from '../src/pgwire.ts';
 import type { Host } from '../src/host.ts';
-import { RecordLocks } from '../../store/src/activity.ts';
+import { RecordLocks, maxSessionLocks, MAX_SESSION_LOCKS } from '../../store/src/activity.ts';
+import { minMs } from '../../store/src/trace.ts';
 
 test('server number readers use defaults and reject ambiguous or out-of-range values', () => {
   const readers: [string, (env: NodeJS.ProcessEnv) => number, number, string, number, string][] = [
@@ -13,6 +14,8 @@ test('server number readers use defaults and reject ambiguous or out-of-range va
     ['TABULARIUS_CONTAINER_TTL', containerLinkTtlMs, 3_600_000, '1', 1000, '3601'],
     ['TABULARIUS_MAX_UPLOAD', maxUpload, MAX_UPLOAD, '1024', 1024, '99999999999999999999'],
     ['TABULARIUS_PGWIRE_MAX_PARAM_BYTES', pgwireMaxParamBytes, 64 * 1024 * 1024, '1024', 1024, '99999999999999999999'],
+    ['TABULARIUS_MAX_SESSION_LOCKS', maxSessionLocks, MAX_SESSION_LOCKS, '1024', 1024, '99999999999999999999'],
+    ['TABULARIUS_TRACE_SQL_MIN_MS', minMs, 0, '1024', 1024, '86400001'],
   ];
   for (const [name, read, fallback, valid, expected, tooLarge] of readers) {
     assert.equal(read({}), fallback, `${name} default`);

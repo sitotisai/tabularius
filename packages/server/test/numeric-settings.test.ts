@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { RequestGate } from '../src/request-gate.ts';
 import { Warmer } from '../src/warmer.ts';
 import { PgServer } from '../src/pgwire.ts';
+import { ScriptEngine } from '../../scripts/src/engine.ts';
 import type { Host } from '../src/host.ts';
 
 for (const [name, create] of [
@@ -37,4 +38,19 @@ test('upload aggregate quota refuses numeric shorthand and unset keeps its safe 
   }
   process.env[name] = '512';
   assert.equal(maxUploadInProgress(), 512);
+});
+
+test('unset numeric limits retain their server and script defaults', (t) => {
+  const names = ['TABULARIUS_REQUEST_LIMIT', 'TABULARIUS_WARM_HEAP_MB', 'TABULARIUS_PGWIRE_MAX_BUFFERED_ROWS', 'TABULARIUS_SCRIPT_MAX_RECORD_OPS'] as const;
+  for (const name of names) {
+    const saved = process.env[name];
+    delete process.env[name];
+    t.after(() => { if (saved === undefined) delete process.env[name]; else process.env[name] = saved; });
+  }
+  assert.equal(new RequestGate().limit, 32);
+  assert.equal((new Warmer() as unknown as { heapMb: number }).heapMb, 1536);
+  const pg = new PgServer({} as Host, { port: 0 });
+  assert.equal(pg.maxBufferedRows, 100_000);
+  pg.close();
+  assert.equal((new ScriptEngine() as unknown as { maxRecordOps: number }).maxRecordOps, 50_000_000);
 });

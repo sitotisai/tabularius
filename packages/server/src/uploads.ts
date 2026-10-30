@@ -14,7 +14,7 @@
 // then the .fmp12 sits next to its store, as if it had been dropped into
 // the folder.
 
-import { DEFAULT_MAX_UPLOAD, maxUpload, positiveWholeNumber, uploadIdleMs } from './setting-values.ts';
+import { maxUpload, positiveWholeNumber, uploadIdleMs } from './setting-values.ts';
 import { eachChunk } from './dataapi.ts';
 import type { IncomingMessage } from 'node:http';
 import { randomBytes } from 'node:crypto';
@@ -32,7 +32,6 @@ import { monotonicClock } from '../../store/src/monotonic.ts';
 
 export const MAX_PIECE = 64 * 1024 * 1024;
 const KEEP = 20;
-/** An upload that has received nothing for this long is abandoned and removed (TABULARIUS_UPLOAD_IDLE_HOURS, default 24; 0 keeps them). */
 const UPLOAD_DIR = '.openhbam-uploads';
 const liveOwners = new Set<string>();
 const CRASH_GRACE_MS = 24 * 60 * 60 * 1000;
@@ -41,7 +40,7 @@ const CRASH_GRACE_MS = 24 * 60 * 60 * 1000;
  * byte of it is checked. Default 10 GB; set TABULARIUS_MAX_UPLOAD to the number of
  * bytes (0 for no limit) on a server that hosts larger files from the browser.
  */
-export const MAX_UPLOAD = DEFAULT_MAX_UPLOAD;
+export const MAX_UPLOAD = maxUpload();
 
 /** Source bytes allowed across uploading, queued and converting files. Always finite: unset is 20 GiB; 0 or anything but digits is refused. */
 export function maxUploadInProgress(): number {
