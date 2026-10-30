@@ -557,7 +557,9 @@ export function solutionIndex(store: Store): Index {
     if (open) {
       const refs = emptyRefs();
       refs.layouts.add(lower(open));
-      sites.push({ kind: 'fileOptions', where: 'File Options', text: `opens on layout ${quoted(open)}`, refs });
+      sites.push({ kind: 'fileOptions', where: 'File Options', text: fo.switchToLayout === false
+        ? `stores layout ${quoted(open)} but does not switch to it`
+        : `opens on layout ${quoted(open)}`, refs });
     }
   }
   for (const menu of s.customMenus ?? []) {

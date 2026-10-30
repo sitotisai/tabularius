@@ -110,8 +110,11 @@ test('rejects files that are not FileMaker files', () => {
 });
 
 test('file options: the layout the file opens on and its window script triggers', { skip }, () => {
-  assert.deepEqual(FmpDatabase.open(path('FMburgh_2012_11_07_Database.fmp12')).schema.fileOptions, { openLayoutId: 1, openLayout: 'Main Menu' });
-  assert.deepEqual(FmpDatabase.open(path('Charts.fmp12')).schema.fileOptions, {
+  const { switchToLayout: fmTick, ...fmOptions } = FmpDatabase.open(path('FMburgh_2012_11_07_Database.fmp12')).schema.fileOptions ?? {};
+  assert.deepEqual(fmOptions, { openLayoutId: 1, openLayout: 'Main Menu' });
+  assert.equal(fmTick, true);
+  const { switchToLayout: _chartsTick, ...chartsOptions } = FmpDatabase.open(path('Charts.fmp12')).schema.fileOptions ?? {};
+  assert.deepEqual(chartsOptions, {
     onFirstWindowOpen: { scriptId: 7, script: '[trg] set layoutlist' }, openLayoutId: 36, openLayout: 'Chart Types • Choosing',
   });
 });

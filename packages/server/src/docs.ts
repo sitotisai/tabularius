@@ -69,7 +69,9 @@ export function documentSolution(store: Store, opts: DocsOptions = {}): string {
   out.push('', '## Layouts');
   const fo = s.fileOptions;
   if (fo?.openLayout || fo?.onFirstWindowOpen?.script || fo?.onLastWindowClose?.script || fo?.onWindowOpen?.script || fo?.onWindowClose?.script) {
-    out.push('', [fo.openLayout ? `The file opens on ${link('layout', fo.openLayout)}.` : '',
+    out.push('', [fo.openLayout ? (fo.switchToLayout === false
+      ? `File Options stores ${link('layout', fo.openLayout)} as the layout to switch to, but "Switch to layout" is not ticked (inferred from the file), so the file does not open on it.`
+      : `The file opens on ${link('layout', fo.openLayout)}.`) : '',
       fo.onFirstWindowOpen?.script ? `When it opens, it runs ${link('script', fo.onFirstWindowOpen.script)}.` : '',
       fo.onWindowOpen?.script ? `When a window opens, it runs ${link('script', fo.onWindowOpen.script)}.` : '',
       fo.onWindowClose?.script ? `When a window closes, it runs ${link('script', fo.onWindowClose.script)}.` : '',

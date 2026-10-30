@@ -217,9 +217,12 @@ OnLastWindowClose script and the "Switch to layout" layout, each as
 `[n+1][n][id]` or `00` when unset (`readFileOptions` in schema.ts). Matched
 against the script names in 20 sample files ("Trigger: OnFirstWindowOpen",
 "On Last Window Close", "onOpen" and so on). Whether "Switch to layout" is
-ticked is not decoded: 0x40 in the fourth flag byte is set in a private sample,
-DEMO_drawers and FMburgh, whose stored layouts are startup screens, but clear
-in two other private samples, which store "Splash" too.
+ticked is read from 0x40 in the fourth flag byte (`FileOptions.switchToLayout`):
+the bit is set in a private sample, DEMO_drawers and FMburgh, whose stored
+layouts are startup screens, but clear in two other private samples, which
+store "Splash" too. That the bit means "ticked" is inferred from those five
+files; the server still opens the stored layout whatever the bit says, and the
+documentation and the where-used list say when it is clear. <!-- known-difference: Reading .fmp12 files ;; That bit 0x40 of File Options' fourth flag byte means "Switch to layout" is ticked is inferred from five sample files ;; When the bit is clear the documentation says the file does not open on its stored layout, but the server still opens it there ;; A file saved with Switch to layout ticked and unticked, and a FileMaker run that opens each -->
 
 ## 6. Layout and script catalogs
 
