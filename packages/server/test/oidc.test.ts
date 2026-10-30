@@ -14,6 +14,7 @@ import { Host } from '../src/host.ts';
 import { serve } from '../src/index.ts';
 import type { Store } from '../../store/src/index.ts';
 import { expiryClock, ExpiryClock } from '../../store/src/clock.ts';
+import { notOnWindows } from '../../store/test/windows.ts';
 
 const fetch = oidcBrowser();
 
@@ -341,7 +342,7 @@ test('OIDC closes SQLite when the initial pending-row prune fails', () => {
   }
 });
 
-test('OIDC file identity check rejects replacement and host folder warning is nonblocking', () => {
+test('OIDC file identity check rejects replacement and host folder warning is nonblocking', { skip: notOnWindows('folder permission bits do not exist, so there is no group or world write to warn about') }, () => {
   assert.throws(() => assertSameOidcFile({ dev: 1, ino: 2 }, { dev: 1, ino: 3 }), /changed while opening/);
   const testDir = mkdtempSync(join(tmpdir(), 'tabularius-oidc-host-'));
   try {
@@ -369,7 +370,7 @@ test('SQLite lock contention returns a temporary-unavailable sign-in error', asy
   }
 });
 
-test('OIDC storage refuses symlinks and permissive main files and sidecars', () => {
+test('OIDC storage refuses symlinks and permissive main files and sidecars', { skip: notOnWindows('it checks permission bits and owners, which Windows files do not have') }, () => {
   const testDir = mkdtempSync(join(tmpdir(), 'tabularius-oidc-secure-'));
   const storeDir = join(testDir, '.openhbam-oidc');
   const path = join(storeDir, 'pending.sqlite');
