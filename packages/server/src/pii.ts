@@ -77,8 +77,9 @@ const PATTERNS: [RegExp, PiiKind][] = [
   [/(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g, 'EMAIL'],
   [/(?<![\w-])\d{3}-\d{2}-\d{4}(?![\w-])/g, 'ID'],
   [/(?<![\w-])(?:\d[ -]?){12,18}\d(?![\w-])/g, 'CARD'],
-  // Not inside a longer hyphenated token: the middle groups of a UUID can be all digits (4-4-4), which is no phone number.
-  [/(?<![\w+-])(?:\+\d{1,3}[\s.-]?)?(?:\(\d{2,4}\)\s?|\d{2,4}[\s.-])\d{3,4}[\s.-]\d{3,4}(?![\w-])/g, 'PHONE'],
+  // A UUID is no phone number: its middle groups can be all digits (4-4-4), so a match is refused when it sits between the
+  // first group (8 hex digits) and the last (12) of one. Any other hyphen next to a number (1-800-..., Phone-555-...) still masks.
+  [/(?<![\w+])(?<![0-9A-Fa-f]{8}-)(?:\+\d{1,3}[\s.-]?)?(?:\(\d{2,4}\)\s?|\d{2,4}[\s.-])\d{3,4}[\s.-]\d{3,4}(?![\w])(?!-[0-9A-Fa-f]{12}(?![\w]))/g, 'PHONE'],
 ];
 
 function luhn(digits: string): boolean {
