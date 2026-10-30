@@ -43,7 +43,7 @@ import { narrowPrivileges, scoped, type TokenScope } from './token-scope.ts';
 import { DATA_NOT_INSTRUCTIONS } from './ai-security.ts';
 import { AiCredentials } from './ai-credentials.ts';
 import { costOf, priceOf } from './ai-prices.ts';
-import { MemoryUsage, oldUsageWaiting, openUsage, usageFileExists, type QuestionRecord, type UsageCounts } from './ai-usage.ts';
+import { AiUsage, MemoryUsage, oldUsageWaiting, openUsage, usageFileExists, type QuestionRecord, type UsageCounts } from './ai-usage.ts';
 export type { QuestionRecord } from './ai-usage.ts';
 import { aiBlocker, aiRefusal } from './ai-access.ts';
 import { assertAiDesignChanges } from './ai-policy.ts';
@@ -782,6 +782,13 @@ export class Assistant {
   /** For reading: nothing used yet on this server (no file, nothing counted) reads as zero without making a file. */
   private get counts(): Pick<UsageCounts, 'today' | 'month' | 'recent'> {
     return this.used || usageFileExists(this.host.dir) || (this.available && oldUsageWaiting(this.host.dir)) ? this.usage : new MemoryUsage();
+  }
+
+  /** Lets go of the shared usage file, which a system that cannot delete an open file (Windows) would otherwise keep until the process ends. */
+  close(): void {
+    const used = this.used;
+    this.used = undefined;
+    if (used instanceof AiUsage) used.close();
   }
 
   /**
