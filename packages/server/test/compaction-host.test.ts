@@ -10,12 +10,13 @@ import { DataApi } from '../src/dataapi.ts';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { EventEmitter } from 'node:events';
 import type { CompactionReport } from '../src/compaction.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 const report: CompactionReport = { beforeBytes: 100, afterBytes: 80, walBeforeBytes: 20, walAfterBytes: 0, durationMs: 2, writerWaitMs: 0, convertedToIncremental: true, freePagesBefore: 4, freePagesAfter: 0 };
 
 function folder(t: import('node:test').TestContext): string {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-compact-host-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  removeAtExit(dir);
   createStore(join(dir, 'A.openhbam.sqlite'));
   return dir;
 }

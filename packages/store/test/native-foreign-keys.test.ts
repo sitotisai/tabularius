@@ -11,13 +11,15 @@ import {
   type DesignOp, type RemoteRecord, type RemoteSource, type RemoteWriter, type Transaction,
 } from '../src/index.ts';
 import type { OnDelete } from '../../fmp12/src/index.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 function open(t: { after: (fn: () => void) => void }, mode: 'native' | 'compat' = 'native'): Store {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-native-fk-'));
   const path = join(dir, 'Sales.sqlite');
   createStore(path, mode === 'native' ? { mode: 'native' } : {});
   const store = new Store(path, 'Sales');
-  t.after(() => { store.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(() => { store.close(); });
+  removeAtExit(dir);
   return store;
 }
 

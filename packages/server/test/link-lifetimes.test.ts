@@ -12,6 +12,7 @@ import { ScimDirectory } from '../src/scim.ts';
 import { createFeed, revokeFeed } from '../src/calendar.ts';
 import { redactPath } from '../src/server-logs.ts';
 import { makeAuthenticator, forgeRegistration, forgeAssertion } from '../../store/test/forge-webauthn.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 function setup(t: TestContext) {
   const dir = mkdtempSync(join(tmpdir(), 'link-lifetimes-'));
@@ -21,7 +22,8 @@ function setup(t: TestContext) {
   store.setPassword('Alice', 'pw', '[Full Access]');
   let now = Date.now();
   t.mock.method(expiryClock, 'now', () => now);
-  t.after(() => { host.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(() => { host.close(); });
+  removeAtExit(dir);
   return { host, store, dir, advance: (ms: number) => { now += ms; } };
 }
 

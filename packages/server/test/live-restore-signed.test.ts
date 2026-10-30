@@ -2,13 +2,14 @@
 // found out before the live file is closed, and the answer does not carry the server's own folders.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { serve } from '../src/index.ts';
 import { checksum } from '../src/backup-verify.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
 const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtures';
@@ -26,8 +27,8 @@ async function refusedRestores(t: { after(fn: (() => void | Promise<void>)): voi
   t.after(async () => {
     delete process.env.TABULARIUS_BACKUP_KEY;
     await new Promise<void>((r) => s.server.close(() => r()));
-    rmSync(dir, { recursive: true, force: true });
   });
+  removeAtExit(dir);
   const dest = join(dir, 'Backups');
   for (let i = 0; i < 200 && !(existsSync(dest) && readdirSync(dest).some((n) => /^\d{4}-\d{2}-\d{2}_\d{6}$/.test(n))); i++) await sleep(50);
   await sleep(50);

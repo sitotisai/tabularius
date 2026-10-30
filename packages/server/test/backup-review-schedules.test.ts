@@ -1,11 +1,12 @@
 import './backup-review-guard.ts';
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { HISTORY, Schedules } from '../src/schedules.ts';
 import type { Host } from '../src/host.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 function setup(t: TestContext) {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-review-schedules-'));
@@ -13,7 +14,7 @@ function setup(t: TestContext) {
   const schedules = new Schedules(host);
   schedules.broadcast = () => 0;
   t.after(() => schedules.stop());
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  removeAtExit(dir);
   return { dir, host, schedules };
 }
 

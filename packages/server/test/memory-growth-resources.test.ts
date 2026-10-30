@@ -2,7 +2,7 @@ import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter, getEventListeners } from 'node:events';
 import { Readable } from 'node:stream';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -25,12 +25,14 @@ import { ClusterLink } from '../src/cluster.ts';
 import { WebClient } from '../src/webclient.ts';
 import { backupFolder, backupRunning, BackupStopped, stopBackups } from '../src/backup.ts';
 import { Standby } from '../src/standby.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 const inside = (value: unknown): Record<string, any> => value as Record<string, any>;
 function hostFor(t: TestContext) {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-growth-resources-'));
   const host = new Host(dir);
-  t.after(async () => { await host.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(async () => { await host.close(); });
+  removeAtExit(dir);
   return host;
 }
 class Reply extends EventEmitter {

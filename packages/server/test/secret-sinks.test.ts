@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { inspect } from 'node:util';
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore, Store, fmExport, saveAsXml } from '../../store/src/index.ts';
@@ -21,6 +21,7 @@ import type { Host } from '../src/host.ts';
 import type { DataApi } from '../src/dataapi.ts';
 import { S3, scheduleOffsite } from '../src/s3.ts';
 import { SECRET_SEEDS } from '../../scripts/test/secret-seeds.ts';
+import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
 
 const absent = (output: unknown, secret: string) => {
   const text = typeof output === 'string' ? output : inspect(output, { depth: null });
@@ -28,7 +29,7 @@ const absent = (output: unknown, secret: string) => {
 };
 function scratch(t: { after(fn: () => void): void }): string {
   const dir = mkdtempSync(join(tmpdir(), 'secret-sinks-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  removeAtExit(dir);
   return dir;
 }
 function database(t: { after(fn: () => void): void }, dir: string): Store {
