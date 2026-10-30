@@ -28,6 +28,9 @@ const defs = new Map<string, CustomFunctionDef>([
 ]);
 const ctx: CalcContext = { customFunction: (name) => defs.get(name.toLowerCase()) };
 const sumTo = (n: number) => String((n * (n + 1)) / 2);
+const limitOf = (name: string, limit = 10000) => (e: unknown) => e instanceof CalcError && e.code === ERR.recursion && e.message === (limit < 10000
+  ? `${name} recursed too deeply: it passed ${limit.toLocaleString('en-US')} nested calls, the limit SetRecursion set. Raise the limit in SetRecursion (up to 10,000), or rewrite ${name} as a loop with While.`
+  : `${name} recursed too deeply: it passed Tabularius's limit of 10,000 nested calls. Rewrite ${name} as a loop with While.`);
 
 test('a custom function that waits for its own call recurses as deep as FileMaker allows', () => {
   assert.equal(evaluateText('Sum1 ( 9990 )', ctx), sumTo(9990));
@@ -54,11 +57,10 @@ test('recursion through aggregates, text joins and number functions goes as deep
 });
 
 test("FileMaker's limit of 10,000 calls ends a function that waits for its own call, with the same error as a tail call", () => {
-  const limitOf = (name: string) => (e: unknown) => e instanceof CalcError && e.code === ERR.recursion && e.message === `${name} recursed too deeply`;
   assert.throws(() => evaluate('Sum1 ( 10100 )', ctx), limitOf('Sum1'));
   assert.throws(() => evaluate('SumLet ( 10100 ; 0 )', ctx), limitOf('SumLet'));
   assert.throws(() => evaluate('Forever ( 1 )', ctx), limitOf('Forever'));
-  assert.throws(() => evaluate('SetRecursion ( Sum1 ( 50 ) ; 20 )', ctx), limitOf('Sum1'));
+  assert.throws(() => evaluate('SetRecursion ( Sum1 ( 50 ) ; 20 )', ctx), limitOf('Sum1', 20));
   assert.equal(evaluateText('SetRecursion ( Sum1 ( 50 ) ; 100 )', ctx), '1275');
 });
 
@@ -79,11 +81,12 @@ test('recursion through a built-in that reads its own arguments works far down, 
     try {
       length = evaluate(`Length ( Replaced ( ${n} ) )`, ctx);
     } catch (e) {
-      assert.ok(e instanceof CalcError && /Replaced recursed too deeply \(this server's stack ran out at level \d+; FileMaker allows 10000\)/.test(e.message), `Replaced ( ${n} ) threw ${String(e)}`);
+      assert.ok(e instanceof CalcError && /Replaced recursed too deeply: this server's stack ran out at level \d+ \(Tabularius allows 10,000 nested calls\)\. Rewrite Replaced as a loop with While\./.test(e.message), `Replaced ( ${n} ) threw ${String(e)}`);
     }
     if (length) assert.equal(length.value, n);
   }
-  assert.throws(() => evaluate('Replaced ( 20000 )', ctx), (e) => e instanceof CalcError && /Replaced recursed too deeply/.test(e.message));
+  assert.throws(() => evaluate('Replaced ( 20000 )', ctx), (e) => e instanceof CalcError && (limitOf('Replaced')(e) ||
+    /^Replaced recursed too deeply: this server's stack ran out at level \d+ \(Tabularius allows 10,000 nested calls\)\. Rewrite Replaced as a loop with While\.$/.test(e.message)));
 });
 
 test('a function called twice per level is stopped by the work budget, not the stack', () => {

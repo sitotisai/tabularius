@@ -226,7 +226,7 @@ export const groups: RestGroup[] = [
             report: {
               database: 'Invoices',
               summary: '# Conversion report: Invoices\n\nNothing found that won\'t work.\n\n## Good to know\n- **Privilege sets imported**: [Full Access] (full access; fmapp, fmwebdirect, fmrest).',
-              functions: { notYet: [], undecoded: [], plugIns: [] },
+              functions: { notYet: [], undecoded: [], plugIns: [], recursive: [] },
               steps: { notYet: [], blocked: [], network: [], screenOnly: [], clientOnly: [] },
               unparsed: [],
               broken: [],
