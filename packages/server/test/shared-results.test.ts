@@ -119,7 +119,8 @@ test('a summary over a calculation is worked out once for every process, and aga
 test('the warmer works layout results out in the background when a file opens and after changes', async () => {
   const host = new Host(dir, () => {}, { shareResults: true, warmSettleMs: 0 });
   try {
-    const store = host.add(path);
+    // The host opened the file with the folder; adding it again would open a second copy that nothing closes.
+    const store = host.get('Shop')!;
     await host.warmed();
     const s = open();
     try {
@@ -135,7 +136,7 @@ test('the warmer works layout results out in the background when a file opens an
       s.close();
     }
   } finally {
-    host.close();
+    await host.close();
   }
 });
 

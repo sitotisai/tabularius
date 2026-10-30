@@ -63,12 +63,15 @@ for (const shared of [false, true]) {
         }
         sql.close();
       `;
-      const child = spawnSync(process.execPath, ['--no-warnings', '--input-type=module', '-e', source], { timeout: 15_000, encoding: 'utf8', maxBuffer: 1024 * 1024 });
+      const child = spawnSync(process.execPath, ['--no-warnings', '--input-type=module', '-e', source], { timeout: 15_000 * PATIENCE, encoding: 'utf8', maxBuffer: 1024 * 1024 });
       assert.equal(child.error, undefined, String(child.error));
       assert.equal(child.status, 0, child.stderr);
     });
   }
 }
+
+// Two processes writing one SQLite file wait on each other far longer on Windows, whose lock sleeps are coarse.
+const PATIENCE = process.platform === 'win32' ? 6 : 1;
 
 test('AR-store-security-05: concurrent connections', () => {
   const moduleUrl = new URL('../src/activity.ts', import.meta.url).href;
@@ -76,7 +79,7 @@ test('AR-store-security-05: concurrent connections', () => {
     import { DatabaseSync } from 'node:sqlite';
     import { SharedRecordLocks } from ${JSON.stringify(moduleUrl)};
     const sql = new DatabaseSync(process.argv[1]);
-    sql.exec('PRAGMA busy_timeout = 5000');
+    sql.exec('PRAGMA busy_timeout = ${5000 * PATIENCE}');
     const locks = new SharedRecordLocks(sql, 'FILE');
     let admitted = 0;
     process.stdout.write('ready\\n');
@@ -102,7 +105,7 @@ test('AR-store-security-05: concurrent connections', () => {
     const sql = new DatabaseSync(path);
     new SharedRecordLocks(sql, 'File');
     const workers = [0, 1000].map((offset) => {
-      const child = spawn(process.execPath, ['--no-warnings', '--input-type=module', '-e', ${JSON.stringify(worker)}, path, String(offset)], { timeout: 5000, killSignal: 'SIGKILL' });
+      const child = spawn(process.execPath, ['--no-warnings', '--input-type=module', '-e', ${JSON.stringify(worker)}, path, String(offset)], { timeout: ${5000 * PATIENCE}, killSignal: 'SIGKILL' });
       let output = '', errors = '';
       child.stdout.on('data', (data) => { output += data; });
       child.stderr.on('data', (data) => { errors += data; });
@@ -121,7 +124,7 @@ test('AR-store-security-05: concurrent connections', () => {
       sql.close(); rmSync(dir, { recursive: true, force: true });
     }
   `;
-  const child = spawnSync(process.execPath, ['--no-warnings', '--input-type=module', '-e', source], { timeout: 15_000, encoding: 'utf8', maxBuffer: 1024 * 1024 });
+  const child = spawnSync(process.execPath, ['--no-warnings', '--input-type=module', '-e', source], { timeout: 15_000 * PATIENCE, encoding: 'utf8', maxBuffer: 1024 * 1024 });
   assert.equal(child.error, undefined, String(child.error));
   assert.equal(child.status, 0, child.stderr);
 });
