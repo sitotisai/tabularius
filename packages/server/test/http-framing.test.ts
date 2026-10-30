@@ -96,8 +96,10 @@ test('fragmented valid headers and chunk framing work; fragmented obs-fold is re
     [request('/', 'X: one\r\n two\r\nConnection: close\r\n'), 400],
   ] as const) {
     const c = await new RawClient(port).ready();
-    for (let at = 0; at < raw.length && !c.socket.destroyed; at += 3) { c.send(raw.slice(at, at + 3)); await sleep(1); }
-    assert.match(await c.end(), new RegExp(`^HTTP/1.1 ${code} `));
+    let at = 0;
+    for (; at < raw.length && !c.socket.destroyed; at += 3) { c.send(raw.slice(at, at + 3)); await sleep(1); }
+    const text = await c.end();
+    assert.match(text, new RegExp(`^HTTP/1.1 ${code} `), `sent ${at} of ${raw.length} bytes, socket destroyed ${c.socket.destroyed}, received ${JSON.stringify(text)}`);
   }
 });
 
