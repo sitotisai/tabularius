@@ -82,7 +82,7 @@ against a FileMaker Server before relying on them.
 | Field | Status | Notes |
 | --- | --- | --- |
 | `dataInfo`: `database`, `layout`, `table`, `totalRecordCount`, `foundCount`, `returnedCount` | ✓ | `table` is the layout's table occurrence. |
-| `data[]`: `fieldData`, `portalData`, `recordId`, `modId` | ✓ | Related fields on the layout come as `"TO::Field"`. |
+| `data[]`: `fieldData`, `portalData`, `recordId`, `modId` | ✓ | Related fields on the layout come as `"TO::Field"`. A summary field of a related table comes back empty, because a related row has no found set to total over. <!-- known-difference: Data API ;; A summary field of a related table, read through a related field or portal, is empty ;; The value is empty where FileMaker shows the summary over the related records; whether FileMaker's value matches is unconfirmed ;; A FileMaker run of a layout that shows a related summary field --> |
 | `portalData.{portal}[]`: `recordId`, `modId`, `"TO::Field"` | ✓ | Portals are named by object name, else by table occurrence. |
 | `portalDataInfo[]`: `portalObjectName`, `database`, `table`, `foundCount`, `returnedCount` | ＋ | Only for the portals returned. The public guide's record examples do not show this key; its presence on a FileMaker Server is not verified. |
 | Container fields as URLs | ✓ | Signed download URLs that expire (see [hosting files and connecting to them](hosting-and-connecting.md)). |
