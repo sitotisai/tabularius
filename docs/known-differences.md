@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**199 entries in 27 areas.** Waiting on: 22 on a sample file, 105 on a FileMaker run or Design Report, 14 on a Claris answer, 15 on a decision by the owner (an entry can wait on more than one).
+**200 entries in 28 areas.** Waiting on: 22 on a sample file, 105 on a FileMaker run or Design Report, 14 on a Claris answer, 15 on a decision by the owner (an entry can wait on more than one).
 
 ## Conversion
 
@@ -209,6 +209,12 @@ part of it.
 | Live-provider browser behavior for OIDC state-binding cookies is unverified | Provider sign-in may need browser or proxy configuration changes, especially for form_post | Exercise redirects and form_post with a live provider in supported browsers over HTTPS | [docs/security-defaults.md › Sign-in and accounts](security-defaults.md) — “…browser behavior with live providers remains unverified by the synthetic tests.” |
 | Whether another host approves discovered files by name and identity is unverified; Tabularius marks them held | A file may be treated differently when it arrives in a hosted folder | A host run with a newly dropped file and a replacement under an existing name | [docs/security-defaults.md › A file that arrives in the hosted folder](security-defaults.md) — “…inbound hooks and outbound connections are not yet gated by the held flag. Those gates arrive in the next…” |
 | Whether Claris Server trusts forwarding headers, how it treats malformed ones and how it groups IPv6 addresses is unverified; Tabularius applies its own strict profile | Address attribution, limits and lockouts behind a proxy may differ from FileMaker Server | A Claris Server run behind a proxy with valid, malformed and IPv6 forwarding headers | [docs/security-defaults.md › KNOWN](security-defaults.md) — “…malformed-header behavior, and IPv6 grouping \| Unverified; no Claris behavior is claimed documented or…” |
+
+## Service files
+
+| What differs or is unknown | How it shows | What would settle it | Where it is written |
+| --- | --- | --- | --- |
+| Native service-manager loading and enforcement are unverified by the golden tests | A definition may behave differently when loaded on its target system | Install and exercise user and system services on each target OS | [docs/service-files.md › What the service files contain, and why](service-files.md) — “…service-manager loading and enforcement remain unverified by the golden tests. The files have static and…” |
 
 ## Sign-in
 
