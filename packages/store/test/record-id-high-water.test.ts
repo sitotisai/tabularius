@@ -157,7 +157,7 @@ function reconvertStore(run: (store: Store, baseline: string) => void | Promise<
   writeFileSync(source, 'synthetic source marker');
   const store = new Store(path);
   return Promise.resolve(run(store, baseline)).finally(() => {
-    store.close();
+    if (store.sql.isOpen) store.close();
     rmSync(dir, { recursive: true, force: true });
   });
 }
@@ -168,6 +168,7 @@ test('reconvert keeps a replacement record and a deletion after audit retention'
     const made = store.create('Items', { A: 'person made this' });
     store.pruneAudit(1, Date.now() + 3 * 86_400_000);
     const source = join(dirname(baseline), 'source.fmp12');
+    store.close(); // a hosted file is closed before it is reconverted, and Windows would not let the swap replace the write-ahead log of an open one
     const result = await reconvert(store.path, source, { convert: async (_src, dest) => {
       copyFileSync(baseline, dest);
       return { tables: 1, records: 3 };
@@ -188,6 +189,7 @@ test('reconvert carries an older edit when its audit entry was pruned', async ()
     store.pruneAudit(1, Date.now() + 3 * 86_400_000);
     store.update('Items', 1, { B: 'newer edit' });
     const source = join(dirname(baseline), 'source.fmp12');
+    store.close(); // a hosted file is closed before it is reconverted, and Windows would not let the swap replace the write-ahead log of an open one
     const result = await reconvert(store.path, source, { convert: async (_src, dest) => {
       copyFileSync(baseline, dest);
       return { tables: 1, records: 3 };
