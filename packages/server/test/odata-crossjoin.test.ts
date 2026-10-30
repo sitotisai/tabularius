@@ -93,6 +93,14 @@ test('$crossjoin pairs records where $filter holds, with links, $expand, $orderb
   assert.equal(orFilter.body['@odata.count'], 5);
 });
 
+test('$crossjoin filters use the same number rules as other OData reads, including mod', { skip }, async () => {
+  const fractional = await get(`/$crossjoin(Customers,Orders)?$filter=${join_} and ${encodeURIComponent('Orders/Total mod 3 eq 1')}&$count=true`);
+  assert.equal(fractional.res.status, 200, JSON.stringify(fractional.body));
+  assert.equal(fractional.body['@odata.count'], 2);
+  const zero = await get(`/$crossjoin(Customers,Orders)?$filter=${join_} and ${encodeURIComponent('Orders/Total mod 0 eq 1')}`);
+  assert.equal(zero.res.status, 400, JSON.stringify(zero.body));
+});
+
 test('$crossjoin reads each set as the account sees it', { skip }, async () => {
   const cy = await get(`/$crossjoin(Customers,Orders)?$filter=${join_}&$expand=Orders`, 'Cy');
   assert.equal(cy.res.status, 200, JSON.stringify(cy.body));
