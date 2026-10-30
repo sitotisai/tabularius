@@ -26,10 +26,10 @@ async function claimants(t: { after(fn: () => unknown): void }, folder: string, 
     console.log(JSON.stringify({ type: 'ready' }));
     for await (const line of createInterface({ input: process.stdin })) {
       if (line === 'claim') {
-        let error;
+        let error, stack;
         try { release = claimFolder(${JSON.stringify(folder)}); }
-        catch (caught) { error = String(caught); }
-        console.log(JSON.stringify({ type: 'result', pid: process.pid, claimed: Boolean(release), error }));
+        catch (caught) { error = String(caught); stack = caught?.stack; }
+        console.log(JSON.stringify({ type: 'result', pid: process.pid, claimed: Boolean(release), error, stack }));
       } else {
         release?.();
         release = undefined;
