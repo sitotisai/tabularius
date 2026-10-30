@@ -2,7 +2,8 @@
 // and web request scripts made, kept in <folder>/Outbox/outbox.jsonl so the
 // admin console can show them. Nothing here sends anything.
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { appendFileSync, readFileSync } from '../../store/src/fs-boundary.ts';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type { OutboxEntry } from '../../scripts/src/index.ts';
@@ -14,13 +15,13 @@ export class Outbox {
 
   constructor(dir: string) {
     const folder = join(dir, 'Outbox');
-    mkdirSync(folder, { recursive: true });
+    mkdirSync(folder, { recursive: true, mode: 0o700 });
     this.file = join(folder, 'outbox.jsonl');
   }
 
   record(entry: OutboxEntry): StoredEntry {
     const stored = { id: randomBytes(8).toString('hex'), ...entry };
-    appendFileSync(this.file, JSON.stringify(stored) + '\n');
+    appendFileSync(this.file, JSON.stringify(stored) + '\n', { mode: 0o600 });
     return stored;
   }
 
