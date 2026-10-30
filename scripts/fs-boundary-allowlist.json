@@ -20,20 +20,12 @@
     "reason": "writes a credential, key, token or approval record; to move onto fs-boundary"
   },
   {
-    "file": "packages/server/src/ai-usage.ts",
-    "reason": "does not write a key, token or approval record: an empty SQLite file created before opening it"
-  },
-  {
     "file": "packages/server/src/backup-folder.ts",
     "reason": "does not write a key, token or approval record: an empty probe file to test folder writability"
   },
   {
     "file": "packages/server/src/component-library.ts",
     "reason": "does not write a key, token or approval record: copies, links or moves solution files"
-  },
-  {
-    "file": "packages/server/src/connections.ts",
-    "reason": "writes a credential, key, token or approval record; to move onto fs-boundary"
   },
   {
     "file": "packages/server/src/conversion-files.ts",
@@ -66,10 +58,6 @@
   {
     "file": "packages/server/src/migration-files.ts",
     "reason": "does not write a key, token or approval record: copies, links or moves solution files"
-  },
-  {
-    "file": "packages/server/src/oauth.ts",
-    "reason": "does not write a key, token or approval record: an empty SQLite file created before opening it"
   },
   {
     "file": "packages/server/src/oidc.ts",
