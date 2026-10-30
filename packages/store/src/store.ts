@@ -7350,7 +7350,10 @@ export class Store {
         try { return nativeValue(v, type) ?? value; }
         catch (e) { throw new StoreError(500, (e as Error).message); }
       case 'number': {
-        const n = Number(v.replace(/,/g, ''));
+        const decimal = v.replace(/,/g, '');
+        // Number() also reads 0x10, 0b101 and 0o17, turning a user's text into another value.
+        if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(decimal)) return v;
+        const n = Number(decimal);
         return Number.isFinite(n) ? n : v;
       }
       // Native files read ISO 8601 only, whatever order a caller passes.
