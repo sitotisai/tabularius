@@ -6,9 +6,14 @@ import { EMPTY, asNumberOrEmpty, isEmpty, num, type Value } from './values.ts';
 // through nested operations, and restore it after each SetPrecision call.
 let checkBudget: (() => void) | undefined;
 export function withDecimalBudget<T>(check: () => void, work: () => T): T {
+  const previous = setDecimalBudget(check);
+  try { return work(); } finally { setDecimalBudget(previous); }
+}
+/** Sets the clock decimal work checks, and gives back the one to restore when the enclosing SetPrecision ends. */
+export function setDecimalBudget(check: (() => void) | undefined): (() => void) | undefined {
   const previous = checkBudget;
   checkBudget = check;
-  try { return work(); } finally { checkBudget = previous; }
+  return previous;
 }
 
 const DECIMAL_FUNCTIONS = new Set(['abs','ceiling','floor','int','round','truncate','mod','div','sign','sqrt','exp','ln','log','lg','factorial','combination','sum','average','min','max','count','variance','variancep','stdev','stdevp','pmt','fv','pv','degrees','radians']);

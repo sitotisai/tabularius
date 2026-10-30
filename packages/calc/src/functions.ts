@@ -53,7 +53,18 @@ import {
 export interface Fn {
   min: number;
   max?: number;
+  /** The function on its argument nodes: it reads the ones it needs itself (If reads one branch, While loops). */
   run(args: Node[], env: Env, name: string): Value;
+  /**
+   * The function on its evaluated arguments, for a function that reads every argument once, in order. The evaluator
+   * reads them on its own stack and applies this, so such a call never deepens JavaScript's stack; `run` stays for
+   * callers that hold nodes.
+   */
+  values?(values: Value[], env: Env, name: string, args: Node[]): Value;
+  /** With `values`: each argument stands for every value it has (an aggregate's related field or repeating field), flattened. */
+  spread?: boolean;
+  /** With `values`: a [ a ; b ] argument's parts arrive one by one (Substitute's pairs, JSONSetElement's triples); `args` gives the shape back. */
+  groups?: boolean;
 }
 
 export const FUNCTIONS = new Map<string, Fn>();
@@ -64,13 +75,38 @@ function def(names: string | string[], min: number, max: number | undefined, run
 
 /** A function of evaluated arguments. */
 function eager(names: string | string[], min: number, max: number | undefined, f: (v: Value[], env: Env) => Value): void {
-  def(names, min, max, (args, env) => {
-    const values = args.map((a) => env.v(a));
+  const values = (values: Value[], env: Env): Value => {
     const r = f(values, env);
     // A container no argument holds was made by this function, not stored: see checkEncodedSize.
     if (r.type === 'container' && r.data && !values.some((x) => x.type === 'container' && x.data === r.data)) calcMade.add(r.data);
     return r;
-  });
+  };
+  const fn: Fn = { min, max, run: (args, env) => values(args.map((a) => env.v(a)), env), values };
+  for (const n of Array.isArray(names) ? names : [names]) FUNCTIONS.set(n.toLowerCase(), fn);
+}
+
+/** One argument of a function that takes [ a ; b ] groups: the parts of a bracket, or a plain argument's one value. */
+interface ArgGroup { values: Value[]; bracket: boolean }
+const isBracket = (n: Node): n is Node & { k: 'call' } => n.k === 'call' && n.name === '[]';
+/** A function whose arguments may be [ a ; b ] groups: it sees each argument as a group of evaluated values. */
+function grouped(names: string | string[], min: number, max: number | undefined, f: (groups: ArgGroup[], env: Env) => Value): void {
+  const fn: Fn = {
+    min,
+    max,
+    run: (args, env) => f(args.map((a) => (isBracket(a) ? { values: a.args.map((x) => env.v(x)), bracket: true } : { values: [env.v(a)], bracket: false })), env),
+    values: (values, env, _name, args) => {
+      let i = 0;
+      return f(args.map((a) => (isBracket(a) ? { values: values.slice(i, (i += a.args.length)), bracket: true } : { values: [values[i++]], bracket: false })), env);
+    },
+    groups: true,
+  };
+  for (const n of Array.isArray(names) ? names : [names]) FUNCTIONS.set(n.toLowerCase(), fn);
+}
+
+/** An aggregate: a function of every value its arguments stand for (each related record's, each repetition's), in one list. */
+function spread(names: string | string[], min: number, max: number | undefined, f: (v: Value[], env: Env) => Value): void {
+  const fn: Fn = { min, max, run: (args, env) => f(args.flatMap((a) => env.values(a)), env), values: f, spread: true };
+  for (const n of Array.isArray(names) ? names : [names]) FUNCTIONS.set(n.toLowerCase(), fn);
 }
 /** The data of containers that a calculation made (TextEncode, Base64Decode, BE_UnGzip and the like), as opposed to ones a file or field holds. */
 const calcMade = new WeakSet<Uint8Array>();
@@ -360,15 +396,14 @@ eager('Filter', 2, 2, (v, env) => {
   const keep = new Set(T(v[1], env));
   return text([...T(v[0], env)].filter((c) => keep.has(c)).join(''));
 });
-def('Substitute', 2, undefined, (a, env) => {
-  let t = env.text(a[0]);
+grouped('Substitute', 2, undefined, (a, env) => {
+  let t = env.textOf(a[0].values[0]);
   const pairs: [string, string][] = [];
-  const pair = (n: Node) => n.k === 'call' && n.name === '[]';
-  if (a.length === 3 && !pair(a[1])) pairs.push([env.text(a[1]), env.text(a[2])]);
+  if (a.length === 3 && !a[1].bracket) pairs.push([env.textOf(a[1].values[0]), env.textOf(a[2].values[0])]);
   else {
     for (const p of a.slice(1)) {
-      if (p.k !== 'call' || p.name !== '[]' || p.args.length !== 2) throw new CalcError(ERR.calculation, 'Substitute needs [search ; replace] pairs');
-      pairs.push([env.text(p.args[0]), env.text(p.args[1])]);
+      if (!p.bracket || p.values.length !== 2) throw new CalcError(ERR.calculation, 'Substitute needs [search ; replace] pairs');
+      pairs.push([env.textOf(p.values[0]), env.textOf(p.values[1])]);
     }
   }
   try {
@@ -587,11 +622,11 @@ eager('SortValues', 1, 3, (v, env) => {
   });
   return text(joinValues(items.map((k) => k.s)));
 });
-def('List', 1, undefined, (a, env) => {
-  function* values(): Generator<string> {
-    for (const arg of a) for (const v of env.values(arg)) if (!isEmpty(v)) yield env.textOf(v);
+spread('List', 1, undefined, (values, env) => {
+  function* texts(): Generator<string> {
+    for (const v of values) if (!isEmpty(v)) yield env.textOf(v);
   }
-  return text(joinCalcText(values(), '\r'));
+  return text(joinCalcText(texts(), '\r'));
 });
 
 // --- text formatting -----------------------------------------------------------
@@ -794,26 +829,26 @@ def('NPV', 2, 2, (a, env) => {
   return num(pays.reduce((s, p, i) => s + p / Math.pow(1 + r, i + 1), 0));
 });
 
-/** Numbers an aggregate sees: every argument's values, skipping empty ones. */
-function aggregateValues(a: Node[], env: Env): Value[] {
+/** Numbers an aggregate sees: the values its arguments stand for, skipping empty ones and text that holds no number. */
+function aggregateValues(all: Value[]): Value[] {
   const out: Value[] = [];
-  for (const arg of a) for (const v of env.values(arg)) {
+  for (const v of all) {
     const n = asNumberOrEmpty(v);
     if (n !== undefined && !isEmpty(v)) out.push(v);
   }
   return out;
 }
-function aggregateNumbers(a: Node[], env: Env): number[] {
-  return aggregateValues(a, env).map(asNumber);
+function aggregateNumbers(all: Value[]): number[] {
+  return aggregateValues(all).map(asNumber);
 }
 function aggregate(name: string, f: (ns: number[]) => number | undefined): void {
-  def(name, 1, undefined, (a, env) => {
-    const r = f(aggregateNumbers(a, env));
+  spread(name, 1, undefined, (all) => {
+    const r = f(aggregateNumbers(all));
     return r === undefined ? EMPTY : num(r);
   });
 }
-for (const name of ['Sum', 'Average']) def(name, 1, undefined, (a, env) => {
-  const values = aggregateValues(a, env);
+for (const name of ['Sum', 'Average']) spread(name, 1, undefined, (all) => {
+  const values = aggregateValues(all);
   const wholes = values.map(exactOf);
   if (wholes.every((n): n is bigint => n !== undefined)) {
     const sum = wholes.reduce((total, n) => total + n, 0n);
@@ -854,16 +889,16 @@ aggregate('StDevP', (ns) => {
   const v = variance(ns, false);
   return v === undefined ? undefined : Math.sqrt(v);
 });
-def('Count', 1, undefined, (a, env) => {
+spread('Count', 1, undefined, (values) => {
   let n = 0;
-  for (const arg of a) for (const v of env.values(arg)) if (!isEmpty(v)) n++;
+  for (const v of values) if (!isEmpty(v)) n++;
   return num(n);
 });
 // Max and Min also compare dates, times and text.
 for (const [name, sign] of [['Max', 1], ['Min', -1]] as const) {
-  def(name, 1, undefined, (a, env) => {
+  spread(name, 1, undefined, (values, env) => {
     let best: Value | undefined;
-    for (const arg of a) for (const v of env.values(arg)) {
+    for (const v of values) {
       if (isEmpty(v)) continue;
       if (!best || sign * compare(v, best, env.order) > 0) best = v;
     }
@@ -956,18 +991,17 @@ eager('JSONFormatElements', 1, 1, (v, env) => jsonFormatElements(T(v[0], env)));
 eager('JSONParse', 1, 1, (v, env) => jsonParse(T(v[0], env)));
 eager('JSONParsedState', 1, 1, (v) => num(jsonParsedState(v[0])));
 eager('JSONMakeArray', 2, 3, (v, env) => jsonMakeArray(T(v[0], env), T(v[1], env), v[2] ? N(v[2]) : 0));
-def('JSONSetElement', 2, undefined, (a, env) => {
-  const json = env.text(a[0]);
+grouped('JSONSetElement', 2, undefined, (a, env) => {
+  const json = env.textOf(a[0].values[0]);
   const triples: [Value, Value, number][] = [];
-  const isTriple = (x: Node) => x.k === 'call' && x.name === '[]';
-  if (isTriple(a[1])) {
+  if (a[1].bracket) {
     for (const t of a.slice(1)) {
-      if (t.k !== 'call' || t.name !== '[]' || t.args.length !== 3) throw new CalcError(ERR.calculation, 'JSONSetElement needs [key ; value ; type] triples');
-      triples.push([env.v(t.args[0]), env.v(t.args[1]), env.number(t.args[2])]);
+      if (!t.bracket || t.values.length !== 3) throw new CalcError(ERR.calculation, 'JSONSetElement needs [key ; value ; type] triples');
+      triples.push([t.values[0], t.values[1], asNumber(t.values[2])]);
     }
   } else {
     if (a.length !== 4) throw new CalcError(a.length < 4 ? ERR.tooFewParameters : ERR.tooManyParameters, 'JSONSetElement needs json ; key ; value ; type');
-    triples.push([env.v(a[1]), env.v(a[2]), env.number(a[3])]);
+    triples.push([a[1].values[0], a[2].values[0], asNumber(a[3].values[0])]);
   }
   return jsonSetElement(json, triples, env.order);
 });

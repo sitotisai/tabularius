@@ -9,3 +9,7 @@ export function markExecutionRefusal(e: object): void {
 export function rethrowExecutionRefusal(e: unknown): void {
   if (typeof e === 'object' && e !== null && executionRefusals.has(e)) throw e;
 }
+
+export function isExecutionRefusal(e: unknown): boolean {
+  return typeof e === 'object' && e !== null && executionRefusals.has(e);
+}

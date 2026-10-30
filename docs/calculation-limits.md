@@ -42,7 +42,32 @@ levels. With the refusal the work is proportional to the depth, the record reads
 whatever the caught errors add up to (here a number, not `?`). Evaluate calls made after the outermost one has ended run as
 usual.
 
+## Custom function recursion
+
+A custom function may call itself, directly or through other custom functions, up to 10,000 calls deep, as in FileMaker.
+The 10,001st call gives error 1200 with the message `Name recursed too deeply`, and `SetRecursion` lowers the limit for
+one expression. The shape of the function makes no difference: one that waits for its own result (`n + Sum1 ( n - 1 )`),
+one whose call sits inside a `Let`, one that builds a list with `List ( item ; Rest ( n - 1 ) )` or a document with
+`JSONSetElement`, and one that only passes a running total along all reach 10,000 calls. The evaluator keeps a stack of
+its own for the parts of a formula and does not use the server's, so a formula's own nesting is not limited by the
+server either: one nested as deep as the parser allows (1,000 levels of parentheses, calls or `Let`) evaluates.
+
+A built-in that reads its arguments itself rather than taking their values (`While`, `Evaluate`, `EvaluationError`,
+`IsValid`, `IsEmpty`, `SetRecursion`, `GetField`, `GetFieldName`, `GetNthRecord`, `Last`, `Lookup`, `Extend`,
+`GetSummary`, `NPV`, `ExecuteSQL`, the design functions and the plug-in functions that take a formula) uses the server's
+stack once for each level of recursion that passes through it. A function that calls itself inside one of these works a
+few hundred levels at least, and when the server's stack does run out the result is the same error 1200, `Name recursed
+too deeply (this server's stack ran out at level N; FileMaker allows 10000)`, not a failure of the read or write that
+ran the formula.
+
+Before this, a function that waited for its own result stopped where the server's stack ran out, near 500 calls, and
+the number functions that keep a decimal argument's digits (`Abs`, `Int`, `Round`, `Truncate`, `Mod`, `Div`, `Sum`,
+`Average`, `Min`, `Max`) read each argument twice, so thirty of them nested inside one another took a billion steps.
+
 ## Differences from FileMaker
+
+FileMaker documents 50,000 calls for a custom function whose call to itself is the last thing it does and 10,000 for any
+other; Tabularius stops both at 10,000. <!-- known-difference: SQL and calculations ;; A custom function whose call to itself is the last thing it does (tail recursion) stops at 10,000 calls, the limit for every recursion here, where FileMaker documents 50,000 ;; A tail-recursive custom function that goes past 10,000 calls gives ? where FileMaker may finish ;; A FileMaker run of a tail-recursive custom function at 20,000 calls -->
 
 FileMaker's own limits for these cases were not measured. <!-- known-difference: SQL and calculations ;; The 512-level limit on JSON documents and the 100-level limit on nested Evaluate calls are Tabularius's own; FileMaker's limits for the same input are not measured ;; A document nested deeper than 512 levels, a JSONSetElement path of more than 512 parts, or Evaluate nested deeper than 100 levels gives ? where FileMaker may give a value ;; A FileMaker run with a JSON text nested past 512 levels and with Evaluate nested past 100 levels -->
 
