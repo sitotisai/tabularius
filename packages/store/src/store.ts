@@ -1197,7 +1197,7 @@ export class Store {
     this.name = name;
     // Text sorts in FileMaker's index order (case and accents ignored), not byte order.
     for (const [fn, impl] of Object.entries(SQL_DATE_FUNCTIONS)) {
-      this.sql.function(fn, { deterministic: !/^(CURDATE|CURTIME|NOW|CURTIMESTAMP|TODAY)$/.test(fn), varargs: fn === 'ROUND' }, impl);
+      this.sql.function(fn, { deterministic: !/^(CURDATE|CURTIME|NOW|CURTIMESTAMP|TODAY)$/.test(fn), varargs: fn === 'ROUND' || fn === 'fm_substr' }, impl);
       this.queryFunctions.set(fn, impl);
     }
     // One function per language order a field can be indexed in (fm_sort_key for English, fm_sort_key_ja, fm_sort_key_sv, ...).
