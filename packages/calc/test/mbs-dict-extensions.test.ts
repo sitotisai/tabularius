@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { evaluateText, type CalcContext } from '../src/index.ts';
 import { Env } from '../src/evaluate.ts';
 import { MBS_DICT, withValueText } from '../src/mbs-dict.ts';
@@ -217,4 +218,15 @@ test('FM.CF: recursive calls share the calculation recursion budget', () => {
     ? { parameters: ['n'], formula: 'If ( n = 0 ; 0 ; MBS ( "FM.CF" ; "Countdown" ; n - 1 ) )' } : undefined };
   assert.equal(evaluateText('MBS ( "FM.CF" ; "Countdown" ; 3 )', ctx), '0');
   assert.equal(evaluateText('MBS ( "FM.CF" ; "Countdown" ; 100000 )', ctx), '?');
+});
+test('FM.CF: a recursion the stack cannot hold is "?" however much stack there is', () => {
+  // Where the stack runs out depends on the machine (frame sizes, how much is compiled), so the run is repeated with several sizes.
+  const calc = JSON.stringify(new URL('../src/index.ts', import.meta.url).href);
+  const script = `import { evaluateText } from ${calc};
+    const ctx = { customFunction: (name) => name === 'Countdown' ? { parameters: ['n'], formula: 'If ( n = 0 ; 0 ; MBS ( "FM.CF" ; "Countdown" ; n - 1 ) )' } : undefined };
+    console.log(evaluateText('MBS ( "FM.CF" ; "Countdown" ; 100000 )', ctx));`;
+  for (const size of [400, 500, 700, 984, 1500]) {
+    const run = spawnSync(process.execPath, ['--no-warnings', `--stack-size=${size}`, '--input-type=module', '-e', script], { encoding: 'utf8', timeout: 20_000 });
+    assert.equal(run.stdout.trim(), '?', `stack-size ${size}: ${run.stdout}${run.stderr}`);
+  }
 });

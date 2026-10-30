@@ -1671,6 +1671,10 @@ def('MBS', 1, undefined, (a, env) => {
       return withRegexBudget(() => f(args, env));
     } catch (e) {
       rethrowExecutionRefusal(e);
+      // A stack that ran out inside a custom function's recursion is that recursion's error ("?"), as it is when the overflow lands outside an MBS call.
+      if (e instanceof RangeError && env.depth > 0 && /call stack size exceeded|too much recursion/.test(e.message)) {
+        throw new CalcError(ERR.recursion, `${name} recursed too deeply (this server's stack ran out at level ${env.depth})`);
+      }
       // Too large or too deep for JavaScript (a string past its length limit, a stack too deep) is an MBS error too.
       if (!(e instanceof MbsError) && !(e instanceof RangeError) && !(e instanceof RegexTimeout)) throw e;
       mbsErrors.set(scope, true);
