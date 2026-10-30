@@ -502,7 +502,9 @@ test('REST reference examples match live status and response shape', async () =>
         if (latest > 0) url.searchParams.set('after', String(latest - 1));
       }
       if (method === 'DELETE' && url.pathname.startsWith('/tabularius/admin/v1/uploads/')) {
-        for (let attempt = 0; attempt < 100; attempt++) {
+        // The conversion takes about a second alone and several times that on a loaded Windows runner, and the backup
+        // examples further on expect the file it hosts, so wait a minute rather than ten seconds.
+        for (let attempt = 0; attempt < 600; attempt++) {
           const progress = await fetch(url, { method: 'GET', headers: { cookie: f.adminCookie, 'x-tabularius-admin': '1' }, signal: AbortSignal.timeout(5000) });
           const state = await progress.json() as { phase?: string };
           if (progress.status !== 200 || !['waiting', 'converting'].includes(state.phase ?? '')) break;
