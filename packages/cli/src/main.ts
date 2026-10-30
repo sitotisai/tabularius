@@ -3149,7 +3149,10 @@ function main(argv: string[]): number {
       if (!out) throw new Error('export: give an output .sqlite path');
       if (existsSync(out)) rmSync(out);
       const stats = importFmp12(db, out);
-      for (const s of stats) console.log(`${s.table}: ${s.records} records`);
+      for (const s of stats) {
+        console.log(`${s.table}: ${s.records} records`);
+        for (const warning of s.warnings ?? []) console.log(`warning: ${warning}`);
+      }
       console.log(`wrote ${out}`);
       // Calculation values the file does not keep are NULL in the copy, and summaries are not copied at all.
       const copy = new DatabaseSync(out, { readOnly: true });

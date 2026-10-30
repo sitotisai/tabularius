@@ -24,6 +24,8 @@ export const q = (name: string) => `"${name.replace(/"/g, '""')}"`;
 export interface ImportStat {
   table: string;
   records: number;
+  /** Embedded containers omitted because they exceeded the conversion byte budget. */
+  warnings?: string[];
 }
 
 /** How far a conversion has got: tables finished of all, and records copied so far. */
@@ -34,6 +36,7 @@ export interface ImportProgress {
   records: number;
   /** How far through the .fmp12 reading has got, from 0 to 1. */
   fraction?: number;
+  warning?: string;
 }
 
 export interface LayoutTarget {
@@ -118,6 +121,13 @@ export function writeDesign(sql: DatabaseSync, schema: Schema, designs: LayoutDe
 export function refuseReservedTableNames(schema: Schema): void {
   const reserved = schema.tables.find((t) => /^_fm_/i.test(t.name) || /^sqlite_/i.test(t.name));
   if (reserved) throw new Error(`The file has a table named "${reserved.name}", which the store keeps for its own use (names starting with "_fm_" or "sqlite_"). Rename the table in the source file and convert again.`);
+  const seen = new Map<string, string>();
+  for (const table of schema.tables) {
+    const key = table.name.toLowerCase();
+    const previous = seen.get(key);
+    if (previous !== undefined) throw new Error(`The file has duplicate base table names "${previous}" and "${table.name}" under SQLite's case-insensitive naming. Rename one in the source file and convert again.`);
+    seen.set(key, table.name);
+  }
 }
 
 /** The next free image id in a library, above any in `alsoAbove` too. */
@@ -332,7 +342,7 @@ interface ImportState {
   stats: ImportStat[];
   repeating: Record<string, string[]>;
   /** The table being copied: its records after `after`, then its container files after `after`. */
-  current?: { table: string; phase: 'records' | 'containers'; after: number; base: number; records: number };
+  current?: { table: string; phase: 'records' | 'containers'; after: number; base: number; records: number; warnings?: string[] };
 }
 const STATE = '_fm_import';
 
@@ -497,7 +507,20 @@ export function importFmp12(src: string | FmpDatabase, outPath: string, onProgre
       if (containers.length) {
         let bytes = 0;
         sql.exec('BEGIN');
-        for (const b of containerBlobs(db.file, t.id, cur.after)) {
+        const skipped = (id: number, size: number) => {
+          const containerId = cur.base + id;
+          const names = containers.filter((f) => {
+            const column = q(f.name);
+            const match = repeatingSet.has(f.name)
+              ? `EXISTS (SELECT 1 FROM ${q(t.name)} AS r, json_each(r.${column}) AS j WHERE j.value = ?)`
+              : `EXISTS (SELECT 1 FROM ${q(t.name)} WHERE ${column} = ?)`;
+            return !!sql.prepare(`SELECT 1 WHERE ${match}`).get(containerId);
+          }).map((f) => f.name);
+          const warning = `table ${t.name}, container field${names.length === 1 ? '' : 's'} ${names.join(', ') || '(unreferenced)'}, blob ${id}: skipped ${size} bytes (conversion limit)`;
+          (cur.warnings ??= []).push(warning);
+          progress(t.name, total + cur.records, { warning });
+        };
+        for (const b of containerBlobs(db.file, t.id, cur.after, skipped)) {
           addContainer.run(cur.base + b.id, b.filename ?? null, b.mime, b.kind ?? null, b.data, b.external ?? null, b.external ? b.externalSize ?? null : null);
           cur.after = b.id;
           bytes += b.data.length;
@@ -521,7 +544,7 @@ export function importFmp12(src: string | FmpDatabase, outPath: string, onProgre
       }
 
       sql.exec('BEGIN');
-      state.stats.push({ table: t.name, records: cur.records });
+      state.stats.push({ table: t.name, records: cur.records, ...(cur.warnings?.length ? { warnings: cur.warnings } : {}) });
       completedTables.add(t.name);
       total += cur.records;
       if (!repeating.length) delete state.repeating[t.name];
