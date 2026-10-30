@@ -51,7 +51,7 @@
 import { fork, type ChildProcess } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { request, Agent, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { request, Agent, type ClientRequest, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { createEdgeServer } from './edge-limits.ts';
 import { clientAddress, hasTrustedClientAddress, refuseForwarding, setClientAddress, trustedProxyAddresses, useForwardedFor } from './client-address.ts';
 import { legacyRequest } from './legacy-request.ts';
@@ -591,7 +591,9 @@ export async function serveCluster(opts: ServeOptions, workers: number, blankFro
       if (!done) target.inFlight--;
       done = true;
     };
-    const out = request({ socketPath: socketPath(run, target.id), agent: target.agent, method: req.method, path: req.url, headers }, (back) => {
+    let out: ClientRequest | undefined;
+    let gone = false;
+    const answer = (back: IncomingMessage) => {
       // Connection budgets belong to each hop. Never forward a worker's keep-alive policy
       // over the front's final Connection: close response (or leak its hop-only headers).
       const hop = new Set(['connection', 'keep-alive', 'proxy-connection', 'transfer-encoding', 'te', 'trailer', 'upgrade',
@@ -610,18 +612,34 @@ export async function serveCluster(opts: ServeOptions, workers: number, blankFro
         finish();
         if (!back.complete) res.destroy();
       });
-    });
-    out.on('error', () => {
-      finish();
-      if (!res.headersSent) res.writeHead(502).end();
-      else res.destroy();
-    });
+    };
+    // The request body goes to the worker only once the connection is made, so that a connection the worker's pipe refuses can be asked for again.
+    const send = (attempt: number): void => {
+      const call = request({ socketPath: socketPath(run, target.id), agent: target.agent, method: req.method, path: req.url, headers }, answer);
+      out = call;
+      let sending = false;
+      call.once('socket', (socket) => {
+        const go = () => { if (call.destroyed) return; sending = true; req.pipe(call); };
+        if (socket.connecting) socket.once('connect', go); else go();
+      });
+      call.on('error', () => {
+        // A Windows named pipe can turn away some of a burst of connections; nothing of the request has been sent yet, so ask again.
+        if (!sending && !gone && !res.headersSent && process.platform === 'win32' && attempt < 8) {
+          setTimeout(() => { if (!gone) send(attempt + 1); }, 15 * (attempt + 1));
+          return;
+        }
+        finish();
+        if (!res.headersSent) res.writeHead(502).end();
+        else res.destroy();
+      });
+    };
     // A client that goes away (a closed tab) ends its request in the worker too.
     res.on('close', () => {
+      gone = true;
       finish();
-      if (!res.writableFinished) out.destroy();
+      if (!res.writableFinished) out?.destroy();
     });
-    req.pipe(out);
+    send(0);
   };
   const server = createEdgeServer(handler, opts.edgeLimits, tls, { proxyHeader: opts.proxyHeader, trustedProxies });
   if (tls) redirectPlainHttp(server as unknown as import('node:tls').Server, opts.edgeLimits, { proxyHeader: opts.proxyHeader, trustedProxies });
