@@ -40,10 +40,6 @@
     "reason": "does not write a key, token or approval record: appends JSON lines to a log"
   },
   {
-    "file": "packages/server/src/logs.ts",
-    "reason": "does not write a key, token or approval record: the sealed or plain log file"
-  },
-  {
     "file": "packages/server/src/mcp-local-token.ts",
     "reason": "writes a credential, key, token or approval record; to move onto fs-boundary"
   },
