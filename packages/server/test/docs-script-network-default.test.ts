@@ -30,6 +30,7 @@ test('no page still says script network is off for every file until turned on', 
     ['docs/outbound-requests.md', /it is off by default, and never on for scripts an AI app runs/],
     ['SECURITY.md', /off by default for every new or converted file/],
     ['docs/remote-connector-exposure.md', /leave each file's Script network switch off/],
+    ['docs/script-steps-support.md', /Insert from URL \| Off until the file's Script network switch is on/],
   ];
   const found = stale.filter(([file, re]) => re.test(read(file))).map(([file, re]) => `${file}: ${re.source}`);
   assert.deepEqual(found, []);
