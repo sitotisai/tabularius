@@ -98,5 +98,9 @@
   {
     "file": "packages/server/test/docs-plugins-not-loaded.test.ts",
     "reason": "Checks README.md and docs/features.md say FileMaker plug-ins are never loaded and name the sandboxed Tabularius plug-in exception"
+  },
+  {
+    "file": "packages/cli/test/docs-flags.test.ts",
+    "reason": "Checks every --option shown in code on a hand-written page is one the program reads or a listed option of another program"
   }
 ]
