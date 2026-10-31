@@ -4175,6 +4175,11 @@ export class Store {
     });
   }
 
+  /** An administrator approved this file, which the host had held: kept in its security log, with why it was held. */
+  recordFileApproved(opts: { account?: string; reason?: string } = {}): void {
+    this.securityChange(() => this.logSecurity('file-approved', { account: opts.account ?? null, detail: { reason: opts.reason ?? '' } }));
+  }
+
   /** Turns AI on or off for this file; kept in the file, and in its security log. */
   setAiAllowed(on: boolean, opts: { account?: string } = {}): void {
     return this.securityChange(() => {

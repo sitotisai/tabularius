@@ -396,8 +396,8 @@ function carrySettings(sql: DatabaseSync): void {
   const keep = (sql.prepare('SELECT key, json FROM old._fm_meta').all() as { key: string; json: string }[]).filter((m) => !FRESH_META.has(m.key));
   const put = sql.prepare('INSERT INTO _fm_meta VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json');
   for (const m of keep) put.run(m.key, m.json);
-  // Converting again is not a new file: one that had no network setting (on) stays on.
-  if (!keep.some((m) => m.key === 'scriptNetwork')) sql.exec("DELETE FROM main._fm_meta WHERE key = 'scriptNetwork'");
+  // A file converted again is a fresh conversion: one that had no network setting starts with it off, as a first
+  // conversion does (an administrator's own setting was carried above).
   // Fields that became repeating in Tabularius (a container's second repetition, ...) stay so.
   const was = meta(sql, 'repeating') as Record<string, string[]> | undefined;
   const before = (sql.prepare("SELECT json FROM old._fm_meta WHERE key = 'repeating'").get() as { json: string } | undefined);

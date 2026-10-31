@@ -135,6 +135,8 @@ export function logFromFollower(notifier: { note(type: LogType, source: string, 
 type Note =
   | { k: 'change'; change: Change }
   | { k: 'design'; file: string }
+  /** An administrator approved a held file (only the leader approves): every follower stops holding it. */
+  | { k: 'approve'; file: string }
   | { k: 'sessions'; from: number; list: RemoteSession[] }
   | { k: 'message'; text: string; token?: string }
   | { k: 'end'; id: string }
@@ -241,6 +243,8 @@ export class ClusterLink {
     };
     for (const store of host.openStores()) join(store);
     host.onAdd.push(join);
+    // Only the leader approves a held file; the followers hold their own copy of the flag and must hear of it.
+    host.onApprove.add((store) => this.send({ t: 'tell', note: { k: 'approve', file: store.name } }));
     api.others = () => [...this.sessions.values()].flat();
     api.endElsewhere = (id) => this.send({ t: 'tell', note: { k: 'end', id } });
     live.elsewhere = {
@@ -360,6 +364,9 @@ export class ClusterLink {
       }
     } else if (note.k === 'design') {
       for (const s of host.openStores()) s.resetCaches();
+    } else if (note.k === 'approve') {
+      const store = host.get(note.file);
+      if (store) store.held = undefined;
     } else if (note.k === 'sessions') {
       this.sessions.set(note.from, note.list);
     } else if (note.k === 'scripts') {

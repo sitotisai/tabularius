@@ -1507,13 +1507,10 @@ export class ScriptEngine {
   constructor(opts: RunOptions = {}) {
     this.maxRecordOps = wholeNumber('TABULARIUS_SCRIPT_MAX_RECORD_OPS') ?? 50_000_000;
     this.initiatingPrivileges = opts.privileges;
-    // A file the host holds (not yet approved by an administrator) runs no script, whoever started it and from wherever.
-    this.opts = { ...opts, beforeFile: (file) => {
-      if (file.held) throw new ScriptError(ERROR.cannotOpenFile, `"${file.name}" is held (${file.held.reason}): its scripts do not run until an administrator approves it`);
-      if (!opts.beforeFile) return;
+    this.opts = opts.beforeFile ? { ...opts, beforeFile: (file) => {
       this.enforceExecution(file, () => opts.beforeFile!(file));
       this.pdfFiles?.add(file);
-    } };
+    } } : opts;
     if (opts.stop) this.stopSignal = opts.stop;
     opts.userStop?.addEventListener('stop', this.onUserStop);
     this.session = opts.session ?? new ScriptSession();
@@ -1551,8 +1548,18 @@ export class ScriptEngine {
     }
   }
 
+  /**
+   * A file the host holds (not yet approved by an administrator) runs no script of its own, whoever started it and from
+   * wherever. Only a script that lives in the held file is refused: its data, layouts and value lists stay readable
+   * from a script of an approved file, like the held file's records are to a person.
+   */
+  private requireNotHeld(file: Store): void {
+    if (file.held) throw new ScriptError(ERROR.cannotOpenFile, `"${file.name}" is held (${file.held.reason}): its scripts do not run until an administrator approves it`);
+  }
+
   private async runChecked(store: Store, script: string | Script): Promise<RunResult> {
     this.opts.beforeFile?.(store);
+    this.requireNotHeld(store);
     const s = typeof script === 'string' ? findScript(store, script) : script;
     if (!s) throw new ScriptError(ERROR.scriptMissing, `Script "${script}" is missing`);
     const began = this.profileNow();
@@ -3662,6 +3669,7 @@ export class ScriptEngine {
   private async perform(store: Store, script: Script, parameter: Value, win: Window, locals = new Map<string, Value[]>()): Promise<Value> {
     // The external product's exact nesting limit and error are unverified.
     if (this.serverDepth + this.stack.length >= MAX_SCRIPT_CALL_DEPTH) throw new ScriptError(ERROR.unavailable, 'Script call depth limit reached');
+    this.requireNotHeld(store);
     this.useSourceFile(store);
     if (this.opts.skip?.(script.name)) {
       this.actions.push({ step: 'Skip Script', script: script.name, reason: 'skipped: never run' });
