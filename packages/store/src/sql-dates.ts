@@ -563,12 +563,20 @@ function widenedLeft(before: string): { start: number; text: string } | undefine
     left = leftOperand(head.slice(0, -1), head.length - 1);
     if (left) left = { start: left.start, text: before.slice(left.start, end) };
   }
+  if (left) {
+    const prefix = before.slice(0, left.start);
+    const sign = /(?:^|[(,=<>*/%+-]|\b(?:SELECT|DISTINCT|WHERE|AND|OR|WHEN|THEN|ELSE|ON|BY|HAVING|NOT))\s*([+-])\s*$/i.exec(prefix);
+    if (sign) {
+      const start = prefix.lastIndexOf(sign[1]);
+      left = { start, text: before.slice(start, end) };
+    }
+  }
   return left;
 }
 
 /** The operand at the right of an operator, widened over any `*`, `/` or `%` chain after it. */
 function widenedRight(sql: string, from: number): { end: number; text: string } | undefined {
-  const first = rightOperand(sql, from);
+  const first = rightOperand(sql, from, true);
   if (!first) return undefined;
   let end = first.end;
   for (;;) {
@@ -597,8 +605,10 @@ function withOperators(sql: string, columnKind?: (name: string) => 'string' | 'd
     const right = widenedRight(q, opEnd);
     const left = right && widenedLeft(before);
     if (!left || !right) return undefined;
-    const lk = kindOf(left.text, columnKind);
-    const rk = kindOf(right.text, columnKind);
+    const unsigned = (text: string) => text.replace(/^\s*[+-]\s*/, '');
+    const lk = kindOf(unsigned(left.text), columnKind);
+    const rk = kindOf(unsigned(right.text), columnKind);
+    if ((lk === 'date' && unsigned(left.text) !== left.text.trim()) || (rk === 'date' && unsigned(right.text) !== right.text.trim())) return undefined;
     const op = q[opEnd - width];
     const strong = lk === 'string' || rk === 'string';
     const dates = lk === 'date' || rk === 'date';
