@@ -28,13 +28,6 @@ const named = (kind: string): boolean => new RegExp(`(?<![\\w-])${kind}(?![\\w-]
 
 /** Kinds no page names yet. Remove a kind from here when its page text is written; never add one. */
 const UNDOCUMENTED = new Set<string>([
-  // Schema
-  'schema-changed',
-  // Standby takeover
-  'standby-takeover',
-  // AI access
-  'ai-turned-off', 'ai-turned-on', 'ai-access-refused', 'ai-policy-on', 'ai-policy-off', 'pii-isolation-on',
-  'pii-isolation-off', 'pii-field-marked', 'ai-data-masked',
 ]);
 
 test('every security event kind is named in a page, except the ones still listed as undocumented', () => {
