@@ -960,7 +960,25 @@ export const sqlDateFunctions = (now: () => Date = () => new Date()): Record<str
   UPPER: (v) => (v === null ? null : String(v).toUpperCase()),
 });
 
-export const SQL_DATE_FUNCTIONS = sqlDateFunctions();
+/** Keep SQLite's exact integers at SQL function boundaries; vendor driver behavior is unverified offline. */
+export function exactIntegerArguments(name: string, fn: (...args: SQLOutputValue[]) => SQLInputValue): (...args: SQLOutputValue[]) => SQLInputValue {
+  return (...args) => {
+    const safe = args.map((v, i) => {
+      if (typeof v !== 'bigint') return v;
+      if (v >= BigInt(Number.MIN_SAFE_INTEGER) && v <= BigInt(Number.MAX_SAFE_INTEGER)) return Number(v);
+      if (i === 0 && (name.toUpperCase() === 'INT' || name.toUpperCase() === 'ROUND' &&
+        (args[1] === undefined || args[1] === null || Number(args[1]) >= 0))) return v;
+      if (i === 0 && (name.toUpperCase() === 'DEG' || name.toUpperCase() === 'DEGREES' ||
+        name.toUpperCase() === 'ROUND')) return Number(v);
+      return v.toString();
+    });
+    if (typeof safe[0] === 'bigint') return safe[0];
+    return fn(...safe);
+  };
+}
+
+export const SQL_DATE_FUNCTIONS: Record<string, (...args: SQLOutputValue[]) => SQLInputValue> = Object.fromEntries(
+  Object.entries(sqlDateFunctions()).map(([name, fn]) => [name, exactIntegerArguments(name, fn)]));
 
 /** How many positional slots SQLite allocates, outside strings, names and comments. */
 export function placeholders(sql: string): number {

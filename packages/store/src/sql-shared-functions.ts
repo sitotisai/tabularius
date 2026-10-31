@@ -13,5 +13,5 @@ export const SHARED_SQL_FUNCTIONS: ReadonlyMap<string, SqlFunction> = new Map(
 
 /** Registers them on `db` the way the store registers its query functions on its read-only connection. */
 export function registerSharedSqlFunctions(db: DatabaseSync): void {
-  for (const [name, fn] of Object.entries(SQL_DATE_FUNCTIONS)) db.function(name, { varargs: true }, fn as SqlFunction);
+  for (const [name, fn] of Object.entries(SQL_DATE_FUNCTIONS)) db.function(name, { varargs: true, useBigIntArguments: true }, fn as SqlFunction);
 }

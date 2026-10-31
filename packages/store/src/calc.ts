@@ -2016,7 +2016,9 @@ export class Calculations {
     const number = result.types.map((t) => t === 'REAL');
     return result.rows.map((r) => r.map((v, i) => {
       if (v === null) return EMPTY;
-      if (typeof v === 'number' || typeof v === 'bigint') return num(Number(v));
+      if (typeof v === 'bigint') return v <= BigInt(Number.MAX_SAFE_INTEGER) && v >= BigInt(Number.MIN_SAFE_INTEGER)
+        ? num(Number(v)) : { type: 'number', value: Number(v), exact: v };
+      if (typeof v === 'number') return num(v);
       if (number[i] && typeof v === 'string') {
         const n = asNumberOrEmpty(text(v));
         return n === undefined ? EMPTY : num(n);
