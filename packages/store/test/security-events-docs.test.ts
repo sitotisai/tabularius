@@ -37,8 +37,6 @@ const UNDOCUMENTED = new Set<string>([
   'password-policy-changed', 'require-2fa-set', 'require-2fa-cleared',
   // AI agents
   'agent-added', 'agent-removed', 'agent-change-proposed', 'agent-change-approved', 'agent-change-rejected',
-  // Schema
-  'schema-changed',
   // Audit log
   'audit-settings-changed', 'audit-pruned',
   // Blank passwords
@@ -51,11 +49,6 @@ const UNDOCUMENTED = new Set<string>([
   'sql-privilege-required', 'sql-privilege-not-required',
   // Web viewer hosts
   'web-viewer-hosts-changed',
-  // Standby takeover
-  'standby-takeover',
-  // AI access
-  'ai-turned-off', 'ai-turned-on', 'ai-access-refused', 'ai-policy-on', 'ai-policy-off', 'pii-isolation-on',
-  'pii-isolation-off', 'pii-field-marked', 'ai-data-masked',
 ]);
 
 test('every security event kind is named in a page, except the ones still listed as undocumented', () => {

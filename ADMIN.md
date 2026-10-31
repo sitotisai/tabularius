@@ -877,6 +877,22 @@ rule on, only an account that may view the whole table can.
 | `scim-token-issued` | A provisioning (SCIM) token was issued, so an identity provider can add, change and remove accounts; the entry shows when it expires. |
 | `scim-token-revoked` | The provisioning (SCIM) token was revoked. |
 
+**Design changes, standby takeover and AI access.**
+
+| Kind | Recorded when |
+| --- | --- |
+| `schema-changed` | The file's design was changed: a batch of design changes was applied (tables, fields, relationships, layouts, scripts and so on), or a picture was added to the image library. The entry shows how many of each kind of change. |
+| `standby-takeover` | A standby server took over the file from the main server. The entry names the main server, says when the standby's copy was last brought up to date, and says how many API tokens were ended (or that they were kept, after a planned switch). Accounts, passwords and privileges changed on the main server after that time are not in the copy: review them. |
+| `ai-turned-off` | An administrator turned AI off for the file. Its data is then never sent to AI apps or the AI assistant. |
+| `ai-turned-on` | AI was turned on for the file again. |
+| `ai-access-refused` | An AI app or the AI assistant asked for the file while AI was off for it, and was refused. The entry shows the way in. To keep the log short, the same account and way in is written once every ten minutes. |
+| `ai-policy-on` | The file's AI-visible policy was turned on, so an AI operation cannot read fields whose names look secret. It is written each time the policy is set. |
+| `ai-policy-off` | The AI-visible policy was turned off. |
+| `pii-isolation-on` | Personal data isolation was turned on: AI models get stand-ins for names, email addresses and other personal data instead of the real values. |
+| `pii-isolation-off` | Personal data isolation was turned off. |
+| `pii-field-marked` | An administrator marked a field as personal data, as not personal data, or back to what the server works out. The entry names the table and field. |
+| `ai-data-masked` | Personal data was kept from an AI model in one exchange. The entry shows the way in and how many values of each kind were swapped for stand-ins, never the values; it also says when a tool was refused. |
+
 ## Putting a record back
 
 In the admin console's **Audit log**, **History** on any record change lists
