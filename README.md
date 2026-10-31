@@ -58,8 +58,9 @@ Read this before moving a file; each point is detailed in [docs/moving-a-solutio
 - **People use a browser.** There is no FileMaker Pro or FileMaker Go client for a file hosted here.
 - **Passwords.** An account whose FileMaker password is empty keeps working from the server's own computer; every other
   account needs a new password set with `tabularius passwd`.
-- **Plug-ins are never loaded.** A few BaseElements and MBS functions run as built-in code; any other plug-in call gives
-  "?" and error 3.
+- **FileMaker plug-ins are never loaded.** A few BaseElements and MBS functions run as built-in code; any other FileMaker
+  plug-in call gives "?" and error 3. A Tabularius plug-in (JavaScript or WebAssembly) that replaces one runs in a sandbox
+  once an administrator turns it on for a file; see [writing a plug-in](docs/writing-a-plugin.md).
 - **Screen-bound steps.** Steps that need a screen or a person at FileMaker Pro are skipped or give error 3.
 - **Web viewers are sandboxed.** Solution HTML works but cannot load external resources unless an administrator lists
   the host.
