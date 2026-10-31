@@ -29,6 +29,12 @@ for (const [file, link] of [['README.md', '(docs/writing-a-plugin.md)'], ['docs/
   });
 }
 
+test('the release notes do not say all plug-ins are never loaded', () => {
+  const notes = flat('.github/release-notes/v0.1.0.md');
+  assert.ok(!/\*\*Plug-ins are never loaded\.\*\*/.test(notes), 'say that FileMaker plug-ins are never loaded, not every plug-in');
+  assert.ok(notes.includes('FileMaker plug-ins are never loaded') && notes.includes('Tabularius plug-in') && notes.includes('sandbox'));
+});
+
 test('the plug-in compatibility page and the writing page still make the same two statements', () => {
   assert.ok(flat('docs/plugin-compatibility.md').includes('A FileMaker plug-in is native code. Tabularius never loads one.'));
   assert.match(flat('docs/plugin-compatibility.md'), /A plug-in written for Tabularius \| Runs in a sandbox, switched on per file by an administrator/);
