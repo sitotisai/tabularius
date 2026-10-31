@@ -202,7 +202,7 @@ export function fileMakerSqlSyntax(sql: string, columnKind?: (name: string) => '
     }
   }
   out = pieces(out).map(([text, isCode]) => isCode
-    ? text.replace(/\bROWMODID\b/gi, '_fm_mod_id').replace(/\bEXTRACT\s*\(\s*(YEAR|MONTH|DAY|HOUR|MINUTE|SECOND)\s+FROM\s+/gi, '$1(')
+    ? text.replace(/\bROWMODID\b/gi, '_fm_mod_id').replace(/\bEXTRACT\s*\(\s*(YEAR|MONTH|DAY|HOUR|MINUTE)\s+FROM\s+/gi, '$1(').replace(/\bEXTRACT\s*\(\s*SECOND\s+FROM\s+/gi, 'fm_extract_second(')
     : text[0] === '"' ? text.replace(/^"ROWMODID"$/i, '"_fm_mod_id"') : text).join('');
   out = withLocalNow(out);
   out = withIntervals(out);
@@ -820,6 +820,12 @@ function roundSqlNumber(x: number, n: number, maxDigits = 30): number {
 /** The date, time, string and number functions of FileMaker SQL (and ODBC), for SQLite functions of the same names. */
 export const sqlDateFunctions = (now: () => Date = () => new Date()): Record<string, (...args: SQLOutputValue[]) => SQLInputValue> => ({
   YEAR: field('y'), MONTH: field('m'), DAY: field('d'), HOUR: field('h'), MINUTE: field('mi'), SECOND: field('s'),
+  fm_extract_second: (v) => {
+    const seconds = partsOf(v)?.s;
+    if (seconds === undefined) return null;
+    const fraction = typeof v === 'string' ? /(\.\d+)$/.exec(v)?.[1] : undefined;
+    return fraction ? Number(`${seconds}${fraction}`) : seconds;
+  },
   DAYOFWEEK: (v) => {
     const p = partsOf(v);
     return p?.y === undefined ? null : utcDate(p.y, p.m!, p.d!).getUTCDay() + 1;
