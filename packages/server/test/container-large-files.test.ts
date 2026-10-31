@@ -1,5 +1,5 @@
 // A 200 MB file goes into a container field and comes out again, and ranges of it read, without the server (or this test,
-// which shares its process) ever holding the file: the process's peak memory stays under a budget far below the size.
+// which shares its process) ever holding the file: the process's peak memory stays under a budget below the size (well below it, except on macOS).
 // This file runs alone in its process (node --test runs each file separately), so the peak is the test's own.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,8 +10,8 @@ import { containerFixture, fillPattern, pattern, type ContainerFixture } from '.
 
 const SIZE = 200 * 1024 * 1024;
 const PIECE = 4 * 1024 * 1024;
-/** How much the peak resident memory may grow over the whole round trip. The peak is a process-wide high-water mark, so what the process had already loaded before the test moves the figure by tens of MB (four runs of this test on one idle Mac, same code, grew by 139, 150, 162 and 189 MB); a file held whole would grow it by 200 MB and the copies made of it, so by well over the budget. */
-const BUDGET = 220 * 1024 * 1024;
+/** How much the peak resident memory may grow over the whole round trip. The peak is a process-wide high-water mark, so what the process had already loaded before the test moves the figure by tens of MB. On macOS the figure swings more (four runs on one idle Mac, same code, grew by 139, 150, 162 and 189 MB), so it gets more room; elsewhere it is about 100 MB. A file held whole would grow it by 200 MB and the copies made of it, which fails both budgets. */
+const BUDGET = (process.platform === 'darwin' ? 220 : 140) * 1024 * 1024;
 
 let f: ContainerFixture;
 before(async () => { f = await containerFixture(); });
