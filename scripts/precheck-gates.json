@@ -102,5 +102,9 @@
   {
     "file": "packages/server/test/docs-script-network-default.test.ts",
     "reason": "Checks the pages state the script network default the store has: on, except a converted file and the demo"
+  },
+  {
+    "file": "packages/cli/test/docs-flags.test.ts",
+    "reason": "Checks every --option shown in code on a hand-written page is one the program reads or a listed option of another program"
   }
 ]
