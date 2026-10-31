@@ -65,11 +65,11 @@ server makes such a connection and what proves it is guarded.
 
 ## Turning network access on
 
-Scripts reach the network when an administrator switches it on; until then a
-web request from a script gives error 3, and the message says how to turn it on.
-A converted file, a new file and the `tabularius demo` app all start with it off,
-so a copy you are only trying out cannot call a payment, SMS or mail service by
-accident. When this copy is the live one:
+Scripts reach the network in a file whose Script network switch is on; while it
+is off, a web request from a script gives error 3, and the message says how to
+turn it on. A new file has it on. A converted file and the `tabularius demo` app
+start with it off, so a copy you are only trying out cannot call a payment, SMS
+or mail service by accident. When this copy is the live one:
 
 - **For one file:** open the admin console, find the file under Hosted files and
   choose **Turn on** in its Script network column. The choice is kept in the file
@@ -107,7 +107,8 @@ script reach any address, loopback and the metadata range included. Scripts that
 call a service on the own network now need that service listed.
 
 The switch (a file's Script network setting, or `--allow-script-network`) still
-decides whether scripts reach the network at all: it is off by default, and never
+decides whether scripts reach the network at all: it is on for a file unless an
+administrator turns it off (a converted file and the demo start off), and never
 on for scripts an AI app runs.
 
 ## Every place the server connects out

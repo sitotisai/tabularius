@@ -98,5 +98,9 @@
   {
     "file": "packages/server/test/docs-plugins-not-loaded.test.ts",
     "reason": "Checks README.md and docs/features.md say FileMaker plug-ins are never loaded and name the sandboxed Tabularius plug-in exception"
+  },
+  {
+    "file": "packages/server/test/docs-script-network-default.test.ts",
+    "reason": "Checks the pages state the script network default the store has: on, except a converted file and the demo"
   }
 ]
