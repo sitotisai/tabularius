@@ -846,6 +846,15 @@ export const sqlDateFunctions = (now: () => Date = () => new Date()): Record<str
   fm_cast_timestamp: (v) => castTemporal('timestamp', v),
   fm_invalid: (kind, text) => { throw new CalcError(ERR.calculation, `Invalid ${String(kind)} constant '${String(text)}'`); },
   fm_date_add: (v, n, unit, sign) => addInterval(v, Number(n) * Number(sign), String(unit)),
+  fm_row_count: (v, kind) => {
+    const label = String(kind);
+    const text = typeof v === 'string' ? v.trim() : '';
+    const value = typeof v === 'number' ? v : /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text) ? Number(text) : NaN;
+    if (!Number.isSafeInteger(value)) throw new CalcError(ERR.calculation, `${label} needs a whole number`);
+    if (label === 'FETCH' && value < 1) throw new CalcError(ERR.calculation, 'FETCH FIRST needs a count of at least 1');
+    if (label === 'OFFSET' && value < 0) throw new CalcError(ERR.calculation, 'OFFSET needs a count of at least 0');
+    return value;
+  },
   LEFT: (v, n) => (v === null || n === null ? null : [...String(v)].slice(0, Math.max(0, Math.trunc(Number(n)))).join('')),
   RIGHT: (v, n) => {
     if (v === null || n === null) return null;
