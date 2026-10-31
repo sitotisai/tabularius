@@ -1437,7 +1437,7 @@ def('ListPersistentDataIDs', 1, 1, (a, env) => text((env.ctx.persistentDataIds?.
 /** ExecuteSQL writes dates and times in ISO order. */
 function sqlText(v: Value): string {
   switch (v.type) {
-    case 'number': return formatNumber(v.value);
+    case 'number': return v.exact !== undefined ? v.exact.toString() : formatNumber(v.value);
     case 'date': {
       if (!isStoredDay(v.value)) return '?';
       const d = fromDayNumber(v.value);

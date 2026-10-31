@@ -15,7 +15,7 @@ import { ensureCacheVersions, ensureContainerVersions } from './cache-versions.t
 import { containerBackupInProgress, holdContainerBackup } from './container-backup-lease.ts';
 import { PreparedCache } from './preparation.ts';
 import { rethrowExecutionRefusal } from '../../calc/src/execution-refusal.ts';
-import { SQL_DATE_FUNCTIONS, placeholders, oneStatement } from './sql-dates.ts';
+import { SQL_DATE_FUNCTIONS, exactIntegerArguments, placeholders, oneStatement } from './sql-dates.ts';
 import { boundedStatement, collectRows } from './sql-result.ts';
 import { calledFunctions, isBuiltinFunction, recursiveRows, usesRecursion, type Op, type PortableFunction } from './sql-recursive.ts';
 import { SHARED_SQL_FUNCTIONS } from './sql-shared-functions.ts';
@@ -1199,7 +1199,7 @@ export class Store {
     this.name = name;
     // Text sorts in FileMaker's index order (case and accents ignored), not byte order.
     for (const [fn, impl] of Object.entries(SQL_DATE_FUNCTIONS)) {
-      this.sql.function(fn, { deterministic: !/^(CURDATE|CURTIME|NOW|CURTIMESTAMP|TODAY)$/.test(fn), varargs: fn === 'ROUND' || fn === 'fm_substr' }, impl);
+      this.sql.function(fn, { deterministic: !/^(CURDATE|CURTIME|NOW|CURTIMESTAMP|TODAY)$/.test(fn), varargs: fn === 'ROUND' || fn === 'fm_substr', useBigIntArguments: true }, impl);
       this.queryFunctions.set(fn, impl);
     }
     // One function per language order a field can be indexed in (fm_sort_key for English, fm_sort_key_ja, fm_sort_key_sv, ...).
@@ -11280,7 +11280,7 @@ export class Store {
       for (const id of SORT_LANGUAGE_IDS) this.readOnlySql.function(sortFunction(id), { deterministic: true }, (v) => (typeof v === 'string' ? keptSortKey(v, id) : v));
       if (this.fileMode === 'native') this.readOnlySql.function('fm_decimal_key', { deterministic: true }, (v) => decimalKey(v as string | number | null));
       registerODataValueFunctions(this.readOnlySql);
-      for (const [name, fn] of this.queryFunctions) this.readOnlySql.function(name, { varargs: true }, fn);
+      for (const [name, fn] of this.queryFunctions) this.readOnlySql.function(name, { varargs: true, useBigIntArguments: true }, exactIntegerArguments(name, fn));
     }
     if (this.fileMode === 'native') this.refreshDecimalSqlViews();
     sqlText = languageOrderBy(sqlText, this.schema.tables);
@@ -11395,7 +11395,7 @@ export class Store {
     if (portable) this.portableQueryFunctions.set(name.toLowerCase(), portable);
     else this.portableQueryFunctions.delete(name.toLowerCase());
     this.queryFunctions.set(name, fn);
-    this.readOnlySql?.function(name, { varargs: true }, fn);
+    this.readOnlySql?.function(name, { varargs: true, useBigIntArguments: true }, exactIntegerArguments(name, fn));
   }
 
   /**
@@ -11458,7 +11458,7 @@ export class Store {
     const { text, opened } = this.readOnlyChecked(sqlText);
     // This connection holds the transaction, so the query cannot run apart from it where it could be stopped.
     if (!unbounded && usesRecursion(opened)) throw new StoreError(8310, "A recursive query can't run on a file this transaction has written to: it runs apart from the server so that it can be stopped, and there it would not see the transaction's changes. End the transaction first");
-    for (const [name, fn] of this.queryFunctions) this.sql.function(name, { varargs: true }, fn);
+    for (const [name, fn] of this.queryFunctions) this.sql.function(name, { varargs: true, useBigIntArguments: true }, exactIntegerArguments(name, fn));
     const st = this.sql.prepare(text);
     const columns = st.columns();
     return { names: columns.map((c) => c.name), types: columns.map((c) => c.type), rows: this.rowsOf(this.sql, st, text, columns, params, limit, unbounded) };
