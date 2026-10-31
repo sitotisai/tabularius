@@ -342,7 +342,8 @@ blockquote { margin: var(--s3) 0; padding: var(--s2) var(--s4); border-left: 3px
 /** The documentation as one HTML page; only the Markdown this file writes is understood. */
 /** Nested bullet and numbered lists from `i`, with indented lines carrying on the item above: html and the next line. */
 function guideList(lines: string[], i: number, folder: string): [string, number] {
-  const item = /^(\s*)([-*]|\d+\.) (.*)$/;
+  // The `s` flag lets `.` match \r, \u2028 and \u2029 too; without it a line ending in one of them never matched and the caller looped forever.
+  const item = /^(\s*)([-*]|\d+\.) (.*)$/s;
   const stack: { indent: number; tag: 'ul' | 'ol' }[] = [];
   let html = '';
   for (; i < lines.length; i++) {
@@ -372,7 +373,7 @@ export function docsHtml(markdown: string, title: string, kind = 'Solution docum
   const guide = opts.guide === true;
   const inl = (t: string) => inline(t, guide ? (opts.folder ?? '') : undefined);
   const body: string[] = [];
-  const lines = markdown.split('\n');
+  const lines = markdown.split(/\r\n|\n/);
   let heading = '';
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -384,8 +385,8 @@ export function docsHtml(markdown: string, title: string, kind = 'Solution docum
       body.push(line);
     } else if (guide && /^\s*([-*]|\d+\.) /.test(line)) {
       const [html, next] = guideList(lines, i, opts.folder ?? '');
-      body.push(html);
-      i = next - 1;
+      // A list that read nothing must still move on, or this loop would never end.
+      if (next > i) { body.push(html); i = next - 1; } else body.push(`<p>${inl(line)}</p>`);
     } else if ((guide ? /^#{1,4} / : /^#{1,3} /).test(line)) {
       const level = line.indexOf(' ');
       const text = line.slice(level + 1);
