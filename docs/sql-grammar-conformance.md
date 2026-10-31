@@ -102,6 +102,7 @@ Other choices that the pages do not settle, and what was done:
 - Date arithmetic is for dates only. A timestamp or time plus a number is not rewritten.
 - The column names of `FileMaker_BaseTables` and `FileMaker_BaseTableFields` (`BaseTableName`, `BaseFileName`, `FieldName`, `FieldType`, `FieldId`, `FieldClass`, `FieldReps`, `ModCount`) follow the `FileMaker_Tables` and `FileMaker_Fields` tables; only `BaseTableName` and `FieldName` are exercised by the grammar file.
 - `FETCH FIRST n PERCENT ROWS ONLY` rounds up the percentage of rows remaining after `OFFSET`. The query runs twice: once to count its complete result, including `DISTINCT`, groups and filters, and once to fetch the rows. Zero percent returns no rows. The cited page does not state the zero-percent result or whether `OFFSET` precedes the percentage count; those FileMaker outcomes are unverified. <!-- known-difference: SQL grammar ;; zero-percent result and OFFSET basis for PERCENT are not stated by the cited page ;; Tabularius returns no rows for zero percent and counts the rows after OFFSET ;; compare both cases with FileMaker and record the observed results -->
+- A date or timestamp result before year 1 or after year 9999 (`DATE '9999-12-31' + 1`, `DATE '2024-02-03' + 1e300`) is an error, as in the SQL standard; FileMaker's own answer is unverified.
 
 ## Errors
 
