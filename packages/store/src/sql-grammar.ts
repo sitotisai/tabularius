@@ -443,12 +443,12 @@ function quantified(sql: string, budget: { left: number; depth: number }, column
  */
 export function fetchToLimit(sql: string): string {
   if (!/\b(?:OFFSET|FETCH)\b/i.test(sql)) return sql;
-  const offsetRe = /\bOFFSET\s+(\d+)\s+ROWS?\b/gi;
-  const fetchRe = /\bFETCH\s+(?:FIRST|NEXT)(?:\s+(\d+))?(\s+PERCENT)?\s+ROWS?\s+(ONLY|WITH\s+TIES)\b/gi;
+  const offsetRe = /\bOFFSET\s+(\d+|\?\d*)\s+ROWS?\b/gi;
+  const fetchRe = /\bFETCH\s+(?:FIRST|NEXT)(?:\s+(\d+|\?\d*))?(\s+PERCENT)?\s+ROWS?\s+(ONLY|WITH\s+TIES)\b/gi;
   let top = blanked(sql, true);
   const topFetch = fetchRe.exec(top);
   fetchRe.lastIndex = 0;
-  if (topFetch && (/^WITH/i.test(topFetch[3]) || topFetch[2])) {
+  if ((topFetch && (/^WITH/i.test(topFetch[3]) || topFetch[2])) || /\b(?:OFFSET|FETCH\s+(?:FIRST|NEXT))\s+\?/i.test(top)) {
     sql = numberPlainParameters(sql);
     top = blanked(sql, true);
   }
@@ -466,6 +466,9 @@ export function fetchToLimit(sql: string): string {
     throw new CalcError(ERR.calculation, 'FETCH FIRST n PERCENT needs a whole number from 0 to 100');
   }
   if (!offset && !first) return sql;
+  if (first && (first[2] || /^WITH/i.test(first[3])) && (first[1]?.startsWith('?') || offset?.[1].startsWith('?'))) {
+    throw unsupported('A ? count in FETCH FIRST ... WITH TIES or PERCENT');
+  }
   let ties: string | undefined;
   if (first) {
     if (/^WITH/i.test(first[3])) {
@@ -474,7 +477,7 @@ export function fetchToLimit(sql: string): string {
       ties = withTiesLimit(sql, top, Number(first[1] ?? 1), Number(offset?.[1] ?? 0), Math.min(first.index, offset?.index ?? Infinity));
     }
     if (first[2] && Number(first[1]) > 100) throw new CalcError(ERR.calculation, 'FETCH FIRST n PERCENT needs a whole number from 0 to 100');
-    if (!first[2] && first[1] !== undefined && Number(first[1]) < 1) throw new CalcError(ERR.calculation, 'FETCH FIRST needs a count of at least 1');
+    if (!first[2] && first[1] !== undefined && !first[1].startsWith('?') && Number(first[1]) < 1) throw new CalcError(ERR.calculation, 'FETCH FIRST needs a count of at least 1');
   }
   // The limit goes after the last thing in the query, not after a trailing comment or semicolon.
   let end = plain.trimEnd().length;
@@ -487,7 +490,8 @@ export function fetchToLimit(sql: string): string {
     const count = `(SELECT MAX(0, COUNT(*) - ${offset?.[1] ?? 0}) FROM (${counted}))`;
     percent = first[1] === '0' ? '0' : `((${count} * ${first[1]} + 99) / 100)`;
   }
-  let out = `${sql.slice(0, end)} LIMIT ${percent ?? ties ?? (first ? (first[1] ?? '1') : -1)} OFFSET ${offset ? offset[1] : 0}${sql.slice(end)}`;
+  const count = (value: string, kind: 'FETCH' | 'OFFSET') => value.startsWith('?') ? `fm_row_count(${value}, '${kind}')` : value;
+  let out = `${sql.slice(0, end)} LIMIT ${percent ?? ties ?? (first ? count(first[1] ?? '1', 'FETCH') : -1)} OFFSET ${offset ? count(offset[1], 'OFFSET') : 0}${sql.slice(end)}`;
   for (const m of clauses) out = out.slice(0, m.index) + ' ' + out.slice(m.index + m[0].length);
   return out;
 }
