@@ -53,7 +53,8 @@ test('upgrading pulls the new version, refuses a checkout with local changes, an
 });
 
 test('the single-file program is told to install the newer release, not that it is not a checkout', async () => {
-  await assert.rejects(upgrade({ singleFile: true }), /single-file program.*get\.sh/s);
+  await assert.rejects(upgrade({ singleFile: true, platform: 'linux' }), /single-file program.*get\.sh/s);
+  await assert.rejects(upgrade({ singleFile: true, platform: 'win32' }), (e: Error) => /single-file program.*windows-x64\.exe/s.test(e.message) && !/get\.sh/.test(e.message));
 });
 
 test('with a service: backs up, restarts, waits for it to answer, and goes back when the new version does not start', { skip: hasGit }, async () => {

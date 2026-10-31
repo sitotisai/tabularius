@@ -133,7 +133,7 @@ const BEGIN_RETRIES = 3;
 export class AiUsage implements UsageCounts {
   private readonly db: DatabaseSync;
 
-  /** `busyMs` is how long one attempt at the write lock waits for another process to let go of it. */
+  /** `busyMs` is the most a write waits in all, over every attempt, for another process to let go of the lock. */
   constructor(dir: string, busyMs = 5000) {
     const file = join(dir, USAGE_DB);
     // Account and file names are in it: readable by the server's user only, like the files themselves. SQLite gives
@@ -152,7 +152,9 @@ export class AiUsage implements UsageCounts {
       }
     }
     this.db = new DatabaseSync(file);
-    this.db.exec(`PRAGMA busy_timeout = ${Math.floor(busyMs)}`);
+    // The wait blocks the event loop, so `busyMs` is shared out among the attempts at the lock: a write that cannot
+    // get it gives up after about busyMs in all, not after busyMs for each of its tries.
+    this.db.exec(`PRAGMA busy_timeout = ${Math.max(1, Math.floor(busyMs / (BEGIN_RETRIES + 1)))}`);
     // Several workers starting at once can find the file mid-setup, and switching it to WAL doesn't wait its turn:
     // tried again for a moment.
     for (let tries = 0; ; tries++) {

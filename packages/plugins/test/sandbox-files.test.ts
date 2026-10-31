@@ -127,8 +127,10 @@ test('source grep lists every plug-in file entry point and checks both layers of
   const members = nodes(property, ts.isPropertyAssignment).filter((n) => n.parent === property.initializer);
   t.diagnostic(`pluginFiles: ${members.map((n) => n.name.getText()).join(', ')}`);
   assert.deepEqual(members.map((n) => n.name.getText()).sort(), ['read', 'write', 'size', 'makeFolder', 'remove', 'move', 'copy', 'list', 'modified'].sort());
-  for (const member of members) assert.ok(calls(member, /^this\.(sandboxPath|sandboxed)$/).length >= (['move', 'copy'].includes(member.name.getText()) ? 2 : 1), member.name.getText());
+  for (const member of members) assert.ok(calls(member, /^this\.(sandboxPath|sandboxed|quietPath)$/).length >= (['move', 'copy'].includes(member.name.getText()) ? 2 : 1), member.name.getText());
   assert.equal(calls(body(tree, 'sandboxed'), /^this\.sandboxPath$/).length, 1);
+  // The quiet form only turns a path Windows refuses into a missing file; it is not another way in.
+  assert.equal(calls(body(tree, 'quietPath'), /^this\.sandboxPath$/).length, 1);
   const entries = grep('packages/plugins/src', /files\?\.(?:\w+)\(/g);
   t.diagnostic(JSON.stringify(entries));
   assert.deepEqual(entries.map((e) => e.match).sort(), ['files?.read(', 'files?.size(', 'files?.write(']);
