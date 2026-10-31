@@ -5,9 +5,9 @@ Lifetime of a signed container URL.
 | Setting | Value |
 | --- | --- |
 | Default | 3600 seconds |
-| Accepted values | Positive seconds up to 3600, which is also what any other value (0, negative, not a number, longer) gives; a link signed for more than an hour ahead is refused |
+| Accepted values | Whole seconds from 1 to 3600, digits only; 0, invalid or longer values stop the start; a link signed for more than an hour ahead is refused |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/hosting-and-connecting.md](../../../hosting-and-connecting.md) |
-| Code | [packages/server/src/host.ts:72](../../../../packages/server/src/host.ts#L72) |
+| Code | [packages/server/src/adminapi.ts:102](../../../../packages/server/src/adminapi.ts#L102) |
 
 [All environment variables](../../../environment-variables.md)

@@ -5,6 +5,7 @@
 // written to, and is not re-imported over a store that may have edits.
 
 import { uploadConversionLimits } from './conversion-limits.ts';
+import { containerLinkTtlMs } from './setting-values.ts';
 import { cancellationScope } from '../../scripts/src/cancellation.ts';
 import { setTimeout as cancellationDelay } from 'node:timers/promises';
 import { workerResult } from './worker-result.ts';
@@ -67,11 +68,8 @@ export class Host {
   private readonly urlKey: Buffer;
   // Signed container/image URLs carry an expiry, so one that leaks (a browser
   // history, a proxy log, a copied link) stops working. Default one hour; set
-  // TABULARIUS_CONTAINER_TTL may shorten it; invalid values cannot disable expiry.
-  private readonly urlTtlMs = (() => {
-    const seconds = Number(process.env.TABULARIUS_CONTAINER_TTL ?? 3600);
-    return (Number.isFinite(seconds) && seconds > 0 ? Math.min(Math.max(seconds, 1), 3600) : 3600) * 1000;
-  })();
+  // TABULARIUS_CONTAINER_TTL may shorten it; invalid values stop startup.
+  private readonly urlTtlMs = containerLinkTtlMs();
   private baseUrl?: string;
   /** The address clients reach the server at, when it was given (--public-url): links and passkeys use it, never a request's headers. */
   publicUrl?: string;

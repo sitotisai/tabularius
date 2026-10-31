@@ -18,7 +18,7 @@
 // prepared statements, row limits), with parameters and results in the text or
 // the binary format, per value, as Bind asks (pgbinary.ts).
 
-import { positiveWholeNumber } from './setting-values.ts';
+import { pgwireMaxParamBytes, positiveWholeNumber } from './setting-values.ts';
 import { isUtf8 } from 'node:buffer';
 import { cleanSql, MAX_SQL_TEXT, maskSql, SQL_TEXT_TOO_LARGE, sqlTokens } from '../../store/src/sql-tokens.ts';
 import { noteSurfaceSignIn } from './surface-access.ts';
@@ -65,8 +65,6 @@ export const PGWIRE_LIMIT = { signedPerAccount: 32, signedGlobal: 256 };
 const MAX_PREPARED = 1000;
 /** Total materialised portal rows one connection may retain, even if a query's own cap is raised or disabled. */
 const MAX_BUFFERED_ROWS_PER_CONNECTION = 100_000;
-/** Total bound parameter bytes one connection may retain across its portals. */
-const MAX_PARAM_BYTES_PER_CONNECTION = 64 * 1024 * 1024;
 /** The longest account name a startup message may carry. */
 const MAX_USER = 255;
 const SSL_REQUEST = 80877103;
@@ -1274,8 +1272,7 @@ class Connection {
         // As PostgreSQL: no format code means text, one applies to every parameter, otherwise one per parameter.
         if (formats.length > 1 && formats.length !== n) throw new PgError('08P01', `bind message has ${formats.length} parameter formats but ${n} parameters`);
         if (n !== st.types.length) throw new PgError('08P01', `bind message supplies ${n} parameters, but prepared statement "${name}" requires ${st.types.length}`);
-        const given = Number(process.env.TABULARIUS_PGWIRE_MAX_PARAM_BYTES);
-        const cap = Number.isInteger(given) && given > 0 ? given : MAX_PARAM_BYTES_PER_CONNECTION;
+        const cap = this.server.maxParamBytes;
         let alreadyBound = 0;
         for (const [name, held] of this.portals) {
           if (name !== portal) alreadyBound += held.paramBytes;
@@ -1461,6 +1458,9 @@ export interface PgServerOptions {
 }
 
 export class PgServer {
+  get maxParamBytes(): number {
+    return pgwireMaxParamBytes();
+  }
   get maxBufferedRows(): number {
     return positiveWholeNumber('TABULARIUS_PGWIRE_MAX_BUFFERED_ROWS', process.env.TABULARIUS_PGWIRE_MAX_BUFFERED_ROWS, MAX_BUFFERED_ROWS_PER_CONNECTION);
   }
@@ -1532,6 +1532,7 @@ export class PgServer {
   constructor(host: Host, opts: PgServerOptions) {
     // Validate at startup as well as on each query, where this limit has always been read.
     void this.maxBufferedRows;
+    void this.maxParamBytes;
     this.host = host;
     this.opts = opts;
     this.log = opts.log ?? (() => {});

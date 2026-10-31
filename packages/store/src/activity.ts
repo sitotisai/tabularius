@@ -18,6 +18,7 @@ import type { Value } from '../../calc/src/index.ts';
 import type { Store } from './store.ts';
 import { monotonicClock } from './monotonic.ts';
 import { PendingApprovalError, StoreError } from './errors.ts';
+import { wholeNumber } from './settings.ts';
 
 /**
  * A session's own global field values. In FileMaker each user of a hosted
@@ -191,6 +192,9 @@ export const LOCK_TTL_MS = 60_000;
 
 /** Host resource guard, not a FileMaker limit. Per file/session, shared by cluster workers. */
 export const MAX_SESSION_LOCKS = 100_000;
+export function maxSessionLocks(env: NodeJS.ProcessEnv = process.env): number {
+  return wholeNumber('TABULARIUS_MAX_SESSION_LOCKS', { min: 1, env }) ?? MAX_SESSION_LOCKS;
+}
 const LOCK_SWEEP_MS = 5000;
 
 interface TransactionLeases {
@@ -257,7 +261,7 @@ export class RecordLocks {
   private nextSweep = 0;
   protected readonly maxLocksPerSession: number;
 
-  constructor(maxLocksPerSession = Number(process.env.TABULARIUS_MAX_SESSION_LOCKS ?? MAX_SESSION_LOCKS)) {
+  constructor(maxLocksPerSession = maxSessionLocks()) {
     if (!Number.isSafeInteger(maxLocksPerSession) || maxLocksPerSession < 1) throw new RangeError('TABULARIUS_MAX_SESSION_LOCKS must be a positive safe integer');
     this.maxLocksPerSession = maxLocksPerSession;
   }
