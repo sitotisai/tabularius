@@ -22,7 +22,7 @@ import { defaultBundleName, diagnostics, writeBundle } from './diagnostics.ts';
 import { doctorText, runDoctor } from './doctor.ts';
 import { runExposure } from './exposure.ts';
 import { startDemo } from './demo.ts';
-import { validateServeOptions, verifyServiceStarted, checkPort, defaults, installed, installService, serviceFile, uninstallService, servicePlainRefusal, defaultServiceHost, upgrade, validateServicePublicUrl, type Platform, type ServiceOptions } from './service.ts';
+import { shownUrls, validateServeOptions, verifyServiceStarted, checkPort, defaults, installed, installService, serviceFile, uninstallService, servicePlainRefusal, defaultServiceHost, upgrade, validateServicePublicUrl, type Platform, type ServiceOptions } from './service.ts';
 import { claimFolder, configuredBackupDir, backupKey } from '../../server/src/backup.ts';
 import { FmpDatabase, fileSource, encryptionInfo, readLayoutDesigns, segmentOf, inspectText, type Schema } from '../../fmp12/src/index.ts';
 import { BUILT_IN_EXTENDED_PRIVILEGES, addCensus, styleCensus, styleCensusText, calcFidelity, censusText, exportSql, exportSqlSummary, planImportTables, importTables, importTablesSummary, notionMarkdownSheet, MAX_IMPORT_ROWS, type SheetInput, type ColumnOverrides, type ColumnKind, findStaleCalcs, layoutCensus, type LayoutCensus, createStore, designReport, importFmp12, PASSWORD_POLICY, DEFAULT_MIN_PASSWORD_LENGTH, reconvert, reconvertCheck, verifySecurityAudit, verifyRecordAudit, anchorHead, checkAnchor, Store, syncPlan, openForPlanning, applySync, readSyncLog, releaseHeldTables, type ConflictPolicy, writeBackKit, designText, writeDesignText, diffDesigns, planDesignApply, readDesignFolder, type DesignOp, type ReconvertPreview, csvField, exitBundle, discardExitBundle } from '../../store/src/index.ts';
@@ -1178,6 +1178,13 @@ function corpusScanCommand(args: string[]): number {
   return 0;
 }
 
+/** The web client, admin console, Data API and MCP addresses; for a server on every address, the ones other computers use too. */
+function printAddresses(url: string): void {
+  const { here, others } = shownUrls(url);
+  console.log(`Web client: ${here}/app/   Admin: ${here}/admin/   Data API: ${here}/fmi/data/vLatest   MCP: ${here}/mcp`);
+  if (others.length) console.log(`  From other computers: ${others.map((o) => `${o}/app/`).join(', ')}`);
+}
+
 /** `tabularius demo` (demo.ts): serves a starter app for this computer only until stopped, then deletes it. */
 function demoCommand(args: string[]): number {
   const starter = flag(args, '--starter');
@@ -1204,6 +1211,7 @@ function demoCommand(args: string[]): number {
     console.log(`tabularius demo: the ${demo.database} starter with sample records, on this computer only.`);
     console.log('');
     console.log(`  Open      ${demo.app}`);
+    console.log(`  File      ${demo.database}   (type this name on the sign-in page)`);
     console.log(`  Sign in   ${demo.account}`);
     console.log(`  Password  ${demo.password}`);
     console.log('');
@@ -1522,7 +1530,7 @@ function main(argv: string[]): number {
           process.once('SIGTERM', stop);
           if (exposedPlain) console.warn(`Warning: this server listens on ${hostname} over plain HTTP, so passwords and sign-in tokens cross the network unencrypted. Add --https <your domain> (or --https local for a local network), or put it behind a proxy that does HTTPS and give --public-url https://...`);
           console.log(`hosting ${path} with ${workers} worker processes`);
-          console.log(`Web client: ${url}/app/   Admin: ${url}/admin/   Data API: ${url}/fmi/data/vLatest   MCP: ${url}/mcp`);
+          printAddresses(url);
           if (!mcpToken) console.log(`  AI apps need a token at /mcp: run  tabularius mcp-token ${path}  to print the administrator's, or make one for an account in the admin console (Connect an AI app)`);
           if (ai) console.log(`AI assistant on (${ai.model ?? DEFAULT_MODEL}): questions and what it reads go to Anthropic; one question may use up to ${(ai.runTokens ?? DEFAULT_RUN_TOKENS).toLocaleString('en-US')} tokens`);
           console.log(backups ? `backups every ${every} to ${dest ?? defaultBackupDir(path)}, keeping ${keep}${backupKey() ? ', encrypted' : ''}` : 'backups off');
@@ -1575,7 +1583,7 @@ function main(argv: string[]): number {
             console.log(`${name}: ${stuck.join(', ')} ${stuck.length > 1 ? 'had' : 'had a'} password in FileMaker that doesn't carry over, so ${stuck.length > 1 ? 'they' : 'it'} can't sign in at all yet (set one with: tabularius passwd ${path} ${name} ${stuck[0]} — or the admin console)`);
           }
         }
-        console.log(`Web client: ${url}/app/   Admin: ${url}/admin/   Data API: ${url}/fmi/data/vLatest   MCP: ${url}/mcp`);
+        printAddresses(url);
         if (!mcpToken) console.log(`  AI apps need a token at /mcp: run  tabularius mcp-token ${path}  to print the administrator's, or make one for an account in the admin console (Connect an AI app)`);
         if (ai) console.log(`AI assistant on (${ai.model ?? DEFAULT_MODEL}): questions and what it reads go to Anthropic; one question may use up to ${(ai.runTokens ?? DEFAULT_RUN_TOKENS).toLocaleString('en-US')} tokens`);
         console.log(backups ? `backups every ${every} to ${dest ?? defaultBackupDir(path)}, keeping ${keep}${backupKey() ? ', encrypted' : ''}` : 'backups off');

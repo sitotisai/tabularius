@@ -11,8 +11,8 @@
 # repository into ~/.openhbam/app (set TABULARIUS_REPO to use another URL).
 #
 #   --from FILE   install (or, when installed, upgrade) from a copy instead of
-#                 GitHub: a git bundle, a tarball or a folder. The repository is
-#                 private, so a server without a GitHub sign-in uses this. Make
+#                 GitHub: a git bundle, a tarball or a folder. A server that
+#                 cannot reach GitHub uses this. Make
 #                 a bundle where you can reach GitHub with
 #                 `git -C tabularius bundle create tabularius.bundle HEAD main`.
 #
@@ -193,6 +193,6 @@ case "${TABULARIUS_OS:-${OPENHBAM_OS:-$(uname -s)}}" in # TABULARIUS_OS=Darwin -
 esac
 CLI="$APP/packages/cli/src/main.ts"
 if [ -n "$UNINSTALL" ]; then exec "$NODE" --no-warnings "$CLI" service uninstall --platform "$PLATFORM"; fi
-[ -n "$SERVICE_DIR" ] || { say "Done. Try: tabularius serve <folder of .fmp12 files>"; exit 0; }
+[ -n "$SERVICE_DIR" ] || { say "Done. Try: tabularius demo   (then tabularius serve <folder of .fmp12 files> for your own files)"; exit 0; }
 if [ -n "$PRINT" ]; then ACTION=print; else ACTION=install; fi
 exec "$NODE" --no-warnings "$CLI" service "$ACTION" "$SERVICE_DIR" --platform "$PLATFORM" --port "$PORT" ${HOST:+--host "$HOST"} ${SYSTEM:+--system} -- "$@"
