@@ -25,7 +25,7 @@ import { clientAddress } from './client-address.ts';
 import { ApiError, readBody } from './dataapi.ts';
 import { parseRequestJson } from './request-json.ts';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { appendFileSync, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -33,6 +33,7 @@ import { addressBucket, writer } from '../../store/src/index.ts';
 import { captureOnly, runScript } from '../../scripts/src/index.ts';
 import type { Host } from './host.ts';
 import { readJsonStateSync, updateJsonStateSync, withStateLock, writeStateFileSync } from '../../store/src/durable.ts';
+import { appendFileSync, readFileSync } from '../../store/src/fs-boundary.ts';
 
 export interface InboundHook {
   id: string;
@@ -248,7 +249,13 @@ export class InboundHooks {
     const out = new Map<string, HookCall[]>();
     const f = join(this.host.dir, CALLS_FILE);
     if (!existsSync(f)) return out;
-    const lines = readFileSync(f, 'utf8').split('\n').filter(Boolean).reverse();
+    let lines: string[];
+    try {
+      lines = readFileSync(f, 'utf8').split('\n').filter(Boolean).reverse();
+    } catch (e) {
+      this.log(`inbound hooks: can't read the call log: ${(e as Error).message}`);
+      return out;
+    }
     for (const l of lines) {
       try {
         const { hook, ...call } = JSON.parse(l) as HookCall & { hook: string };

@@ -973,7 +973,7 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/store/src/native-compat.ts:91](../../packages/store/src/native-compat.ts#L91) `dateFields` | `SQLite.all` (91); `SQLite.prepare` (91) | OPERATOR |
 | [packages/store/src/native-compat.ts:115](../../packages/store/src/native-compat.ts#L115) `inspectUpgrade` | `SQLite.get` (115); `SQLite.prepare` (115, 123); `SQLite.iterate` (123) | OPERATOR |
 | [packages/store/src/native-compat.ts:157](../../packages/store/src/native-compat.ts#L157) `upgradeNativeFile` | `SQLite.iterate` (157); `SQLite.prepare` (157, 158, 164) | OPERATOR |
-| [packages/server/src/inbound-hooks.ts:290](../../packages/server/src/inbound-hooks.ts#L290) `InboundHooks/claim` | `SQLite.get` (290, 298, 299); `SQLite.prepare` (290, 294, 295, 298, 299, 301) | AUTH |
+| [packages/server/src/inbound-hooks.ts:297](../../packages/server/src/inbound-hooks.ts#L297) `InboundHooks/claim` | `SQLite.get` (297, 305, 306); `SQLite.prepare` (297, 301, 302, 305, 306, 308) | AUTH |
 | [packages/store/src/cross-file.ts:58](../../packages/store/src/cross-file.ts#L58) `CrossFileProofs/read` | `SQLite.get` (58); `SQLite.prepare` (58) | AUTH |
 | [packages/store/src/cross-file.ts:115](../../packages/store/src/cross-file.ts#L115) `CrossFileProofs/save` | `SQLite.prepare` (115) | AUTH |
 | [packages/store/src/store.ts:3962](../../packages/store/src/store.ts#L3962) `Store/setPasswordOnly` | `SQLite.get` (3962); `SQLite.prepare` (3962, 3968, 3977, 3984, 3985, 3986); `Store.sql` (3962, 3968, 3977, 3984, 3985, 3986) | AUTH |

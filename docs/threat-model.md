@@ -65,6 +65,7 @@ These checks are not `openat(2)` and do not make path-based operations atomic. T
 - `packages/server/src/containers.ts`
 - `packages/server/src/encrypt.ts`
 - `packages/server/src/hosted-record.ts`
+- `packages/server/src/inbound-hooks.ts`
 - `packages/server/src/local-admin.ts`
 - `packages/server/src/logs.ts`
 - `packages/server/src/oauth.ts`
