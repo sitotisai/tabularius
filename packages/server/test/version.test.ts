@@ -59,6 +59,12 @@ test('--version, -v and version print the same three lines', () => {
   }
 });
 
+test('the single-file program does not ask for a Node to be installed', () => {
+  const lines = versionText('22.22.0', true).split('\n');
+  assert.equal(lines[2], 'Node 22.22.0 is built in; nothing else needs installing');
+  assert.match(versionText('22.22.0', false), /Node .* or newer is needed; this is Node 22\.22\.0\n$/);
+});
+
 test('in a checkout the commit is the one git reports', () => {
   const git = spawnSync('git', ['-C', root, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' });
   if (git.status !== 0) return; // a copy of the files without git: the commit is unknown, which versionText says
