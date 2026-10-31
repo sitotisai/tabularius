@@ -9,7 +9,7 @@
 // Anyone with [Full Access] to a file on this server can see the library: a
 // component saved here is shared with the designers of every file.
 
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { copyFileSync, existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { withStateLock, writeJsonStateSync } from '../../store/src/durable.ts';
@@ -53,6 +53,8 @@ function countObjects(objects: LayoutObject[]): number {
 export class ComponentLibrary {
   private readonly file: string;
   private cache?: { mtime: number; size: number; entries: LibraryEntry[] };
+  // The damaged file this instance already set aside, so the next read of the same file copies nothing.
+  private damaged?: { mtime: number; size: number };
 
   constructor(dir: string) {
     this.file = join(dir, LIBRARY_FILE);
@@ -62,15 +64,18 @@ export class ComponentLibrary {
     if (!existsSync(this.file)) return [];
     const { mtimeMs: mtime, size } = statSync(this.file);
     if (this.cache?.mtime === mtime && this.cache.size === size) return this.cache.entries;
+    if (this.damaged?.mtime === mtime && this.damaged.size === size) return [];
     let entries: LibraryEntry[];
     try {
       entries = JSON.parse(readFileSync(this.file, 'utf8')) as LibraryEntry[];
       if (!Array.isArray(entries)) throw new Error('not a list');
     } catch {
       // A damaged library is set aside (for a person to look at) rather than breaking every design session.
-      let damaged = `${this.file}.damaged-${Date.now()}`;
-      while (existsSync(damaged)) damaged = `${this.file}.damaged-${Date.now()}-${randomBytes(4).toString('hex')}`;
-      copyFileSync(this.file, damaged);
+      // Name the copy by what it holds so any request or worker keeps the same damaged content once.
+      const digest = createHash('sha256').update(readFileSync(this.file)).digest('hex').slice(0, 16);
+      const damaged = `${this.file}.damaged-${digest}`;
+      if (!existsSync(damaged)) copyFileSync(this.file, damaged);
+      this.damaged = { mtime, size };
       return [];
     }
     this.cache = { mtime, size, entries };
