@@ -90,7 +90,7 @@ Everything Tabularius can do today, area by area, and what does not carry over f
   design mode) lists what in a file won't work yet; `conversion_guide` is the
   plain-English version written when a file is converted or converted again
   (what won't work as it is, what works differently, such as Send Mail,
-  Insert from URL (off until the file's script network switch is on) and web viewers that load internet pages, and the built-in
+  Insert from URL (on for a file unless an administrator turns its Script network switch off; a converted file and the demo start off) and web viewers that load internet pages, and the built-in
   replacement for each, with the assistant's overview on top when it is on;
   secrets in scripts are hidden), also under Guide in the admin console's
   Hosted files; `optimization_report` (also `tabularius optimize`, and Optimize

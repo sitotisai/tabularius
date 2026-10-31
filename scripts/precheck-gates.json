@@ -94,5 +94,9 @@
   {
     "file": "packages/server/test/docs-fmcsadmin-parity.test.ts",
     "reason": "Checks that each command on the fmcsadmin page maps to Admin API routes in the REST reference"
+  },
+  {
+    "file": "packages/server/test/docs-script-network-default.test.ts",
+    "reason": "Checks the pages state the script network default the store has: on, except a converted file and the demo"
   }
 ]
