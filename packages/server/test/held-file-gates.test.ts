@@ -65,6 +65,10 @@ test('a held file runs no script, in any way it is reached, until it is approved
 
   assert.equal((await admin('/files/ScriptsHeld/approve', 'POST')).status, 200);
   assert.equal(store.held, undefined);
+  const approved = store.securityEvents({ kind: 'file-approved' });
+  assert.equal(approved.length, 1, 'the approval is in the file\'s security log');
+  assert.equal(approved[0].account, 'admin console');
+  assert.match(approved[0].description, /not seen before/);
   assert.equal((await runScript(store, 'Take order', { parameter: 'b' })).result, 'saved');
   assert.deepEqual(refs(store), ['b']);
 });

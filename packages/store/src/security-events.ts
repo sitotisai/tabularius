@@ -32,6 +32,7 @@ export const SECURITY_EVENT_KINDS = [
   'audit-settings-changed', 'audit-pruned',
   'plugin-installed', 'plugin-install-refused',
   'script-network-on', 'script-network-off',
+  'file-approved',
   'sql-privilege-required', 'sql-privilege-not-required',
   'web-viewer-hosts-changed',
   'standby-takeover',
@@ -69,6 +70,7 @@ export const SECURITY_EVENT_CATEGORIES: Record<string, readonly SecurityEventKin
   'Blank passwords': ['blank-password-lan-allowed', 'blank-password-lan-disallowed'],
   'Plug-ins': ['plugin-installed', 'plugin-install-refused'],
   'Script network access': ['script-network-on', 'script-network-off'],
+  'Held files': ['file-approved'],
   'SQL access': ['sql-privilege-required', 'sql-privilege-not-required'],
   'Web viewer hosts': ['web-viewer-hosts-changed'],
   'Standby takeover': ['standby-takeover'],
@@ -105,7 +107,7 @@ const NOTICE = new Set<string>([
   'two-factor-disabled', 'passkey-removed', 'recovery-code-used',
   'api-token-issued', 'scim-token-issued', 'privilege-set-unassigned', 'agent-added', 'agent-change-rejected',
   'ai-turned-on', 'ai-access-refused', 'blank-password-lan-allowed', 'pii-isolation-off', 'pii-field-marked',
-  'audit-settings-changed', 'audit-pruned', 'plugin-installed', 'web-viewer-hosts-changed', 'standby-takeover', 'data-exported',
+  'audit-settings-changed', 'audit-pruned', 'plugin-installed', 'web-viewer-hosts-changed', 'standby-takeover', 'data-exported', 'file-approved',
 ]);
 
 export function securityEventSeverity(kind: string): SecurityEventSeverity {
@@ -181,6 +183,7 @@ export function describeSecurityEvent(e: AuditEntry): string {
       const kept = d.keptTokens === true;
       return `Taken over from a standby of ${str(d.standbyOf) ?? 'another server'}; its copy was last updated ${str(d.lastChange) ?? 'at an unknown time'}. ${kept ? 'API tokens kept' : `${num(d.tokensEnded) ?? 0} API token${num(d.tokensEnded) === 1 ? '' : 's'} ended`}. Accounts, passwords and privileges changed on the main server after that are not here: review them`;
     }
+    case 'file-approved': return `This file was approved to run its scripts, schedules, automations, digests, hooks and connections${str(d.reason) ? ` (it was held: ${str(d.reason)})` : ''}`;
     case 'script-network-on': return 'Script network access turned on: this file\'s scripts can reach the network';
     case 'script-network-off': return 'Script network access turned off for this file';
     case 'web-viewer-hosts-changed': {

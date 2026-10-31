@@ -859,10 +859,11 @@ rule on, only an account that may view the whole table can.
 
 ### Security event kinds
 
-**Security events only** in the **Audit log** shows the entries below (and more) by their kind, which is also the `kind` of an entry from `GET /tabularius/admin/v1/audit`. The table lists the kinds for second factors, passkeys, recovery codes, tokens and cleared sign-in blocks; the other kinds are described in the console beside each entry.
+**Security events only** in the **Audit log** shows the entries below (and more) by their kind, which is also the `kind` of an entry from `GET /tabularius/admin/v1/audit`. The table lists the kinds for second factors, passkeys, recovery codes, tokens, cleared sign-in blocks and approved held files; the other kinds are described in the console beside each entry.
 
 | Kind | Recorded when |
 | --- | --- |
+| `file-approved` | An administrator pressed **Approve** on a held file (one that arrived in the hosted folder after the first start, or a different file under an approved name), so its scripts, schedules, automations, digests, inbound hooks and connections may run. The entry shows who approved it and why it had been held. |
 | `lockout-cleared` | A sign-in block ended: an administrator cleared it in the console, or its time ran out. The entry names the account or the address and says which. |
 | `two-factor-enrolled` | An account began setting up an authenticator app. The second factor does not apply until its first code is confirmed. |
 | `two-factor-confirmed` | The account confirmed a code from its authenticator app, so the second factor now applies. |

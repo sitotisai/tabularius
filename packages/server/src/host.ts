@@ -1250,7 +1250,11 @@ export class Host {
     if (!store) throw new Error(`No hosted file named ${name}`);
     try { approveInRecord(this.dir, store.name, store.fileId, by, 'admin', this.log, true); }
     catch (e) { this.log(`${store.name}: approval could not be saved: ${(e as Error).message}`); throw e; }
+    const reason = store.held?.reason;
     store.held = undefined;
+    // The file's own security log keeps who approved it and why it was held.
+    try { store.recordFileApproved({ account: by, ...(reason ? { reason } : {}) }); }
+    catch (e) { this.log(`${store.name}: the approval could not be written to its security log: ${(e as Error).message}`); }
     for (const listener of this.onApprove) listener(store);
   }
 

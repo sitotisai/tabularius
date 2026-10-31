@@ -336,3 +336,24 @@ test('a copied .fmp12 (new modification time, same content) still carries edits 
     rmSync(dir, { recursive: true });
   }
 });
+
+test('reconverting a file with no saved script network setting starts it off; a saved setting is kept', { skip }, async () => {
+  const { dir, path } = oldStore();
+  try {
+    // A store converted before the setting was written has none.
+    const sql = new DatabaseSync(path);
+    sql.prepare("DELETE FROM _fm_meta WHERE key = 'scriptNetwork'").run();
+    sql.close();
+    await reconvert(path, fixture);
+    const again = new Store(path, 'Flicks');
+    assert.equal(again.scriptNetwork, false, 'a reconversion is a fresh conversion: network access starts off');
+    again.setScriptNetwork(true, { account: 'test' });
+    again.close();
+    await reconvert(path, fixture);
+    const kept = new Store(path, 'Flicks');
+    assert.equal(kept.scriptNetwork, true, 'what an administrator turned on stays on');
+    kept.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
