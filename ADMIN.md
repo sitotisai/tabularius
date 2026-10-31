@@ -600,6 +600,10 @@ ones.
 
 ## Upgrade
 
+The single-file program (installed with `get.sh`) upgrades by installing the newer release over it: run the
+install command again, then restart the service if one runs it. `tabularius upgrade` is for an install
+from a checkout (`scripts/install.sh`), and says so when it is run from the single-file program.
+
 <!-- docs-example: illustrative -->
 ```sh
 tabularius upgrade
@@ -745,9 +749,9 @@ With Docker: `git pull && docker compose up -d --build`.
 
 ### Without a GitHub sign-in
 
-The repository is private, so a server that can't sign in to GitHub can't
-clone or pull it. Bring the new version over as a file instead, and install
-or upgrade from it with `--from`. Nothing on the server needs your GitHub
+A server that can't reach GitHub (no route out, or a network that blocks it) can't
+clone or pull. Bring the new version over as a file instead, and install
+or upgrade from it with `--from`. Nothing on the server needs a GitHub
 login.
 
 On a computer that can reach GitHub, make a git bundle (one file holding the

@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { isSea } from 'node:sea';
 import { fileURLToPath } from 'node:url';
 import { findExecutable } from './find-executable.ts';
 
@@ -53,11 +54,12 @@ export function versionLabel(): string {
 }
 
 /** What `tabularius --version` prints. */
-export function versionText(runningNode: string = process.versions.node): string {
+export function versionText(runningNode: string = process.versions.node, singleFile: boolean = isSea()): string {
   return [
     `tabularius ${SERVER_VERSION}`,
     `commit ${serverCommit() ?? 'unknown'}`,
-    `Node ${NODE_MINIMUM} or newer is needed; this is Node ${runningNode}`,
+    // The single-file program carries its own Node, so a person who installed it has no Node to check.
+    singleFile ? `Node ${runningNode} is built in; nothing else needs installing` : `Node ${NODE_MINIMUM} or newer is needed; this is Node ${runningNode}`,
     '',
   ].join('\n');
 }

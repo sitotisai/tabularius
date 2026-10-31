@@ -206,6 +206,7 @@ test('the real command prints the address and the password once, answers, and de
       assert.equal(out.split(password).length - 1, 1, 'the password appears once');
       assert.equal(err.includes(password), false);
       assert.match(out, /Sign in\s+Admin/);
+      assert.match(out, /File\s+Inventory\b/, 'the sign-in page asks for the file name, so the demo says it');
       const ok = await fetch(`${url}/fmi/data/vLatest/databases/Inventory/sessions`, { method: 'POST', headers: { authorization: 'Basic ' + btoa(`Admin:${password}`), 'content-type': 'application/json' }, body: '{}' });
       assert.equal(ok.status, 200);
       const folder = readdirSync(tmpdir()).filter((f) => f.startsWith('tabularius-demo-')).find((f) => existsSync(join(tmpdir(), f, 'Inventory.openhbam.sqlite')));

@@ -177,7 +177,7 @@ if (-not $Print) {
 
 # --- service -------------------------------------------------------------------
 
-if (-not $Service) { Say 'Done. Try: tabularius serve <folder of .fmp12 files>'; exit 0 }
+if (-not $Service) { Say 'Done. Try: tabularius demo   (then tabularius serve <folder of .fmp12 files> for your own files)'; exit 0 }
 $action = if ($Print) { 'print' } else { 'install' }
 $serviceArgs = @('--no-warnings', $Cli, 'service', $action, $Service, '--platform', 'win32', '--port', "$Port")
 if ($HostName) { $serviceArgs += @('--host', $HostName) }

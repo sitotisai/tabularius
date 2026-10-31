@@ -9,7 +9,7 @@ import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSyn
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { notOnWindows } from '../../store/test/windows.ts';
-import { checkPort, healthUrl, installService, installed, portFree, stopOwnServer, upgrade, winArg, serviceFile, servicePlainRefusal, defaultServiceHost, defaults, validateServicePublicUrl, type Installed } from '../src/service.ts';
+import { checkPort, healthUrl, installService, installed, portFree, stopOwnServer, upgrade, winArg, serviceFile, servicePlainRefusal, shownUrls, defaultServiceHost, defaults, validateServicePublicUrl, type Installed } from '../src/service.ts';
 
 const main = join(import.meta.dirname, '..', 'src', 'main.ts');
 const print = (...args: string[]) => execFileSync(process.execPath, ['--no-warnings', main, 'service', 'print', ...args], { stdio: ['ignore', 'pipe', 'pipe'] }).toString();
@@ -33,6 +33,13 @@ test('Windows: a Task Scheduler task at logon, or at boot as the system account,
       assert.equal(r.status, 0, r.stderr.toString());
     }
   }
+});
+
+test('a server on every address is shown at an address that opens', () => {
+  assert.deepEqual(shownUrls('https://0.0.0.0:8080', ['192.168.1.20', '10.0.0.5']), { here: 'https://localhost:8080', others: ['https://192.168.1.20:8080', 'https://10.0.0.5:8080'] });
+  assert.deepEqual(shownUrls('http://0.0.0.0:8080', []), { here: 'http://localhost:8080', others: [] });
+  assert.deepEqual(shownUrls('http://127.0.0.1:8080', ['192.168.1.20']), { here: 'http://127.0.0.1:8080', others: [] });
+  assert.deepEqual(shownUrls('https://files.example.com', ['192.168.1.20']), { here: 'https://files.example.com', others: [] });
 });
 
 test('Windows arguments are quoted the way programs split them', () => {
