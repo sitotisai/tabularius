@@ -131,6 +131,14 @@ export function logFromFollower(notifier: { note(type: LogType, source: string, 
   notifier.note(note.type, note.source, `[worker ${note.from}] ${note.message}`);
 }
 
+/** What the front process accepts of an open-state note: a file name and a short text; `from` is the sender, whatever it claims. */
+export function openStateNote(note: unknown, from: number): Extract<Note, { k: 'open-state' }> | undefined {
+  const n = note as { k?: unknown; file?: unknown; error?: unknown } | null;
+  if (!n || n.k !== 'open-state' || typeof n.file !== 'string' || !n.file || n.file.length > 255) return undefined;
+  if (n.error !== undefined && (typeof n.error !== 'string' || n.error.length > 4096)) return undefined;
+  return { k: 'open-state', from, file: n.file, ...(n.error !== undefined ? { error: n.error } : {}) };
+}
+
 /** Between workers, through the front process. */
 type Note =
   | { k: 'change'; change: Change }
@@ -145,7 +153,9 @@ type Note =
   | { k: 'gone'; from: number }
   | { k: 'tls'; tls: ClusterTls }
   /** A line a follower logged, for the leader's email notifications (only the leader mails). */
-  | { k: 'log'; from: number; type: 'Warning' | 'Error'; source: string; message: string };
+  | { k: 'log'; from: number; type: 'Warning' | 'Error'; source: string; message: string }
+  /** A worker could not open a file it was asked to (after its retries), or has opened it since (no error), for the leader's status. */
+  | { k: 'open-state'; from: number; file: string; error?: string };
 type Question = { k: 'file'; name: string; action: 'close' | 'pause' | 'open' | 'offline'; detail?: string };
 
 type ToFront =
@@ -313,11 +323,20 @@ export class ClusterLink {
       this.waiting.get(m.rid)?.();
       this.waiting.delete(m.rid);
     } else if (m.t === 'ask') {
-      void this.answer(m.q).catch((e) => process.stderr.write(`cluster file action failed: ${(e as Error).message}\n`))
+      void this.answer(m.q).catch((e) => {
+        process.stderr.write(`cluster file action failed: ${(e as Error).message}\n`);
+        if (m.q.action === 'open') this.openState(m.q.name, (e as Error).message);
+      })
         .finally(() => this.send({ t: 'answer', rid: m.rid }));
     } else if (m.t === 'tell') {
       this.hear(m.note);
     }
+  }
+
+  /** The leader keeps what it and the others report; a follower passes it to the leader through the front process. */
+  private openState(file: string, error?: string): void {
+    const note = { k: 'open-state' as const, from: this.role.id, file, ...(error !== undefined ? { error } : {}) };
+    if (this.role.leader) this.hear(note); else this.send({ t: 'tell', note });
   }
 
   private async answer(q: Question): Promise<void> {
@@ -332,7 +351,9 @@ export class ClusterLink {
     } else if (q.action === 'pause') {
       await host.waitForCompaction(q.name);
       host.pauseFile(q.name);
-    } else if (!host.get(q.name)) {
+    } else if (host.get(q.name)) {
+      this.openState(q.name);
+    } else {
       await whileLocked(() => {
         if (!host.openFile(q.name)) {
           const file = host.files().find((f) => f.name.toLowerCase() === q.name.toLowerCase());
@@ -341,6 +362,7 @@ export class ClusterLink {
           if (existsSync(path) || !existsSync(path + ENCRYPTED_EXT)) host.add(path);
         }
       });
+      if (host.get(q.name)) this.openState(q.name);
     }
   }
 
@@ -375,6 +397,7 @@ export class ClusterLink {
       this.sessions.delete(note.from);
       this.scripts.delete(note.from);
       this.stats.delete(note.from);
+      if (this.role.leader) host.openFailures.clearWorker(note.from);
     } else if (note.k === 'message') {
       this.live!.deliver(note.text, note.token);
     } else if (note.k === 'end') {
@@ -383,6 +406,11 @@ export class ClusterLink {
       this.tls = note.tls;
     } else if (note.k === 'log') {
       if (this.role.leader) logFromFollower(host.notifier, note);
+    } else if (note.k === 'open-state') {
+      if (this.role.leader) {
+        if (note.error === undefined) host.openFailures.clear(note.file, note.from);
+        else host.openFailures.set(note.file, note.from, note.error, host.dir);
+      }
     }
   }
 
@@ -717,6 +745,11 @@ export async function serveCluster(opts: ServeOptions, workers: number, blankFro
       } else if (m.t === 'log') {
         lastLog = m.text;
         log(workers > 1 ? `[${w.id}] ${m.text}` : m.text);
+      }
+      else if (m.t === 'tell' && m.note?.k === 'open-state') {
+        // Only the leader serves the status; drop notes of the wrong shape and use the sender's own id.
+        const note = openStateNote(m.note, w.id);
+        if (note && w.id !== 0) post(pool[0], { t: 'tell', note });
       }
       else if (m.t === 'tell') broadcast(w, { t: 'tell', note: m.note });
       else if (m.t === 'cancel') {

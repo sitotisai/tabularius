@@ -138,6 +138,7 @@ export const groups: RestGroup[] = [
               externalContainers: 0, ai: { allowed: true, turnedOff: false, byServer: false }, pii: { on: false, turnedOn: false },
             }],
             converting: [],
+            openFailed: [],
             locked: [],
             clients: [{ id: '3fa29c1b07de', db: 'Invoices', account: 'Ann', idleSeconds: 12, since: '2026-10-13T08:15:40.000Z', client: 'web', from: '192.168.1.20', device: 'Mozilla/5.0 (Macintosh)', locks: 1 }],
             locks: [{ file: 'Invoices', table: 'Invoices', recordId: 1042, account: 'Ann', client: '3fa29c1b07de', expires: '2026-10-13T08:30:00.000Z' }],
@@ -150,7 +151,7 @@ export const groups: RestGroup[] = [
             },
           }),
         },
-        notes: 'Each file\'s pii says whether personal data is swapped for stand-ins before anything goes to AI: on is whether that applies to the file, turnedOn whether its own switch is on, and through names the hosted file whose switch applies when it is not the file\'s own. serverScripts is the same list as GET /tabularius/admin/v1/server-scripts. Fields with nothing to say are left out: a file\'s reconvert ({version, current, unsafe, unverified}) appears only when an older converter made it; certificate ({domains, expires, problem}) only with automatic HTTPS; standbys only with replication; backups.every, next, last, offsite and progressive only when those are scheduled; server.localCa ({name, fingerprint}) only with --https local. converting entries are {name, table, tablesDone, tables, records, fraction}; locked entries are {file, hint, error}.',
+        notes: 'Each file\'s pii says whether personal data is swapped for stand-ins before anything goes to AI: on is whether that applies to the file, turnedOn whether its own switch is on, and through names the hosted file whose switch applies when it is not the file\'s own. serverScripts is the same list as GET /tabularius/admin/v1/server-scripts. Fields with nothing to say are left out: a file\'s reconvert ({version, current, unsafe, unverified}) appears only when an older converter made it; certificate ({domains, expires, problem}) only with automatic HTTPS; standbys only with replication; backups.every, next, last, offsite and progressive only when those are scheduled; server.localCa ({name, fingerprint}) only with --https local. converting entries are {name, table, tablesDone, tables, records, fraction}; locked entries are {file, hint, error}. With several workers (serve --workers), openFailed lists the files a worker could not open after its retries, {file, worker, error, at}: one entry per file and worker, at most 64 in all, with the error text cut to 300 characters and any path inside the hosted folder shown relative to it (other absolute paths are cut to their last segment); an entry goes when that worker opens the file, when it stops, or when the file leaves the folder. It is empty without workers.',
       },
       {
         method: 'GET',
