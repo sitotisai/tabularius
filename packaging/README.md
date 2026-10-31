@@ -11,4 +11,4 @@ Publishing is manual:
 - **winget:** copy `winget/*` into `manifests/o/tabularius/tabularius/1.2.3/` in a fork of `microsoft/winget-pkgs` and open a pull request.
 - **Scoop:** put `scoop/tabularius.json` in a bucket's `bucket/` folder. `checkver` and `autoupdate` keep it current.
 
-A system the release has no program for (Intel Macs, Windows on Arm today) is left out of the files.
+A system the release has no program for (Windows on Arm today) is left out of the files.

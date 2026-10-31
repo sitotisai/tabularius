@@ -377,6 +377,16 @@ export interface BackupSchedule {
   stop(): void;
 }
 
+/** True for a folder with no database files (not even encrypted ones) and no backup set yet: it has never held a file. A folder that had backups and lost its files is still a failure to report. */
+function neverHeldAFile(folder: string, dest: string): boolean {
+  try {
+    if (readdirSync(folder).some((f) => f.endsWith(STORE_EXT) || f.endsWith(STORE_EXT + ENCRYPTED_EXT))) return false;
+  } catch {
+    return false;
+  }
+  return backupSets(dest).length === 0;
+}
+
 export function scheduleBackups(folder: string, opts: { every: number; dest?: string; keep?: number; log?: (m: string) => void; onSet?: (dir: string) => void }): BackupSchedule {
   const log = opts.log ?? (() => {});
   let timer: NodeJS.Timeout | undefined;
@@ -396,6 +406,12 @@ export function scheduleBackups(folder: string, opts: { every: number; dest?: st
   const run = async () => {
     due = undefined;
     const dest = schedule.dest;
+    if (neverHeldAFile(folder, dest)) {
+      // A new install hosts an empty folder until the first file arrives: say so instead of reporting a failure.
+      log('backup: nothing to back up yet; the first backup runs once a file is hosted');
+      if (!stopped) next(opts.every);
+      return;
+    }
     try {
       const r = await backupFolder(folder, dest, keep, undefined, { stoppable: true });
       const message = `${r.files.length} files to ${r.dir}${r.removed.length ? `, removed ${r.removed.length} old` : ''}`;

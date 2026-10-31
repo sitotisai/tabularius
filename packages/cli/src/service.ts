@@ -28,7 +28,7 @@ import { renameFileSync as renameSync, removeFileSync as rmSync } from '../../st
 //
 // Upgrading: pulls the new version into this checkout (refusing when it has
 // local changes), or takes it from a git bundle, a tarball or a folder
-// (--from), so a server needs no GitHub sign-in for a private repository, installs its dependencies, backs up the hosted folder
+// (--from, so a server that cannot reach GitHub can still upgrade), installs its dependencies, backs up the hosted folder
 // (online, as backups always are), restarts the service, and waits for it to
 // answer its health check. If it doesn't, the previous version is put back
 // and started again. The hosted files are never touched: each is brought up
@@ -541,6 +541,18 @@ export function serviceSummary(o: Pick<ServiceOptions, 'folder' | 'port' | 'host
   return lines;
 }
 
+/**
+ * The address to show for a server that listens on every address ("0.0.0.0" opens nowhere): this computer's own name
+ * for it, and the same address on this machine's local networks for the other computers. Any other host is shown as is.
+ */
+export function shownUrls(url: string, lan: readonly string[] = lanAddresses()): { here: string; others: string[] } {
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { return { here: url, others: [] }; }
+  if (parsed.hostname !== '0.0.0.0' && parsed.hostname !== '[::]') return { here: url, others: [] };
+  const at = (host: string) => { const u = new URL(url); u.hostname = host; return u.href.replace(/\/$/, ''); };
+  return { here: at('localhost'), others: lan.map(at) };
+}
+
 /** This machine's addresses on its local networks (IPv4, private ranges). */
 function lanAddresses(): string[] {
   return Object.values(networkInterfaces()).flat()
@@ -950,7 +962,9 @@ function fromFiles(app: string, source: string): Fetched {
  * tarball or folder with `from`) and, when a service runs it, restarts the
  * service on the new version, going back to the old one if it doesn't come up.
  */
-export async function upgrade(opts: { backup?: (folder: string, extra: string[]) => Promise<string>; app?: string; home?: string; restart?: (s: Installed) => void; waitMs?: number; deadMs?: number; from?: string; install?: (app: string) => void }): Promise<void> {
+export async function upgrade(opts: { backup?: (folder: string, extra: string[]) => Promise<string>; app?: string; home?: string; restart?: (s: Installed) => void; waitMs?: number; deadMs?: number; from?: string; install?: (app: string) => void; singleFile?: boolean }): Promise<void> {
+  // The single-file program is not a checkout: it is replaced by installing the newer release over it.
+  if ((opts.singleFile ?? isSea()) && !opts.from) throw new Error('this is the single-file program, which upgrades by installing the newer release over it: run the install command again (curl -fsSL https://github.com/sitotisai/tabularius/releases/latest/download/get.sh | sh), then restart the service if one runs it');
   const installDeps = opts.install ?? installDependencies;
   const s = installed(opts.home);
   // Refuse before fetching files, backing up or stopping the running service.

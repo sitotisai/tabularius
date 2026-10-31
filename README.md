@@ -17,7 +17,7 @@ tabularius demo
 ```
 
 The demo opens in your browser with a one-time password for `Admin`, and deletes everything when you press Ctrl-C.
-Windows, Docker and package-manager installs are in the [quickstart](QUICKSTART.md).
+Windows, Docker and installing from a checkout are in the [quickstart](QUICKSTART.md).
 
 ## Host your own file
 
