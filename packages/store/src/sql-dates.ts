@@ -744,6 +744,14 @@ const utcDate = (y: number, m: number, d: number, h = 0, mi = 0, s = 0): Date =>
 };
 const daysIn = (y: number, m: number) => utcDate(y, m + 1, 0).getUTCDate();
 
+// The SQL standard treats a result outside the supported datetime range as an error;
+// the other SQL driver's response to this overflow is unverified.
+function yearInRange(y: number): number {
+  if (!Number.isInteger(y) || y < 1 || y > 9999)
+    throw new CalcError(ERR.calculation, 'Date arithmetic result is out of range (years 0001 to 9999)');
+  return y;
+}
+
 /** A date, time or timestamp moved by n units; years and months stop at the end of a shorter month.
  * SQL timestamps have no zone or offset here. UTC component arithmetic avoids host-TZ normalization, so an
  * interval may produce a local time inside a DST gap. Claris's SQL reference does not specify that gap case. */
@@ -766,7 +774,7 @@ function addInterval(v: SQLOutputValue, n: number, unit: string): SQLInputValue 
       const t = utcDate(y, m, d + n);
       [y, m, d] = [t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate()];
     }
-    const date = `${String(y).padStart(4, '0')}-${two(m)}-${two(d)}`;
+    const date = `${String(yearInRange(y)).padStart(4, '0')}-${two(m)}-${two(d)}`;
     return timed ? `${date}T${two(p.h!)}:${two(p.mi!)}:${two(p.s!)}` : date;
   }
   if (!timed) return null;
@@ -776,7 +784,7 @@ function addInterval(v: SQLOutputValue, n: number, unit: string): SQLInputValue 
     return `${two(Math.floor(t / 3600))}:${two(Math.floor(t / 60) % 60)}:${two(t % 60)}`;
   }
   const t = utcDate(p.y!, p.m!, p.d!, p.h!, p.mi!, p.s! + secs);
-  return `${String(t.getUTCFullYear()).padStart(4, '0')}-${two(t.getUTCMonth() + 1)}-${two(t.getUTCDate())}T${two(t.getUTCHours())}:${two(t.getUTCMinutes())}:${two(t.getUTCSeconds())}`;
+  return `${String(yearInRange(t.getUTCFullYear())).padStart(4, '0')}-${two(t.getUTCMonth() + 1)}-${two(t.getUTCDate())}T${two(t.getUTCHours())}:${two(t.getUTCMinutes())}:${two(t.getUTCSeconds())}`;
 }
 
 /** The text without the spaces at its end (a scan from the end: `/ +$/` tries every start of a long run of spaces). */
