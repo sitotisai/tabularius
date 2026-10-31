@@ -180,20 +180,20 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/cli/src/main.ts:756](../../packages/cli/src/main.ts#L756) `hostedRead` | `SQLite.all` (756, 759); `SQLite.prepare` (756, 759); `Store.sql` (756, 759) | OPERATOR |
 | [packages/cli/src/main.ts:2452](../../packages/cli/src/main.ts#L2452) `main` | `Store.orphanContainerReport` (2452); `Store.auditLog` (2925); `SQLite.get` (3187); `SQLite.prepare` (3187) | OPERATOR |
 | [packages/scripts/src/data-api-step.ts:104](../../packages/scripts/src/data-api-step.ts#L104) `respond` | `Store.get` (104, 131, 140); `Store.find` (105, 117) | SCRIPT |
-| [packages/scripts/src/engine.ts:8204](../../packages/scripts/src/engine.ts#L8204) `ScriptEngine/containerFile` | `Store.get` (8204); `Store.containerId` (8205); `Store.container` (8206) | SCRIPT |
+| [packages/scripts/src/engine.ts:8211](../../packages/scripts/src/engine.ts#L8211) `ScriptEngine/containerFile` | `Store.get` (8211); `Store.containerId` (8212); `Store.container` (8213) | SCRIPT |
 | [packages/scripts/src/engine.ts:5772](../../packages/scripts/src/engine.ts#L5772) `ScriptEngine/design` | `Store.valueListItems` (5772) | SCRIPT |
 | [packages/scripts/src/engine.ts:6528](../../packages/scripts/src/engine.ts#L6528) `ScriptEngine/exportField` | `Store.get` (6528); `Store.containerId` (6529); `Store.container` (6531) | SCRIPT |
-| [packages/scripts/src/engine.ts:8624](../../packages/scripts/src/engine.ts#L8624) `ScriptEngine/fileMakerRows` | `Store.findIds` (8624); `Store.get` (8629) | SCRIPT |
+| [packages/scripts/src/engine.ts:8631](../../packages/scripts/src/engine.ts#L8631) `ScriptEngine/fileMakerRows` | `Store.findIds` (8631); `Store.get` (8636) | SCRIPT |
 | [packages/scripts/src/engine.ts:2363](../../packages/scripts/src/engine.ts#L2363) `ScriptEngine/foundSet` | `Store.findIds` (2363) | SCRIPT |
 | [packages/scripts/src/engine.ts:5612](../../packages/scripts/src/engine.ts#L5612) `ScriptEngine/get` | `Store.findIds` (5612); `Store.canViewRecord` (5705); `Store.get` (5741) | SCRIPT |
 | [packages/scripts/src/engine.ts:2017](../../packages/scripts/src/engine.ts#L2017) `ScriptEngine/goToLayout` | `Store.findIds` (2017) | SCRIPT |
-| [packages/scripts/src/engine.ts:8395](../../packages/scripts/src/engine.ts#L8395) `ScriptEngine/importRecords` | `Store.get` (8395) | SCRIPT |
+| [packages/scripts/src/engine.ts:8402](../../packages/scripts/src/engine.ts#L8402) `ScriptEngine/importRecords` | `Store.get` (8402) | SCRIPT |
 | [packages/scripts/src/engine.ts:5884](../../packages/scripts/src/engine.ts#L5884) `ScriptEngine/lookupNext` | `Store.get` (5884); `Store.row` (5885); `Calculations.context` (5887) | SCRIPT |
 | [packages/scripts/src/engine.ts:5415](../../packages/scripts/src/engine.ts#L5415) `ScriptEngine/newCalcContext/executeSQL` | `Calculations.executeSQL` (5415) | SCRIPT |
 | [packages/scripts/src/engine.ts:5423](../../packages/scripts/src/engine.ts#L5423) `ScriptEngine/newCalcContext/persistentData` | `Store.persistentData` (5423) | SCRIPT |
 | [packages/scripts/src/engine.ts:5424](../../packages/scripts/src/engine.ts#L5424) `ScriptEngine/newCalcContext/persistentDataIds` | `Store.persistentDataIds` (5424) | SCRIPT |
-| [packages/scripts/src/engine.ts:8664](../../packages/scripts/src/engine.ts#L8664) `ScriptEngine/newRecord` | `Store.findIds` (8664) | SCRIPT |
-| [packages/scripts/src/engine.ts:9042](../../packages/scripts/src/engine.ts#L9042) `ScriptEngine/quickFind` | `Store.get` (9042) | SCRIPT |
+| [packages/scripts/src/engine.ts:8671](../../packages/scripts/src/engine.ts#L8671) `ScriptEngine/newRecord` | `Store.findIds` (8671) | SCRIPT |
+| [packages/scripts/src/engine.ts:9049](../../packages/scripts/src/engine.ts#L9049) `ScriptEngine/quickFind` | `Store.get` (9049) | SCRIPT |
 | [packages/scripts/src/engine.ts:5826](../../packages/scripts/src/engine.ts#L5826) `ScriptEngine/record` | `Store.get` (5826) | SCRIPT |
 | [packages/scripts/src/engine.ts:5987](../../packages/scripts/src/engine.ts#L5987) `ScriptEngine/relatedIds` | `Store.findIds` (5987); `rowsById` (5995); `Store.select` (5999); `Store.matchIds` (6013); `Store.viewableIds` (6036) | SCRIPT |
 | [packages/scripts/src/engine.ts:6021](../../packages/scripts/src/engine.ts#L6021) `ScriptEngine/relatedIds/matching` | `Store.matchIds` (6021) | SCRIPT |
@@ -202,11 +202,11 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/scripts/src/engine.ts:3396](../../packages/scripts/src/engine.ts#L3396) `ScriptEngine/findIdsCooperative` | `Store.findIdsProgress` (3396) | SCRIPT |
 | [packages/scripts/src/engine.ts:3410](../../packages/scripts/src/engine.ts#L3410) `ScriptEngine/sortIdsCooperative` | `Store.sortIdsProgress` (3410) | SCRIPT |
 | [packages/scripts/src/engine.ts:3438](../../packages/scripts/src/engine.ts#L3438) `ScriptEngine/sortIdsProgress` | `Store.sortIdsProgress` (3438); `Store.valueListItems` (3444) | SCRIPT |
-| [packages/scripts/src/engine.ts:7457](../../packages/scripts/src/engine.ts#L7457) `ScriptEngine/sourceValue` | `Store.get` (7457); `Store.containerId` (7458); `Store.container` (7459) | SCRIPT |
+| [packages/scripts/src/engine.ts:7464](../../packages/scripts/src/engine.ts#L7464) `ScriptEngine/sourceValue` | `Store.get` (7464); `Store.containerId` (7465); `Store.container` (7466) | SCRIPT |
 | [packages/scripts/src/engine.ts:3347](../../packages/scripts/src/engine.ts#L3347) `ScriptEngine/sqlByNaturalLanguage` | `Calculations.translateSQL` (3347); `Calculations.executeSQL` (3354) | SCRIPT |
 | [packages/scripts/src/engine.ts:4140](../../packages/scripts/src/engine.ts#L4140) `ScriptEngine/step` | `Store.fieldIndex` (4140) | SCRIPT |
 | [packages/scripts/src/engine.ts:5859](../../packages/scripts/src/engine.ts#L5859) `ScriptEngine/valueOf` | `Store.findIds` (5859, 5859); `Store.containerId` (5867) | SCRIPT |
-| [packages/scripts/src/engine.ts:9434](../../packages/scripts/src/engine.ts#L9434) `clearRecords` | `SQLite.all` (9434); `SQLite.prepare` (9434) | SCRIPT |
+| [packages/scripts/src/engine.ts:9441](../../packages/scripts/src/engine.ts#L9441) `clearRecords` | `SQLite.all` (9441); `SQLite.prepare` (9441) | SCRIPT |
 | [packages/scripts/src/recorder.ts:83](../../packages/scripts/src/recorder.ts#L83) `lastSeq` | `Store.auditLog` (83) | DESIGN |
 | [packages/scripts/src/recorder.ts:121](../../packages/scripts/src/recorder.ts#L121) `recordRun` | `Store.auditLog` (121) | DESIGN |
 | [packages/scripts/src/script-tests.ts:213](../../packages/scripts/src/script-tests.ts#L213) `runCase` | `Store.findIds` (213); `Store.auditLog` (220, 221, 265); `Store.evaluateEach` (248) | DESIGN |
@@ -225,12 +225,12 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/server/src/ai-output.ts:147](../../packages/server/src/ai-output.ts#L147) `storedSecretValues` | `Calculations.globalValue` (147); `Store.select` (152) | REDACTION |
 | [packages/server/src/ai-policy-sql.ts:49](../../packages/server/src/ai-policy-sql.ts#L49) `sqlFieldRefs` | `SQLite.all` (49, 51); `SQLite.prepare` (49, 51) | POLICY |
 | [packages/server/src/ai-policy.ts:355](../../packages/server/src/ai-policy.ts#L355) `sql` | `Store.inspectQuery` (355) | POLICY |
-| [packages/server/src/ai-usage.ts:199](../../packages/server/src/ai-usage.ts#L199) `AiUsage/add` | `SQLite.prepare` (199, 202) | AUTH |
-| [packages/server/src/ai-usage.ts:248](../../packages/server/src/ai-usage.ts#L248) `AiUsage/importOld` | `SQLite.prepare` (248, 258, 266, 270) | AUTH |
-| [packages/server/src/ai-usage.ts:184](../../packages/server/src/ai-usage.ts#L184) `AiUsage/month` | `SQLite.get` (184); `SQLite.prepare` (184) | AUTH |
-| [packages/server/src/ai-usage.ts:210](../../packages/server/src/ai-usage.ts#L210) `AiUsage/question` | `SQLite.prepare` (210, 212, 213, 215) | AUTH |
-| [packages/server/src/ai-usage.ts:191](../../packages/server/src/ai-usage.ts#L191) `AiUsage/recent` | `SQLite.all` (191); `SQLite.prepare` (191) | AUTH |
-| [packages/server/src/ai-usage.ts:177](../../packages/server/src/ai-usage.ts#L177) `AiUsage/today` | `SQLite.get` (177); `SQLite.prepare` (177) | AUTH |
+| [packages/server/src/ai-usage.ts:201](../../packages/server/src/ai-usage.ts#L201) `AiUsage/add` | `SQLite.prepare` (201, 204) | AUTH |
+| [packages/server/src/ai-usage.ts:250](../../packages/server/src/ai-usage.ts#L250) `AiUsage/importOld` | `SQLite.prepare` (250, 260, 268, 272) | AUTH |
+| [packages/server/src/ai-usage.ts:186](../../packages/server/src/ai-usage.ts#L186) `AiUsage/month` | `SQLite.get` (186); `SQLite.prepare` (186) | AUTH |
+| [packages/server/src/ai-usage.ts:212](../../packages/server/src/ai-usage.ts#L212) `AiUsage/question` | `SQLite.prepare` (212, 214, 215, 217) | AUTH |
+| [packages/server/src/ai-usage.ts:193](../../packages/server/src/ai-usage.ts#L193) `AiUsage/recent` | `SQLite.all` (193); `SQLite.prepare` (193) | AUTH |
+| [packages/server/src/ai-usage.ts:179](../../packages/server/src/ai-usage.ts#L179) `AiUsage/today` | `SQLite.get` (179); `SQLite.prepare` (179) | AUTH |
 | [packages/server/src/assistant.ts:2159](../../packages/server/src/assistant.ts#L2159) `Assistant/answer` | `Store.find` (2159) | ACCOUNT |
 | [packages/server/src/automations.ts:436](../../packages/server/src/automations.ts#L436) `AutomationRunner/changed` | `Store.auditLog` (436) | AUTOMATION |
 | [packages/server/src/automations.ts:467](../../packages/server/src/automations.ts#L467) `AutomationRunner/run` | `Store.select` (467); `Store.canViewRecord` (477); `Store.evaluateEach` (480); `Store.evaluate` (486) | AUTOMATION |
@@ -244,15 +244,15 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/server/src/automations.ts:308](../../packages/server/src/automations.ts#L308) `dryRunAutomation` | `Store.canViewRecord` (308); `Store.findIds` (308); `Store.auditLog` (324, 352, 360); `Store.select` (337); `Store.evaluate` (353) | AUTOMATION |
 | [packages/server/src/automations.ts:307](../../packages/server/src/automations.ts#L307) `dryRunAutomation/truth` | `Store.evaluateEach` (307) | AUTOMATION |
 | [packages/server/src/backup-verify.ts:152](../../packages/server/src/backup-verify.ts#L152) `testRestore` | `Store.recordCount` (152) | OPERATOR |
-| [packages/server/src/backup.ts:1113](../../packages/server/src/backup.ts#L1113) `accountDifferences/read` | `SQLite.all` (1113, 1115); `SQLite.prepare` (1113, 1115) | OPERATOR |
-| [packages/server/src/backup.ts:1226](../../packages/server/src/backup.ts#L1226) `columnInfo` | `SQLite.all` (1226); `SQLite.prepare` (1226) | OPERATOR |
-| [packages/server/src/backup.ts:1170](../../packages/server/src/backup.ts#L1170) `credentialsReadable` | `SQLite.all` (1170); `SQLite.prepare` (1170) | OPERATOR |
-| [packages/server/src/backup.ts:1140](../../packages/server/src/backup.ts#L1140) `readNames` | `SQLite.all` (1140); `SQLite.prepare` (1140) | OPERATOR |
-| [packages/server/src/backup.ts:1261](../../packages/server/src/backup.ts#L1261) `reconcileCredentials` | `SQLite.all` (1261, 1283, 1298, 1308, 1314); `SQLite.prepare` (1261, 1269, 1283, 1285, 1298, 1299, 1306, 1308, 1309, 1314, 1315, 1319, 1320, 1321); `SQLite.get` (1269, 1319) | OPERATOR |
-| [packages/server/src/backup.ts:1288](../../packages/server/src/backup.ts#L1288) `reconcileCredentials/accountColumns` | `SQLite.all` (1288); `SQLite.prepare` (1288) | OPERATOR |
-| [packages/server/src/backup.ts:1264](../../packages/server/src/backup.ts#L1264) `reconcileCredentials/has` | `SQLite.all` (1264); `SQLite.prepare` (1264) | OPERATOR |
-| [packages/server/src/backup.ts:1197](../../packages/server/src/backup.ts#L1197) `retainCurrentRecordIdMarks` | `SQLite.prepare` (1197, 1208, 1209, 1210); `SQLite.all` (1199, 1209); `SQLite.get` (1208) | OPERATOR |
-| [packages/server/src/backup.ts:1436](../../packages/server/src/backup.ts#L1436) `stageRestorePoint` | `SQLite.get` (1436, 1438, 1439); `SQLite.prepare` (1436, 1438, 1439) | OPERATOR |
+| [packages/server/src/backup.ts:1140](../../packages/server/src/backup.ts#L1140) `accountDifferences/read` | `SQLite.all` (1140, 1142); `SQLite.prepare` (1140, 1142) | OPERATOR |
+| [packages/server/src/backup.ts:1253](../../packages/server/src/backup.ts#L1253) `columnInfo` | `SQLite.all` (1253); `SQLite.prepare` (1253) | OPERATOR |
+| [packages/server/src/backup.ts:1197](../../packages/server/src/backup.ts#L1197) `credentialsReadable` | `SQLite.all` (1197); `SQLite.prepare` (1197) | OPERATOR |
+| [packages/server/src/backup.ts:1167](../../packages/server/src/backup.ts#L1167) `readNames` | `SQLite.all` (1167); `SQLite.prepare` (1167) | OPERATOR |
+| [packages/server/src/backup.ts:1288](../../packages/server/src/backup.ts#L1288) `reconcileCredentials` | `SQLite.all` (1288, 1310, 1325, 1335, 1341); `SQLite.prepare` (1288, 1296, 1310, 1312, 1325, 1326, 1333, 1335, 1336, 1341, 1342, 1346, 1347, 1348); `SQLite.get` (1296, 1346) | OPERATOR |
+| [packages/server/src/backup.ts:1315](../../packages/server/src/backup.ts#L1315) `reconcileCredentials/accountColumns` | `SQLite.all` (1315); `SQLite.prepare` (1315) | OPERATOR |
+| [packages/server/src/backup.ts:1291](../../packages/server/src/backup.ts#L1291) `reconcileCredentials/has` | `SQLite.all` (1291); `SQLite.prepare` (1291) | OPERATOR |
+| [packages/server/src/backup.ts:1224](../../packages/server/src/backup.ts#L1224) `retainCurrentRecordIdMarks` | `SQLite.prepare` (1224, 1235, 1236, 1237); `SQLite.all` (1226, 1236); `SQLite.get` (1235) | OPERATOR |
+| [packages/server/src/backup.ts:1463](../../packages/server/src/backup.ts#L1463) `stageRestorePoint` | `SQLite.get` (1463, 1465, 1466); `SQLite.prepare` (1463, 1465, 1466) | OPERATOR |
 | [packages/server/src/calendar.ts:389](../../packages/server/src/calendar.ts#L389) `CalendarFeeds/feed` | `Store.find` (389) | CALENDAR |
 | [packages/server/src/changes.ts:195](../../packages/server/src/changes.ts#L195) `ChangeFeed/visible` | `Store.canViewRecord` (195) | CHANGE |
 | [packages/server/src/cleanup.ts:1051](../../packages/server/src/cleanup.ts#L1051) `CleanupJournal/add` | `SQLite.prepare` (1051); `Store.sql` (1051) | CLEANUP |
