@@ -86,10 +86,10 @@ export function castsToTypes(sql: string): string {
       result += sql.slice(start, end + 1);
     } else {
       const operand = castsToTypes(body.slice(0, as));
-      const type = /^(\w+)(?:\s*\(\s*(\d+)(?:\s*,\s*(\d+))?\s*\))?\s*$/i.exec(body.slice(as + 2).trim());
-      const kind = type?.[1].toUpperCase();
+      const type = /^(\w+(?:\s+VARYING)?)(?:\s*\(\s*(\d+)(?:\s*,\s*(\d+))?\s*\))?\s*$/i.exec(body.slice(as + 2).trim());
+      const kind = type?.[1].toUpperCase().replace(/\s+/g, ' ');
       const digits = type ? type.slice(2).filter((digit): digit is string => digit !== undefined) : [];
-      if (type && (kind === 'VARCHAR' || kind === 'CHAR' || kind === 'CHARACTER') && type[3] === undefined) {
+      if (type && (kind === 'VARCHAR' || kind === 'CHAR' || kind === 'CHARACTER' || kind === 'CHAR VARYING' || kind === 'CHARACTER VARYING') && type[3] === undefined) {
         result += `fm_cast_text(${operand}, ${type[2] ?? '-1'})`;
       } else if (kind === 'DATE' || kind === 'TIME' || kind === 'TIMESTAMP') {
         result += `fm_cast_${kind.toLowerCase()}(${operand}${digits.map((digit) => `, ${digit}`).join('')})`;
