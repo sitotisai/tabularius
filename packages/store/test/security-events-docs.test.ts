@@ -30,18 +30,6 @@ const named = (kind: string): boolean => new RegExp(`(?<![\\w-])${kind}(?![\\w-]
 const UNDOCUMENTED = new Set<string>([
   // Schema
   'schema-changed',
-  // Audit log
-  'audit-settings-changed', 'audit-pruned',
-  // Blank passwords
-  'blank-password-lan-allowed', 'blank-password-lan-disallowed',
-  // Plug-ins
-  'plugin-installed', 'plugin-install-refused',
-  // Script network access
-  'script-network-on', 'script-network-off',
-  // SQL access
-  'sql-privilege-required', 'sql-privilege-not-required',
-  // Web viewer hosts
-  'web-viewer-hosts-changed',
   // Standby takeover
   'standby-takeover',
   // AI access
