@@ -9,6 +9,11 @@ import { RECORD_STEPS } from '../../scripts/src/recorder.ts';
 import { MAX_STREAMS_PER_SESSION, MAX_STREAM_BUFFER } from '../../server/src/live.ts';
 import { DEFAULT_LOG_LIMIT } from '../../server/src/server-logs.ts';
 import { maxRows } from '../../server/src/pgwire.ts';
+import { EDGE_LIMITS } from '../../server/src/edge-limits.ts';
+import { PRE_AUTH_BODY_LIMIT } from '../../server/src/request-gate.ts';
+import { MAX_CONTAINER_FILE, MAX_CONTAINER_UPLOAD_BYTES, MAX_CONTAINER_UPLOADS_PER_ACCOUNT } from '../../server/src/container-uploads.ts';
+import { MAX_PIECE, maxUploadInProgress } from '../../server/src/uploads.ts';
+import { LOCK_TTL_MS } from '../../store/src/activity.ts';
 import { root } from './docs-examples.ts';
 
 const WORDS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, ten: 10, fifteen: 15 };
@@ -20,6 +25,7 @@ const source = (file: string, pattern: RegExp): number => {
   return num(m[1]);
 };
 const MB = 1024 * 1024;
+const GIB = 1024 * MB;
 
 /** [page, the sentence with the figure in a capture group, the figure in the code]. */
 const FIGURES: [string, RegExp, () => number][] = [
@@ -33,6 +39,19 @@ const FIGURES: [string, RegExp, () => number][] = [
   ['docs/hosting-for-a-team.md', /return at most \*\*([\d,]+) rows\*\* by default/, () => maxRows()],
   ['docs/hosting-and-connecting.md', /files over a megabyte are stored in (\d+) MB pieces/, () => CONTAINER_CHUNK / MB],
   ['docs/hosting-for-a-team.md', /once a day into\s+`<folder>\/Backups\/<date_time>\/`, keeping the last (\d+)/, () => source('packages/server/src/backup.ts', /const keep = opts\.keep \?\? (\d+);/)],
+  ['ADMIN.md', /\*\*(\d+) GiB per-process\*\* spool budget/, () => MAX_CONTAINER_UPLOAD_BYTES / GIB],
+  ['ADMIN.md', /reserves the whole enforced limit \((\d+) GiB\)/, () => MAX_CONTAINER_FILE / GIB],
+  ['ADMIN.md', /\(default \*\*(\d+)\*\*, 20 GiB\)/, () => maxUploadInProgress()],
+  ['ADMIN.md', /Headers must finish within (\d+) seconds/, () => EDGE_LIMITS.headersMs / 1000],
+  ['ADMIN.md', /Bodies have a \*\*(\d+)-second idle timeout\*\*/, () => EDGE_LIMITS.bodyMs / 1000],
+  ['ADMIN.md', /declared at most (\d+) KiB, or chunked/, () => PRE_AUTH_BODY_LIMIT / 1024],
+  ['ADMIN.md', /within (\d+) seconds in total once the server has let the request in/, () => EDGE_LIMITS.smallBodyMs / 1000],
+  ['ADMIN.md', /Record leases expire after (\d+) seconds without renewal/, () => LOCK_TTL_MS / 1000],
+  ['ADMIN.md', /rotated at (\d+) MB \(`serve --log-limit/, () => DEFAULT_LOG_LIMIT / MB],
+  ['docs/data-api-compatibility.md', /`maxPiece` \((\d+) MiB\)/, () => MAX_PIECE / MB],
+  ['docs/data-api-compatibility.md', /The most a file can be is (\d+) GiB/, () => MAX_CONTAINER_FILE / GIB],
+  ['docs/data-api-compatibility.md', /an account may have (\d+) uploads going/, () => MAX_CONTAINER_UPLOADS_PER_ACCOUNT],
+  ['docs/data-api-compatibility.md', /all accounts together (\d+) GiB/, () => MAX_CONTAINER_UPLOAD_BYTES / GIB],
 ];
 
 test('the figures the guides state are the code\'s', () => {
