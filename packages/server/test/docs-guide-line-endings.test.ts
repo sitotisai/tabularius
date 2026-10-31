@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { docsHtml } from '../src/docs.ts';
 
 // Run in a child process with a small heap and a time limit: the unfixed code never leaves its loop, it only fills memory.
-import { spawnSync } from 'node:child_process';
 
 const page = (markdown: string): string => {
   const code = `import { docsHtml } from ${JSON.stringify(new URL('../src/docs.ts', import.meta.url).href)};
@@ -23,6 +23,6 @@ test('a guide written with Windows line endings, or a list line holding a line s
   assert.match(separator, /<li>next<\/li>/);
 });
 
-test('the same text in the plain documentation mode is unchanged', () => {
+test('the plain documentation mode reads CRLF text as it reads LF text', () => {
   assert.equal(docsHtml('# T\r\n\r\nSome text\r\n', 'T'), docsHtml('# T\n\nSome text\n', 'T'));
 });
