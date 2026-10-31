@@ -245,9 +245,10 @@ engine runs in a **no-network, no-mail sandbox** by default:
   would make network or mail requests, external SQL/ODBC sources, Perform Script
   on Server to another host — do nothing (or report that they're offline)
   instead of reaching the network.
-- Scripts reach the network only for a file whose **Script network** switch an
-  administrator turned on in the admin console (off by default for every new or
-  converted file and for `tabularius demo`), or on every file when the server is
+- Scripts reach the network only for a file whose **Script network** switch is
+  on (it is on for a new file and starts off for a converted file and for
+  `tabularius demo`; an administrator changes it in the admin console), or on
+  every file when the server is
   started with `--allow-script-network`. A script that runs in, or performs a
   script of, a file whose switch is off gets error 3. Even then:
   - **scheduled scripts, automations and inbound hooks stay offline** unless the
