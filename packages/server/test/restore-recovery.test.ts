@@ -65,7 +65,9 @@ test('two claimant processes racing a stale pid leave exactly one owner each tim
     const claims = await pair.send('claim');
     const winners = claims.filter((result) => result.claimed);
     assert.equal(winners.length, 1, `round ${round}: ${JSON.stringify(claims)}`);
-    assert.match(claims.find((result) => !result.claimed).error, /already hosted/);
+    const loser = claims.find((result) => !result.claimed);
+    // A refusal for any other reason names where it threw, so a failure on a runner we cannot log into says what happened.
+    assert.match(loser.error, /already hosted/, `round ${round}: ${loser.stack ?? loser.error}`);
     assert.equal(readFileSync(join(folder, '.openhbam.pid'), 'utf8'), String(winners[0].pid));
     await pair.send('release');
     assert.equal(existsSync(join(folder, '.openhbam.pid')), false);
