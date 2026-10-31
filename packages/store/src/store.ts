@@ -4199,7 +4199,8 @@ export class Store {
   setScriptNetwork(on: boolean, opts: { account?: string } = {}): void {
     if (typeof on !== 'boolean') throw new StoreError(960, 'Script network access must be true or false');
     this.securityChange(() => {
-      if (on === this.scriptNetwork) return;
+      // An administrator's choice is saved even when it matches the default, so a later conversion keeps it.
+      if (on === this.scriptNetwork && this.meta('scriptNetwork') !== undefined) return;
       this.sql.prepare(`INSERT INTO _fm_meta VALUES ('scriptNetwork', ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json`).run(JSON.stringify(on));
       this.logSecurity(on ? 'script-network-on' : 'script-network-off', { account: opts.account ?? null });
     });

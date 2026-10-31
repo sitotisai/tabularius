@@ -2275,6 +2275,8 @@ export class ScriptEngine {
     const t = triggers?.find((x) => x.event === event && (x.modes ?? ['browse']).includes(mode));
     const script = t && w.store.schema.scripts.find((x) => x.id === t.scriptId);
     if (!t || !script) return undefined;
+    // A held file's trigger is its own code: not its script, and not the parameter formula either, which would run first.
+    if (w.store.held) return undefined;
     const key = `${w.store.name}\u0000${where}\u0000${event}`;
     let running = this.runningTriggers.get(w);
     if (running?.has(key)) return undefined;
@@ -5433,6 +5435,9 @@ export class ScriptEngine {
       setVariable: (name, rep, value) => this.setVariable(f, name, rep, value),
       customFunction: (name) => {
         this.poll(f);
+        // A held file's custom functions are its own code: a script that is in another file's window (Open File, a
+        // related record in a new window) must not run them, and with the file's network setting on they could reach out.
+        if (win.store.held) return undefined;
         return customFunctionDef(win.store.schema.customFunctions.find((c) => c.name.toLowerCase() === name.toLowerCase()));
       },
       plugin: (name) => win.store.plugin(name),

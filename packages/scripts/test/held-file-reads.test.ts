@@ -64,3 +64,20 @@ test('a script that lives in the held file does not run, whoever calls it', asyn
   assert.equal((await runScript(data, 'Own')).result, 'ran');
   data.held = { reason: 'not seen before', since: new Date().toISOString() };
 });
+
+test('a held file\'s custom functions and triggers do not run when a script of an approved file has its window current', async () => {
+  data.applyDesign([
+    { op: 'createCustomFunction', name: 'Mine', parameters: [], formula: '"held code"' },
+    { op: 'createScript', name: 'Startup', text: 'Set Variable [ $$opened ; Value: "yes" ]' },
+    { op: 'setFileOptions', onFirstWindowOpen: 'Startup' },
+  ]);
+  const text = 'Open File [ “Data” ]\nSelect Window [ Name: "Data" ]\nSet Variable [ $x ; Value: Mine ]\nExit Script [ Text Result: $x & "|" & $$opened ]';
+  const heldRun = await runScript(ui, script(text), { layout: 'ExternalItems' });
+  assert.equal(heldRun.result, '?|', 'neither the function nor the file\'s OnFirstWindowOpen script ran');
+  data.held = undefined;
+  try {
+    assert.equal((await runScript(ui, script(text), { layout: 'ExternalItems' })).result, 'held code|yes');
+  } finally {
+    data.held = { reason: 'not seen before', since: new Date().toISOString() };
+  }
+});
