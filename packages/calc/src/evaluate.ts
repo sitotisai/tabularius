@@ -303,7 +303,7 @@ function recursionStackMessage(name: string, level: number): string {
   return `${name} recursed too deeply: this server's stack ran out at level ${level} (Tabularius allows ${MAX_DEPTH.toLocaleString('en-US')} nested calls). Rewrite ${name} as a loop with While.`;
 }
 /** Number functions that keep a decimal argument's digits even outside SetPrecision. */
-const TARGETED_DECIMAL_FUNCTIONS = new Set(['abs', 'int', 'round', 'truncate', 'mod', 'div', 'sum', 'average', 'min', 'max']);
+const TARGETED_DECIMAL_FUNCTIONS = new Set(['abs', 'int', 'ceiling', 'floor', 'round', 'truncate', 'mod', 'div', 'sum', 'average', 'min', 'max']);
 
 // The evaluator's own stack (see Env.run). Each kind is one step of work.
 const EVAL = 0, TRACE = 1, CALL = 2, LET_BIND = 3, LET_BODY = 4, SCOPE_END = 5, UNARY = 6, AND_OR = 7, AND_OR_B = 8, BIN = 9,
