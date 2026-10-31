@@ -36,3 +36,15 @@ test('a file converted from a .fmp12 starts with script network access off', { s
   assert.equal(store.scriptNetwork, false);
   store.close();
 });
+
+test('turning it on in a file with no saved setting saves the choice', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'script-network-saved-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const path = join(dir, 'Plain.openhbam.sqlite');
+  createStore(path);
+  const store = new Store(path, 'Plain');
+  store.setScriptNetwork(true, { account: 'test' });
+  assert.equal(store.sql.prepare("SELECT json FROM _fm_meta WHERE key = 'scriptNetwork'").get()?.json, 'true');
+  assert.equal(store.securityEvents({ kind: 'script-network-on' }).length, 1);
+  store.close();
+});
