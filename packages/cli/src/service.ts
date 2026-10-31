@@ -959,14 +959,22 @@ function fromFiles(app: string, source: string): Fetched {
   };
 }
 
+/** What the single-file program tells a person who asks it to upgrade: it is replaced by the newer release, which is installed differently on Windows. */
+export function singleFileUpgradeAdvice(platform: NodeJS.Platform): string {
+  const how = platform === 'win32'
+    ? 'download the newer windows-x64.exe from https://github.com/sitotisai/tabularius/releases/latest and put it in place of this program (stop the service first if one runs it)'
+    : 'run the install command again (curl -fsSL https://github.com/sitotisai/tabularius/releases/latest/download/get.sh | sh)';
+  return `this is the single-file program, which upgrades by installing the newer release over it: ${how}, then restart the service if one runs it`;
+}
+
 /**
  * Brings this checkout up to date (from its git remote, or from a bundle,
  * tarball or folder with `from`) and, when a service runs it, restarts the
  * service on the new version, going back to the old one if it doesn't come up.
  */
-export async function upgrade(opts: { backup?: (folder: string, extra: string[]) => Promise<string>; app?: string; home?: string; restart?: (s: Installed) => void; waitMs?: number; deadMs?: number; from?: string; install?: (app: string) => void; singleFile?: boolean }): Promise<void> {
+export async function upgrade(opts: { backup?: (folder: string, extra: string[]) => Promise<string>; app?: string; home?: string; restart?: (s: Installed) => void; waitMs?: number; deadMs?: number; from?: string; install?: (app: string) => void; singleFile?: boolean; platform?: NodeJS.Platform }): Promise<void> {
   // The single-file program is not a checkout: it is replaced by installing the newer release over it.
-  if ((opts.singleFile ?? isSea()) && !opts.from) throw new Error('this is the single-file program, which upgrades by installing the newer release over it: run the install command again (curl -fsSL https://github.com/sitotisai/tabularius/releases/latest/download/get.sh | sh), then restart the service if one runs it');
+  if ((opts.singleFile ?? isSea()) && !opts.from) throw new Error(singleFileUpgradeAdvice(opts.platform ?? process.platform));
   const installDeps = opts.install ?? installDependencies;
   const s = installed(opts.home);
   // Refuse before fetching files, backing up or stopping the running service.

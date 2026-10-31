@@ -879,17 +879,6 @@ export class Env {
     }
   }
 
-  /** Run fn with only the given scope visible (custom function bodies cannot see the caller's Let names). */
-  isolated<T>(scope: Map<string, Value>, fn: () => T): T {
-    const saved = this.scopes;
-    this.scopes = [scope];
-    try {
-      return fn();
-    } finally {
-      this.scopes = saved;
-    }
-  }
-
   /** Let binding: $names set script variables, other names the innermost scope. */
   bind(name: string, value: Value, rep?: Node): void {
     if (name.startsWith('$')) {

@@ -216,17 +216,17 @@ function warnCleanup(error: unknown): void {
  * throwing. Pass { throwOnError: true } when removal itself is the operation.
  */
 export function cleanupPath(path: string, { onError = warnCleanup, ...options }: CleanupOptions = { force: true }): PathCleanup {
-  const p = name(path), checkParents = parents(p), before = leaf(p), beforeId = fileId(p);
-  if (!before) return () => {}; // absence is not ownership of a future entry
+  // One look at the entry gives both answers: whether it is there, and which entry it is.
+  const p = name(path), checkParents = parents(p), beforeId = fileId(p);
+  if (beforeId === undefined) return () => {}; // absence is not ownership of a future entry
   return ({ throwOnError = false } = {}) => {
     try {
       checkParents();
-      const current = leaf(p), currentId = fileId(p);
-      if (!current || currentId !== beforeId) return;
+      const currentId = fileId(p);
+      if (currentId === undefined || currentId !== beforeId) return;
       boundary({ operation: 'remove', phase: 'checked', path: p });
       checkParents();
-      const next = leaf(p);
-      if (!next || fileId(p) !== currentId) return;
+      if (fileId(p) !== currentId) return;
       fs.rmSync(p, options);
     } catch (error) {
       if (['ENOENT', 'ESTALE', 'ENOTDIR'].includes((error as NodeJS.ErrnoException | null)?.code ?? '')) return;

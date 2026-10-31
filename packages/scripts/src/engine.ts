@@ -2920,7 +2920,7 @@ export class ScriptEngine {
         const replyTo = bare(m.from)[0];
         const attachments: { name: string; data: Uint8Array }[] = [];
         for (const a of m.attachments) {
-          const path = this.sandboxPath(a);
+          const path = this.quietPath(a);
           if (!path || !existsSync(path)) throw new CalcError(ERR.calculation, `${via}: the attachment "${basename(a)}" wasn't found`);
           attachments.push({ name: basename(path), data: readFileSync(path) });
         }
@@ -7343,6 +7343,17 @@ export class ScriptEngine {
     }
   }
 
+  /**
+   * sandboxPath for the callers that have no step error to give (plug-in file functions, mail attachments): a name or
+   * path Windows refuses is a file that is not there, as it is for a name too long where the system reports it only on use.
+   */
+  private quietPath(raw: string, entry = false): string | undefined {
+    try { return this.sandboxPath(raw, entry); } catch (e) {
+      if (e instanceof ScriptError && e.code === ERROR.invalidPath) return undefined;
+      throw e;
+    }
+  }
+
   /** Whether an otherwise refused Documents path crosses a link. */
   private documentsLink(raw: string): boolean {
     if (!this.opts.documents) return false;
@@ -7365,16 +7376,12 @@ export class ScriptEngine {
   /** Text files for plug-in functions (BE_FileReadText and friends), in the same folders as the file steps. */
   private readonly pluginFiles: PluginFiles = {
     read: (raw) => {
-      const path = this.sandboxPath(raw);
+      const path = this.quietPath(raw);
       return path && existsSync(path) && statSync(path).isFile() ? new Uint8Array(readFileSync(path)) : undefined;
     },
     write: (raw, content, append) => {
-      let path: string | undefined;
-      try { path = this.sandboxPath(raw); } catch (e) {
-        // A name Windows refuses up front is the failed write that a too-long name is where the system reports it only when writing.
-        if (e instanceof ScriptError && e.code === ERROR.invalidPath) return false;
-        throw e;
-      }
+      // A name Windows refuses up front is the failed write that a too-long name is where the system reports it only when writing.
+      const path = this.quietPath(raw);
       if (!path || !existsSync(dirname(path)) || (existsSync(path) && !statSync(path).isFile())) return false;
       try {
         if (append) appendFileSync(path, content);
@@ -7391,7 +7398,7 @@ export class ScriptEngine {
       return true;
     },
     size: (raw) => {
-      const path = this.sandboxPath(raw);
+      const path = this.quietPath(raw);
       return path && existsSync(path) ? statSync(path).size : undefined;
     },
     makeFolder: (raw) => this.fsCode(() => mkdirSync(this.sandboxed(raw.replace(/[/\\]+$/, '')), { recursive: true })),
@@ -7407,7 +7414,7 @@ export class ScriptEngine {
     }),
     copy: (from, to, overwrite) => this.fsCode(() => cpSync(this.sandboxed(from, true), this.sandboxed(to, true), { recursive: true, force: overwrite, errorOnExist: !overwrite })),
     list: (raw, recurse) => {
-      const path = this.sandboxPath(raw.replace(/[/\\]+$/, ''));
+      const path = this.quietPath(raw.replace(/[/\\]+$/, ''));
       if (!path || !existsSync(path) || !statSync(path).isDirectory()) return undefined;
       const out: { path: string; folder: boolean }[] = [];
       const walk = (dir: string, prefix: string) => {
@@ -7420,7 +7427,7 @@ export class ScriptEngine {
       return out;
     },
     modified: (raw) => {
-      const path = this.sandboxPath(raw);
+      const path = this.quietPath(raw);
       return path && existsSync(path) ? statSync(path).mtime : undefined;
     },
   };
@@ -9064,7 +9071,7 @@ export class ScriptEngine {
       }),
       mail: (via, m) => {
         const attachments = m.attachments.flatMap((a) => {
-          const path = this.sandboxPath(a);
+          const path = this.quietPath(a);
           if (!path || !existsSync(path)) return [];
           const data = readFileSync(path);
           return [{ name: basename(path), size: data.length, ...(data.length <= OUTBOX_ATTACHMENT_LIMIT ? { data: data.toString('base64') } : {}) }];

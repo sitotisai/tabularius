@@ -288,12 +288,12 @@ test('a write that finds the usage database held by another process asks again, 
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-ai-usage-held-'));
   try {
     const u = new AiUsage(dir, 100);
-    // Another process holds the write lock for 150 ms: longer than one 100 ms wait, shorter than the several this write makes.
+    // Another process holds the write lock for 60 ms: longer than one wait (a quarter of the 100 ms this write may wait in all), shorter than all of them.
     const code = `const { DatabaseSync } = require('node:sqlite');
       const db = new DatabaseSync(${JSON.stringify(join(dir, '.openhbam-ai-usage.sqlite'))});
       db.exec('BEGIN IMMEDIATE');
       console.log('held');
-      setTimeout(() => { db.exec('COMMIT'); db.close(); }, 150);`;
+      setTimeout(() => { db.exec('COMMIT'); db.close(); }, 60);`;
     const holder = spawn(process.execPath, ['--no-warnings', '-e', code], { stdio: ['ignore', 'pipe', 'inherit'] });
     const exited = new Promise<void>((resolve) => holder.on('exit', () => resolve()));
     await new Promise<void>((resolve, reject) => {

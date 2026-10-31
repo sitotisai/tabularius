@@ -406,13 +406,13 @@ export function scheduleBackups(folder: string, opts: { every: number; dest?: st
   const run = async () => {
     due = undefined;
     const dest = schedule.dest;
-    if (neverHeldAFile(folder, dest)) {
-      // A new install hosts an empty folder until the first file arrives: say so instead of reporting a failure.
-      log('backup: nothing to back up yet; the first backup runs once a file is hosted');
-      if (!stopped) next(opts.every);
-      return;
-    }
     try {
+      // A new install hosts an empty folder until the first file arrives: say so instead of reporting a failure.
+      if (neverHeldAFile(folder, dest)) {
+        log('backup: nothing to back up yet; the first backup runs once a file is hosted');
+        if (!stopped) next(opts.every);
+        return;
+      }
       const r = await backupFolder(folder, dest, keep, undefined, { stoppable: true });
       const message = `${r.files.length} files to ${r.dir}${r.removed.length ? `, removed ${r.removed.length} old` : ''}`;
       log(`backup: ${message}`);
@@ -592,22 +592,49 @@ let ownWindowsIdentity: { started: string; command: string } | undefined;
 const WINDOWS_IDENTITY_SCRIPT = (pid: number) => `try { $p = [System.Diagnostics.Process]::GetProcessById(${pid}) } catch { 'gone'; exit }
 try { [DateTimeOffset]::new($p.StartTime).ToUnixTimeMilliseconds() } catch { 'denied' }`;
 
+/** Runs one PowerShell command; a timeout is asked again once with a longer wait. */
+function askPowerShell(command: string): string {
+  const powershell = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const args = ['-NoProfile', '-NonInteractive', '-Command', command];
+  try {
+    return execFileSync(powershell, args, { encoding: 'utf8', timeout: 20_000, windowsHide: true }).trim();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ETIMEDOUT') throw error;
+    return execFileSync(powershell, args, { encoding: 'utf8', timeout: 90_000, windowsHide: true }).trim();
+  }
+}
+
+/**
+ * A process's identity as an earlier Windows build wrote it into the pid-owner record: WMI's creation date text and the
+ * command line. Only asked for when the record on disk is in that form, so a server started by the old build is still
+ * found by a restore, an upgrade or a second serve.
+ */
+function windowsLegacyIdentity(pid: number): { started: string; command: string } | undefined {
+  const output = askPowerShell(`Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" | Select-Object CreationDate,CommandLine | ConvertTo-Json -Compress`);
+  if (!output) return undefined;
+  const value = JSON.parse(output) as { CreationDate?: string; CommandLine?: string };
+  if (!value.CreationDate) throw new Error('could not read the process creation time');
+  return { started: value.CreationDate, command: value.CommandLine ?? '' };
+}
+
+/**
+ * Whether a pid-owner record names this running process. On Windows a record whose start time is not Unix milliseconds
+ * was written by an earlier build in another format; it is compared in that format, not found to differ.
+ */
+export function ownerMatches(owner: { pid: number; started: string; command?: string; ino: number }, pid: number, ino: number,
+  identity: { started: string; command: string }, platform: string = process.platform, legacy: (pid: number) => { started: string; command: string } | undefined = windowsLegacyIdentity): boolean {
+  if (owner.pid !== pid || owner.ino !== ino) return false;
+  const now = platform === 'win32' && !/^\d+$/.test(owner.started) ? legacy(pid) : identity;
+  return !!now && owner.started === now.started && owner.command === now.command;
+}
+
 /**
  * Asks Windows for a process's start time. The .NET call takes a fraction of a second; WMI (Get-CimInstance) takes seconds to
  * start and stalls for far longer on a busy machine, where the server's start waited on it. A timeout is asked again once with a longer wait.
  * Windows has no command line here: the start time to the millisecond is what tells one process from another that was given the same number.
  */
 function windowsProcessIdentity(pid: number): { started: string; command: string } | undefined {
-  const powershell = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-  const ask = (command: string): string => {
-    const args = ['-NoProfile', '-NonInteractive', '-Command', command];
-    try {
-      return execFileSync(powershell, args, { encoding: 'utf8', timeout: 20_000, windowsHide: true }).trim();
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ETIMEDOUT') throw error;
-      return execFileSync(powershell, args, { encoding: 'utf8', timeout: 90_000, windowsHide: true }).trim();
-    }
-  };
+  const ask = askPowerShell;
   let answer = ask(WINDOWS_IDENTITY_SCRIPT(pid));
   if (answer === 'gone') return undefined;
   if (answer === 'denied') {
@@ -666,7 +693,7 @@ export function runningServer(folder: string): number | undefined {
   if (!identity) return undefined;
   try {
     const owner = JSON.parse(readFileSync(join(key, PID_OWNER), 'utf8')) as { pid: number; started: string; command?: string; ino: number };
-    return owner.pid === pid && owner.ino === statSync(file).ino && owner.started === identity.started && owner.command === identity.command ? pid : undefined;
+    return ownerMatches(owner, pid, statSync(file).ino, identity) ? pid : undefined;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }

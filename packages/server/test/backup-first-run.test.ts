@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, renameSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore } from '../../store/src/index.ts';
@@ -42,6 +42,29 @@ test('a folder that lost its files after a backup still reports the failure', as
     schedule.stop();
     assert.match(line, /^backup failed: .*no database files/);
     assert.equal(schedule.last?.ok, false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a backup folder that cannot be read is reported as a failed backup, and the schedule goes on', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-backup-unreadable-'));
+  const dest = join(dir, 'Backups');
+  mkdirSync(dest);
+  try {
+    const alive = setTimeout(() => {}, 30_000);
+    const { line, schedule } = await new Promise<{ line: string; schedule: ReturnType<typeof scheduleBackups> }>((resolve) => {
+      const schedule = scheduleBackups(dir, { every: 50, dest, log: (line) => { clearTimeout(alive); resolve({ line, schedule }); } });
+      // The folder goes bad after the schedule is set up: listing it then throws, which used to escape the timer with nothing to catch it.
+      rmSync(dest, { recursive: true });
+      writeFileSync(dest, 'not a folder');
+    });
+    await new Promise((r) => setImmediate(r));
+    const armed = schedule.nextAt();
+    schedule.stop();
+    assert.match(line, /^backup failed:/);
+    assert.equal(schedule.last?.ok, false);
+    assert.ok(armed !== undefined, 'the next backup is scheduled');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
