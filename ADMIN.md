@@ -877,6 +877,22 @@ rule on, only an account that may view the whole table can.
 | `scim-token-issued` | A provisioning (SCIM) token was issued, so an identity provider can add, change and remove accounts; the entry shows when it expires. |
 | `scim-token-revoked` | The provisioning (SCIM) token was revoked. |
 
+**Audit log, empty passwords, plug-ins, script network access, SQL access and web viewer hosts.**
+
+| Kind | Recorded when |
+| --- | --- |
+| `audit-settings-changed` | The file's audit log settings were saved with a change: hiding sensitive names, the fields left out of the log, whether reads are logged, or how many days entries are kept. The entry lists what changed (for example "entries kept 90 days"). Saving the same settings again writes nothing. |
+| `audit-pruned` | The hourly clean-up removed record-change entries older than the file's retention setting. The entry shows how many went, the number of the last one removed and the number of days; the record chain notes that they were removed. Security events are not removed. |
+| `blank-password-lan-allowed` | An administrator let accounts with an empty password sign in from private-network addresses, not only from the server's own computer. The entry does not name an account. |
+| `blank-password-lan-disallowed` | That allowance was turned off again, so accounts with an empty password work from the server's own computer only. |
+| `plugin-installed` | A script's Install Plug-In File step installed a plug-in package. The entry shows the plug-in's id and version, the script, and who signed the package. Installing does not turn the plug-in on for a file. |
+| `plugin-install-refused` | An Install Plug-In File step was refused, or the package did not pass its checks. The entry shows the script and the reason. |
+| `script-network-on` | An administrator turned Script network access on for the file, so its scripts can reach the network. |
+| `script-network-off` | Script network access was turned off for the file. |
+| `sql-privilege-required` | SQL reaching this file through another hosted file was made to need the `fmxdbc` extended privilege in this file as well. |
+| `sql-privilege-not-required` | That requirement was removed. |
+| `web-viewer-hosts-changed` | The list of web hosts the file's web viewers may load was changed. The entry shows the hosts added and the hosts removed. A save that leaves the list as it was writes nothing. |
+
 ## Putting a record back
 
 In the admin console's **Audit log**, **History** on any record change lists
