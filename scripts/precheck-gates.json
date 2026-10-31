@@ -94,5 +94,9 @@
   {
     "file": "packages/server/test/docs-fmcsadmin-parity.test.ts",
     "reason": "Checks that each command on the fmcsadmin page maps to Admin API routes in the REST reference"
+  },
+  {
+    "file": "packages/server/test/docs-plugins-not-loaded.test.ts",
+    "reason": "Checks README.md and docs/features.md say FileMaker plug-ins are never loaded and name the sandboxed Tabularius plug-in exception"
   }
 ]
