@@ -1,0 +1,193 @@
+# Downloads the PUBLISHED Windows program from a GitHub release (the latest one, or the tag you give),
+# checks it against the release's SHA256SUMS, runs `--version`, then runs `tabularius demo`, checks the
+# sign-in page and the demo account, stops the demo with Ctrl-C and checks that it cleaned up after itself.
+# It uses nothing from this repository's source: only what a person would download.
+# Runs on a GitHub-hosted Windows machine (free for a public repository). It runs when the branch
+# ci/windows-release-check is pushed and by hand from the Actions tab; it is a one-off check, not for main.
+name: windows-release-check
+on:
+  push:
+    branches: [ci/windows-release-check]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to test, such as v0.1.0 (empty: the latest release)'
+        required: false
+        default: ''
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG_INPUT: ${{ inputs.tag }}
+    steps:
+      - name: The machine
+        run: |
+          [System.Environment]::OSVersion.VersionString
+          (Get-CimInstance Win32_OperatingSystem).Caption
+          [System.Environment]::Is64BitOperatingSystem
+          $env:PROCESSOR_ARCHITECTURE
+          "WORK=$env:RUNNER_TEMP\check" | Out-File -Append $env:GITHUB_ENV
+
+      - name: Download the release files
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          New-Item -ItemType Directory -Force $env:WORK | Out-Null
+          $tag = $env:TAG_INPUT
+          if (-not $tag) { $tag = (gh release view --repo $env:GITHUB_REPOSITORY --json tagName -q .tagName) }
+          if ($tag -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') { throw "not a release tag: $tag" }
+          $version = $tag.Substring(1)
+          "tag=$tag" | Out-File -Append $env:GITHUB_ENV
+          "version=$version" | Out-File -Append $env:GITHUB_ENV
+          $exeName = "tabularius-$version-windows-x64.exe"
+          "exeName=$exeName" | Out-File -Append $env:GITHUB_ENV
+          # The same addresses a person's browser or Invoke-WebRequest would use.
+          foreach ($name in @($exeName, 'SHA256SUMS')) {
+            $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/$name"
+            Write-Host "GET $url"
+            Invoke-WebRequest -Uri $url -OutFile (Join-Path $env:WORK $name) -UseBasicParsing
+          }
+          Get-ChildItem $env:WORK | Format-Table Name, Length
+
+      - name: Check it against SHA256SUMS
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Join-Path $env:WORK $env:exeName
+          $actual = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
+          $line = Get-Content (Join-Path $env:WORK 'SHA256SUMS') | Where-Object { $_ -match [regex]::Escape($env:exeName) + '$' }
+          if (-not $line) { throw "SHA256SUMS has no line for $env:exeName" }
+          if (@($line).Count -ne 1) { throw "SHA256SUMS has $(@($line).Count) lines for $env:exeName" }
+          $listed = ($line -split '\s+')[0].ToLower()
+          Write-Host "listed : $listed"
+          Write-Host "actual : $actual"
+          if ($listed -ne $actual) { throw 'CHECKSUM MISMATCH' }
+          Write-Host 'checksum matches'
+          $sig = Get-AuthenticodeSignature $exe
+          Write-Host "Authenticode signature status: $($sig.Status) ($($sig.StatusMessage))"
+          "(information only) Authenticode: $($sig.Status)" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+
+      - name: Run --version and --help
+        run: |
+          $exe = Join-Path $env:WORK $env:exeName
+          $out = & $exe --version 2>&1 | Out-String
+          $code = $LASTEXITCODE
+          Write-Host $out
+          Write-Host "exit code: $code"
+          if ($code -ne 0) { throw "--version exited $code" }
+          if ($out -notmatch [regex]::Escape($env:version)) { throw "--version does not mention $env:version" }
+          $help = & $exe --help 2>&1 | Out-String
+          Write-Host "--help exit code: $LASTEXITCODE, $($help.Length) characters"
+          if ($LASTEXITCODE -ne 0) { throw '--help failed' }
+
+      - name: Run tabularius demo, sign in, stop it with Ctrl-C, check cleanup
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          $exe = Join-Path $env:WORK $env:exeName
+          $demoTmp = Join-Path $env:WORK 'demo-tmp'
+          New-Item -ItemType Directory -Force $demoTmp | Out-Null
+          $outFile = Join-Path $env:WORK 'demo.out'
+          $errFile = Join-Path $env:WORK 'demo.err'
+          # The demo makes its folder in the temporary folder; point that at an empty one to see exactly what it leaves.
+          $env:TEMP = $demoTmp; $env:TMP = $demoTmp
+          $p = Start-Process -FilePath $exe -ArgumentList 'demo' -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+          Write-Host "started demo, pid $($p.Id)"
+          $url = $null; $password = $null
+          for ($i = 0; $i -lt 120 -and -not $url; $i++) {
+            Start-Sleep -Milliseconds 500
+            if ($p.HasExited) { break }
+            $text = Get-Content $outFile -Raw -ErrorAction SilentlyContinue
+            if ($text -match 'Open\s+(http://\S+)' ) { $url = $Matches[1] }
+            if ($text -match 'Password\s+(\S+)') { $password = $Matches[1]; Write-Host "::add-mask::$password" }
+          }
+          Write-Host '--- demo output (password hidden) ---'
+          (Get-Content $outFile -Raw) -replace 'Password\s+\S+', 'Password  ***'
+          Write-Host '--- demo errors ---'
+          Get-Content $errFile -Raw
+          Write-Host '-------------------------------------'
+          if (-not $url) { throw "the demo did not print an address (exited: $($p.HasExited))" }
+          $leftDuring = @(Get-ChildItem $demoTmp -Directory -Filter 'tabularius-demo-*')
+          Write-Host "demo folders in the temp folder while running: $($leftDuring.Count)"
+
+          $failures = @()
+          $r = Invoke-WebRequest -Uri $url -UseBasicParsing
+          Write-Host "GET $url -> HTTP $($r.StatusCode)"
+          if ($r.StatusCode -ne 200) { $failures += "sign-in page gave HTTP $($r.StatusCode)" }
+
+          # Sign in as Admin with the printed password through the Data API (the web page does the same call).
+          try {
+            $base = $url -replace '/app/?$', ''
+            $pair = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("Admin:$password"))
+            $s = Invoke-WebRequest -Method Post -Uri "$base/fmi/data/vLatest/databases/CRM/sessions" -Headers @{ Authorization = "Basic $pair" } -ContentType 'application/json' -Body '{}' -UseBasicParsing
+            Write-Host "Data API sign-in as Admin -> HTTP $($s.StatusCode)"
+          } catch { $failures += "Data API sign-in failed: $($_.Exception.Message)" }
+
+          # Stop it the way a person does: Ctrl-C on its console. A separate process sends it (it must attach to the demo's console).
+          $sender = Join-Path $env:RUNNER_TEMP 'send-ctrl-c.ps1'
+          @'
+          param([int]$ProcessId)
+          Add-Type -TypeDefinition @"
+          using System; using System.Runtime.InteropServices;
+          public static class Cc {
+            [DllImport("kernel32.dll", SetLastError=true)] static extern bool AttachConsole(uint pid);
+            [DllImport("kernel32.dll", SetLastError=true)] static extern bool FreeConsole();
+            [DllImport("kernel32.dll")] static extern bool SetConsoleCtrlHandler(IntPtr h, bool add);
+            [DllImport("kernel32.dll", SetLastError=true)] static extern bool GenerateConsoleCtrlEvent(uint ev, uint grp);
+            public static string Send(uint pid) {
+              FreeConsole();
+              if (!AttachConsole(pid)) return "AttachConsole failed, error " + Marshal.GetLastWin32Error();
+              SetConsoleCtrlHandler(IntPtr.Zero, true);
+              bool ok = GenerateConsoleCtrlEvent(0, 0);
+              int err = Marshal.GetLastWin32Error();
+              System.Threading.Thread.Sleep(1500);
+              FreeConsole();
+              return ok ? "sent" : "GenerateConsoleCtrlEvent failed, error " + err;
+            }
+          }
+          "@
+          [Cc]::Send([uint32]$ProcessId)
+          '@ | Set-Content $sender
+          $sent = pwsh -NoProfile -File $sender -ProcessId $p.Id
+          Write-Host "Ctrl-C: $sent"
+          $graceful = $p.WaitForExit(20000)
+          $harness = $false
+          if (-not $graceful) {
+            $harness = $true
+            Write-Host "::warning::the demo did not stop on Ctrl-C within 20 s; stopping it by force (the test harness may not deliver Ctrl-C, so cleanup cannot be judged)"
+            taskkill /pid $p.Id /t /f | Out-Host
+            $p.WaitForExit(10000) | Out-Null
+          } else {
+            Write-Host "demo exited on Ctrl-C, exit code $($p.ExitCode)"
+          }
+          Start-Sleep -Seconds 2
+          $left = @(Get-ChildItem $demoTmp -Force -ErrorAction SilentlyContinue)
+          Write-Host "items left in the demo's temp folder after stopping: $($left.Count)"
+          $left | ForEach-Object { Write-Host "  left: $($_.Name)" }
+          $still = @(Get-Process | Where-Object { $_.ProcessName -like 'tabularius*' })
+          Write-Host "tabularius processes still running: $($still.Count)"
+          $listening = $false
+          try { Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 3 | Out-Null; $listening = $true } catch {}
+          Write-Host "address still answering: $listening"
+
+          $summary = @()
+          $summary += "- Demo started and printed an address: yes"
+          $summary += "- Sign-in page HTTP status: $($r.StatusCode)"
+          $summary += "- Stopped by Ctrl-C: $graceful"
+          $summary += "- Files left behind in the temp folder: $($left.Count)"
+          $summary += "- Process still running: $($still.Count -gt 0); address still answering: $listening"
+          if ($failures) { $summary += "- FAILURES: $($failures -join '; ')" }
+          if ($harness) { $summary += "- INCONCLUSIVE: Ctrl-C was not delivered by this test harness, so cleanup was not judged" }
+          $summary | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          $summary | ForEach-Object { Write-Host $_ }
+
+          if ($failures) { throw ($failures -join '; ') }
+          if ($graceful -and ($left.Count -gt 0 -or $still.Count -gt 0 -or $listening)) { throw 'the demo stopped on Ctrl-C but did not clean up' }
+          if ($harness) { throw 'Ctrl-C was not delivered; cleanup not judged' }
+          Write-Host 'RESULT: PASS'
