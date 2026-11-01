@@ -1,6 +1,6 @@
 // Server-owned pieces of the CRM showcase. The store starter remains plain design data.
 import type { DesignOp, Store } from '../../store/src/index.ts';
-import { modernizeChange, modernDesign, SHOWCASE_PAGES } from './modernize.ts';
+import { modernizeChange, modernDesign, pageFormula, PAGE_OPTIONS, SHOWCASE_PAGES } from './modernize.ts';
 import { cleanWidget, Dashboards } from './dashboards.ts';
 import { listAutomations, saveAutomation } from './automations.ts';
 
@@ -56,6 +56,7 @@ export function applyShowcaseExtras(store: Store, opts: { account: string; now?:
   }
 
   addShowcasePages(store, opts.account, skipped);
+  embedTimeline(store, opts.account, skipped);
 
   const automationReason = table('Deals', ['Stage', 'ID']) ?? table('Activities', ['Deal ID', 'Subject', 'Type', 'Due']);
   if (automationReason) skipped.push({ piece: 'When a deal is won, add an onboarding task', reason: automationReason });
@@ -115,4 +116,30 @@ function addShowcasePages(store: Store, account: string, skipped: ShowcaseExtras
   // A list with no stored order starts from every layout, in the order the file has them.
   const stored = store.schema.layoutOrder.length ? rest : store.schema.layouts.filter((l) => !names.has(l.name)).map((l) => ({ item: l.id }) as Spec);
   store.applyDesign([{ op: 'setOrder', list: 'layouts', order: [{ folder: HOME_FOLDER, ...(home ? { id: home.id } : {}), children: [...placed, ...homeKept] }, ...keep(stored)] } as DesignOp], { account });
+}
+
+type Obj = { id: number; kind: string; text?: string; children?: Obj[] };
+
+/** The Account 360 form's Activity tab gets the Account timeline page below its portal, as a web viewer that fills the rest of the tab. */
+function embedTimeline(store: Store, account: string, skipped: ShowcaseExtrasResult['skipped']): void {
+  const piece = 'Account timeline in the Activity tab';
+  const page = SHOWCASE_PAGES.find((p) => p.name === 'Account timeline');
+  const layout = store.designs().layouts.find((l) => l.name === 'Account 360');
+  if (!layout || !page) { skipped.push({ piece, reason: 'The Account 360 layout is missing' }); return; }
+  const objects = JSON.parse(JSON.stringify(layout.objects)) as Obj[];
+  const control = objects.find((o) => o.kind === 'tab-control');
+  const panel = control?.children?.find((c) => c.kind === 'tab-panel' && c.text === 'Activity') as (Obj & { bounds: { top: number; left: number; bottom: number; right: number } }) | undefined;
+  if (!panel) { skipped.push({ piece, reason: 'Account 360 has no Activity tab' }); return; }
+  const all = (list: Obj[]): Obj[] => list.flatMap((o) => [o, ...all(o.children ?? [])]);
+  if ((panel.children ?? []).some((o) => o.kind === 'web-viewer')) return;
+  const portals = (panel.children ?? []).filter((o) => o.kind === 'portal') as (Obj & { bounds: { bottom: number } })[];
+  const top = Math.max(panel.bounds.top + 40, ...portals.map((o) => o.bounds.bottom + 12));
+  const id = Math.max(0, ...all(objects).map((o) => o.id)) + 1;
+  (panel.children ??= []).push({
+    id, kind: 'web-viewer', type: 13, external: 'WEBV', name: 'Account timeline', style: {},
+    bounds: { top, left: 20, bottom: Math.max(top + 120, panel.bounds.bottom - 8), right: panel.bounds.right - 20 },
+    anchors: { left: true, top: true, right: true, bottom: true },
+    webUrl: pageFormula(page.html()), webOptions: { ...PAGE_OPTIONS },
+  } as Obj);
+  store.applyDesign([{ op: 'updateLayout', layout: layout.id, design: { objects } } as unknown as DesignOp], { account });
 }

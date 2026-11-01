@@ -42,10 +42,22 @@ test('the showcase makes a modern layout for each HTML page, in the Home folder,
   assert.ok(order.some((o) => o.name === 'Modernized interfaces' && o.kind === 'folder'), 'the folders already there stay');
   assert.deepEqual(order.slice(-3).map((o) => [o.name, o.depth]), [['Modernized interfaces', 0], ['Deals - Modern board', 1], ['Activities - Modern calendar', 1]]);
 
+  // The Account 360 form's Activity tab (and no other) also holds the timeline page, below the portal, in a web viewer.
+  const form = store.designs().layouts.find((l) => l.name === 'Account 360')!;
+  const tabs = (form.objects.find((o) => o.kind === 'tab-control')!.children ?? []);
+  const viewers = (panel: (typeof tabs)[number]) => (panel.children ?? []).filter((o) => o.kind === 'web-viewer');
+  assert.deepEqual(tabs.map((p) => [p.text, viewers(p).length]), tabs.map((p) => [p.text, p.text === 'Activity' ? 1 : 0]));
+  const activity = tabs.find((p) => p.text === 'Activity')!;
+  const viewer = activity.children!.find((o) => o.kind === 'web-viewer')!;
+  const portal = activity.children!.find((o) => o.kind === 'portal')!;
+  assert.equal(modernPage([viewer] as never)?.html, SHOWCASE_PAGES.find((p) => p.name === 'Account timeline')!.html());
+  assert.ok(viewer.bounds.top > portal.bounds.bottom, 'below the portal');
+  assert.ok(viewer.bounds.bottom <= activity.bounds.bottom && viewer.bounds.right <= activity.bounds.right, 'inside the tab');
+
   // A second run leaves it as it is.
-  const before = JSON.stringify([store.schema.layouts.map((l) => l.name), order]);
+  const before = JSON.stringify([store.schema.layouts.map((l) => l.name), order, store.designs().layouts.map((l) => l.objects)]);
   applyStarterExtras(store, SHOWCASE_STARTERS['crm-showcase'].extras!, { account: 'tabularius demo' });
-  assert.equal(JSON.stringify([store.schema.layouts.map((l) => l.name), store.schema.layoutOrder]), before);
+  assert.equal(JSON.stringify([store.schema.layouts.map((l) => l.name), store.schema.layoutOrder, store.designs().layouts.map((l) => l.objects)]), before);
 
   // A Manager-like account (all records, no design) is served the layouts through the Data API.
   store.savePrivilegeSet({ name: 'Manager', records: { view: true, edit: true, create: true, delete: false }, layouts: 'viewOnly', valueLists: 'viewOnly', scripts: 'viewOnly', extendedPrivileges: ['fmrest', 'fmapp'] });

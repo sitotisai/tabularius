@@ -22,8 +22,8 @@ test('CRM showcase skeleton builds its native and server-owned pieces', () => wi
   assert.equal(isShowcase('crm-showcase'), true);
   assert.equal(isShowcase('crm'), false);
   assert.deepEqual(STARTER_NAMES, ['crm', 'inventory', 'invoicing', 'tasks', 'booking']);
-  assert.equal(SHOWCASE_STARTERS['crm-showcase'].sample.length, 0);
-  const built = applyStarter(store, 'crm-showcase', { account: 'tabularius demo' });
+  assert.ok(SHOWCASE_STARTERS['crm-showcase'].sample.length > 0);
+  const built = applyStarter(store, 'crm-showcase', { account: 'tabularius demo', sample: false });
   assert.equal(built.tables, 8);
   assert.deepEqual(store.schema.tables.map((t) => t.name), ['Reps', 'Accounts', 'Contacts', 'Deals', 'Activities', 'Email Log', 'Products', 'Deal Lines']);
   store.setPassword('tabularius demo', ['local', 'showcase', 'password'].join(' '), '[Full Access]');
@@ -42,13 +42,15 @@ test('CRM showcase skeleton builds its native and server-owned pieces', () => wi
   const automation = listAutomations(store).find((a) => a.name === 'When a deal is won, add an onboarding task');
   assert.deepEqual([automation?.account, automation?.layout, automation?.fields, automation?.condition],
     ['tabularius demo', 'Deals', ['Stage'], 'Stage = "Won"']);
-  const made = store.create('Deals', { Title: 'Synthetic deal', Amount: 100 });
+  const rep = store.create('Reps', { Name: 'Synthetic rep' }).recordId;
+  const account = store.create('Accounts', { Name: 'Synthetic account', 'Owner ID': rep }).recordId;
+  const made = store.create('Deals', { 'Account ID': account, 'Owner ID': rep, Title: 'Synthetic deal', Amount: 100 });
   const fields = store.get('Deals', made.recordId).fieldData;
   assert.deepEqual([fields.Stage, fields['Weighted Amount']], ['Lead', 10]);
   const run = await runScript(store, 'Add onboarding task', { layout: 'Deals', foundSet: [made.recordId], recordId: made.recordId });
   assert.equal(run.error, 0);
   assert.deepEqual(store.find('Activities list', {}).records.map((record) => [record.fieldData['Deal ID'], record.fieldData.Subject, record.fieldData.Type]),
-    [[made.recordId, 'Onboard new customer', 'Task']]);
+    [[fields.ID, 'Onboarding kickoff', 'Task']]);
 }));
 
 test('showcase extras report a missing execution account', () => withStore((store) => {
@@ -61,7 +63,7 @@ test('showcase extras report a missing execution account', () => withStore((stor
 test('showcase extras name missing tables and fields', () => withStore((store) => {
   const result = applyShowcaseExtras(store, { account: 'tabularius demo' });
   assert.deepEqual(result.skipped.map((item) => item.piece), [
-    'Deals modern-board', 'Activities modern-calendar', 'Pipeline overview', 'HTML pages', 'When a deal is won, add an onboarding task',
+    'Deals modern-board', 'Activities modern-calendar', 'Pipeline overview', 'HTML pages', 'Account timeline in the Activity tab', 'When a deal is won, add an onboarding task',
   ]);
   assert.ok(result.skipped.every((item) => item.reason.includes('missing')));
 }));

@@ -4,9 +4,11 @@
 // the scripts, one report with a summary part), privilege sets and a few invented sample records.
 
 import type { FieldSpec } from './design.ts';
-import { draftArranged, draftLayout } from './layout-draft.ts';
+import type { LayoutDesign, LayoutObject } from '../../fmp12/src/index.ts';
+import { addTabControl, draftArranged, draftLayout } from './layout-draft.ts';
 import { STARTER_SOLUTIONS } from './starter-solutions.ts';
-import { crmShowcaseStarter } from './starter-crm-showcase.ts';
+import { crmShowcaseStarter, showcaseScriptTests } from './starter-crm-showcase.ts';
+import type { PrivilegeDefinition } from './privileges.ts';
 import type { Store } from './store.ts';
 
 export interface StarterTable { name: string; fields: FieldSpec[] }
@@ -18,10 +20,9 @@ export interface StarterLayout {
   /** The form layout (named after the table): portals of related rows and buttons that run scripts. */
   form?: {
     fields?: string[];
-    portals?: { table: string; fields: string[]; rows?: number }[];
+    portals?: { table: string; fields: string[]; rows?: number; sort?: { field: string; descending?: boolean }[]; totals?: { field: string; under?: string }[] }[];
     buttons?: { text: string; script: string; parameter?: string }[];
-    /** Native tab controls are not yet produced by draftLayout. */
-    tabs?: { name: string; fields: string[] }[];
+    tabs?: { name: string; fields?: string[]; portals?: string[] }[];
   };
 }
 
@@ -54,7 +55,7 @@ export interface Starter {
   extras?: string;
   reports: StarterReport[];
   /** Privilege sets besides [Full Access]: who may change what. */
-  privilegeSets: { name: string; comment: string; records: { view: boolean; create: boolean; edit: boolean; delete: boolean } }[];
+  privilegeSets: Pick<PrivilegeDefinition, 'name' | 'comment' | 'records' | 'tables'>[];
   /** Invented records, in the order to add them: table → rows (a related row names its parent by its position, 1-based, in the `ID` the parent got). */
   sample: { table: string; rows: Record<string, string | number>[] }[];
 }
@@ -109,9 +110,9 @@ export function applyStarter(store: Store, name: string, opts: { sample?: boolea
   const layouts = designLayouts(store, starter, account);
   for (const set of starter.privilegeSets) {
     store.savePrivilegeSet({
-      name: set.name, comment: set.comment, records: set.records,
+      name: set.name, comment: set.comment, records: set.records, ...(set.tables ? { tables: set.tables } : {}),
       layouts: 'viewOnly', valueLists: 'viewOnly', scripts: 'viewOnly',
-      extendedPrivileges: ['fmapp', 'fmwebdirect', 'fmrest'], printing: true, exporting: set.records.edit,
+      extendedPrivileges: ['fmapp', 'fmwebdirect', 'fmrest'], printing: true, exporting: set.records.edit === true,
     });
   }
 
@@ -123,6 +124,9 @@ export function applyStarter(store: Store, name: string, opts: { sample?: boolea
         sampleRecords++;
       }
     }
+  }
+  if (name === 'crm-showcase') {
+    for (const test of showcaseScriptTests(store)) store.saveScriptTest(test);
   }
   const s = store.schema;
   return {
@@ -159,11 +163,49 @@ function designLayouts(store: Store, starter: Starter, account: string): number 
     // The form: replaces the layout createTable made.
     const portals = (def.form?.portals ?? []).map((p) => {
       const to = ids(p.table, p.fields);
-      return { occurrence: to.occurrence.id, fields: to.fields!, rows: p.rows ?? 5 };
+      const sort = p.sort?.map((s) => ({ field: ids(p.table).field(s.field), ...(s.descending ? { descending: true } : {}) }));
+      const totals = p.totals?.map((x) => ({ field: t.field(x.field), ...(x.under ? { under: ids(p.table).field(x.under) } : {}) }));
+      return { occurrence: to.occurrence.id, fields: to.fields!, rows: p.rows ?? 5, ...(sort?.length ? { sort } : {}), ...(totals?.length ? { totals } : {}) };
     });
     const formFields = def.form?.fields ? ids(def.table, def.form.fields).fields : undefined;
     const form = draft({ title: def.table, occurrence: t.occurrence.id, view: 'form', ...(formFields ? { fields: formFields } : {}), ...(portals.length ? { portals } : {}) });
     withPopups(form.design as never, def.table);
+    if (def.form?.tabs) addTabControl(form.design, def.form.tabs);
+    if (starter.name === 'crm-showcase' && def.table === 'Accounts') {
+      const header = form.design.parts?.find((p) => p.kind === 'header');
+      const body = form.design.parts?.find((p) => p.kind === 'body');
+      if (header && body) {
+        const oldBodyTop = body.top;
+        const added = 64;
+        header.height += added;
+        body.top += added;
+        const footer = form.design.parts?.find((p) => p.kind === 'footer');
+        if (footer) footer.top += added;
+        const shift = (o: LayoutObject) => {
+          if (o.bounds.top >= oldBodyTop) { o.bounds.top += added; o.bounds.bottom += added; }
+          for (const child of o.children ?? []) shift(child);
+        };
+        for (const o of form.design.objects ?? []) shift(o);
+        const positions: Record<string, number> = { Name: 20, 'Owner Name': 220, Health: 420 };
+        for (const o of form.design.objects ?? []) {
+          const fieldName = o.kind === 'field' ? o.field?.field : o.kind === 'text' ? o.text : undefined;
+          if (fieldName && positions[fieldName] !== undefined) {
+            const left = positions[fieldName] + (o.kind === 'field' ? 90 : 0);
+            o.bounds = { top: oldBodyTop + 16, left, bottom: oldBodyTop + 42, right: left + (o.kind === 'field' ? 110 : 90) };
+          }
+        }
+      }
+      for (const o of form.design.objects ?? []) if (o.kind === 'field' && o.field?.field === 'Health') {
+        o.conditions = [
+          { formula: 'Health = "At risk"', rules: [{ part: 1, state: 1, css: { color: '#b42318', 'font-weight': '700' } }] },
+          { formula: 'Health = "Watch"', rules: [{ part: 1, state: 1, css: { color: '#a15c00', 'font-weight': '700' } }] },
+          { formula: 'Health = "Healthy"', rules: [{ part: 1, state: 1, css: { color: '#18794e', 'font-weight': '700' } }] },
+        ];
+      }
+    }
+    if (starter.name === 'crm-showcase' && def.table === 'Deals') {
+      for (const o of form.design.objects ?? []) if (o.kind === 'field' && o.field?.field === 'Lost Reason') o.hide = { formula: 'Stage ≠ "Lost"', inFind: false };
+    }
     const buttons = def.form?.buttons ?? [];
     if (buttons.length) addButtons(store, form.design as never, t.occurrence.id, buttons);
     store.applyDesign([{ op: 'updateLayout', layout: def.table, design: form.design }] as never, { account });
@@ -185,6 +227,39 @@ function designLayouts(store: Store, starter: Starter, account: string): number 
     });
     store.applyDesign([{ op: 'createLayout', name: r.name, occurrence: t.occurrence.id, design: report.design }] as never, { account });
     made++;
+  }
+  if (starter.name === 'crm-showcase') {
+    const saved = store.designs().layouts;
+    const duplicate = (source: string, name: string, occurrence: number) => {
+      const design = saved.find((l) => l.name === source);
+      if (!design) throw new Error(`Starter crm-showcase: missing source layout ${source}`);
+      store.applyDesign([{ op: 'createLayout', name, occurrence, design: { ...design, id: undefined, name } }] as never, { account });
+      made++;
+    };
+    const accountOcc = store.schema.tableOccurrences.find((x) => x.name === 'Accounts')!.id;
+    const deals = store.schema.tableOccurrences.find((x) => x.name === 'Deals')!.id;
+    duplicate('Accounts', 'Account 360', accountOcc);
+    duplicate('Deals', 'Quote', deals);
+    const quote = store.designs().layouts.find((l) => l.name === 'Quote')!;
+    const quoteDesign: LayoutDesign = JSON.parse(JSON.stringify(quote));
+    const footer = quoteDesign.parts.find((p) => p.kind === 'footer')!;
+    footer.height = Math.max(footer.height, 48);
+    footer.top = Math.max(...quoteDesign.parts.map((p) => p.top + p.height)) - footer.height;
+    const next = Math.max(0, ...quoteDesign.objects.map((o) => o.id)) + 1;
+    quoteDesign.objects.push(
+      { id: next, kind: 'text', type: 2, bounds: { top: 8, left: 20, bottom: 32, right: 400 }, anchors: { left: true, top: true, right: false, bottom: false }, style: {}, text: 'Tabularius CRM Showcase' },
+      { id: next + 1, kind: 'text', type: 2, bounds: { top: footer.top + 8, left: 20, bottom: footer.top + 32, right: 220 }, anchors: { left: true, top: false, right: false, bottom: true }, style: {}, text: 'Page {{PageNumber}}' },
+    );
+    store.applyDesign([{ op: 'updateLayout', layout: 'Quote', design: quoteDesign as unknown as Partial<LayoutDesign> }] as never, { account });
+    const ordered = (names: string[]) => names.map((item) => ({ item }));
+    store.applyDesign([{ op: 'setOrder', list: 'layouts', order: [
+      { folder: 'Home', children: ordered([]) },
+      { folder: 'Accounts', children: ordered(['Account 360', 'Accounts list', 'Accounts']) },
+      { folder: 'Deals', children: ordered(['Deals', 'Deals list', 'Quote', 'Pipeline by rep and stage']) },
+      { folder: 'Activity', children: ordered(['Activities', 'Activities list', 'Email Log', 'Email Log list']) },
+      { folder: 'Reports', children: ordered(['Activity by type']) },
+      ...ordered(['Reps', 'Reps list', 'Contacts', 'Contacts list', 'Products', 'Products list', 'Deal Lines', 'Deal Lines list']),
+    ] }] as never, { account });
   }
   return made;
 }

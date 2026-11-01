@@ -17,6 +17,10 @@ tabularius demo
 ```
 
 The demo opens in your browser with a one-time password for `Admin`, and deletes everything when you press Ctrl-C.
+`tabularius demo --full` hosts the larger CRM showcase with sign-ins for a rep, a manager and an executive, and prints how to
+connect an AI app with a read-only token that expires in a day. The demo server makes no outside connection unless you add
+`--ai` and your own key, which turns on the demo's own assistant only; an AI app you connect is a separate program whose
+provider receives whatever it reads.
 Windows, Docker and installing from a checkout are in the [quickstart](QUICKSTART.md).
 
 For a fuller tour, the [CRM showcase](docs/showcase-crm.md) is a sales app with invented data: a pipeline board, a Today page, a dashboard, an account timeline, record-level privileges and a built-in MCP server. Its modern layouts are web pages that sit in a web viewer's address formula, which FileMaker Pro limits to 30,000 characters. None of the five showcase pages is over that limit (each is about 10,000 to 16,000 characters), so none is Tabularius-only; a page you grow past it still opens in Tabularius.

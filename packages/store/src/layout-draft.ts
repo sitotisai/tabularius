@@ -42,12 +42,50 @@ export interface DraftPortal {
   rows?: number;
   /** Fields of the layout's own table shown under the portal (a calculation summing a column), and the column each goes under. */
   totals?: { field: number; under?: number }[];
+  /** Portal rows sorted by related fields, in the given order. */
+  sort?: { field: number; descending?: boolean }[];
 }
 
 export interface Draft {
   design: Partial<LayoutDesign>;
   /** How it was made to match the file, a line each. */
   notes: string[];
+}
+
+/** Wrap selected fields and portals in native layout tabs; unselected objects remain outside the control. */
+export function addTabControl(design: Partial<LayoutDesign>, panels: { name: string; fields?: string[]; portals?: string[] }[]): void {
+  const body = design.parts?.find((p) => p.kind === 'body');
+  if (!body || panels.length < 2) throw new Error('A tab control needs a body and at least two panels');
+  const objects = design.objects ?? (design.objects = []);
+  const groups = panels.map(() => [] as LayoutObject[]);
+  const claimed = new Set<number>();
+  for (const o of objects) {
+    const i = o.kind === 'portal' ? panels.findIndex((p) => p.portals?.includes(o.portal?.tableOccurrence ?? o.name ?? ''))
+      : o.kind === 'field' ? panels.findIndex((p) => p.fields?.includes(o.field?.field ?? '')) : -1;
+    if (i < 0) continue;
+    groups[i].push(o);
+    claimed.add(o.id);
+    if (o.kind === 'field') {
+      const label = objects.find((x) => x.kind === 'text' && x.bounds.top === o.bounds.top && !claimed.has(x.id));
+      if (label) { groups[i].push(label); claimed.add(label.id); }
+    }
+  }
+  const ids = new Set(objects.flatMap((o) => [o.id, ...(o.children ?? []).map((c) => c.id)]));
+  let next = Math.max(0, ...ids) + 1;
+  const tabId = next++;
+  const tabChildren: LayoutObject[] = panels.map((p, i) => ({
+    id: next++, kind: 'tab-panel', type: 12,
+    bounds: { top: body.top, left: 0, bottom: body.top + body.height, right: design.width ?? 560 },
+    anchors: { left: true, top: true, right: true, bottom: true }, style: { element: 82 }, text: p.name,
+    tab: { left: i * 100, width: 100 }, children: groups[i],
+  }));
+  const control: LayoutObject = {
+    id: tabId, kind: 'tab-control', type: 11,
+    bounds: { top: body.top, left: 0, bottom: body.top + body.height, right: design.width ?? 560 },
+    anchors: { left: true, top: true, right: true, bottom: true }, style: { element: 81 },
+    target: tabChildren[0].id, tabHeight: 28, children: tabChildren,
+  };
+  design.objects = [...objects.filter((o) => !claimed.has(o.id)), control];
 }
 
 type Area = 'header' | 'body' | 'summary' | 'footer';
@@ -344,6 +382,11 @@ export function draftLayout(schema: Schema, designs: LayoutDesigns, spec: DraftS
           field: { tableOccurrenceId: rto.id, fieldId: c.f.id, tableOccurrence: rto.name, field: c.f.name, display: 'edit', repetitions: 1 },
         })),
       };
+      if (p.sort?.length) portal.portal!.sort = p.sort.map((s) => {
+        const f = rById.get(s.field);
+        if (!f) throw new Error(`A portal sort field ${s.field} does not exist on ${rto.name}`);
+        return { field: { tableOccurrenceId: rto.id, fieldId: f.id, tableOccurrence: rto.name, field: f.name }, ...(s.descending ? { descending: true } : {}) };
+      });
       objects.push(portal);
       width = Math.max(width, left + 24);
       bottom = portal.bounds.bottom;

@@ -17,7 +17,7 @@ Each command page includes the current help text, options, exit codes, and a tes
 | [`corpus-scan`](corpus-scan.md) | 8 |
 | [`ddr`](ddr.md) | 0 |
 | [`decrypt`](decrypt.md) | 0 |
-| [`demo`](demo.md) | 4 |
+| [`demo`](demo.md) | 6 |
 | [`design`](design.md) | 0 |
 | [`design-apply`](design-apply.md) | 2 |
 | [`design-diff`](design-diff.md) | 1 |

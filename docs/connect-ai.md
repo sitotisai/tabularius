@@ -18,6 +18,8 @@ A file with AI turned off (`tabularius ai FOLDER FILE off`, or the file's settin
 
 A token limited to some layouts starts a script on the first of those layouts (name another with `layout`, if it is one of them). The script can't go to a layout outside the limit.
 
+Approval never grants extra access. Before holding an agent's record change, Tabularius checks the account's privileges and the token's limits, including the layout, record and fields being changed. A read-only token cannot propose a write. Approval checks the agent's current privileges together with the saved token limits; a refused change stays in Pending changes for review or rejection. Proposals saved by older versions without token limits keep their previous replay behavior.
+
 ## As a connector in claude.ai or Claude Desktop (no token to copy)
 
 claude.ai and Claude Desktop can add Tabularius as a custom connector and sign in to it themselves:
