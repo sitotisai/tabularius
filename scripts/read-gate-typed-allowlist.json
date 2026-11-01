@@ -2424,12 +2424,20 @@
   "why": "Layout/script usage counters per privilege set; no record data."
  },
  {
-  "file": "packages/store/src/store.ts",
-  "within": "Store.unusualAccess",
+  "file": "packages/store/src/access-alerts.ts",
+  "within": "unusualAccess",
   "api": "Store.auditLog",
   "count": 2,
   "gate": "no-record-data",
   "why": "Security events only; admin console."
+ },
+ {
+  "file": "packages/store/src/store.ts",
+  "within": "Store.checkProposedWrite",
+  "api": "Store.row",
+  "count": 1,
+  "gate": "checked-before",
+  "why": "Preceded by checkLayout and checkWriteFields with the caller's narrowed privileges (including its credential ceiling); the raw row is read only to evaluate the caller's own record rules (checkRecordRule with the caller's privileges) before a proposal is queued, and is never returned, stored or written."
  },
  {
   "file": "packages/store/src/store.ts",
