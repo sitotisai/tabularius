@@ -1245,6 +1245,7 @@ export class Store {
     const setIdentity = this.sql.prepare('UPDATE _fm_accounts SET identity_id = ? WHERE name = ? COLLATE NOCASE AND identity_id IS NULL');
     for (const row of missingIdentity) setIdentity.run(randomUUID(), row.name);
     ensureAccountImportTables(this.sql);
+    this.switchOffLegacyConvertedNetwork();
     this.sql.prepare('INSERT OR IGNORE INTO _fm_meta (key, json) VALUES (?, ?)').run('accountImportSecret', JSON.stringify(randomBytes(32).toString('hex')));
     // created_by: for an AI agent account, the human account that created it, so
     // the trail shows who an agent acts for. NULL for ordinary accounts.
@@ -4187,6 +4188,23 @@ export class Store {
       this.sql.prepare(`INSERT INTO _fm_meta VALUES ('aiOff', ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json`).run(JSON.stringify(!on));
       this.logSecurity(on ? 'ai-turned-on' : 'ai-turned-off', { account: opts.account ?? null });
     });
+  }
+
+  /**
+   * A file converted before the converter saved the switch has no saved setting, which reads as on. A converted file starts
+   * with script network access off until an administrator turns it on, so the first open after an upgrade saves it off
+   * (and logs it). A file made new, or one whose administrator saved a choice either way, is left alone. Best effort: a
+   * read-only or damaged file keeps opening, and the switch is then read as it was.
+   */
+  private switchOffLegacyConvertedNetwork(): void {
+    try {
+      if (this.meta('scriptNetwork') !== undefined) return;
+      const source = this.meta('source') as { importedAt?: unknown; header?: unknown } | undefined;
+      if (!source || (source.importedAt === undefined && source.header === undefined)) return;
+      this.setScriptNetwork(false, { account: 'upgrade' });
+    } catch (e) {
+      console.warn(`${this.name}: could not turn script network access off for a file converted before the switch was saved: ${(e as Error).message}`);
+    }
   }
 
   /**
