@@ -231,17 +231,40 @@ Perform Find
 Set Field [ Accounts::Owner ID ; $chosen ]
 Commit Records/Requests [ With dialog: Off ]
 Exit Script [ Result: "assigned" ]` },
-      { name: 'Mark task done', text: `# Marks the current Task activity complete.
-If [ IsEmpty ( Activities::ID ) or Activities::Type ≠ "Task" ]
-	Exit Script [ Result: "need a task" ]
+      { name: 'Mark task done', text: `# Finds the activity by its ID field value and marks it complete.
+Set Variable [ $id ; Value: Get ( ScriptParameter ) ]
+If [ IsEmpty ( $id ) or Filter ( $id ; "0123456789" ) ≠ $id ]
+	Exit Script [ Result: "no such task" ]
 End If
-If [ Activities::Done = "Yes" ]
-	Exit Script [ Result: "already done" ]
+Go to Layout [ "Activities" ]
+Enter Find Mode
+Set Field [ Activities::ID ; $id ]
+Perform Find
+If [ Get ( FoundCount ) = 0 ]
+	Exit Script [ Result: "no such task" ]
 End If
 Set Field [ Activities::Done ; "Yes" ]
+Set Field [ Activities::Outcome ; "Done" ]
 Commit Records/Requests [ With dialog: Off ]
 Exit Script [ Result: "done" ]` },
-      { name: 'Add onboarding task', text: `# Adds a same-day onboarding task for the current deal.
+      { name: 'Go to record', text: `# Finds the ID field value on the current layout and shows that record.
+Set Variable [ $id ; Value: Get ( ScriptParameter ) ]
+If [ IsEmpty ( $id ) or Filter ( $id ; "0123456789" ) ≠ $id ]
+	Exit Script [ Result: "not found" ]
+End If
+Set Variable [ $table ; Value: Get ( LayoutTableName ) ]
+Enter Find Mode
+Set Field By Name [ $table & "::ID" ; $id ]
+Perform Find
+If [ Get ( FoundCount ) = 0 ]
+	Exit Script [ Result: "not found" ]
+End If
+Go to Record/Request/Page [ First ]
+Exit Script [ Result: "ok" ]` },
+      { name: 'Add onboarding task', text: `# Adds an onboarding task due in three days for the current deal.
+If [ not IsEmpty ( Get ( ScriptParameter ) ) ]
+	Exit Script [ Result: "no parameter needed" ]
+End If
 If [ IsEmpty ( Deals::ID ) ]
 	Exit Script [ Result: "need a deal" ]
 End If
@@ -253,9 +276,9 @@ New Record/Request
 Set Field [ Activities::Account ID ; $account ]
 Set Field [ Activities::Deal ID ; $deal ]
 Set Field [ Activities::Rep ID ; $rep ]
-Set Field [ Activities::Subject ; "Onboard new customer" ]
+Set Field [ Activities::Subject ; "Onboarding kickoff" ]
 Set Field [ Activities::Type ; "Task" ]
-Set Field [ Activities::Due ; Get ( CurrentDate ) ]
+Set Field [ Activities::Due ; Get ( CurrentDate ) + 3 ]
 Commit Records/Requests [ With dialog: Off ]
 Exit Script [ Result: "onboarding added" ]` },
     ],

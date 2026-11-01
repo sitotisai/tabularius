@@ -17,7 +17,7 @@ test('showcase schema contains the agreed tables, relationships, lists, scripts 
     assert.deepEqual(store.schema.tables.map((t) => t.name), ['Reps', 'Accounts', 'Contacts', 'Deals', 'Activities', 'Email Log', 'Products', 'Deal Lines']);
     assert.equal(store.schema.relationships.length, 12);
     assert.deepEqual(store.schema.valueLists.map((v) => v.name), ['Stage', 'Industry', 'Region', 'Lead source', 'Activity type', 'Lost reason']);
-    for (const name of ['Advance stage', 'Close deal', 'Log activity', 'Add follow-up', 'Reassign owner', 'Assign by region', 'Mark task done']) {
+    for (const name of ['Advance stage', 'Close deal', 'Log activity', 'Add follow-up', 'Reassign owner', 'Assign by region', 'Mark task done', 'Go to record', 'Add onboarding task']) {
       assert.ok(store.schema.scripts.some((s) => s.name === name), name);
     }
     for (const name of ['Rep', 'Manager', 'Executive']) assert.ok(store.privilegeSet(name), name);
@@ -100,14 +100,35 @@ test('showcase calculations, workflows and record access work on synthetic recor
     assert.equal((await run('Add follow-up', 'Accounts', account1, '2')).result, 'follow-up added');
     const task = store.find('Activities', { query: [{ Subject: 'Follow up' }] }).records[0];
     assert.ok(task);
-    assert.equal((await run('Mark task done', 'Activities', task.recordId)).result, 'done');
+    store.update('Activities', task.recordId, { ID: 8001 });
+    assert.notEqual(task.recordId, fields('Activities', task.recordId).ID);
+    const taskId = String(fields('Activities', task.recordId).ID);
+    assert.equal((await run('Mark task done', 'Activities', task.recordId, taskId)).result, 'done');
     assert.equal(fields('Activities', task.recordId).Done, 'Yes');
+    assert.equal(fields('Activities', task.recordId).Outcome, 'Done');
+    assert.equal((await run('Mark task done', 'Activities', task.recordId, '999999')).result, 'no such task');
+    const navigation = store.create('Products', { ID: 9001, SKU: 'SYN-NAV', Name: 'Synthetic navigation' }).recordId;
+    assert.notEqual(navigation, fields('Products', navigation).ID);
+    const shown = await run('Go to record', 'Products', product, String(fields('Products', navigation).ID));
+    assert.equal(shown.result, 'ok');
+    assert.equal(shown.recordId, navigation);
+    assert.deepEqual(shown.foundSet, [navigation]);
+    assert.equal((await run('Go to record', 'Products', product, '999999')).result, 'not found');
     assert.equal((await run('Reassign owner', 'Deals', ids[0], String(rep2))).result, 'reassigned');
     assert.equal((await run('Reassign owner', 'Deals', ids[0], 'two')).result, 'need a rep id');
     assert.equal(fields('Deals', ids[0])['Owner ID'], rep2);
     assert.equal((await run('Assign by region', 'Accounts', account1)).result, 'assigned');
     assert.equal(fields('Accounts', account1)['Owner ID'], rep2);
     assert.equal((await run('Add onboarding task', 'Deals', ids[0])).result, 'onboarding added');
+    const onboarding = store.find('Activities', { query: [{ Subject: 'Onboarding kickoff' }] }).records;
+    assert.equal(onboarding.length, 1);
+    assert.equal(onboarding[0].fieldData.Type, 'Task');
+    assert.equal(onboarding[0].fieldData['Deal ID'], fields('Deals', ids[0]).ID);
+    assert.equal(onboarding[0].fieldData['Account ID'], fields('Deals', ids[0])['Account ID']);
+    assert.equal(onboarding[0].fieldData['Rep ID'], fields('Deals', ids[0])['Owner ID']);
+    const due = new Date();
+    due.setDate(due.getDate() + 3);
+    assert.equal(onboarding[0].fieldData.Due, `${String(due.getMonth() + 1).padStart(2, '0')}/${String(due.getDate()).padStart(2, '0')}/${due.getFullYear()}`);
     store.setPassword('rep-one', 'pw', 'Rep');
     const repDeals = store.find('Deals', { privileges: store.privileges('rep-one') });
     assert.deepEqual(repDeals.records.map((r) => r.fieldData.Title).sort(), ['Lost deal', 'Qualified deal', 'Won deal']);
