@@ -1,10 +1,8 @@
 // Server-owned pieces of the CRM showcase. The store starter remains plain design data.
 import type { DesignOp, Store } from '../../store/src/index.ts';
-import { modernizeChange } from './modernize.ts';
+import { modernizeChange, modernDesign, SHOWCASE_PAGES } from './modernize.ts';
 import { cleanWidget, Dashboards } from './dashboards.ts';
 import { listAutomations, saveAutomation } from './automations.ts';
-import { modernDesign } from '../../web/src/page-source.ts';
-import { SHOWCASE_PAGES } from '../../web/src/showcase-pages/index.ts';
 
 /** The folder of the Layouts list that holds the showcase's HTML pages. */
 export const HOME_FOLDER = 'Home';
