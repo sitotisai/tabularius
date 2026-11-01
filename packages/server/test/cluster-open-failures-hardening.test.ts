@@ -36,6 +36,16 @@ test('the error text keeps no path with spaces or colons in it, quoted or not, a
   }
 });
 
+test('the hosted folder is stripped whichever separator follows it, as on Windows where a folder with backslashes meets a slash', () => {
+  // The error text of a failed open joins the folder and the name with a slash, the folder itself has backslashes.
+  for (const dir of ['C:\\Users\\x\\open-relay', 'C:/Users/x/open-relay', 'C:\\Users\\x\\open-relay\\']) {
+    for (const sep of ['/', '\\']) {
+      const text = `EPERM: operation not permitted, open '${dir.replace(/[\\/]+$/, '')}${sep}Sales.openhbam.sqlite'`;
+      assert.equal(plainOpenError(text, dir), "EPERM: operation not permitted, open 'Sales.openhbam.sqlite'", `${dir} + ${sep}`);
+    }
+  }
+});
+
 test('one worker cannot push out the others: it keeps its own newest entries, and the total is bounded', () => {
   const list = new OpenFailures();
   list.set('Kept', 2, 'busy', folder);
