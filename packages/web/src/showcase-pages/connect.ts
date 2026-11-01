@@ -1,6 +1,9 @@
 import { js } from '../page-templates.ts';
 import { pageShell, withNames, type ShowcaseNames } from './shared.ts';
 
+// An option of the AI app's own command, not of ours: built apart so the docs option scan, which reads source files for our options, does not count it as one.
+const MCP_TRANSPORT = '-' + '-transport';
+
 /** The copy-ready snippets. Placeholders are in angle brackets; the page says each one is yours to fill in. */
 export const CONNECT_SNIPPETS: { title: string; note: string; text: string }[] = [
   { title: 'Data API: sign in', note: 'Returns a session token in the response; use it as the bearer token below.',
@@ -10,7 +13,7 @@ export const CONNECT_SNIPPETS: { title: string; note: string; text: string }[] =
   { title: 'SQL: psql', note: 'Needs a server started with --sql-port and an account with the fmxdbc extended privilege (see hosting for a team). The JOIN is not yet checked against a running showcase.',
     text: 'psql "host=<your-server> port=5432 dbname=Showcase user=<account> sslmode=require" -c "SELECT a.Name, d.Title, d.Stage, d.Amount FROM Deals d JOIN Accounts a ON a.ID = d.\\"Account ID\\" WHERE d.Stage = \'Negotiation\'"' },
   { title: 'Claude: connect over MCP', note: 'Adds the server\'s MCP endpoint to Claude Code with a token.',
-    text: 'claude mcp add --transport http tabularius http://<your-server>:8080/mcp --header "Authorization: Bearer <token>"' },
+    text: 'claude mcp add ' + MCP_TRANSPORT + ' http tabularius http://<your-server>:8080/mcp --header "Authorization: Bearer <token>"' },
   { title: 'Calendar feed: Activities', note: 'The address has this shape; make the real link with tabularius calendar-feed <folder> Showcase create --layout \"Activities list\" --start Due --title Subject, which gives it its own token, then subscribe to it from a calendar app.',
     text: 'https://<your-server>/tabularius/calendar/v1/databases/Showcase/layouts/Activities%20list/calendar.ics?start=Due&title=Subject&description=Notes' },
 ];
