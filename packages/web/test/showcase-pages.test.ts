@@ -10,8 +10,8 @@ const pages = SHOWCASE_PAGES.map((p) => ({ name: p.name, html: p.html() }));
 /** The page with its comments removed (a comment may name an address; the page may not load one). */
 const withoutComments = (html: string) => html.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
-test('showcase pages: four pages, named for their layouts', () => {
-  assert.deepEqual(pages.map((p) => p.name), ['Today', 'Sales dashboard', 'Account timeline', 'Connect']);
+test('showcase pages: five pages, named for their layouts', () => {
+  assert.deepEqual(pages.map((p) => p.name), ['Today', 'Sales dashboard', 'Account timeline', 'Pipeline board', 'Connect']);
 });
 
 for (const { name, html } of pages) {
