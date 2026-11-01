@@ -107,6 +107,7 @@ import { sweepOrphanUploadFolders } from './container-uploads.ts';
 
 export { Host, STORE_EXT } from './host.ts';
 export { DataApi } from './dataapi.ts';
+export { applyShowcaseExtras, applyStarterExtras, type ShowcaseExtrasResult } from './showcase.ts';
 export { openApiDocument, typesFromOpenApi } from './openapi.ts';
 export { createFeed, importIcs, listFeeds, revokeFeed } from './calendar.ts';
 export { createMcpServer, type McpIdentity } from './mcp.ts';
