@@ -27,7 +27,9 @@ export function withFilesystemHook<T>(hook: (event: FilesystemBoundary) => void,
 }
 function boundary(event: FilesystemBoundary): void { hooks.getStore()?.(event); }
 const name = (path: fs.PathLike): string => resolve(path instanceof URL ? fileURLToPath(path) : path.toString());
-const same = (a: fs.Stats, b: fs.Stats): boolean => a.dev === b.dev && a.ino === b.ino && a.mode === b.mode && a.nlink === b.nlink;
+// A file's link count is part of what it is (a new name for it is a change); a folder's is not, because it moves with its entries
+// (on macOS) or sub-folders (elsewhere) whenever another process adds or removes one, and its device, id and mode still say which folder it is.
+const same = (a: fs.Stats, b: fs.Stats): boolean => a.dev === b.dev && a.ino === b.ino && a.mode === b.mode && (a.isDirectory() || a.nlink === b.nlink);
 /** The exact identity of a file (path or open descriptor): `Stats.ino` is a Number, and an NTFS file id above 2**53 loses its low bits in it, so two different files can read as the same one. Undefined when the path is missing. */
 export function fileId(target: string | number): string | undefined {
   try {
