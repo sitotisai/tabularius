@@ -42,13 +42,15 @@ test('CRM showcase skeleton builds its native and server-owned pieces', () => wi
   const automation = listAutomations(store).find((a) => a.name === 'When a deal is won, add an onboarding task');
   assert.deepEqual([automation?.account, automation?.layout, automation?.fields, automation?.condition],
     ['tabularius demo', 'Deals', ['Stage'], 'Stage = "Won"']);
-  const made = store.create('Deals', { Title: 'Synthetic deal', Amount: 100 });
+  const rep = store.create('Reps', { Name: 'Synthetic rep' }).recordId;
+  const account = store.create('Accounts', { Name: 'Synthetic account', 'Owner ID': rep }).recordId;
+  const made = store.create('Deals', { 'Account ID': account, 'Owner ID': rep, Title: 'Synthetic deal', Amount: 100 });
   const fields = store.get('Deals', made.recordId).fieldData;
   assert.deepEqual([fields.Stage, fields['Weighted Amount']], ['Lead', 10]);
   const run = await runScript(store, 'Add onboarding task', { layout: 'Deals', foundSet: [made.recordId], recordId: made.recordId });
   assert.equal(run.error, 0);
   assert.deepEqual(store.find('Activities list', {}).records.map((record) => [record.fieldData['Deal ID'], record.fieldData.Subject, record.fieldData.Type]),
-    [[made.recordId, 'Onboard new customer', 'Task']]);
+    [[fields.ID, 'Onboarding kickoff', 'Task']]);
 }));
 
 test('showcase extras report a missing execution account', () => withStore((store) => {
