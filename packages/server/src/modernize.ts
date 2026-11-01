@@ -8,6 +8,9 @@ import { assertAiPolicy } from './ai-policy.ts';
 import type { Field, LayoutObject, Schema, Table, TableOccurrence } from '../../fmp12/src/index.ts';
 import { relatedOccurrences, type DesignOp, type Store } from '../../store/src/index.ts';
 import { FORMULA_LIMIT, modernDesign } from '../../web/src/page-source.ts';
+// The server's one door to the web package's page sources: the showcase makes its HTML pages through these (showcase.ts).
+export { modernDesign } from '../../web/src/page-source.ts';
+export { SHOWCASE_PAGES } from '../../web/src/showcase-pages/index.ts';
 import { interfacePage, planFromLayout, planInterface, samplesOf, whyNot, type InterfacePlan, type Mode, type View, type ModernField, type LayoutField, type ModernTable, type PlanButton, type PlanRelated, type Samples } from '../../web/src/modernize.ts';
 import { draftLayoutChange, orderTree } from './design-preview.ts';
 
