@@ -35,8 +35,13 @@ export function fileId(target: string | number): string | undefined {
     return `${st.dev}:${st.ino}`;
   } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
 }
-function refused(): never {
-  throw Object.assign(new Error('Filesystem path changed or is not a safe regular file'), { code: 'ESTALE' });
+/** The message never names the path: servers show these messages to remote clients and in shared logs. A caller that owns the
+ * terminal (the command line) may read `refusedPath`, which is not enumerable, so logging or serialising the error leaves it out.
+ */
+function refused(path?: string): never {
+  const error = Object.assign(new Error('Filesystem path changed or is not a safe regular file'), { code: 'ESTALE' });
+  if (path) Object.defineProperty(error, 'refusedPath', { value: path, enumerable: false });
+  throw error;
 }
 function leaf(path: string): fs.Stats | undefined {
   try { return fs.lstatSync(path); }
@@ -48,7 +53,7 @@ function parents(path: string): () => void {
   const capture = (directory: string): void => {
     for (let at = directory; !chain.has(at); at = dirname(at)) {
       const stat = fs.lstatSync(at);
-      if (!stat.isDirectory() && !stat.isSymbolicLink()) refused();
+      if (!stat.isDirectory() && !stat.isSymbolicLink()) refused(at);
       const target = stat.isSymbolicLink() ? fs.realpathSync(at) : undefined;
       chain.set(at, { stat, target });
       // Stable aliases (including /proc/self) are valid. Snapshot both their
@@ -62,8 +67,8 @@ function parents(path: string): () => void {
     for (const [at, { stat: st, target }] of chain) {
       const now = fs.lstatSync(at);
       // APFS changes a directory's link count when ordinary files are created.
-      if (st.dev !== now.dev || st.ino !== now.ino || st.mode !== now.mode) refused();
-      if (target && fs.realpathSync(at) !== target) refused();
+      if (st.dev !== now.dev || st.ino !== now.ino || st.mode !== now.mode) refused(at);
+      if (target && fs.realpathSync(at) !== target) refused(at);
     }
   };
 }
@@ -87,12 +92,12 @@ function prepareOpen(path: fs.PathLike, flags: string | number, mode: fs.Mode | 
   const p = name(path), c = fs.constants, bits = flagsNumber(flags);
   const writing = !!(bits & (c.O_WRONLY | c.O_RDWR));
   const checkParents = parents(p), before = leaf(p);
-  if (before && (!before.isFile() && !(before.isDirectory() && !writing))) refused();
-  if (before && writing && before.nlink !== 1) refused();
+  if (before && (!before.isFile() && !(before.isDirectory() && !writing))) refused(p);
+  if (before && writing && before.nlink !== 1) refused(p);
   boundary({ operation: 'open', phase: 'checked', path: p });
   checkParents();
   const current = leaf(p);
-  if (before ? !current || !same(before, current) : current) refused();
+  if (before ? !current || !same(before, current) : current) refused(p);
   // Exclusive creation also closes the missing-leaf race. O_NONBLOCK keeps a
   // swapped FIFO from hanging the process before fstat can reject it.
   return {
@@ -105,7 +110,7 @@ function prepareOpen(path: fs.PathLike, flags: string | number, mode: fs.Mode | 
       checkParents();
       const opened = fs.fstatSync(fd), current = leaf(p);
       if (!current || !same(opened, current) || (before && !same(before, opened)) ||
-          (!opened.isFile() && !(opened.isDirectory() && !writing)) || (writing && opened.nlink !== 1)) refused();
+          (!opened.isFile() && !(opened.isDirectory() && !writing)) || (writing && opened.nlink !== 1)) refused(p);
       if (writing) fs.fchmodSync(fd, typeof mode === 'string' ? parseInt(mode, 8) : mode ?? 0o600);
       if (bits & c.O_TRUNC) fs.ftruncateSync(fd, 0);
       return opened;
@@ -161,11 +166,11 @@ function renameChecked(from: fs.PathLike, to: fs.PathLike, allowLinks = false): 
   const path = name(from), target = name(to);
   const checkFrom = parents(path), checkTo = parents(target);
   const source = leaf(path), dest = leaf(target);
-  if (!source || (!allowLinks && (source.isSymbolicLink() || dest?.isSymbolicLink()))) refused();
+  if (!source || (!allowLinks && (source.isSymbolicLink() || dest?.isSymbolicLink()))) refused(path);
   boundary({ operation: 'rename', phase: 'checked', path, target });
   checkFrom(); checkTo();
   const next = leaf(path), nextDest = leaf(target);
-  if (!next || !same(source, next) || (dest ? !nextDest || !same(dest, nextDest) : nextDest)) refused();
+  if (!next || !same(source, next) || (dest ? !nextDest || !same(dest, nextDest) : nextDest)) refused(path);
   fs.renameSync(path, target);
 }
 export const renameSync: typeof fs.renameSync = (from, to) => renameChecked(from, to);
@@ -177,7 +182,7 @@ export const copyFileSync: typeof fs.copyFileSync = (from, to, mode = 0) => {
   const input = openSync(from, 'r');
   try {
     const source = fs.fstatSync(input), dest = leaf(name(to));
-    if (dest && source.dev === dest.dev && source.ino === dest.ino) refused();
+    if (dest && source.dev === dest.dev && source.ino === dest.ino) refused(name(to));
     const output = openSync(to, mode & fs.constants.COPYFILE_EXCL ? 'wx' : 'w');
     try {
       const chunk = Buffer.allocUnsafe(64 * 1024);
@@ -242,13 +247,13 @@ export function cleanupPath(path: string, { onError = warnCleanup, ...options }:
 export const linkSync: typeof fs.linkSync = (from, to) => {
   const path = name(from), target = name(to), source = leaf(path);
   const checkFrom = parents(path), checkTo = parents(target);
-  if (!source?.isFile() || leaf(target)) refused();
+  if (!source?.isFile() || leaf(target)) refused(path);
   // Windows has no mode bits to read (every file shows 0o666); a backup folder's privacy there is its access list.
   if (process.platform !== 'win32' && source.mode & 0o077) throw Object.assign(new Error('Backup needs a private copy'), { code: 'EPRIVATECOPY' });
   boundary({ operation: 'link', phase: 'checked', path, target });
   checkFrom(); checkTo();
   const next = leaf(path);
-  if (!next || !same(source, next) || leaf(target)) refused();
+  if (!next || !same(source, next) || leaf(target)) refused(path);
   fs.linkSync(path, target);
 };
 
@@ -257,11 +262,11 @@ export const linkSync: typeof fs.linkSync = (from, to) => {
  */
 export function checkedFile(path: string): () => void {
   const p = name(path), checkParents = parents(p), before = leaf(p);
-  if (!before?.isFile()) refused();
+  if (!before?.isFile()) refused(p);
   const check = () => {
     checkParents();
     const current = leaf(p);
-    if (!current || !same(before, current)) refused();
+    if (!current || !same(before, current)) refused(p);
   };
   boundary({ operation: 'native', phase: 'checked', path: p });
   check();
@@ -306,6 +311,6 @@ export function removeEntrySync(path: string, options: fs.RmOptions = {}): void 
   boundary({ operation: 'remove', phase: 'checked', path: p });
   checkParents();
   const current = leaf(p);
-  if (!current || !same(before, current)) refused();
+  if (!current || !same(before, current)) refused(p);
   fs.rmSync(p, options);
 }

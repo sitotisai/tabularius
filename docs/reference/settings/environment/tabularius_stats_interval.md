@@ -8,6 +8,6 @@ How often the server writes statistics log lines.
 | Accepted values | interval such as 1m, or off |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/hosting-for-a-team.md](../../../hosting-for-a-team.md) |
-| Code | [packages/cli/src/main.ts:1422](../../../../packages/cli/src/main.ts#L1422) |
+| Code | [packages/cli/src/main.ts:1426](../../../../packages/cli/src/main.ts#L1426) |
 
 [All environment variables](../../../environment-variables.md)

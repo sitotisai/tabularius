@@ -8,6 +8,6 @@ Secret access key for off-site S3-compatible storage.
 | Accepted values | Secret access key |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/hosting-for-a-team.md](../../../hosting-for-a-team.md) |
-| Code | [packages/cli/src/main.ts:103](../../../../packages/cli/src/main.ts#L103) |
+| Code | [packages/cli/src/main.ts:104](../../../../packages/cli/src/main.ts#L104) |
 
 [All environment variables](../../../environment-variables.md)
