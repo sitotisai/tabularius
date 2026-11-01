@@ -263,3 +263,16 @@ test('a file whose link count changes between the check and the open is still re
     if (event.operation === 'open' && event.phase === 'checked' && event.path === s.file) fs.linkSync(s.file, join(s.inside, 'second-name'));
   }, () => safe.openSync(s.file, 'r')), /not a safe regular file/);
 });
+
+test('a folder swapped for another folder between the check and the open is still refused, and a folder is never opened for writing', (t) => {
+  const s = setup(t);
+  const folder = join(s.dir, 'swapped'), moved = join(s.dir, 'moved-away');
+  fs.mkdirSync(folder);
+  assert.throws(() => safe.withFilesystemHook((event) => {
+    if (event.operation === 'open' && event.phase === 'checked' && event.path === folder && !fs.existsSync(moved)) {
+      fs.renameSync(folder, moved);
+      fs.mkdirSync(folder);
+    }
+  }, () => safe.openSync(folder, 'r')), /not a safe regular file/);
+  assert.throws(() => safe.openSync(s.inside, 'r+'), /not a safe regular file|EISDIR/);
+});
