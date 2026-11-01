@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Store, createStore } from '../src/index.ts';
+import { Store, applyStarter, createStore } from '../src/index.ts';
 import type { FieldSpec } from '../src/design.ts';
 import { SHOWCASE_LISTS, showcaseSample } from '../src/showcase-data.ts';
 
@@ -143,6 +143,25 @@ test('the sample loads into a throwaway store in under 5 seconds', () => {
     // The supplied Opened wins over the auto-entered creation date (read back in the Data API's MM/DD/YYYY form).
     const [mm, dd, yyyy] = String(s.get('Deals', 1).fieldData.Opened).split('/');
     assert.equal(`${yyyy}-${mm}-${dd}`, rows('Deals')[0].Opened);
+  } finally {
+    s.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the crm-showcase starter loads the sample and keeps every row', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-showcase-wired-'));
+  const file = join(dir, 'Showcase.openhbam.sqlite');
+  createStore(file);
+  const s = new Store(file, 'Showcase');
+  try {
+    const started = Date.now();
+    const result = applyStarter(s, 'crm-showcase');
+    assert.ok(Date.now() - started < 5000);
+    assert.equal(result.sampleRecords, sample.reduce((n, g) => n + g.rows.length, 0));
+    assert.equal(s.countIds('Accounts'), 40);
+    assert.equal(s.countIds('Deals'), 70);
+    assert.equal(s.countIds('Deal Lines'), 150);
   } finally {
     s.close();
     rmSync(dir, { recursive: true, force: true });

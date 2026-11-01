@@ -2,6 +2,7 @@
 import type { FieldSpec } from './design.ts';
 import type { Starter } from './starters.ts';
 import type { Store } from './store.ts';
+import { SHOWCASE_LISTS, showcaseSample } from './showcase-data.ts';
 
 const serial = (): FieldSpec => ({ name: 'ID', type: 'number', options: { autoEnter: { serial: { next: '1', increment: 1 } }, validation: { notEmpty: true, unique: true } } });
 const text = (name: string): FieldSpec => ({ name, type: 'text' });
@@ -15,7 +16,7 @@ const calc = (name: string, calculation: string, type: 'text' | 'number' | 'date
 const initial = (name: string, value: string): FieldSpec => ({ name, type: 'text', options: { autoEnter: { data: value } } });
 const yesNo = (name: string): FieldSpec => initial(name, 'No');
 
-export function crmShowcaseStarter(_now: Date = new Date()): Starter {
+export function crmShowcaseStarter(now: Date = new Date()): Starter {
   return {
     name: 'crm-showcase', title: 'Tabularius CRM Showcase', summary: 'A CRM showcase foundation for accounts, contacts, deals and activity.',
     // TABLES
@@ -62,12 +63,12 @@ export function crmShowcaseStarter(_now: Date = new Date()): Starter {
     ],
     // VALUE LISTS
     valueLists: [
-      { name: 'Stage', values: ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Won', 'Lost'] },
-      { name: 'Industry', values: ['Technology', 'Manufacturing', 'Retail', 'Services', 'Food and drink', 'Other'] },
-      { name: 'Region', values: ['West', 'East', 'Central', 'South'] },
-      { name: 'Lead source', values: ['Referral', 'Web', 'Event', 'Outbound', 'Partner'] },
-      { name: 'Activity type', values: ['Call', 'Meeting', 'Email', 'Note', 'Task'] },
-      { name: 'Lost reason', values: ['Price', 'Timing', 'Competitor', 'No decision', 'Fit'] },
+      { name: 'Stage', values: [...SHOWCASE_LISTS.stage] },
+      { name: 'Industry', values: [...SHOWCASE_LISTS.industry] },
+      { name: 'Region', values: [...SHOWCASE_LISTS.region] },
+      { name: 'Lead source', values: [...SHOWCASE_LISTS.source] },
+      { name: 'Activity type', values: [...SHOWCASE_LISTS.activityType] },
+      { name: 'Lost reason', values: [...SHOWCASE_LISTS.lostReason] },
     ],
     popups: { 'Deals::Stage': 'Stage', 'Deals::Source': 'Lead source', 'Accounts::Industry': 'Industry', 'Accounts::Region': 'Region',
       'Reps::Region': 'Region', 'Activities::Type': 'Activity type', 'Deals::Lost Reason': 'Lost reason' },
@@ -304,7 +305,7 @@ Exit Script [ Result: "onboarding added" ]` },
       { name: 'Executive', comment: 'Can view records but cannot create, edit, delete or change the design.', records: { view: true, create: false, edit: false, delete: false } },
     ],
     // SAMPLE
-    sample: [],
+    sample: showcaseSample(now),
     extras: 'crm-showcase',
   };
 }
