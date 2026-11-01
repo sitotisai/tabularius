@@ -835,6 +835,20 @@ function roundSqlNumber(x: number, n: number, maxDigits = 30): number {
   return Math.sign(x) * (/e/i.test(String(rounded)) ? rounded / 10 ** n : Number(`${rounded}e${-n}`));
 }
 
+/** Expands a number's shortest round-tripping text into plain decimal digits. Vendor text at these magnitudes is unverified offline. */
+export function decimalText(v: SQLOutputValue): string {
+  const text = String(v);
+  if (typeof v !== 'number' || !text.includes('e')) return text;
+  const match = /^(-?)(\d+)(?:\.(\d+))?e([+-]\d+)$/.exec(text);
+  if (!match) return text;
+  const [, sign, whole, fraction = '', exponent] = match;
+  const digits = whole + fraction;
+  const point = whole.length + Number(exponent);
+  if (point <= 0) return `${sign}0.${'0'.repeat(-point)}${digits}`;
+  if (point >= digits.length) return sign + digits + '0'.repeat(point - digits.length);
+  return `${sign}${digits.slice(0, point)}.${digits.slice(point)}`;
+}
+
 /** The date, time, string and number functions of FileMaker SQL (and ODBC), for SQLite functions of the same names. */
 export const sqlDateFunctions = (now: () => Date = () => new Date()): Record<string, (...args: SQLOutputValue[]) => SQLInputValue> => ({
   YEAR: field('y'), MONTH: field('m'), DAY: field('d'), HOUR: field('h'), MINUTE: field('mi'), SECOND: field('s'),
@@ -912,10 +926,10 @@ export const sqlDateFunctions = (now: () => Date = () => new Date()): Record<str
   },
   SPACE: (n) => (n === null ? null : ' '.repeat(Math.min(Math.max(0, Math.trunc(Number(n))), 1_000_000))),
   CHR: (n) => (typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 127 ? String.fromCharCode(n) : null),
-  STRVAL: (v) => (v === null ? null : String(v)),
+  STRVAL: (v) => (v === null ? null : decimalText(v)),
   fm_cast_text: (v, length) => {
     if (v === null) return null;
-    const value = String(v);
+    const value = decimalText(v);
     return length === -1 ? value : [...value].slice(0, Number(length)).join('');
   },
   // Vendor behavior for parameterized numeric casts is unverified offline; apply the SQL standard's precision and scale.
