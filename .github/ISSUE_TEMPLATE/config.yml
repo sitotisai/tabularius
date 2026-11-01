@@ -1,1 +1,8 @@
 blank_issues_enabled: true
+contact_links:
+  - name: Ask a question or share an idea
+    url: https://github.com/sitotisai/tabularius/discussions
+    about: Questions about using Tabularius, ideas, and how you use it. Issues are for bugs and missing features.
+  - name: Report a security vulnerability
+    url: https://github.com/sitotisai/tabularius/security/advisories/new
+    about: Report it privately here. Please do not open a public issue for a vulnerability.

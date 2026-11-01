@@ -307,6 +307,10 @@
       {
         "address": "git@github.com",
         "why": "the ssh address of a git clone, in the publishing instructions"
+      },
+      {
+        "address": "hello@tabularius.dev",
+        "why": "the project's public contact address, on a domain the project owns, in SUPPORT.md, the README, SECURITY.md, the code of conduct and the site footer"
       }
     ]
   }

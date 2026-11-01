@@ -19,6 +19,10 @@ happened, and what you expected. We'll work a fix before any public disclosure.
 Please don't run denial-of-service or data-destruction tests against a server
 you don't own, and don't access data that isn't yours.
 
+If you cannot use GitHub, write to [hello@tabularius.dev](mailto:hello@tabularius.dev) and ask for a private way to send
+the report. Put no details in that first message: say only that you have a security report. Email is not an encrypted
+channel, so the details wait until there is a private way to send them.
+
 ### What to expect
 
 Tabularius is looked after by a small group of volunteers. There is no paid

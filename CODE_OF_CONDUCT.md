@@ -16,6 +16,6 @@ A maintainer may edit or remove a comment, close or lock a thread, and ask someo
 
 ## Reporting a problem
 
-Tell a maintainer privately, using GitHub's private reporting on the repository (**Security**, then **Report a vulnerability**): say in the first line that it is a conduct report, not a vulnerability, and it will be handled as one. No email address is published for this. Do not use a public issue or comment for a conduct report. We will read what you send, keep it between the people who have to act on it, and answer you.
+Tell a maintainer privately, using GitHub's private reporting on the repository (**Security**, then **Report a vulnerability**): say in the first line that it is a conduct report, not a vulnerability, and it will be handled as one. If you cannot use GitHub, write to [hello@tabularius.dev](mailto:hello@tabularius.dev) with the same first line and no details, and we will arrange a private way to continue. Do not use a public issue or comment for a conduct report. We will read what you send, keep it between the people who have to act on it, and answer you.
 
 This code applies in the project's own spaces and when someone represents the project in public. It is written in plain words on purpose; it is not a legal contract.

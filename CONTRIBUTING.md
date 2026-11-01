@@ -39,6 +39,10 @@ Run `npm run precheck`. It runs the type check, repository gates and tests relat
 - Keep the code in the style around it: the same names, comment density and idiom.
 - The pull request form (`.github/pull_request_template.md`) has the same three headings, then a short checklist; tick what applies and say in the description what you did not check.
 
+## Questions
+
+[SUPPORT.md](SUPPORT.md) says where questions, ideas, bugs and private messages go.
+
 ## Conduct
 
 Everyone in the project's spaces is asked to follow the [code of conduct](CODE_OF_CONDUCT.md).
