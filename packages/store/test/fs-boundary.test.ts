@@ -244,3 +244,22 @@ test('a file id is exact: the same file by path, link and descriptor agree, two 
   // `Stats.ino` is a Number: an NTFS id above 2**53 rounds there, two files then compare equal, and a cleanup removes the wrong one.
   assert.equal(safe.fileId(s.file), `${fs.lstatSync(s.file, { bigint: true }).dev}:${fs.lstatSync(s.file, { bigint: true }).ino}`);
 });
+
+test('a folder opened to flush it is the same folder when another process adds or removes entries meanwhile', (t) => {
+  // A folder's link count moves with its entries on macOS (and with its sub-folders elsewhere), so two processes that publish into one
+  // folder must not make each other's flush look like a swapped path; the folder's device, id and mode are its identity.
+  const s = setup(t);
+  let churned = 0;
+  const fd = safe.withFilesystemHook((event) => {
+    if (event.operation === 'open' && event.phase === 'checked' && event.path === s.inside && !churned++) fs.mkdirSync(join(s.inside, 'made-by-a-rival'));
+  }, () => safe.openSync(s.inside, 'r'));
+  fs.closeSync(fd);
+  assert.equal(churned, 1, 'the entry was added between the check and the open');
+});
+
+test('a file whose link count changes between the check and the open is still refused', (t) => {
+  const s = setup(t);
+  assert.throws(() => safe.withFilesystemHook((event) => {
+    if (event.operation === 'open' && event.phase === 'checked' && event.path === s.file) fs.linkSync(s.file, join(s.inside, 'second-name'));
+  }, () => safe.openSync(s.file, 'r')), /not a safe regular file/);
+});
