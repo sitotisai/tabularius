@@ -40,3 +40,8 @@ test('the pipeline board asks for no form, so it works in a sandbox that allows 
   assert.doesNotMatch(page, /<form\b/);
   assert.match(page, /prefers-reduced-motion/);
 });
+
+test('a deal whose stage is off the list gets a column of its own instead of vanishing', () => {
+  assert.match(page, /Needs a stage/);
+  assert.match(page, /Choose a stage/);
+});
