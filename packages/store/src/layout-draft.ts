@@ -70,6 +70,24 @@ export function addTabControl(design: Partial<LayoutDesign>, panels: { name: str
       if (label) { groups[i].push(label); claimed.add(label.id); }
     }
   }
+  // A portal's column headings go into its panel with it, so they do not show on the other tabs.
+  for (const g of groups) {
+    for (const p of g.filter((o) => o.kind === 'portal')) {
+      for (const t of objects) {
+        if (t.kind !== 'text' || claimed.has(t.id)) continue;
+        if (t.bounds.bottom <= p.bounds.top && t.bounds.top >= p.bounds.top - 40 && t.bounds.left >= p.bounds.left - 8 && t.bounds.right <= p.bounds.right + 8) { g.push(t); claimed.add(t.id); }
+      }
+    }
+  }
+  // Each panel's content starts just under the tab strip, wherever it sat on the untabbed form.
+  const start = body.top + 28 + 12;
+  const shift = (o: LayoutObject, dy: number): void => {
+    o.bounds = { ...o.bounds, top: o.bounds.top + dy, bottom: o.bounds.bottom + dy };
+    for (const c of o.children ?? []) shift(c, dy);
+  };
+  for (const g of groups) {
+    if (g.length) { const dy = start - Math.min(...g.map((o) => o.bounds.top)); for (const o of g) shift(o, dy); }
+  }
   const ids = new Set(objects.flatMap((o) => [o.id, ...(o.children ?? []).map((c) => c.id)]));
   let next = Math.max(0, ...ids) + 1;
   const tabId = next++;
