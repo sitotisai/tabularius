@@ -21,7 +21,7 @@ const FIRST = ['Alder', 'Amara', 'Anselm', 'Beatrix', 'Callum', 'Dalia', 'Dmitri
 const LAST = ['Abernathy', 'Bellweather', 'Castellan', 'Draycott', 'Eastwick', 'Fairbanks', 'Galloway', 'Hartigan', 'Ironside', 'Jessup', 'Kestrel', 'Lockhart', 'Marlowe', 'Northcott', 'Oakenshaw', 'Pemberton', 'Quillfeather', 'Ravensdale', 'Sandoval', 'Thorncliffe', 'Underhill', 'Vandermeer', 'Whitlock', 'Yarrow', 'Zimmerman', 'Aldridge', 'Brightwater', 'Cavendish', 'Dunmore', 'Ellsworth', 'Fenwick', 'Gresham', 'Holloway', 'Ingram', 'Jorgensen', 'Kingsley', 'Lindqvist', 'Mercado', 'Nakamura', 'Okonkwo'];
 const STEM = ['Alderbank', 'Birchwood', 'Cobalt Ridge', 'Dunmore', 'Everlight', 'Fernhill', 'Granite Peak', 'Highmoor', 'Ivory Coast Trading', 'Juniper', 'Kingfisher', 'Lanternworks', 'Millstone', 'Northgate', 'Orchard Lane', 'Pinecrest', 'Quarry Hill', 'Riverbend', 'Silverleaf', 'Tidewater', 'Umber', 'Valemont', 'Willowmere', 'Yellowfin', 'Zephyr Point', 'Ashgrove', 'Brightfield', 'Copperline', 'Driftwood', 'Elmhurst', 'Foxglove', 'Greystone', 'Hawthorne', 'Inkwell', 'Jasper Bay', 'Kestrel Point', 'Longmeadow', 'Marigold', 'Nettlefield', 'Oakvale'];
 const SUFFIX = ['Co', 'Ltd', 'Group', 'Partners', 'Systems', 'Supply', 'Labs', 'Works', 'Holdings', 'Industries'];
-const RESERVED_STEMS = ['harbour', 'harbor', 'larkspur', 'redfern'];
+const RESERVED_STEMS = ['quayside', 'larkspur', 'redfern'];
 const ROLE = ['Owner', 'Managing Director', 'Operations Manager', 'Purchasing Lead', 'Finance Director', 'IT Manager', 'Office Manager', 'Head of Sales', 'Project Coordinator', 'Facilities Manager', 'Buyer', 'General Manager'];
 const DEAL_ITEM = ['Annual licence renewal', 'Warehouse rollout', 'Pilot programme', 'Regional expansion', 'Support plan upgrade', 'Training package', 'Fleet refresh', 'Site survey and fit-out', 'Reporting suite', 'Seasonal supply agreement', 'Onboarding bundle', 'Equipment upgrade', 'Integration project', 'Service contract', 'Pop-up stand order'];
 const ACTIVITY_SUBJECT: Record<string, string[]> = {
@@ -99,7 +99,7 @@ export function showcaseSample(now: Date, seed = 20261101): Starter['sample'] {
     names.push(name);
   }
   // Three near-duplicate pairs, messy through their text alone.
-  names.push('Harbour Freight Co', 'Harbor Freight Co.', 'Larkspur Works Ltd', 'Larkspur Works Ltd.', 'Redfern Supply Co', 'Redfern Supply Company');
+  names.push('Quayside Freight Co', 'Quayside Freight Co.', 'Larkspur Works Ltd', 'Larkspur Works Ltd.', 'Redfern Supply Co', 'Redfern Supply Company');
   const accounts: Row[] = names.map((name, i) => {
     const region = g.pick(SHOWCASE_LISTS.region);
     const owner = g.pick(repsByRegion(region).length ? repsByRegion(region) : reps.map((r, k) => ({ r, id: k + 1 })));

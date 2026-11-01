@@ -94,7 +94,7 @@ test('deal lines roughly add up to the deal amount', () => {
 });
 
 test('there is deliberate mess: near-duplicate accounts and off-list values', () => {
-  const norm = (s: string) => s.toLowerCase().replace(/harbour/g, 'harbor').replace(/company/g, 'co').replace(/[^a-z0-9]/g, '');
+  const norm = (s: string) => s.toLowerCase().replace(/company/g, 'co').replace(/[^a-z0-9]/g, '');
   const groups = new Map<string, number>();
   for (const a of rows('Accounts')) groups.set(norm(String(a.Name)), (groups.get(norm(String(a.Name))) ?? 0) + 1);
   assert.ok([...groups.values()].filter((c) => c > 1).length >= 3, 'near-duplicate pairs');
