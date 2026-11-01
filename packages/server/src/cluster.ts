@@ -131,12 +131,16 @@ export function logFromFollower(notifier: { note(type: LogType, source: string, 
   notifier.note(note.type, note.source, `[worker ${note.from}] ${note.message}`);
 }
 
+/** The longest error text the front process passes on in an open-state note. */
+export const OPEN_STATE_TEXT_MAX = 4096;
+
 /** What the front process accepts of an open-state note: a file name and a short text; `from` is the sender, whatever it claims. */
 export function openStateNote(note: unknown, from: number): Extract<Note, { k: 'open-state' }> | undefined {
   const n = note as { k?: unknown; file?: unknown; error?: unknown } | null;
   if (!n || n.k !== 'open-state' || typeof n.file !== 'string' || !n.file || n.file.length > 255) return undefined;
-  if (n.error !== undefined && (typeof n.error !== 'string' || n.error.length > 4096)) return undefined;
-  return { k: 'open-state', from, file: n.file, ...(n.error !== undefined ? { error: n.error } : {}) };
+  if (n.error !== undefined && typeof n.error !== 'string') return undefined;
+  // A long text is cut, not refused: the report that a file will not open matters more than the end of its reason.
+  return { k: 'open-state', from, file: n.file, ...(n.error !== undefined ? { error: n.error.slice(0, OPEN_STATE_TEXT_MAX) } : {}) };
 }
 
 /** Between workers, through the front process. */
@@ -251,6 +255,8 @@ export class ClusterLink {
     };
     for (const store of host.openStores()) join(store);
     host.onAdd.push(join);
+    // A file this process could not open while it started is listed as closed with the reason; the leader has not heard of it.
+    if (!this.role.leader) for (const f of host.files()) if (f.status === 'closed' && f.damaged) this.openState(f.name, f.damaged);
     api.others = () => [...this.sessions.values()].flat();
     api.endElsewhere = (id) => this.send({ t: 'tell', note: { k: 'end', id } });
     live.elsewhere = {

@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { ClusterLink, openStateNote } from '../src/cluster.ts';
 import { serve } from '../src/index.ts';
 import { createStore } from '../../store/src/index.ts';
-import { OpenFailures, plainOpenError, OPEN_FAILURE_ENTRIES_MAX, OPEN_FAILURE_TEXT_MAX } from '../src/open-failures.ts';
+import { OpenFailures, plainOpenError, OPEN_FAILURE_PER_WORKER_MAX, OPEN_FAILURE_TEXT_MAX } from '../src/open-failures.ts';
 
 const folder = join(tmpdir(), 'hosted');
 
@@ -38,18 +38,21 @@ test('the list is bounded, per file and worker, and cleared by an open, a stoppe
   assert.deepEqual(list.list(() => true), []);
   list.set('Gone', 1, 'busy', folder);
   assert.deepEqual(list.list((f) => f !== 'Gone'), []);
-  for (let i = 0; i < OPEN_FAILURE_ENTRIES_MAX + 10; i++) list.set(`F${i}`, 1, 'busy', folder);
+  // One worker keeps its newest entries (the total bound and the other workers are in cluster-open-failures-hardening.test.ts).
+  for (let i = 0; i < OPEN_FAILURE_PER_WORKER_MAX + 10; i++) list.set(`F${i}`, 1, 'busy', folder);
   const kept = list.list(() => true);
-  assert.equal(kept.length, OPEN_FAILURE_ENTRIES_MAX);
+  assert.equal(kept.length, OPEN_FAILURE_PER_WORKER_MAX);
   assert.equal(kept[0].file, 'F10');
 });
 
 test('the front process takes an open-state note of the right shape and puts the sender in it', () => {
   assert.deepEqual(openStateNote({ k: 'open-state', from: 0, file: 'Sales', error: 'busy' }, 2), { k: 'open-state', from: 2, file: 'Sales', error: 'busy' });
   assert.deepEqual(openStateNote({ k: 'open-state', file: 'Sales' }, 1), { k: 'open-state', from: 1, file: 'Sales' });
-  for (const bad of [null, 'x', { k: 'open-state' }, { k: 'open-state', file: '' }, { k: 'open-state', file: 7 }, { k: 'open-state', file: 'a'.repeat(256) }, { k: 'open-state', file: 'a', error: 3 }, { k: 'open-state', file: 'a', error: 'e'.repeat(4097) }]) {
+  for (const bad of [null, 'x', { k: 'open-state' }, { k: 'open-state', file: '' }, { k: 'open-state', file: 7 }, { k: 'open-state', file: 'a'.repeat(256) }, { k: 'open-state', file: 'a', error: 3 }]) {
     assert.equal(openStateNote(bad, 1), undefined);
   }
+  // A text over the longest is cut, not refused (see cluster-open-failures-hardening.test.ts).
+  assert.equal(openStateNote({ k: 'open-state', file: 'a', error: 'e'.repeat(4097) }, 1)?.error, 'e'.repeat(4096));
 });
 
 test('a worker that fails to open a file reports it, and the leader lists it until the file opens', { timeout: 10_000 }, async () => {
