@@ -663,7 +663,8 @@
         "docs/research/secret-taint-tracking.md",
         "docs/research/encryption-standby.md",
         "docs/research/r17b-01-script-step-privileges.md",
-        "docs/research/progressive-with-workers.md"
+        "docs/research/progressive-with-workers.md",
+        "docs/research/recursion-depth.md"
       ]
     },
     {
