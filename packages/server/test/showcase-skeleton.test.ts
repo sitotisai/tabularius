@@ -22,8 +22,8 @@ test('CRM showcase skeleton builds its native and server-owned pieces', () => wi
   assert.equal(isShowcase('crm-showcase'), true);
   assert.equal(isShowcase('crm'), false);
   assert.deepEqual(STARTER_NAMES, ['crm', 'inventory', 'invoicing', 'tasks', 'booking']);
-  assert.equal(SHOWCASE_STARTERS['crm-showcase'].sample.length, 0);
-  const built = applyStarter(store, 'crm-showcase', { account: 'tabularius demo' });
+  assert.ok(SHOWCASE_STARTERS['crm-showcase'].sample.length > 0);
+  const built = applyStarter(store, 'crm-showcase', { account: 'tabularius demo', sample: false });
   assert.equal(built.tables, 8);
   assert.deepEqual(store.schema.tables.map((t) => t.name), ['Reps', 'Accounts', 'Contacts', 'Deals', 'Activities', 'Email Log', 'Products', 'Deal Lines']);
   store.setPassword('tabularius demo', ['local', 'showcase', 'password'].join(' '), '[Full Access]');
