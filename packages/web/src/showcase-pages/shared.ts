@@ -100,11 +100,13 @@ export const SHARED_JS = `
       h('p', { class: 'muted' }, what + ' It reads live records through window.tabularius, which only Tabularius provides, so it shows nothing in another web viewer or a plain browser tab.')));
     return true;
   }
-  // The signed-in rep's record (found by Login = account name), or null when Reps cannot be read or has no such rep.
+  // The signed-in rep's record (the one whose Login is the account name), or null when Reps cannot be read or has no such rep.
+  // It reads the few reps and matches here: a find that matches nothing is answered with an error (an account like Admin has no rep), which the browser logs.
   async function myRep(reps, account) {
     try {
-      const r = await tabularius.find(reps, [{ Login: '==' + account }], { limit: 1 });
-      return r.data[0] || null;
+      const r = await tabularius.records(reps, { limit: 500 });
+      const want = String(account).toLowerCase();
+      return (r.data || []).find((x) => field(x, 'Login').toLowerCase() === want) || null;
     } catch (e) { return null; }
   }
   const sum = (c) => ((c && c.series && c.series[0] && c.series[0].values) || []).map((x) => Number(x) || 0);
