@@ -106,5 +106,9 @@
   {
     "file": "packages/cli/test/docs-flags.test.ts",
     "reason": "Checks every --option shown in code on a hand-written page is one the program reads or a listed option of another program"
+  },
+  {
+    "file": "packages/server/test/docs-inbound-hook-call-log.test.ts",
+    "reason": "Checks the team hosting page states the inbound-hook call log mode on Windows and its lock behaviour"
   }
 ]

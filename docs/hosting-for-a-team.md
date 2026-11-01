@@ -179,6 +179,7 @@ within the account's privileges, with no AI steps. It reaches the network only
 when the file's Script network switch is on and the hook allows the network too. The admin console lists each hook's
 recent calls (never their bodies). The server answers no calls unless started
 with `--allow-inbound-hooks`, and a capture-only file never has a hook.
+The call log, `inbound-hook-calls.jsonl` in the hosted folder, is created for its owner alone (mode 0600) on macOS and Linux; Windows has no mode bits, so there its privacy is the folder's access list. It is written under a lock file, `inbound-hook-calls.jsonl.lock.db`, which SQLite opens itself and the file-safety checks do not guard, and a call is left out of the log, with a line in the server log, if that lock is held for more than 50 ms.
 
 **Health and metrics.** `GET /tabularius/health` answers `{"status":"ok"}`
 without signing in, for load balancers, Docker and Kubernetes (the Docker
