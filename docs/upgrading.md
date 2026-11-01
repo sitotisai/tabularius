@@ -33,6 +33,22 @@ Held files and upgrades: the first start of this version records the stores alre
 `tabularius upgrade` fetches the new version, **backs up the hosted folder**, restarts the service, waits for it to answer,
 and puts the old version back if it does not start (ADMIN.md, "Upgrade"). Two things to know:
 
+- **A checkout made before the repository's history was rewritten for the first release can no longer update.** The
+  history of `main` was rewritten once, before `v0.1.0`, so every old commit has a new identity. A clone, or the
+  install folder `install.sh` made (`~/.openhbam/app`), that was made before then fails `git pull --ff-only` with a message
+  such as "Not possible to fast-forward" or "refusing to merge unrelated histories", and so does `tabularius upgrade`. The
+  single-file program from the release page is not affected. To fix a checkout, run these in its folder; the second line
+  **throws away any change you made to the program's own files** (hosted files, stores and backups live elsewhere and are
+  not touched):
+
+  ```sh
+  git fetch origin
+  git reset --hard origin/main
+  ```
+
+  A fresh `git clone` into a new folder works as well. Branches you made yourself on the old history do not carry over; copy
+  what you want to keep first. `tabularius upgrade` works as usual afterwards.
+
 - When a service is installed (`tabularius service install`), the upgrade is **refused before anything restarts** if the
   version it would put in place reads an older file format than a file in the folder is in. This is what stops
   `tabularius upgrade --from <an older copy>` from taking a folder out of service: the old install stays, the service is

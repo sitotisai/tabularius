@@ -1,6 +1,6 @@
 # Versions: what a number means, what stays put, what is tested
 
-Tabularius is at version 0.1.0 and nothing has been released or tagged yet. This page says how versions will be numbered, which things a new version leaves alone, which it may change, what is tested where, and how release notes are made. A test (`packages/server/test/version.test.ts`) holds the numbers below to the program.
+Tabularius is at version 0.1.0 (the first public release, tag `v0.1.0`). This page says how versions are numbered, which things a new version leaves alone, which it may change, what is tested where, and how release notes are made. A test (`packages/server/test/version.test.ts`) holds the numbers below to the program.
 
 ## Where the version is shown
 
