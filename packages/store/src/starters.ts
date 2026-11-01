@@ -6,7 +6,8 @@
 import type { FieldSpec } from './design.ts';
 import { draftArranged, draftLayout } from './layout-draft.ts';
 import { STARTER_SOLUTIONS } from './starter-solutions.ts';
-import { crmShowcaseStarter } from './starter-crm-showcase.ts';
+import { crmShowcaseStarter, showcaseScriptTests } from './starter-crm-showcase.ts';
+import type { PrivilegeDefinition } from './privileges.ts';
 import type { Store } from './store.ts';
 
 export interface StarterTable { name: string; fields: FieldSpec[] }
@@ -54,7 +55,7 @@ export interface Starter {
   extras?: string;
   reports: StarterReport[];
   /** Privilege sets besides [Full Access]: who may change what. */
-  privilegeSets: { name: string; comment: string; records: { view: boolean; create: boolean; edit: boolean; delete: boolean } }[];
+  privilegeSets: Pick<PrivilegeDefinition, 'name' | 'comment' | 'records' | 'tables'>[];
   /** Invented records, in the order to add them: table → rows (a related row names its parent by its position, 1-based, in the `ID` the parent got). */
   sample: { table: string; rows: Record<string, string | number>[] }[];
 }
@@ -109,9 +110,9 @@ export function applyStarter(store: Store, name: string, opts: { sample?: boolea
   const layouts = designLayouts(store, starter, account);
   for (const set of starter.privilegeSets) {
     store.savePrivilegeSet({
-      name: set.name, comment: set.comment, records: set.records,
+      name: set.name, comment: set.comment, records: set.records, ...(set.tables ? { tables: set.tables } : {}),
       layouts: 'viewOnly', valueLists: 'viewOnly', scripts: 'viewOnly',
-      extendedPrivileges: ['fmapp', 'fmwebdirect', 'fmrest'], printing: true, exporting: set.records.edit,
+      extendedPrivileges: ['fmapp', 'fmwebdirect', 'fmrest'], printing: true, exporting: set.records.edit === true,
     });
   }
 
@@ -123,6 +124,9 @@ export function applyStarter(store: Store, name: string, opts: { sample?: boolea
         sampleRecords++;
       }
     }
+  }
+  if (name === 'crm-showcase') {
+    for (const test of showcaseScriptTests(store)) store.saveScriptTest(test);
   }
   const s = store.schema;
   return {
