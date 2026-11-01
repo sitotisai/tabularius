@@ -6,6 +6,7 @@
 import type { FieldSpec } from './design.ts';
 import { draftArranged, draftLayout } from './layout-draft.ts';
 import { STARTER_SOLUTIONS } from './starter-solutions.ts';
+import { crmShowcaseStarter } from './starter-crm-showcase.ts';
 import type { Store } from './store.ts';
 
 export interface StarterTable { name: string; fields: FieldSpec[] }
@@ -13,12 +14,14 @@ export interface StarterTable { name: string; fields: FieldSpec[] }
 export interface StarterLayout {
   table: string;
   /** The list layout (named "<Table> list"). Fields default to the table's first eight. */
-  list?: { fields?: string[] };
+  list?: { fields?: string[]; chart?: { type: 'column' | 'bar' | 'line' | 'area' | 'pie'; category: string; value: string; title?: string } };
   /** The form layout (named after the table): portals of related rows and buttons that run scripts. */
   form?: {
     fields?: string[];
     portals?: { table: string; fields: string[]; rows?: number }[];
     buttons?: { text: string; script: string; parameter?: string }[];
+    /** Native tab controls are not yet produced by draftLayout. */
+    tabs?: { name: string; fields: string[] }[];
   };
 }
 
@@ -45,6 +48,10 @@ export interface Starter {
   popups: Record<string, string>;
   scripts: { name: string; text: string }[];
   layouts: StarterLayout[];
+  /** Native layout triggers are not yet produced by draftLayout. */
+  layoutTriggers?: { layout: string; event: string; script: string; parameter?: string }[];
+  /** Server-owned content to build after applyStarter. */
+  extras?: string;
   reports: StarterReport[];
   /** Privilege sets besides [Full Access]: who may change what. */
   privilegeSets: { name: string; comment: string; records: { view: boolean; create: boolean; edit: boolean; delete: boolean } }[];
@@ -53,6 +60,8 @@ export interface Starter {
 }
 
 export const STARTER_NAMES = Object.keys(STARTER_SOLUTIONS) as readonly string[];
+export const SHOWCASE_STARTERS: Record<string, Starter> = { 'crm-showcase': crmShowcaseStarter() };
+export const isShowcase = (name: string): boolean => Object.hasOwn(SHOWCASE_STARTERS, name);
 
 export function starterSummaries(): { name: string; title: string; summary: string }[] {
   return STARTER_NAMES.map((n) => ({ name: n, title: STARTER_SOLUTIONS[n].title, summary: STARTER_SOLUTIONS[n].summary }));
@@ -80,7 +89,7 @@ export function starterTarget(store: Store): string | undefined {
  * so a mistake in a starter fails here (and in its test) instead of leaving half an app.
  */
 export function applyStarter(store: Store, name: string, opts: { sample?: boolean; account?: string } = {}): StarterResult {
-  const starter = STARTER_SOLUTIONS[name];
+  const starter = STARTER_SOLUTIONS[name] ?? SHOWCASE_STARTERS[name];
   if (!starter) throw new Error(`There is no starter called "${name}". The starters are ${STARTER_NAMES.join(', ')}.`);
   const problem = starterTarget(store);
   if (problem) throw new Error(problem);
@@ -161,7 +170,9 @@ function designLayouts(store: Store, starter: Starter, account: string): number 
     made++;
     // The list.
     const listFields = def.list?.fields ? ids(def.table, def.list.fields).fields : undefined;
-    const list = draft({ title: `${def.table} list`, occurrence: t.occurrence.id, view: 'list', ...(listFields ? { fields: listFields } : {}) });
+    const chart = def.list?.chart;
+    const list = draft({ title: `${def.table} list`, occurrence: t.occurrence.id, view: 'list', ...(listFields ? { fields: listFields } : {}),
+      ...(chart ? { chart: { type: chart.type, category: t.field(chart.category), value: t.field(chart.value), ...(chart.title ? { title: chart.title } : {}) } } : {}) });
     store.applyDesign([{ op: 'createLayout', name: `${def.table} list`, occurrence: t.occurrence.id, design: list.design }] as never, { account });
     made++;
   }
