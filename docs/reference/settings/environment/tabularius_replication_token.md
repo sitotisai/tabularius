@@ -8,6 +8,6 @@ The token a standby presents to the primary.
 | Accepted values | Token of at least 16 characters |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:182](../../../../packages/cli/src/main.ts#L182) |
+| Code | [packages/cli/src/main.ts:183](../../../../packages/cli/src/main.ts#L183) |
 
 [All environment variables](../../../environment-variables.md)

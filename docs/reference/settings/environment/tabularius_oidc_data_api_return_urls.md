@@ -8,6 +8,6 @@ Comma-separated addresses the Data API sign-in may return to.
 | Accepted values | Comma-separated URLs |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1437](../../../../packages/cli/src/main.ts#L1437) |
+| Code | [packages/cli/src/main.ts:1441](../../../../packages/cli/src/main.ts#L1441) |
 
 [All environment variables](../../../environment-variables.md)

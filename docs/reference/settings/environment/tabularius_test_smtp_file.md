@@ -8,6 +8,6 @@ A file holding that account (`~/.openhbam/test-smtp` by default).
 | Accepted values | file or directory path |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:675](../../../../packages/cli/src/main.ts#L675) |
+| Code | [packages/cli/src/main.ts:676](../../../../packages/cli/src/main.ts#L676) |
 
 [All environment variables](../../../environment-variables.md)

@@ -42,13 +42,14 @@ One page: what Tabularius is built to defend, against whom, and what it does not
 
 ## Filesystem boundary
 
-`packages/store/src/fs-boundary.ts` checks file paths before and during file operations. It is meant to stop a swapped file, symlink or FIFO from being followed or truncated, and to detect a replaced folder between a check and a use. Refused paths fail with `ESTALE` and the message “Filesystem path changed or is not a safe regular file”. A group- or world-readable backup source is refused with `EPRIVATECOPY` (“Backup needs a private copy”).
+`packages/store/src/fs-boundary.ts` checks file paths before and during file operations. It is meant to stop a swapped file, symlink or FIFO from being followed or truncated, and to detect a replaced folder between a check and a use. Refused paths fail with `ESTALE` and the message “Filesystem path changed or is not a safe regular file”, which names no path (servers show these messages to clients); the path is kept in a non-enumerable `refusedPath` property that only the command line reads and prints. A group- or world-readable backup source is refused with `EPRIVATECOPY` (“Backup needs a private copy”).
 
 These checks are not `openat(2)` and do not make path-based operations atomic. The folders must belong to the service user. A hostile concurrent rename of a parent folder is out of scope.
 
 **Modules that use it**
 
 - `packages/cli/src/main.ts`
+- `packages/cli/src/output-files.ts`
 - `packages/cli/src/service.ts`
 - `packages/cli/src/windows-task.ts`
 - `packages/plugins/src/package.ts`

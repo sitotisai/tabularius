@@ -9,6 +9,6 @@
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | [`TABULARIUS_OIDC_ISSUER`](../environment/tabularius_oidc_issuer.md) |
 | Explained in | [docs/hosting-and-connecting.md](../../../hosting-and-connecting.md) |
-| Code | [packages/cli/src/main.ts:1427](../../../../packages/cli/src/main.ts#L1427) |
+| Code | [packages/cli/src/main.ts:1431](../../../../packages/cli/src/main.ts#L1431) |
 
 [All serve flags](../serve-flags.md)

@@ -8,6 +8,6 @@ How often changes are saved as a point you can restore to with `tabularius resto
 | Accepted values | off or an interval such as 5m |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1412](../../../../packages/cli/src/main.ts#L1412) |
+| Code | [packages/cli/src/main.ts:1416](../../../../packages/cli/src/main.ts#L1416) |
 
 [All environment variables](../../../environment-variables.md)
