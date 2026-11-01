@@ -63,7 +63,7 @@ test('showcase extras report a missing execution account', () => withStore((stor
 test('showcase extras name missing tables and fields', () => withStore((store) => {
   const result = applyShowcaseExtras(store, { account: 'tabularius demo' });
   assert.deepEqual(result.skipped.map((item) => item.piece), [
-    'Deals modern-board', 'Activities modern-calendar', 'Pipeline overview', 'HTML pages', 'When a deal is won, add an onboarding task',
+    'Deals modern-board', 'Activities modern-calendar', 'Pipeline overview', 'HTML pages', 'Account timeline in the Activity tab', 'When a deal is won, add an onboarding task',
   ]);
   assert.ok(result.skipped.every((item) => item.reason.includes('missing')));
 }));
