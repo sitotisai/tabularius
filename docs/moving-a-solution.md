@@ -628,7 +628,10 @@ Scripts run on the server, as FileMaker Server runs them.
 
 To try a script's mail and web calls safely, start the server with
 `--test-outbound`. Every message goes to `<folder>/Outbox` instead of its
-recipients.
+recipients. The Outbox keeps the newest messages, up to 64 MB in each of two
+files (`outbox.jsonl` and, once that one is full, `outbox-older.jsonl`); the older
+one is replaced when the next fills. A message larger than 1 MB is kept without
+its attachment contents and with its text cut.
 
 A file can be marked **capture-only** when its mail and web calls must never
 get out, whatever the server allows (a client's solution you are testing, say).
