@@ -106,5 +106,9 @@
   {
     "file": "packages/cli/test/docs-flags.test.ts",
     "reason": "Checks every --option shown in code on a hand-written page is one the program reads or a listed option of another program"
+  },
+  {
+    "file": "packages/server/test/docs-held-files-upgrading.test.ts",
+    "reason": "Checks docs/upgrading.md states the held-file facts an upgrade depends on and names a real approve route"
   }
 ]

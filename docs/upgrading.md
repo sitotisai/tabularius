@@ -28,7 +28,7 @@ the backup the upgrade took, not by pointing an old version at files a newer one
 
 ## Upgrading
 
-Held files and upgrades: the first start of this version records the stores already in the hosted folder as approved in `.openhbam-hosted.json`, and a file that arrives later is **held** until an administrator presses **Approve** next to it on the admin console's Files page. [Security defaults](security-defaults.md) says what a held file does and does not run and what the record does not protect against.
+Held files and upgrades: the first start of this version records the stores already in the hosted folder as approved in `.openhbam-hosted.json`, and a file that arrives later is **held** until an administrator presses **Approve** next to it on the admin console's Files page. `POST /tabularius/admin/v1/files/{name}/approve` does the same. A held file stays hosted and readable but runs nothing of its own until it is approved, and a different file under an approved name is held too. The record is a local file, excluded from backups. On a server that has run before, a missing or damaged record holds every file, and a lost record cannot be rebuilt in this release. A restore with a healthy record approves the restored file; with no record yet every store is approved. The identity is a label, so edits inside an approved file are not caught. [Security defaults](security-defaults.md) says what a held file does and does not run and what the record does not protect against.
 
 `tabularius upgrade` fetches the new version, **backs up the hosted folder**, restarts the service, waits for it to answer,
 and puts the old version back if it does not start (ADMIN.md, "Upgrade"). Two things to know:
