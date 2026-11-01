@@ -34,7 +34,10 @@ function visibleText(html: string): string {
 }
 
 /** Problems in the pages of a site folder, each as "file: what is wrong". */
-export function checkSite(dir: string): string[] {
+export /** The one real address the site may show: the project's public contact address. */
+const PROJECT_ADDRESS = 'hello@tabularius.dev';
+
+function checkSite(dir: string): string[] {
   const problems: string[] = [];
   for (const file of files(dir)) {
     const name = file.slice(dir.length + 1);
@@ -69,8 +72,9 @@ export function checkSite(dir: string): string[] {
       if (!/Data API|\.fmp12|trademark|affiliated/i.test(n.replace(/\s+/g, ' '))) problems.push(`${name}: "${n.replace(/\s+/g, ' ').trim()}" uses a trademark as a product name`);
     }
 
-    // Addresses: only the reserved example domain.
+    // Addresses: only the reserved example domain, and the project's own public contact address.
     for (const m of text.matchAll(/[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})/g)) {
+      if (m[0].toLowerCase() === PROJECT_ADDRESS) continue;
       if (!/^example\.(com|org|net)$/i.test(m[1])) problems.push(`${name}: the address ${m[0]} is not a placeholder (use you@example.com)`);
     }
 
@@ -100,7 +104,7 @@ test('checkSite catches a broken image, a trademark headline, a stray address an
       '<h1>Tabularius</h1><p class="tag">FileMaker, reimagined.</p><h3>Skipped</h3>',
       '<img src="assets/missing.jpg" alt="">',
       '<blockquote>Words.</blockquote><cite>Someone</cite>',
-      '<p>Try FileMaker today. Write to alex@company.com.</p>',
+      '<p>Try FileMaker today. Write to alex@company.com or hello@tabularius.dev.</p>',
       '</body></html>',
     ].join('\n'));
     const found = checkSite(dir).join('\n');
@@ -108,6 +112,7 @@ test('checkSite catches a broken image, a trademark headline, a stray address an
     assert.match(found, /title, description or headline uses a trademark/);
     assert.match(found, /heading level skipped/);
     assert.match(found, /alex@company\.com is not a placeholder/);
+    assert.doesNotMatch(found, /hello@tabularius\.dev/);
     assert.match(found, /named speaker/);
     assert.match(found, /uses a trademark as a product name/);
     // The factual sentences pass.
