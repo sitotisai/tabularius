@@ -10,7 +10,7 @@ export interface ShowcaseNames {
   accounts: string; deals: string; activities: string; emailLog: string; reps: string; contacts: string;
   /** The layouts a click on an account or deal goes to. */
   account360: string; deal: string;
-  /** The script that marks one task done (given the Activities record id) and the one that selects a record after goToLayout. */
+  /** The script that marks one task done (given the task's serial ID field) and the one that finds a record by its serial ID on the current layout after goToLayout. */
   markDone: string; goToRecord: string;
 }
 
