@@ -207,6 +207,10 @@
         "why": "community file"
       },
       {
+        "glob": "SUPPORT.md",
+        "why": "community file: where questions, bugs, security reports and private messages go"
+      },
+      {
         "glob": "claude-plugin/**",
         "why": "the Claude Code plug-in"
       },
