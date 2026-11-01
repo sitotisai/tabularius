@@ -859,7 +859,7 @@ rule on, only an account that may view the whole table can.
 
 ### Security event kinds
 
-**Security events only** in the **Audit log** shows the entries below (and more) by their kind, which is also the `kind` of an entry from `GET /tabularius/admin/v1/audit`. The table lists the kinds for accounts, second factors, passkeys, recovery codes, tokens and cleared sign-in blocks; the other kinds are described in the console beside each entry.
+**Security events only** in the **Audit log** shows the entries below (and more) by their kind, which is also the `kind` of an entry from `GET /tabularius/admin/v1/audit`. The tables below list the kinds for accounts, second factors, passkeys, recovery codes, tokens and cleared sign-in blocks, then those for privilege sets, password rules and AI agents; the audit log, empty passwords, plug-ins, script network access, SQL access and web viewer hosts; and design changes, standby takeover and AI access. The other kinds are described in the console beside each entry.
 
 | Kind | Recorded when |
 | --- | --- |
