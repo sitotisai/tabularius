@@ -1,6 +1,7 @@
 import { accountTimelinePage } from './account-timeline.ts';
 import { connectPage } from './connect.ts';
 import { salesDashboardPage } from './sales-dashboard.ts';
+import { pipelineBoardPage } from './pipeline-board.ts';
 import { todayPage } from './today.ts';
 import type { ShowcaseNames } from './shared.ts';
 
@@ -12,6 +13,7 @@ export const SHOWCASE_PAGES: { name: string; html: (names?: Partial<ShowcaseName
   { name: 'Today', html: todayPage },
   { name: 'Sales dashboard', html: salesDashboardPage },
   { name: 'Account timeline', html: accountTimelinePage },
+  { name: 'Pipeline board', html: () => pipelineBoardPage() },
   { name: 'Connect', html: connectPage },
 ];
 
