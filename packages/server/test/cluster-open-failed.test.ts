@@ -79,7 +79,7 @@ test('a worker that fails to open a file reports it, and the leader lists it unt
       return {
         dir,
         openFailures: new OpenFailures(),
-        openStores: () => [], onAdd: [], serverScripts: { version: 0, list: () => [] }, logs: undefined,
+        openStores: () => [], onAdd: [], onApprove: new Set(), serverScripts: { version: 0, list: () => [] }, logs: undefined,
         get: () => (opens > 1 ? {} : undefined),
         openFile: () => { opens++; if (opens === 1) throw new Error(`EPERM: operation not permitted, open '${dir}/Sales.openhbam.sqlite'`); return true; },
         files: () => [{ name: 'Sales' }],
