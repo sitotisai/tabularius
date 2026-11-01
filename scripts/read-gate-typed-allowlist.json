@@ -2433,6 +2433,14 @@
  },
  {
   "file": "packages/store/src/store.ts",
+  "within": "Store.checkProposedWrite",
+  "api": "Store.row",
+  "count": 1,
+  "gate": "checked-before",
+  "why": "Preceded by checkLayout and checkWriteFields with the caller's narrowed privileges (including its credential ceiling); the raw row is read only to evaluate the caller's own record rules (checkRecordRule with the caller's privileges) before a proposal is queued, and is never returned, stored or written."
+ },
+ {
+  "file": "packages/store/src/store.ts",
   "within": "Store.update",
   "api": "Store.row",
   "count": 1,
