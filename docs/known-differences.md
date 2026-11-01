@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**244 entries in 28 areas.** Unverified: 112. Waiting on: 22 on a sample file, 145 on a FileMaker run or Design Report, 14 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
+**245 entries in 28 areas.** Unverified: 112. Waiting on: 22 on a sample file, 146 on a FileMaker run or Design Report, 14 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
 
 ## Conversion
 
@@ -318,6 +318,7 @@ part of it.
 | vendor results for parameterized DECIMAL and NUMERIC casts are unspecified in the cited pages | the conformance test uses the SQL standard for these derived expectations | compare the casts with FileMaker and record the observed result | [docs/sql-grammar-conformance.md › What was checked](sql-grammar-conformance.md) — “…come from the SQL standard; the vendor result is unverified. Five entries are marked unverified because the…” |
 | zero-percent result and OFFSET basis for PERCENT are not stated by the cited page | Tabularius returns no rows for zero percent and counts the rows after OFFSET | compare both cases with FileMaker and record the observed results | [docs/sql-grammar-conformance.md › Not verified](sql-grammar-conformance.md) — “…percentage count; those FileMaker outcomes are unverified.” |
 | vendor results for five constructs are unspecified in the cited pages | the conformance test records current behavior without an expected result | compare each construct with FileMaker and record the observed result | [docs/sql-grammar-conformance.md › Not verified](sql-grammar-conformance.md) — “…read do not say, so the file marks these entries unverified with no expected result (paths: []). The test…” |
+| How FileMaker writes a very large or very small number as text in STRVAL and character CAST (plain digits here, never an exponent) is not checked | STRVAL ( 1e21 ) gives 1000000000000000000000 and STRVAL ( 2.5e-7 ) gives 0.00000025 | A FileMaker run of STRVAL and CAST to VARCHAR on numbers past 1e21 and below 1e-6 | [docs/sql-grammar-conformance.md › What the check found and what changed](sql-grammar-conformance.md) — “…whether the product accepts these spellings is unverified.” |
 | CHAR(n) padding required by the SQL standard | short values remain unpadded after CAST | compare with ExecuteSQL on short text and add padding if needed | [docs/sql-grammar-conformance.md › What the check found and what changed](sql-grammar-conformance.md) — “…whether the product accepts these spellings is unverified.” |
 
 ## SQL temporal CAST
