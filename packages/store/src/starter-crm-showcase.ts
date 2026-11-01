@@ -40,11 +40,14 @@ export function crmShowcaseStarter(_now: Date = new Date()): Starter {
         calc('Stale', 'Case ( Stage = "Won" or Stage = "Lost" ; 0 ; Days In Stage > 14 ; 1 ; 0 )', 'number', true),
         calc('Quote Total', 'Sum ( Deal Lines::Line Total )', 'number', true),
         calc('Open Amount', 'Case ( Stage = "Won" or Stage = "Lost" ; 0 ; Amount )'),
-        calc('Won Amount', 'Case ( Stage = "Won" ; Amount ; 0 )')] },
+        calc('Won Amount', 'Case ( Stage = "Won" ; Amount ; 0 )'),
+        { name: 'Total Amount', summary: { type: 'total', field: 'Amount' } },
+        { name: 'Weighted Total', summary: { type: 'total', field: 'Weighted Amount' } }] },
       { name: 'Activities', fields: [serial(), key('Account ID'), num('Contact ID'), num('Deal ID'), key('Rep ID'), text('Type'), required('Subject'),
         { name: 'When', type: 'timestamp', options: { autoEnter: { value: 'creationTimestamp' } } }, date('Due'), yesNo('Done'), text('Outcome'), text('Notes'),
         calc('Account Name', 'Accounts::Name', 'text', true), calc('Contact Name', 'Contacts::Name', 'text', true),
-        calc('Deal Title', 'Deals::Title', 'text', true), calc('Rep Name', 'Reps::Name', 'text', true)] },
+        calc('Deal Title', 'Deals::Title', 'text', true), calc('Rep Name', 'Reps::Name', 'text', true),
+        { name: 'Activity Count', summary: { type: 'count', field: 'ID' } }] },
       { name: 'Email Log', fields: [serial(), key('Account ID'), num('Contact ID'), text('Direction'), text('Subject'), text('Body'),
         { name: 'Sent', type: 'timestamp' }, calc('Account Name', 'Accounts::Name', 'text', true), calc('Contact Name', 'Contacts::Name', 'text', true)] },
       { name: 'Products', fields: [serial(), text('SKU'), required('Name'), num('Unit Price'), initial('Active', 'Yes')] },
@@ -281,11 +284,47 @@ Set Field [ Activities::Type ; "Task" ]
 Set Field [ Activities::Due ; Get ( CurrentDate ) + 3 ]
 Commit Records/Requests [ With dialog: Off ]
 Exit Script [ Result: "onboarding added" ]` },
+      { name: 'Duplicate deal', text: `# Copies this deal as a new lead for the same account.
+If [ IsEmpty ( Deals::ID ) ]
+	Exit Script [ Result: "need a deal" ]
+End If
+Duplicate Record/Request
+Set Field [ Deals::Stage ; "Lead" ]
+Set Field [ Deals::Closed ; "" ]
+Set Field [ Deals::Opened ; Get ( CurrentDate ) ]
+Set Field [ Deals::Stage Changed ; Get ( CurrentTimestamp ) ]
+Commit Records/Requests [ With dialog: Off ]
+Exit Script [ Result: "duplicated" ]` },
     ],
     // LAYOUTS
-    layouts: ['Reps', 'Accounts', 'Contacts', 'Deals', 'Activities', 'Email Log', 'Products', 'Deal Lines'].map((table) => ({ table })),
+    layouts: [
+      { table: 'Reps', list: { fields: ['ID', 'Name', 'Region', 'Quarterly Quota', 'Login'] } },
+      { table: 'Accounts', form: { fields: ['Name', 'Owner Name', 'Health', 'Industry', 'Region', 'Employees', 'Website', 'Created', 'Notes', 'Contacts Count', 'Open Pipeline', 'Won Total', 'Last Touch', 'Days Quiet'],
+        portals: [{ table: 'Contacts', fields: ['Name', 'Role', 'Email', 'Phone'] }, { table: 'Deals', fields: ['Title', 'Stage', 'Amount', 'Expected Close'] },
+          { table: 'Activities', fields: ['When', 'Type', 'Subject', 'Done'], sort: [{ field: 'When', descending: true }] }, { table: 'Email Log', fields: ['Direction', 'Subject', 'Sent'] }],
+        tabs: [{ name: 'Overview', fields: ['Industry', 'Region', 'Employees', 'Website', 'Created', 'Notes', 'Contacts Count', 'Open Pipeline', 'Won Total', 'Last Touch', 'Days Quiet'] },
+          { name: 'People', portals: ['Contacts'] }, { name: 'Deals', portals: ['Deals'] }, { name: 'Activity', portals: ['Activities'] }, { name: 'Emails', portals: ['Email Log'] }],
+        buttons: [{ text: 'Add follow-up', script: 'Add follow-up', parameter: '3' }, { text: 'Log activity', script: 'Log activity', parameter: 'Call|Follow-up|' }, { text: 'Assign by region', script: 'Assign by region' }] },
+        list: { fields: ['ID', 'Name', 'Industry', 'Region', 'Owner Name', 'Health', 'Open Pipeline', 'Won Total', 'Last Touch', 'Days Quiet', 'Contacts Count'] } },
+      { table: 'Contacts', form: { fields: ['Account Name', 'Name', 'Role', 'Email', 'Phone', 'Last Contacted', 'Notes'] },
+        list: { fields: ['ID', 'Name', 'Role', 'Email', 'Phone', 'Account Name'] } },
+      { table: 'Deals', form: { fields: ['Account Name', 'Title', 'Stage', 'Amount', 'Probability', 'Weighted Amount', 'Source', 'Opened', 'Expected Close', 'Closed', 'Lost Reason', 'Stage Changed', 'Days In Stage', 'Stale'],
+        portals: [{ table: 'Deal Lines', fields: ['Product Name', 'Quantity', 'Unit Price', 'Discount Percent', 'Line Total'], totals: [{ field: 'Quote Total', under: 'Line Total' }] }],
+        buttons: [{ text: 'Advance', script: 'Advance stage' }, { text: 'Won', script: 'Close deal', parameter: 'Won' }, { text: 'Lost', script: 'Close deal', parameter: 'Lost|Price' }, { text: 'Duplicate', script: 'Duplicate deal' }] },
+        list: { fields: ['ID', 'Account ID', 'Title', 'Account Name', 'Owner Name', 'Stage', 'Amount', 'Weighted Amount', 'Probability', 'Source', 'Opened', 'Expected Close', 'Closed', 'Lost Reason', 'Days In Stage', 'Stale', 'Stage Changed'],
+          chart: { type: 'column', category: 'Stage', value: 'Total Amount', title: 'Amount by Stage' } } },
+      { table: 'Activities', form: { fields: ['Type', 'Subject', 'When', 'Due', 'Done', 'Outcome', 'Account Name', 'Contact Name', 'Deal Title', 'Rep Name'] },
+        list: { fields: ['ID', 'Type', 'Subject', 'When', 'Due', 'Done', 'Outcome', 'Account Name', 'Contact Name', 'Deal Title', 'Rep Name', 'Account ID', 'Deal ID'] } },
+      { table: 'Email Log', form: { fields: ['Direction', 'Subject', 'Body', 'Sent', 'Account Name', 'Contact Name'] },
+        list: { fields: ['ID', 'Direction', 'Subject', 'Body', 'Sent', 'Account Name', 'Contact Name', 'Account ID'] } },
+      { table: 'Products', list: { fields: ['ID', 'SKU', 'Name', 'Unit Price', 'Active'] } },
+      { table: 'Deal Lines', list: { fields: ['ID', 'Deal ID', 'Product ID', 'Product Name', 'Quantity', 'Unit Price', 'Discount Percent', 'Line Total'] } },
+    ],
     // REPORTS
-    reports: [],
+    reports: [
+      { name: 'Pipeline by rep and stage', table: 'Deals', fields: ['Owner Name', 'Title', 'Stage', 'Amount', 'Weighted Amount'], groups: ['Owner Name', 'Stage'], totals: ['Total Amount', 'Weighted Total'] },
+      { name: 'Activity by type', table: 'Activities', fields: ['Type', 'Subject'], groups: ['Type'], totals: ['Activity Count'], summaryOnly: true },
+    ],
     // PRIVILEGES
     privilegeSets: [
       { name: 'Rep', comment: 'Can view and change only records owned by the signed-in rep; cannot delete or change the design.',
