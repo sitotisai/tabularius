@@ -17,6 +17,7 @@ To read these pages offline with search, build the site: `npm run docs:build` wr
 - [For FileMaker developers](for-filemaker-developers.md) — Find where each FileMaker menu path, tool and habit lives in Tabularius, and whether it matches.
 - [Known differences](known-differences.md) — See every place Tabularius differs from FileMaker or is not settled yet, and what would settle it.
 - [Starter solutions](starter-solutions.md) — Start a new database from a ready-to-use contacts, stock, invoicing, tasks or booking app.
+- [The CRM showcase](showcase-crm.md) — See a full sales app with invented data: pipeline board, Today, dashboard, timeline, privileges and AI access.
 - [Moving in from other tools](moving-in-from-other-tools.md) — Bring Airtable, Notion, Google Sheets and Excel data in as new tables.
 - [Move a FileMaker file in](tutorials/move-a-file-in.md) — Host a file, check its conversion and query it through the Data API.
 - [Add a Data API client](tutorials/data-api-client.md) — Create a contacts file and use it from curl and Node.
