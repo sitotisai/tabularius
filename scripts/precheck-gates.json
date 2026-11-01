@@ -110,5 +110,9 @@
   {
     "file": "packages/server/test/docs-held-files-upgrading.test.ts",
     "reason": "Checks docs/upgrading.md states the held-file facts an upgrade depends on and names a real approve route"
+  },
+  {
+    "file": "packages/server/test/docs-inbound-hook-call-log.test.ts",
+    "reason": "Checks the team hosting page states the inbound-hook call log mode on Windows and its lock behaviour"
   }
 ]
