@@ -12,8 +12,9 @@
 
 import { crashPoint } from '../../store/src/crash-point.ts';
 import { DatabaseSync } from 'node:sqlite';
-import { closeSync, fstatSync, openSync, readSync, rmSync, statSync } from 'node:fs';
-import { appendFileSync, writeFileSync } from '../../store/src/fs-boundary.ts';
+import { closeSync, fstatSync, readSync, statSync } from 'node:fs';
+// openSync is the boundary's: it reads through no link and never blocks on a named pipe planted at a log's name.
+import { appendFileSync, cleanupPath, openSync, writeFileSync } from '../../store/src/fs-boundary.ts';
 import { randomBytes } from 'node:crypto';
 import { deriveKey, deriveKeySync, openRecord, sealRecord } from './encrypt.ts';
 import type { Store } from '../../store/src/index.ts';
@@ -322,7 +323,8 @@ export function readPart(path: string, offset: number, length: number): Buffer {
 
 /** Applies a log to a database file that nothing has open: SQLite reads it as the file's own log and folds it in. */
 export function applyLog(dbPath: string, log: Buffer): void {
-  rmSync(dbPath + '-shm', { force: true });
+  // The index of an older log must not be trusted for this one: it goes, as itself (never what a link at its name points to).
+  cleanupPath(dbPath + '-shm', { force: true })({ throwOnError: true });
   writeFileSync(dbPath + '-wal', log, { mode: 0o600 });
   crashPoint('apply-log:mid-apply-log');
   const db = new DatabaseSync(dbPath);

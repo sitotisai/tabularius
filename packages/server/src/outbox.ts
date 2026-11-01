@@ -2,8 +2,8 @@
 // and web request scripts made, kept in <folder>/Outbox/outbox.jsonl so the
 // admin console can show them. Nothing here sends anything.
 
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
-import { appendFileSync, readFileSync } from '../../store/src/fs-boundary.ts';
+import { mkdirSync } from 'node:fs';
+import { appendFileSync, cleanupPath, readFileSync } from '../../store/src/fs-boundary.ts';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type { OutboxEntry } from '../../scripts/src/index.ts';
@@ -36,13 +36,16 @@ export class Outbox {
     return this.all().find((e) => e.id === id);
   }
 
+  /** Removes the outbox file itself (never what a link at its name points to); a failure to remove it is thrown. */
   clear(): void {
-    rmSync(this.file, { force: true });
+    cleanupPath(this.file, { force: true })({ throwOnError: true });
   }
 
   private all(): StoredEntry[] {
-    if (!existsSync(this.file)) return [];
-    return readFileSync(this.file, 'utf8').split('\n').filter(Boolean).flatMap((line) => {
+    let text: string;
+    try { text = readFileSync(this.file, 'utf8'); }
+    catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return []; throw e; }
+    return text.split('\n').filter(Boolean).flatMap((line) => {
       try {
         return [JSON.parse(line) as StoredEntry];
       } catch {
