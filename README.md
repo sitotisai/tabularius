@@ -107,6 +107,13 @@ open, and [docs/research/prior-work.md](docs/research/prior-work.md) for sources
 [docs/research/write-back.md](docs/research/write-back.md) studies how design changes made here could go back into a
 FileMaker file.
 
+## Questions and contact
+
+Ask questions and share ideas in [GitHub Discussions](https://github.com/sitotisai/tabularius/discussions), report bugs in
+[Issues](https://github.com/sitotisai/tabularius/issues/new/choose), and report a security problem privately as
+[SECURITY.md](SECURITY.md) says. For anything private that is not a vulnerability, write to
+[hello@tabularius.dev](mailto:hello@tabularius.dev). [SUPPORT.md](SUPPORT.md) lists all of these in one place.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how changes are made here, or the [contributor summary](docs/contributing.md)
