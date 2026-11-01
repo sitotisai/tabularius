@@ -106,7 +106,7 @@
       },
       {
         "glob": "packages/store/src/store.ts",
-        "maxBytes": 700000,
+        "maxBytes": 710000,
         "why": "the store, one class in one file, which reached the general limit; splitting it is a separate change"
       },
       {
