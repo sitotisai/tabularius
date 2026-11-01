@@ -23,6 +23,8 @@ connect an AI app with a read-only token that expires in a day. The demo server 
 provider receives whatever it reads.
 Windows, Docker and installing from a checkout are in the [quickstart](QUICKSTART.md).
 
+For a fuller tour, the [CRM showcase](docs/showcase-crm.md) is a sales app with invented data: a pipeline board, a Today page, a dashboard, an account timeline, record-level privileges and a built-in MCP server. Its modern layouts are web pages that sit in a web viewer's address formula, which FileMaker Pro limits to 30,000 characters. None of the five showcase pages is over that limit (each is about 10,000 to 16,000 characters), so none is Tabularius-only; a page you grow past it still opens in Tabularius.
+
 ## Host your own file
 
 [QUICKSTART.md](QUICKSTART.md) gets a `.fmp12` file hosted and open in your browser in a few minutes: run `tabularius`,
