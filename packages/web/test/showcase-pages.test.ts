@@ -91,3 +91,11 @@ test('showcase pages: Today lists eight prompts and the Connect snippets hold on
   assert.ok(CONNECT_SNIPPETS.some((s) => /<token>/.test(s.text)));
   assert.ok(CONNECT_SNIPPETS.some((s) => s.text.startsWith('claude mcp add')));
 });
+
+test('showcase pages: Today passes scripts the serial ID field, never the internal record id', () => {
+  const code = withoutComments(pages[0].html);
+  assert.doesNotMatch(code, /recordId/);
+  assert.match(code, /performScript\(N\.markDone, id\)/);
+  assert.match(code, /performScript\(N\.goToRecord, id\)/);
+  assert.match(code, /field\(x, 'ID'\)/);
+});

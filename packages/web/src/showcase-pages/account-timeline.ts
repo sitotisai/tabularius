@@ -46,11 +46,10 @@ export function accountTimelinePage(names?: Partial<ShowcaseNames>): string {
   async function show() {
     const c = await tabularius.context();
     const f = c.fieldData || {};
-    // On the Account 360 layout the current record is the account; on any other layout the record's own Account ID and Account Name say which account it is about.
+    // On the account layouts the current record is the account; on any other layout the record's Account ID and Account Name say which account it is about.
     const onAccount = c.layout === N.accounts || c.layout === N.account360;
     const id = onAccount ? f.ID : f['Account ID'], name = onAccount ? f.Name : f['Account Name'];
-    // The id is exact; the name is all the page data contract guarantees on every list, so two accounts of one name (duplicates) share a timeline then.
-    const q = id ? [{ 'Account ID': '==' + id }] : name ? [{ 'Account Name': '==' + name }] : null;
+    const q = id ? [{ 'Account ID': '==' + id }] : null;
     if (!q) { $('line').replaceChildren(h('p', { class: 'muted' }, 'Open an account to see its timeline.')); $('title').textContent = 'Account timeline'; return; }
     $('title').textContent = (name || 'Account') + ' timeline';
     $('where').textContent = 'Live as ' + (c.account || 'the signed-in account');

@@ -32,10 +32,12 @@ export function todayPage(names?: Partial<ShowcaseNames>): string {
   // A rep's own records are picked by name (the page data contract has Rep Name and Owner Name, not the ids); with no rep record (a manager) every record the account may see shows.
   const mineAct = () => (me ? { 'Rep Name': '==' + field(me, 'Name') } : {});
   const mineDeal = () => (me ? { 'Owner Name': '==' + field(me, 'Name') } : {});
-  // goToLayout takes the window to the layout; the record itself is selected by the file's own script (unverified: a file without it stays on the layout).
-  async function open(layout, id) {
+  // goToLayout takes the window to the layout; the file's own script then finds the record by its serial ID (a script cannot look up a record by its internal recordId). A record with no ID, or a file without the script, stays on the layout.
+  async function open(layout, x) {
     await tabularius.goToLayout(layout);
-    try { await tabularius.performScript(N.goToRecord, String(id)); } catch (e) { /* the layout is open; the script is optional */ }
+    const id = field(x, 'ID');
+    if (!id) return;
+    try { await tabularius.performScript(N.goToRecord, id); } catch (e) { /* the layout is open; the script is optional */ }
   }
   function list(el, rows, empty) {
     if (!rows.length) { el.replaceChildren(h('span', { class: 'muted' }, empty)); return; }
@@ -47,11 +49,13 @@ export function todayPage(names?: Partial<ShowcaseNames>): string {
     list($('tasks'), open_.slice(0, 10).map((x) => {
       const done = h('button', { type: 'button' }, 'Mark done');
       done.addEventListener('click', async () => {
+        const id = field(x, 'ID');
+        if (!id) { done.textContent = 'This task has no ID'; return; }
         done.disabled = true;
-        try { await tabularius.performScript(N.markDone, String(x.recordId)); await tasks(); } catch (e) { done.disabled = false; done.textContent = msg(e); }
+        try { await tabularius.performScript(N.markDone, id); await tasks(); } catch (e) { done.disabled = false; done.textContent = msg(e); }
       });
       const go = h('button', { type: 'button', class: 'link' }, field(x, 'Subject') || 'Task', ' ', h('span', { class: 'muted' }, 'due ' + field(x, 'Due')));
-      go.addEventListener('click', () => open(N.activities, x.recordId).catch((e) => fail($('tasks'), e)));
+      go.addEventListener('click', () => open(N.activities, x).catch((e) => fail($('tasks'), e)));
       return h('li', {}, go, done);
     }), 'No open tasks due in the next 7 days.');
   }
@@ -61,7 +65,7 @@ export function todayPage(names?: Partial<ShowcaseNames>): string {
     const r = await tabularius.find(N.deals, open_.map((s) => Object.assign({ Stage: '==' + s, 'Expected Close': range }, mineDeal())), { limit: 10, sort: [{ fieldName: 'Expected Close', sortOrder: 'ascend' }] });
     list($('deals'), r.data.map((x) => {
       const go = h('button', { type: 'button', class: 'link' }, field(x, 'Title'), ' ', h('span', { class: 'muted' }, field(x, 'Account Name')));
-      go.addEventListener('click', () => open(N.deal, x.recordId).catch((e) => fail($('deals'), e)));
+      go.addEventListener('click', () => open(N.deal, x).catch((e) => fail($('deals'), e)));
       return h('li', {}, go, h('span', {}, money(field(x, 'Amount')), ' ', h('span', { class: 'pill' }, field(x, 'Stage')), ' ', h('span', { class: 'muted' }, field(x, 'Expected Close'))));
     }), 'No open deals expected to close in the next 30 days.');
   }
