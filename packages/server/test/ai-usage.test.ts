@@ -42,7 +42,9 @@ test('the usage database name is not followed when it is a link, and an older, w
 /** A process that adds `times` calls of 10 tokens and $0.001 each, and one question per 40 calls. */
 function worker(dir: string, n: number, times: number): Promise<void> {
   const code = `const { AiUsage } = await import(${JSON.stringify(usageModule)});
-    const u = new AiUsage(${JSON.stringify(dir)});
+    // Five processes writing back to back is far heavier than any server: on Windows, where SQLite's wait has no queue, one can lose every
+    // turn for the whole default wait on a slow runner. The count must come out exact however long a turn takes, so these wait longer.
+    const u = new AiUsage(${JSON.stringify(dir)}, 60_000);
     for (let i = 0; i < ${times}; i++) {
       u.add('Charts/clerk', 10, 0.001);
       if (i % 40 === 0) u.question({ at: new Date().toISOString(), database: 'Charts', account: 'Clerk', via: 'worker ${n}', model: 'claude-haiku-5-5', ms: 1, inputTokens: 5, cachedTokens: 0, outputTokens: 5, costUsd: 0.001, steps: 0 });
