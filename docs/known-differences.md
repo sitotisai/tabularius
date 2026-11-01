@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**242 entries in 28 areas.** Waiting on: 22 on a sample file, 143 on a FileMaker run or Design Report, 14 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
+**243 entries in 28 areas.** Waiting on: 22 on a sample file, 144 on a FileMaker run or Design Report, 14 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
 
 ## Conversion
 
@@ -46,6 +46,7 @@ part of it.
 | No FileMaker runtime or documentation was available, so every edge comparison in this audit is unverified | The audit shows Node behaviour for the named zones only | A FileMaker run of each edge case listed above | [docs/audits/audit-time.md › Verification limits](audits/audit-time.md) — “…offline, so each edge comparison above remains unverified. The local environment refused localhost binds in…” |
 | Whether FileMaker resolves ambiguous imported or exported calendar readings the way Tabularius does (skipped reading moved forward, first of a repeated reading) is not verified | A calendar entry in a skipped or repeated hour may land at a different instant | A FileMaker calendar run with readings in a skipped and a repeated hour | [docs/audits/audit-time.md › Results and fixes](audits/audit-time.md) — “…UTC DTSTAMP already have synthetic tests. \| Unverified whether the compatible product resolves ambiguous…” |
 | YearName is not implemented because its exact output (Japanese era names) could not be read from the Claris page, and negative or fractional times, ambiguous locale-dependent text parsing and mixed text coercions follow Tabularius choices that the Claris pages do not define | A calculation using YearName returns an error, and one that builds a time outside a clock day or parses ambiguous date text may give a different answer from FileMaker | A readable Claris YearName reference or a FileMaker run of YearName, out-of-range times and ambiguous date text | [docs/audits/r25-22-date-time-functions.md](audits/r25-22-date-time-functions.md) — “(the whole page)” |
+| A date or timestamp under the year 1000 is written with four digits (1/1/0001) so it reads back as the same year, and how FileMaker writes it is not checked | Date ( 1 ; 1 ; 1 ) & "" gives 1/1/0001 | A FileMaker run of Date ( 1 ; 1 ; 1 ) & "" | [docs/consistency.md › Unverified behavior left unchanged <!-- known-difference-ok: heading of the list below, whose items carry the markers -->](consistency.md) — “…and stores the invalid date the same way remains unverified. Keep the web formatter unchanged until that…” |
 
 ## File system races
 
@@ -313,10 +314,10 @@ part of it.
 | What differs or is unknown | How it shows | What would settle it | Where it is written |
 | --- | --- | --- | --- |
 | acceptance of SUBSTRING and TRIM FROM forms by FileMaker is unknown | Tabularius runs these forms with SQL standard semantics | run the same forms on FileMaker and record whether they are accepted | [docs/sql-grammar-conformance.md › What the check found and what changed](sql-grammar-conformance.md) — “…1. Whether FileMaker accepts the FROM forms is unverified.” |
-| CHAR(n) padding required by the SQL standard | short values remain unpadded after CAST | compare with ExecuteSQL on short text and add padding if needed | [docs/sql-grammar-conformance.md › What the check found and what changed](sql-grammar-conformance.md) — “…by this rewrite, and their product behavior is unverified.” |
 | vendor results for parameterized DECIMAL and NUMERIC casts are unspecified in the cited pages | the conformance test uses the SQL standard for these derived expectations | compare the casts with FileMaker and record the observed result | [docs/sql-grammar-conformance.md › What was checked](sql-grammar-conformance.md) — “…come from the SQL standard; the vendor result is unverified. Five entries are marked unverified because the…” |
 | zero-percent result and OFFSET basis for PERCENT are not stated by the cited page | Tabularius returns no rows for zero percent and counts the rows after OFFSET | compare both cases with FileMaker and record the observed results | [docs/sql-grammar-conformance.md › Not verified](sql-grammar-conformance.md) — “…percentage count; those FileMaker outcomes are unverified.” |
 | vendor results for five constructs are unspecified in the cited pages | the conformance test records current behavior without an expected result | compare each construct with FileMaker and record the observed result | [docs/sql-grammar-conformance.md › Not verified](sql-grammar-conformance.md) — “…read do not say, so the file marks these entries unverified with no expected result (paths: []). The test…” |
+| CHAR(n) padding required by the SQL standard | short values remain unpadded after CAST | compare with ExecuteSQL on short text and add padding if needed | [docs/sql-grammar-conformance.md › What the check found and what changed](sql-grammar-conformance.md) — “…whether the product accepts these spellings is unverified.” |
 
 ## SQL temporal CAST
 
