@@ -22,7 +22,8 @@ your PATH). `--version 0.1.0` installs a specific release instead of the latest.
 contacts and deals) for this computer only, opens it in your browser, prints a one-time
 password for the `Admin` account, and deletes everything when you press Ctrl-C. Nothing goes
 off your computer. `--starter tasks` (also `inventory`, `invoicing`, `booking`) picks another
-app, and `--keep <folder>` keeps the files.
+app, and `--keep <folder>` keeps the files. `--full` hosts the larger CRM showcase instead (see
+[starter solutions](docs/starter-solutions.md#showcase)).
 
 Other ways to get it:
 

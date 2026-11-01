@@ -17,6 +17,10 @@ tabularius demo
 ```
 
 The demo opens in your browser with a one-time password for `Admin`, and deletes everything when you press Ctrl-C.
+`tabularius demo --full` hosts the larger CRM showcase with sign-ins for a rep, a manager and an executive, and prints how to
+connect an AI app with a read-only token that expires in a day. The demo server makes no outside connection unless you add
+`--ai` and your own key, which turns on the demo's own assistant only; an AI app you connect is a separate program whose
+provider receives whatever it reads.
 Windows, Docker and installing from a checkout are in the [quickstart](QUICKSTART.md).
 
 ## Host your own file

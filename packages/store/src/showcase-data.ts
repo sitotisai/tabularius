@@ -67,7 +67,8 @@ function generator(seed: number) {
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 const pad = (n: number) => String(n).padStart(2, '0');
 
-export function showcaseSample(now: Date, seed = 20261101): Starter['sample'] {
+/** `repLogin` is the account name the first rep signs in as, `agentLogin` the second's (a demo's rep and AI agent accounts); otherwise each rep's login is the first name. */
+export function showcaseSample(now: Date, seed = 20261101, opts: { repLogin?: string; agentLogin?: string } = {}): Starter['sample'] {
   const g = generator(seed);
   const nowMs = now.getTime();
   const dayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
@@ -81,9 +82,9 @@ export function showcaseSample(now: Date, seed = 20261101): Starter['sample'] {
   };
 
   // Reps
-  const reps: Row[] = REP_NAME.map(([first, last, region]) => ({
+  const reps: Row[] = REP_NAME.map(([first, last, region], i) => ({
     Name: `${first} ${last}`, Email: `${first}.${last}@showcase.example`.toLowerCase(), Region: region,
-    'Quarterly Quota': g.int(12, 30) * 5000, Login: first.toLowerCase(),
+    'Quarterly Quota': g.int(12, 30) * 5000, Login: i === 0 && opts.repLogin ? opts.repLogin : i === 1 && opts.agentLogin ? opts.agentLogin : first.toLowerCase(),
   }));
   const repsByRegion = (region: string) => reps.map((r, i) => ({ r, id: i + 1 })).filter((x) => x.r.Region === region);
 
