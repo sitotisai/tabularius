@@ -1,6 +1,6 @@
 // The CRM showcase in a real browser: `tabularius demo --starter crm-showcase --full` (started through startDemo, with the
-// invented sample data), every layout in the file opened as Admin with no uncaught error, no console error that is not one
-// of the two answers the Data API is meant to give, and no request to any host but the demo's own; then the screens a
+// invented sample data), every layout in the file opened as Admin with no uncaught error, no console error but the file-list probe the demo
+// answers with 404, and no request to any host but the demo's own; then the screens a
 // visitor is shown (Today, the Sales dashboard, the pipeline boards, Account 360), and the privilege sets: Ava sees fewer
 // deals than Morgan. Needs Chromium; not part of test:ci. No screenshots are taken or kept.
 import { test, before, after } from 'node:test';
@@ -88,12 +88,12 @@ test('every layout opens as Admin with no error and nothing leaves the demo', { 
   }
   assert.deepEqual(page.errors, [], 'uncaught page errors');
   assert.deepEqual(page.outside, [], 'requests to a host other than the demo');
-  // The Data API answers a find that matches nothing with code 401 (a page asks for the signed-in account's rep, and Admin has none),
-  // and the sign-in page asks for the list of files, which the demo keeps off (3). Those are the only failed requests, and the
-  // browser logs each one as a console error.
-  const unexpected = page.failures.filter((f) => !/^404 GET \/fmi\/data\/vLatest\/databases 3$/.test(f) && !/^500 POST .*\/_find 401$/.test(f));
+  // The sign-in page asks for the list of files, which the demo keeps off (3). That is the only failed request, and the browser
+  // logs it as a console error. (Admin has no rep record; Today reads the reps and matches the account itself, so no find that
+  // matches nothing is sent.)
+  const unexpected = page.failures.filter((f) => !/^404 GET \/fmi\/data\/vLatest\/databases 3$/.test(f));
   assert.deepEqual(unexpected, [], 'requests that failed');
-  const stray = page.consoleErrors.filter((t) => !/^Failed to load resource: the server responded with a status of (404|500)/.test(t));
+  const stray = page.consoleErrors.filter((t) => !/^Failed to load resource: the server responded with a status of 404/.test(t));
   assert.deepEqual(stray, [], 'console errors');
   await page.context().close();
 });
