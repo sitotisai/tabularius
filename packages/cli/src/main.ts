@@ -5,6 +5,7 @@ import { checkSqlExportPath } from '../../store/src/portable-path.ts';
 import { listenForStop } from './stop-request.ts';
 import { auditJsonLine } from '../../store/src/audit-output.ts';
 import { writeFileSync as writeChecked } from '../../store/src/fs-boundary.ts';
+import { plainFolders, writeKitFiles } from './output-files.ts';
 // tabularius: inspect and convert FileMaker .fmp12 files.
 
 import '../../store/src/legacy-env.ts';
@@ -14,7 +15,7 @@ import { availableParallelism, homedir, tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import { createServer as createNetServer } from 'node:net';
-import { accessSync, closeSync, constants, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, renameSync, rmSync, readFileSync, statSync, writeFileSync, writeSync } from 'node:fs';
+import { accessSync, closeSync, constants, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, renameSync, rmSync, readFileSync, statSync, writeSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { readSecret } from './prompt.ts';
 import { askServer } from './ask-server.ts';
@@ -978,6 +979,9 @@ function plainError(e: unknown): string {
   const at = err.path ? ` ${err.path}` : '';
   if (err.code === 'ENOENT') return `no such file or folder:${at || ' (check the name and the folder)'}`;
   if (err.code === 'EACCES' || err.code === 'EPERM') return `this user isn't allowed to open${at || ' that'}. Check its permissions`;
+  // The boundary's refusal names no path (servers show it to clients); the person at the terminal gets it here.
+  const refusedPath = (err as { refusedPath?: unknown }).refusedPath;
+  if (err.code === 'ESTALE' && typeof refusedPath === 'string') return `${err.message}: ${refusedPath}`;
   if (err.code === 'EISDIR') return `${err.path ?? 'that'} is a folder, not a file`;
   if (err.code === 'ENOTDIR') return `${err.path ?? 'that'} is not a folder`;
   if ((err.code === 'ENOTFOUND' || err.code === 'EAI_AGAIN') && err.syscall === 'getaddrinfo') return `the address "${(err as { hostname?: string }).hostname ?? 'given'}" was not found. Use an IP address of this computer (127.0.0.1 for this computer only, 0.0.0.0 for every network) or a name that resolves`;
@@ -1641,22 +1645,8 @@ function main(argv: string[]): number {
       } finally {
         store.close();
       }
-      mkdirSync(out, { recursive: true });
-      const lines = [`# Taking ${database}'s changes back to FileMaker`, '', `Made from ${basename(source)} and the changes made in Tabularius since.`, ''];
-      if (!kit.paste.length && !kit.byHand.length) lines.push('Nothing has changed: there is nothing to do.');
-      if (kit.paste.length) {
-        lines.push('## Paste these, in order', '', 'Open each file, copy all of its text, and paste in FileMaker Pro where it says. FileMaker reads its own clipboard format, so a clipboard tool that converts XML text to it is needed.', '');
-        kit.paste.forEach((p, i) => {
-          const name = `${String(i + 1).padStart(2, '0')}.xml`;
-          writeFileSync(join(out, name), p.xml);
-          lines.push(`${i + 1}. \`${name}\` (${p.names.join(', ')}): ${p.where}`);
-          for (const n of p.notes) lines.push(`   - ${n}`);
-        });
-        lines.push('');
-      }
-      if (kit.byHand.length) lines.push('## Then do these by hand', '', ...kit.byHand.map((b) => `- ${b}`), '');
-      writeFileSync(join(out, 'README.md'), lines.join('\n'));
-      console.log(`${kit.paste.length} files to paste and ${kit.byHand.length} changes to make by hand: ${join(out, 'README.md')}`);
+      const readme = writeKitFiles(out, database, basename(source), kit);
+      console.log(`${kit.paste.length} files to paste and ${kit.byHand.length} changes to make by hand: ${readme}`);
       return 0;
     }
     case 'sync-plan': {
@@ -2334,7 +2324,7 @@ function main(argv: string[]): number {
           write: (text) => { writeSync(fd!, text); },
           file: (rel, data) => {
             const target = join(dirname(out), rel);
-            mkdirSync(dirname(target), { recursive: true });
+            plainFolders(dirname(out), rel);
             writeChecked(target, data, { mode: 0o600 });
           },
         }, { dialect, privileges, filesFolder });
@@ -2609,7 +2599,8 @@ function main(argv: string[]): number {
         const outFile = optionValue(args, '-o', 'a file name');
         const packed = packPlugin(dir, keyFile ? readFileSync(keyFile, 'utf8') : undefined);
         const out = outFile ?? packed.name;
-        writeFileSync(out, packed.bytes);
+        // A package is meant to be handed on (it is signed, not secret): readable by others, but written only by this user.
+        writeChecked(out, packed.bytes, { mode: 0o644 });
         console.log(`${out}: ${packed.fingerprint ? `signed by ${packed.fingerprint}` : 'not signed'}`);
         return 0;
       }

@@ -9,6 +9,6 @@
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | [`TABULARIUS_LOG_LIMIT`](../environment/tabularius_log_limit.md) |
 | Explained in | [ADMIN.md](../../../../ADMIN.md) |
-| Code | [packages/cli/src/main.ts:1424](../../../../packages/cli/src/main.ts#L1424) |
+| Code | [packages/cli/src/main.ts:1428](../../../../packages/cli/src/main.ts#L1428) |
 
 [All serve flags](../serve-flags.md)

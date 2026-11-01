@@ -8,6 +8,6 @@ Maximum simultaneous transport connections admitted from one address.
 | Accepted values | positive safe integer |
 | Restart needed | Yes for a running server. |
 | Explained in | [ADMIN.md](../../../../ADMIN.md) |
-| Code | [packages/cli/src/main.ts:1400](../../../../packages/cli/src/main.ts#L1400) |
+| Code | [packages/cli/src/main.ts:1404](../../../../packages/cli/src/main.ts#L1404) |
 
 [All environment variables](../../../environment-variables.md)

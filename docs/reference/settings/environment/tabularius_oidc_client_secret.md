@@ -8,6 +8,6 @@ Client secret for the configured OpenID Connect provider.
 | Accepted values | Client secret text |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/hosting-and-connecting.md](../../../hosting-and-connecting.md) |
-| Code | [packages/cli/src/main.ts:1447](../../../../packages/cli/src/main.ts#L1447) |
+| Code | [packages/cli/src/main.ts:1451](../../../../packages/cli/src/main.ts#L1451) |
 
 [All environment variables](../../../environment-variables.md)

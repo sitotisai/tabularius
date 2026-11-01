@@ -8,6 +8,6 @@ SMTP account URL used by Send Mail when sending is enabled.
 | Accepted values | smtps:// URL |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/privacy.md](../../../privacy.md) |
-| Code | [packages/cli/src/main.ts:714](../../../../packages/cli/src/main.ts#L714) |
+| Code | [packages/cli/src/main.ts:715](../../../../packages/cli/src/main.ts#L715) |
 
 [All environment variables](../../../environment-variables.md)

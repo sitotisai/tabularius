@@ -8,6 +8,6 @@ Comma-separated files kept from the assistant and AI apps entirely.
 | Accepted values | Comma-separated hosted file names |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:577](../../../../packages/cli/src/main.ts#L577) |
+| Code | [packages/cli/src/main.ts:578](../../../../packages/cli/src/main.ts#L578) |
 
 [All environment variables](../../../environment-variables.md)
