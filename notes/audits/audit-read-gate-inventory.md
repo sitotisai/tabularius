@@ -177,9 +177,9 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/cli/src/diagnostics.ts:205](../../packages/cli/src/diagnostics.ts#L205) `designCopy` | `SQLite.all` (205); `SQLite.prepare` (205, 208) | OPERATOR |
 | [packages/cli/src/diagnostics.ts:445](../../packages/cli/src/diagnostics.ts#L445) `diagnostics` | `SQLite.get` (445); `SQLite.prepare` (445, 449); `SQLite.all` (449) | OPERATOR |
 | [packages/cli/src/doctor.ts:140](../../packages/cli/src/doctor.ts#L140) `accountChecks` | `SQLite.all` (140); `SQLite.prepare` (140) | OPERATOR |
-| [packages/cli/src/main.ts:728](../../packages/cli/src/main.ts#L728) `accountsWithPasswordOff` | `SQLite.all` (728); `SQLite.prepare` (728) | OPERATOR |
-| [packages/cli/src/main.ts:757](../../packages/cli/src/main.ts#L757) `hostedRead` | `SQLite.all` (757, 760); `SQLite.prepare` (757, 760); `Store.sql` (757, 760) | OPERATOR |
-| [packages/cli/src/main.ts:2442](../../packages/cli/src/main.ts#L2442) `main` | `Store.orphanContainerReport` (2442); `Store.auditLog` (2916); `SQLite.get` (3178); `SQLite.prepare` (3178) | OPERATOR |
+| [packages/cli/src/main.ts:735](../../packages/cli/src/main.ts#L735) `accountsWithPasswordOff` | `SQLite.all` (735); `SQLite.prepare` (735) | OPERATOR |
+| [packages/cli/src/main.ts:764](../../packages/cli/src/main.ts#L764) `hostedRead` | `SQLite.all` (764, 767); `SQLite.prepare` (764, 767); `Store.sql` (764, 767) | OPERATOR |
+| [packages/cli/src/main.ts:2474](../../packages/cli/src/main.ts#L2474) `main` | `Store.orphanContainerReport` (2474); `Store.auditLog` (2948); `SQLite.get` (3210); `SQLite.prepare` (3210) | OPERATOR |
 | [packages/scripts/src/data-api-step.ts:104](../../packages/scripts/src/data-api-step.ts#L104) `respond` | `Store.get` (104, 131, 140); `Store.find` (105, 117) | SCRIPT |
 | [packages/scripts/src/engine.ts:9441](../../packages/scripts/src/engine.ts#L9441) `clearRecords` | `SQLite.all` (9441); `SQLite.prepare` (9441) | SCRIPT |
 | [packages/scripts/src/engine.ts:8211](../../packages/scripts/src/engine.ts#L8211) `ScriptEngine/containerFile` | `Store.get` (8211); `Store.containerId` (8212); `Store.container` (8213) | SCRIPT |
@@ -337,16 +337,16 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/server/src/logs.ts:79](../../packages/server/src/logs.ts#L79) `LogShipper/follow` | `SQLite.get` (79); `SQLite.prepare` (79); `Store.sql` (79, 80, 81, 82) | ADMIN |
 | [packages/server/src/logs.ts:91](../../packages/server/src/logs.ts#L91) `LogShipper/releaseIfIdle` | `Store.sql` (91) | ADMIN |
 | [packages/server/src/mcp-design.ts:510](../../packages/server/src/mcp-design.ts#L510) `registerDesignTools/audit_log` | `Store.auditLog` (510) | DESIGN |
-| [packages/server/src/mcp.ts:1488](../../packages/server/src/mcp.ts#L1488) `createMcpServer/check_record` | `Store.get` (1488); `Store.row` (1490) | MCP |
-| [packages/server/src/mcp.ts:1209](../../packages/server/src/mcp.ts#L1209) `createMcpServer/evaluate_calculation` | `Store.get` (1209, 1217); `Store.find` (1210); `Store.evaluate` (1211); `Store.row` (1216) | SQL |
-| [packages/server/src/mcp.ts:1512](../../packages/server/src/mcp.ts#L1512) `createMcpServer/explain_related` | `Store.get` (1512) | MCP |
-| [packages/server/src/mcp.ts:1465](../../packages/server/src/mcp.ts#L1465) `createMcpServer/explain_value` | `Store.get` (1465); `Store.row` (1466) | MCP |
-| [packages/server/src/mcp.ts:1089](../../packages/server/src/mcp.ts#L1089) `createMcpServer/find_records` | `Store.find` (1089) | MCP |
-| [packages/server/src/mcp.ts:1284](../../packages/server/src/mcp.ts#L1284) `createMcpServer/get_container` | `Store.container` (1284) | SQL |
-| [packages/server/src/mcp.ts:1102](../../packages/server/src/mcp.ts#L1102) `createMcpServer/get_record` | `Store.get` (1102) | MCP |
-| [packages/server/src/mcp.ts:1308](../../packages/server/src/mcp.ts#L1308) `createMcpServer/sql_query` | `Store.queryWithOrigins` (1308) | SQL |
-| [packages/server/src/mcp.ts:1152](../../packages/server/src/mcp.ts#L1152) `createMcpServer/update_record` | `Store.get` (1152, 1156) | MCP |
-| [packages/server/src/mcp.ts:2409](../../packages/server/src/mcp.ts#L2409) `registerResources/audit` | `Store.auditLog` (2409) | MCP |
+| [packages/server/src/mcp.ts:1491](../../packages/server/src/mcp.ts#L1491) `createMcpServer/check_record` | `Store.get` (1491); `Store.row` (1493) | MCP |
+| [packages/server/src/mcp.ts:1212](../../packages/server/src/mcp.ts#L1212) `createMcpServer/evaluate_calculation` | `Store.get` (1212, 1220); `Store.find` (1213); `Store.evaluate` (1214); `Store.row` (1219) | SQL |
+| [packages/server/src/mcp.ts:1515](../../packages/server/src/mcp.ts#L1515) `createMcpServer/explain_related` | `Store.get` (1515) | MCP |
+| [packages/server/src/mcp.ts:1468](../../packages/server/src/mcp.ts#L1468) `createMcpServer/explain_value` | `Store.get` (1468); `Store.row` (1469) | MCP |
+| [packages/server/src/mcp.ts:1092](../../packages/server/src/mcp.ts#L1092) `createMcpServer/find_records` | `Store.find` (1092) | MCP |
+| [packages/server/src/mcp.ts:1287](../../packages/server/src/mcp.ts#L1287) `createMcpServer/get_container` | `Store.container` (1287) | SQL |
+| [packages/server/src/mcp.ts:1105](../../packages/server/src/mcp.ts#L1105) `createMcpServer/get_record` | `Store.get` (1105) | MCP |
+| [packages/server/src/mcp.ts:1311](../../packages/server/src/mcp.ts#L1311) `createMcpServer/sql_query` | `Store.queryWithOrigins` (1311) | SQL |
+| [packages/server/src/mcp.ts:1155](../../packages/server/src/mcp.ts#L1155) `createMcpServer/update_record` | `Store.get` (1155, 1159) | MCP |
+| [packages/server/src/mcp.ts:2412](../../packages/server/src/mcp.ts#L2412) `registerResources/audit` | `Store.auditLog` (2412) | MCP |
 | [packages/server/src/oauth.ts:86](../../packages/server/src/oauth.ts#L86) `legacyPasswordMark` | `SQLite.get` (86); `SQLite.prepare` (86); `Store.sql` (86) | AUTH |
 | [packages/server/src/oauth.ts:899](../../packages/server/src/oauth.ts#L899) `OAuthServer/accessAllowed` | `SQLite.get` (899); `SQLite.prepare` (899) | AUTH |
 | [packages/server/src/oauth.ts:517](../../packages/server/src/oauth.ts#L517) `OAuthServer/authorize` | `SQLite.get` (517); `SQLite.prepare` (517, 521, 523, 530, 561, 562) | AUTH |

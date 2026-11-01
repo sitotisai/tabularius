@@ -251,12 +251,19 @@ Hosting (point it at a folder of .fmp12 files; each is converted once):
                                              tabularius api-types > tabularius-api.d.ts. The description
                                              itself is at /fmi/data/openapi.json on a running server.
                                              Needs no file; changes nothing
-  tabularius demo [--starter crm|inventory|invoicing|tasks|booking] [--keep <folder>] [--port 8080] [--no-open]
+  tabularius demo [--starter crm|inventory|invoicing|tasks|booking|crm-showcase] [--full] [--ai] [--keep <folder>] [--port 8080] [--no-open]
                                              Try it: a starter app with sample records, hosted for this
                                              computer only on a free port, with an Admin account whose
                                              random password is printed once. Opens the browser if it can.
                                              Everything is deleted when you press Ctrl-C (--keep <folder>
-                                             leaves the files there). Nothing goes off this computer
+                                             leaves the files there). The demo server makes no outside
+                                             connection unless you add --ai. --full is the crm-showcase starter with
+                                             sign-ins for Ava (Rep), Morgan (Manager) and Eli (Executive),
+                                             a read-only SQL port and a read-only token (24 hours) for an
+                                             AI app; an AI app you connect sends what it reads to its own
+                                             provider. --ai (showcase only) turns on the demo's own AI
+                                             assistant only, which needs your Anthropic key: questions go
+                                             to the model provider
   tabularius doctor [<folder>] [--full] [--port 8080] [--url https://...] [--ai-embed-url ollama|lmstudio|URL [--ai-embed-model M]]
                                              Check the usual reasons a server won't start or can't
                                              be reached (Node version, folder, disk, port, certificate,
@@ -1196,6 +1203,8 @@ function demoCommand(args: string[]): number {
   const host = flag(args, '--host');
   const portText = flag(args, '--port');
   const open = !bool(args, '--no-open');
+  const full = bool(args, '--full');
+  const ai = bool(args, '--ai');
   const extra = args.filter((a) => a.length);
   if (extra.length) throw new Error(`demo: ${extra[0].startsWith('-') ? `unknown option ${extra[0]}` : `takes no folder or file (found ${extra[0]}); it makes its own`}`);
   if ((starter !== undefined && starter.startsWith('-')) || (keep !== undefined && keep.startsWith('-')) || (host !== undefined && host.startsWith('-'))) throw new Error('demo: an option is missing its value');
@@ -1209,7 +1218,7 @@ function demoCommand(args: string[]): number {
   };
   // Register before startup can create any temporary files, including while serve is awaiting readiness.
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(signal, stop);
-  later(startDemo({ starter, keep, host, port, log: (line) => console.log(line) }).then((demo) => {
+  later(startDemo({ starter, keep, host, port, full, ai, notice: (line) => console.log(line), log: (line) => console.log(line) }).then((demo) => {
     running = demo;
     if (stopping) { stop(); return; }
     console.log(`tabularius demo: the ${demo.database} starter with sample records, on this computer only.`);
@@ -1218,6 +1227,29 @@ function demoCommand(args: string[]): number {
     console.log(`  File      ${demo.database}   (type this name on the sign-in page)`);
     console.log(`  Sign in   ${demo.account}`);
     console.log(`  Password  ${demo.password}`);
+    if (demo.accounts.length) {
+      console.log(`  Also      ${demo.accounts.map((a) => `${a.name} (${a.privilegeSet})`).join(', ')}, with the same password`);
+    }
+    if (demo.sql) console.log(`  SQL       read-only, this computer only: ${demo.sql.command}   (password as above)`);
+    if (demo.mcp) {
+      console.log('');
+      console.log('Connect an AI app');
+      console.log(`  The token is for the "AI agent" account: read-only, the Rep privilege set (it sees one sample rep's records only and changes no record; reading still writes the server's own journal and index tables). It expires ${demo.mcp.expires.toLocaleString()} (24 hours at most), is revoked when you press Ctrl-C, and is shown only here.`);
+      console.log('  An AI app you connect is a separate program: what it reads may go to its own provider, whatever --ai says.');
+      console.log('');
+      console.log('  Token (shown only here; paste it at the silent prompt below, do not type it into a command):');
+      console.log(`    ${demo.mcp.token}`);
+      console.log('');
+      console.log('  Claude Code, in a bash or zsh terminal you will start it from: run the first line, paste the token (nothing is echoed) and press Enter, run the second, start Claude Code from this same terminal, and only then run  unset ' + demo.mcp.setup.split(' ')[2] + '  (Claude Code reads the variable when it starts).');
+      console.log(`    ${demo.mcp.setup}`);
+      console.log(`    ${demo.mcp.command}`);
+      console.log('  Whether Claude Code expands that variable in a header it stored is unverified. A refused connection can mean the variable was not expanded, the token expired or was revoked, or the demo is stopped.');
+      console.log('');
+      console.log('  Claude Desktop (Settings, Developer, Edit Config; needs Node.js) keeps its settings in a file outside the demo folder, so this copy of the token stays on disk after Ctrl-C (the token itself stops working then). These steps assume macOS or Linux (POSIX); on Windows the file is not made private by chmod. Make that file readable by you only (chmod 600) and delete the demo entry when you are done:');
+      for (const line of demo.mcp.desktop.split('\n')) console.log(`    ${line}`);
+      console.log('');
+      console.log('  If the demo is stopped uncleanly (a crash, kill -9, power loss), the token is not revoked: with --keep and the files hosted again it stays valid until the expiry shown above. Revoke it (admin console, Connect an AI app) before you reuse or share the folder.');
+    }
     console.log('');
     console.log(demo.kept ? `The files are in ${demo.folder} and stay there. Press Ctrl-C to stop.` : 'Nothing is kept: the files are deleted when you press Ctrl-C. The password is shown only here.');
     if (open) openBrowser(demo.app);

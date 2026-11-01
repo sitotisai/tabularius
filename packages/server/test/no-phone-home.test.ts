@@ -239,17 +239,20 @@ test('the command line asks nothing of the network when it checks a folder or sa
   }
 });
 
-test('tabularius demo makes no outbound connection', { skip: existsSync(join(root, 'packages', 'cli', 'src', 'demo.ts')) ? false : 'no demo command in this version' }, async (t) => {
-  const { home, done } = scratch();
-  const demo = await run(['demo', '--no-open'], home, {}, /http:\/\/127\.0\.0\.1:\d+/);
-  t.after(() => demo.stop());
-  t.after(done);
-  const port = Number(/127\.0\.0\.1:(\d+)/.exec(demo.output())![1]);
-  for (const page of ['/app/', '/admin/']) assert.equal((await get(port, page)).status, 200);
-  await sleep(3000);
-  assert.ok(demo.hooked());
-  assert.deepEqual(demo.attempts(), []);
-});
+// The plain demo, the showcase starter and --full (extra sign-ins, read-only SQL and a token for an AI app on this computer) all stay on this computer; only --ai (not run here: it needs a key) lets anything out.
+for (const flags of [[], ['--starter', 'crm-showcase'], ['--full']]) {
+  test(`tabularius demo ${flags.join(' ')} makes no outbound connection`.replace('demo  ', 'demo '), { skip: existsSync(join(root, 'packages', 'cli', 'src', 'demo.ts')) ? false : 'no demo command in this version' }, async (t) => {
+    const { home, done } = scratch();
+    const demo = await run(['demo', '--no-open', ...flags], home, {}, /http:\/\/127\.0\.0\.1:\d+/);
+    t.after(() => demo.stop());
+    t.after(done);
+    const port = Number(/127\.0\.0\.1:(\d+)/.exec(demo.output())![1]);
+    for (const page of ['/app/', '/admin/']) assert.equal((await get(port, page)).status, 200);
+    await sleep(3000);
+    assert.ok(demo.hooked());
+    assert.deepEqual(demo.attempts(), []);
+  });
+}
 
 test('what is asked for is what is attempted: the AI assistant reaches its provider only with --ai and a key', async (t) => {
   const { home, dir, done } = scratch();

@@ -787,6 +787,9 @@ export function createMcpServer(host: Host, who: McpIdentity = { admin: true }, 
       return failError(e);
     }
   };
+  /** A read-only token changes nothing, including history rows such as a cleanup batch that matched no record. */
+  const readOnlyToken = () => 'scope' in who && who.scope?.readOnly === true;
+  const refuseReadOnly = (what: string): never => { throw new Error(`Insufficient privileges: this token is read-only, so it can't ${what}`); };
   const withRecordWrite = <T>(database: string, fn: (s: Store, p: Privileges | undefined) => T) => withStore(database, (s, p) => {
     if ('scope' in who && who.scope?.readOnly) throw new StoreError(200, 'Record access is denied: this API token is read-only; use a write-enabled token to change records');
     return fn(s, p);
@@ -1740,7 +1743,7 @@ export function createMcpServer(host: Host, who: McpIdentity = { admin: true }, 
     },
     annotations: { destructiveHint: true },
   }, async ({ database, layout, dryRun, fixes, merges }) => withStore(database, (s, p) =>
-    applyCleanup(s, { layout, fixes, merges, dryRun }, { account: p?.account ?? ('account' in who ? who.account : undefined), privileges: p })));
+    (readOnlyToken() && !dryRun ? refuseReadOnly('apply data fixes') : applyCleanup(s, { layout, fixes, merges, dryRun }, { account: p?.account ?? ('account' in who ? who.account : undefined), privileges: p }))));
 
   const importRows = (data: string, format: ImportFormat | undefined): { rows: (string | number)[][]; notices: string[] } => {
     if (data.length > 5_000_000) throw new Error('That is too much to import in one go through MCP (5 MB); split it');
@@ -1817,7 +1820,7 @@ export function createMcpServer(host: Host, who: McpIdentity = { admin: true }, 
     inputSchema: { database: db, id: z.string().optional() },
     annotations: { destructiveHint: true },
   }, async ({ database, id }) => withStore(database, (s, p) =>
-    id ? undoImport(s, id, { privileges: p, account: p?.account ?? ('account' in who ? who.account : undefined) }) : importHistory(s, 20, { privileges: p, account: p?.account ?? ('account' in who ? who.account : undefined) })));
+    id ? (readOnlyToken() ? refuseReadOnly('undo imports') : undoImport(s, id, { privileges: p, account: p?.account ?? ('account' in who ? who.account : undefined) })) : importHistory(s, 20, { privileges: p, account: p?.account ?? ('account' in who ? who.account : undefined) })));
 
   server.registerTool('undo_data_fix', {
     description: 'Undo a batch fix_data_problems applied (by its id), all or none: values set back and merged records put back. ' +
@@ -1825,7 +1828,7 @@ export function createMcpServer(host: Host, who: McpIdentity = { admin: true }, 
     inputSchema: { database: db, id: z.string().optional() },
     annotations: { destructiveHint: true },
   }, async ({ database, id }) => withStore(database, (s, p) =>
-    id ? undoCleanup(s, id, { account: p?.account ?? ('account' in who ? who.account : undefined), privileges: p }) : { history: cleanupHistory(s, { account: p?.account, privileges: p }) }));
+    id ? (readOnlyToken() ? refuseReadOnly('undo data fixes') : undoCleanup(s, id, { account: p?.account ?? ('account' in who ? who.account : undefined), privileges: p })) : { history: cleanupHistory(s, { account: p?.account, privileges: p }) }));
 
   server.registerTool('find_stale_calcs', {
     description: 'Stored calculations whose saved value is no longer what the formula gives now, with counts per field (changes nothing). ' +

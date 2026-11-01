@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**246 entries in 28 areas.** Unverified: 112. Waiting on: 22 on a sample file, 147 on a FileMaker run or Design Report, 14 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
+**248 entries in 29 areas.** Unverified: 114. Waiting on: 22 on a sample file, 147 on a FileMaker run or Design Report, 14 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
 
 ## Conversion
 
@@ -47,6 +47,13 @@ part of it.
 | Whether FileMaker resolves ambiguous imported or exported calendar readings the way Tabularius does (skipped reading moved forward, first of a repeated reading) is not verified | A calendar entry in a skipped or repeated hour may land at a different instant | A FileMaker calendar run with readings in a skipped and a repeated hour | [docs/audits/audit-time.md › Results and fixes](audits/audit-time.md) — “…UTC DTSTAMP already have synthetic tests. \| Unverified whether the compatible product resolves ambiguous…” |
 | YearName is not implemented because its exact output (Japanese era names) could not be read from the Claris page, and negative or fractional times, ambiguous locale-dependent text parsing and mixed text coercions follow Tabularius choices that the Claris pages do not define | A calculation using YearName returns an error, and one that builds a time outside a clock day or parses ambiguous date text may give a different answer from FileMaker | A readable Claris YearName reference or a FileMaker run of YearName, out-of-range times and ambiguous date text | [docs/audits/r25-22-date-time-functions.md](audits/r25-22-date-time-functions.md) — “(the whole page)” |
 | A date or timestamp under the year 1000 is written with four digits (1/1/0001) so it reads back as the same year, and how FileMaker writes it is not checked | Date ( 1 ; 1 ; 1 ) & "" gives 1/1/0001 | A FileMaker run of Date ( 1 ; 1 ; 1 ) & "" | [docs/consistency.md › Unverified behavior left unchanged <!-- known-difference-ok: heading of the list below, whose items carry the markers -->](consistency.md) — “…and stores the invalid date the same way remains unverified. Keep the web formatter unchanged until that…” |
+
+## Demo AI app hand-off
+
+| What differs or is unknown | How it shows | What would settle it | Where it is written |
+| --- | --- | --- | --- |
+| Whether Claude Code expands a variable in a header stored by the printed add command is unverified | The command works only if Claude Code expands the variable when it connects; if not, the app is refused for want of a token | A run of the printed command against Claude Code | [docs/starter-solutions.md › Showcase](starter-solutions.md) — “…Code expands the variable in a stored header is unverified); Claude Desktop keeps its settings in a file…” |
+| That the pinned mcp-remote version in the Claude Desktop snippet exists and connects is unverified | npx fails to find the version, or the bridge does not connect | A run of the snippet in Claude Desktop | [docs/starter-solutions.md › Showcase](starter-solutions.md) — “…Code expands the variable in a stored header is unverified); Claude Desktop keeps its settings in a file…” |
 
 ## File system races
 
