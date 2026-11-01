@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**248 entries in 29 areas.** Unverified: 114. Waiting on: 22 on a sample file, 147 on a FileMaker run or Design Report, 14 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
+**251 entries in 30 areas.** Unverified: 117. Waiting on: 22 on a sample file, 148 on a FileMaker run or Design Report, 14 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
 
 ## Conversion
 
@@ -261,6 +261,14 @@ part of it.
 | What differs or is unknown | How it shows | What would settle it | Where it is written |
 | --- | --- | --- | --- |
 | Native service-manager loading and enforcement are unverified by the golden tests | A definition may behave differently when loaded on its target system | Install and exercise user and system services on each target OS | [docs/service-files.md › What the service files contain, and why](service-files.md) — “…service-manager loading and enforcement remain unverified by the golden tests. The files have static and…” |
+
+## Showcase demo
+
+| What differs or is unknown | How it shows | What would settle it | Where it is written |
+| --- | --- | --- | --- |
+| How the showcase's HTML pages look in a FileMaker Pro web viewer is unverified | A page that does not draw in a FileMaker Pro web viewer | Open the showcase layouts in FileMaker Pro | [docs/showcase-crm.md › Not checked](showcase-crm.md) — “How FileMaker Pro shows the five HTML pages in its web viewer; the 30,000-character measure is from the…” |
+| That the pinned mcp-remote version in the Claude Desktop snippet works is unverified | Claude Desktop cannot connect with the printed snippet | Add the printed snippet to Claude Desktop and connect | [docs/showcase-crm.md › Not checked](showcase-crm.md) — “That the pinned mcp-remote version the Claude Desktop snippet runs exists and works.” |
+| Whether Claude Code expands the token variable in a stored MCP header is unverified | A refused connection from Claude Code with a token that has not expired or been revoked | Run the printed claude mcp add line in Claude Code and connect | [docs/showcase-crm.md › Not checked](showcase-crm.md) — “Whether Claude Code expands the token variable in a header it has stored, as the printed claude mcp add line…” |
 
 ## Sign-in
 
