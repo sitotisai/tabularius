@@ -86,7 +86,7 @@ test('a follower tells the leader of a file it could not open at startup; the le
   try {
     const make = (id: number, leader: boolean) => new ClusterLink({ id, leader, workers: 2, socket: join(dir, `w${id}.sock`), urlKey: '00'.repeat(32), locks: join(dir, `l${id}.sqlite`) }, (m) => sent.push({ id, m }));
     const host = () => ({
-      dir, openFailures: new OpenFailures(), openStores: () => [], onAdd: [], serverScripts: { version: 0, list: () => [] }, logs: undefined, peers: undefined,
+      dir, openFailures: new OpenFailures(), openStores: () => [], onAdd: [], onApprove: new Set(), serverScripts: { version: 0, list: () => [] }, logs: undefined, peers: undefined,
       files: () => [{ name: 'Broken', status: 'closed', damaged: 'Broken is damaged (file is not a database)' }, { name: 'Shop', status: 'open' }, { name: 'Held', status: 'closed' }],
     });
     const api = { own: () => [], others: () => [] };
@@ -104,6 +104,8 @@ test('a follower tells the leader of a file it could not open at startup; the le
 test('through the real front process: a worker that cannot open a file at startup shows in the leader\'s admin status', { timeout: 60_000 }, async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-open-relay-'));
   const env = commandStubEnv(t);
+  // Each worker's version stamp asks git for the short commit by PATH; that one command answers a fixed sha, every other stub stays forbidden.
+  writeFileSync(join(env.PATH!, 'git'), '#!/bin/sh\necho abc1234\n', { mode: 0o700 });
   const previous = { PATH: process.env.PATH, TABULARIUS_TEST_CHILD_MARKER: process.env.TABULARIUS_TEST_CHILD_MARKER };
   process.env.PATH = env.PATH;
   process.env.TABULARIUS_TEST_CHILD_MARKER = env.TABULARIUS_TEST_CHILD_MARKER;
