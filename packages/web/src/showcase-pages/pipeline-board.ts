@@ -95,21 +95,24 @@ const JS = String.raw`
     $('#t-stale').textContent = String(open.filter(isStale).length);
     var board = $('#board'); board.replaceChildren();
     if (!S.rows.length) { board.append(el('p', { class: 'empty', text: 'No deals to show. If you expected some, this account may not be allowed to see any.' })); return; }
-    STAGES.forEach(function (stage) {
-      var mine = rows.filter(function (r) { return val(r, 'Stage') === stage && (stage !== 'Won' && stage !== 'Lost' || recent(r)); });
+    // A deal whose stage is not on the list (a typo, a stray space) would vanish from every column, so it gets one of its own.
+    var cols = STAGES.slice();
+    if (rows.some(function (r) { return STAGES.indexOf(val(r, 'Stage')) < 0; })) cols.push('');
+    cols.forEach(function (stage) {
+      var mine = rows.filter(function (r) { var s = STAGES.indexOf(val(r, 'Stage')) < 0 ? '' : val(r, 'Stage'); return s === stage && (stage !== 'Won' && stage !== 'Lost' || recent(r)); });
       var total = mine.reduce(function (a, r) { return a + num(val(r, 'Amount')); }, 0), weighted = mine.reduce(function (a, r) { return a + num(val(r, 'Weighted Amount')); }, 0);
-      var list = el('ul', { class: 'cards', 'data-stage': stage, 'aria-label': stage + ' deals' });
+      var list = el('ul', { class: 'cards', 'data-stage': stage, 'aria-label': (stage || 'Needs a stage') + ' deals' });
       list.addEventListener('dragover', function (e) { e.preventDefault(); list.classList.add('over'); });
       list.addEventListener('dragleave', function () { list.classList.remove('over'); });
-      list.addEventListener('drop', function (e) { e.preventDefault(); list.classList.remove('over'); var rec = byId(e.dataTransfer.getData('text/plain')); if (rec) move(rec, stage); });
+      list.addEventListener('drop', function (e) { e.preventDefault(); list.classList.remove('over'); var rec = byId(e.dataTransfer.getData('text/plain')); if (rec && stage) move(rec, stage); });
       mine.forEach(function (r) { list.append(card(r, stage)); });
-      var sum = stage === 'Won' || stage === 'Lost' ? [el('b', { text: money(total) }), el('span', { text: mine.length + ' in 90 days' })] : [el('span', { text: money(total) }), el('b', { text: money(weighted) + ' weighted' })];
-      board.append(el('section', { class: 'col ' + stage.toLowerCase(), 'aria-label': stage }, [el('h2', {}, [el('span', { text: stage }), el('span', { text: String(mine.length) })]), el('div', { class: 'sum' }, sum), list]));
+      var sum = !stage ? [el('span', { text: money(total) }), el('span', { text: 'fix the stage' })] : stage === 'Won' || stage === 'Lost' ? [el('b', { text: money(total) }), el('span', { text: mine.length + ' in 90 days' })] : [el('span', { text: money(total) }), el('b', { text: money(weighted) + ' weighted' })];
+      board.append(el('section', { class: 'col ' + stage.toLowerCase(), 'aria-label': stage || 'Needs a stage' }, [el('h2', {}, [el('span', { text: stage || 'Needs a stage' }), el('span', { text: String(mine.length) })]), el('div', { class: 'sum' }, sum), list]));
     });
   }
   var byId = function (id) { return S.rows.filter(function (r) { return String(r.recordId) === id; })[0]; };
   function card(r, stage) {
-    var pick = el('select', { class: 'mv', 'aria-label': 'Move ' + val(r, 'Title') + ' to', onchange: function (e) { move(r, e.target.value); } }, STAGES.map(function (s) { return el('option', { value: s, text: s }); }));
+    var pick = el('select', { class: 'mv', 'aria-label': 'Move ' + val(r, 'Title') + ' to', onchange: function (e) { if (e.target.value) move(r, e.target.value); } }, (stage ? [] : [el('option', { value: '', text: 'Choose a stage' })]).concat(STAGES.map(function (s) { return el('option', { value: s, text: s }); })));
     pick.value = stage;
     var days = num(val(r, 'Days In Stage')), p = Math.max(0, Math.min(100, num(val(r, 'Probability'))));
     var li = el('li', { class: 'card' + (isStale(r) ? ' stale' : ''), draggable: 'true', tabindex: '0', 'data-id': String(r.recordId) }, [
