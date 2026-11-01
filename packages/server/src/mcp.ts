@@ -787,6 +787,10 @@ export function createMcpServer(host: Host, who: McpIdentity = { admin: true }, 
       return failError(e);
     }
   };
+  const withRecordWrite = <T>(database: string, fn: (s: Store, p: Privileges | undefined) => T) => withStore(database, (s, p) => {
+    if ('scope' in who && who.scope?.readOnly) throw new StoreError(200, 'Record access is denied: this API token is read-only; use a write-enabled token to change records');
+    return fn(s, p);
+  });
   /** Design (formulas, scripts, the relationship graph) is for sets that can modify scripts and read everything. */
   const designAccess = (s: Store, p: Privileges | undefined = privilegesIn(s, who)) => {
     if ('scope' in who && scoped(who.scope)) throw new Error('Insufficient privileges: this token is limited (read-only or to some layouts), so it can\'t see the solution\'s design');
@@ -1126,7 +1130,7 @@ export function createMcpServer(host: Host, who: McpIdentity = { admin: true }, 
     description: 'Create a record. Dates may be ISO (2026-10-11) or in the file\'s format.',
     inputSchema: { database: db, layout, fieldData },
     annotations: { destructiveHint: false },
-  }, async ({ database, layout, fieldData }) => withStore(database, (s, privileges) => s.create(layout, fieldData, { privileges, account: privileges?.account })));
+  }, async ({ database, layout, fieldData }) => withRecordWrite(database, (s, privileges) => s.create(layout, fieldData, { privileges, account: privileges?.account })));
 
   server.registerTool('update_record', {
     description: 'Change fields of a record, and its portal rows: portalData edits rows by recordId or adds rows without one; ' +
@@ -1139,7 +1143,7 @@ export function createMcpServer(host: Host, who: McpIdentity = { admin: true }, 
       deleteRelated: z.array(z.string()).optional().describe('Portal rows to delete, as "Portal.recordId"'),
     },
     annotations: { idempotentHint: true },
-  }, async ({ database, layout, recordId, fieldData: data, modId, portalData, deleteRelated }) => withStore(database, (s, privileges) => atomicWrites(() => {
+  }, async ({ database, layout, recordId, fieldData: data, modId, portalData, deleteRelated }) => withRecordWrite(database, (s, privileges) => atomicWrites(() => {
     const opts = { privileges, account: privileges?.account };
     const portalEdit = Object.keys(portalData ?? {}).length > 0 || !!deleteRelated?.length;
     const fieldEdit = !!data && Object.keys(data).length > 0;
@@ -1233,7 +1237,7 @@ export function createMcpServer(host: Host, who: McpIdentity = { admin: true }, 
     description: 'Delete a record. This cannot be undone.',
     inputSchema: { database: db, layout, recordId: z.number().int() },
     annotations: { destructiveHint: true },
-  }, async ({ database, layout, recordId }) => withStore(database, (s, privileges) => {
+  }, async ({ database, layout, recordId }) => withRecordWrite(database, (s, privileges) => {
     s.delete(layout, recordId, { privileges, account: privileges?.account });
     return { deleted: recordId };
   }));
@@ -1251,7 +1255,7 @@ export function createMcpServer(host: Host, who: McpIdentity = { admin: true }, 
       fields: z.array(z.string()).optional().describe('Only these fields of an edit; omit for all of them'),
     },
     annotations: { destructiveHint: true },
-  }, async ({ database, layout, recordId, seq, fields }) => withStore(database, (s, privileges) =>
+  }, async ({ database, layout, recordId, seq, fields }) => withRecordWrite(database, (s, privileges) =>
     s.revertAuditEntry(layout, recordId, seq, { privileges, account: privileges?.account, ...(fields ? { fields } : {}) })));
 
   server.registerTool('get_container', {

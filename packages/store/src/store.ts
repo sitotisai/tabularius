@@ -1,3 +1,4 @@
+import { narrowPrivileges, type CredentialCeiling } from './token-scope.ts';
 import { sortProgress } from './cooperative.ts';
 // An imported solution, opened for reading and writing. Values cross this
 // API in FileMaker's shapes: field names, repetitions as "Field(2)", and
@@ -1264,6 +1265,10 @@ export class Store {
     // Proposed changes from approval-gated agents, awaiting a human's decision.
     this.sql.exec(`CREATE TABLE IF NOT EXISTS _fm_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, agent TEXT NOT NULL,
       kind TEXT NOT NULL, layout TEXT NOT NULL, tbl TEXT NOT NULL, record_id INTEGER, data TEXT, mod_id INTEGER, summary TEXT NOT NULL)`);
+    // NULL preserves the replay behavior of proposals made before credential ceilings were recorded.
+    if (!(this.sql.prepare('PRAGMA table_info(_fm_pending)').all() as { name: string }[]).some((c) => c.name === 'ceiling')) {
+      this.sql.exec('ALTER TABLE _fm_pending ADD COLUMN ceiling TEXT');
+    }
     this.sql.exec(`CREATE TABLE IF NOT EXISTS _fm_audit (seq INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, account TEXT,
       kind TEXT NOT NULL, tbl TEXT NOT NULL, record_id INTEGER, changes TEXT, security INTEGER NOT NULL DEFAULT 0)`);
     // Older files had a record-only audit log; add the column that marks security events.
@@ -3815,14 +3820,62 @@ export class Store {
     });
   }
 
+  /** The same record/field checks as direct writes, without changing any related record. */
+  private checkProposedWrite(info: LayoutInfo, kind: 'create' | 'update' | 'delete', recordId: number | undefined, data: FieldData, privileges?: Privileges): void {
+    this.checkLayout(info, privileges);
+    this.checkWriteFields(info, privileges, fieldNames(data));
+    this.checkLayout(info, privileges, true);
+    const owner = info.owner;
+    const pv = owner.local(privileges);
+    if (kind === 'create') {
+      owner.checkWrite(info, pv, fieldNames(data));
+      return;
+    }
+    const current = owner.row(info, recordId!);
+    if (kind === 'delete') {
+      if (pv) {
+        owner.checkRecordRule(owner.table(info), pv, 'delete', 'view', current);
+        owner.checkRecordRule(owner.table(info), pv, 'delete', 'delete', current);
+      }
+      return;
+    }
+    const { own, related } = this.splitWriteFields(info, data);
+    if (Object.keys(own).length || !related.size) owner.checkWrite(info, pv, fieldNames(own), current);
+    if (related.size && info.home) {
+      owner.checkParentViewable(info, current, privileges);
+      for (const [to, values] of related) {
+        const { occ, from } = info.home.related(info, to);
+        const first = relatedRows(info.home, from, current, occ.to.id, { limit: 1 })?.rows[0];
+        if (!first) throw new StoreError(101, `No related record in "${to}"`);
+        occ.store.checkProposedWrite(info.home.occurrenceInfo(occ), 'update', Number(first._fm_record_id), values, privileges);
+      }
+    }
+  }
+
+  private splitWriteFields(info: LayoutInfo, data: FieldData): { own: FieldData; related: Map<string, FieldData> } {
+    // Related fields ("TO::Field") target the first related record; vendor parity is unverified.
+    const own: FieldData = {};
+    const related = new Map<string, FieldData>();
+    for (const [k, v] of Object.entries(data)) {
+      const m = /^(.+?)::(.+)$/.exec(k);
+      if (m && info.home && m[1] !== info.occurrence) {
+        if (!related.has(m[1])) related.set(m[1], {});
+        related.get(m[1])![m[2]] = v;
+      } else own[k] = m ? m[2] : v;
+    }
+    return { own, related };
+  }
+
   /**
    * For an approval-gated agent, records the attempted write as a pending
    * proposal and throws PendingApprovalError so nothing changes yet; for anyone
-   * else (and for an already-approved change being applied) does nothing. Called
+   * else (and for an already-approved replay) still enforces read-only tokens. Called
    * at the top of each record write, before any mutation.
    */
   private gateAgentWrite(opts: WriteOptions, kind: 'create' | 'update' | 'delete', info: LayoutInfo, recordId: number | undefined, data: FieldData | undefined, modId: number | undefined): void {
+    if (opts.privileges?.credentialCeiling?.readOnly) throw new StoreError(200, 'Record access is denied: this API token is read-only; use a write-enabled token to change records');
     if (opts.approvedChange || !opts.account || !this.agentNeedsApproval(opts.account)) return;
+    this.checkProposedWrite(info, kind, recordId, data ?? {}, opts.privileges);
     const summary = kind === 'create' ? `create a record on ${info.name}`
       : kind === 'delete' ? `delete record ${recordId} on ${info.name}`
       : `change ${Object.keys(data ?? {}).length} field${Object.keys(data ?? {}).length === 1 ? '' : 's'} of record ${recordId} on ${info.name}`;
@@ -3843,8 +3896,8 @@ export class Store {
     const id = this.securityChange(() => {
       const waiting = (this.sql.prepare('SELECT COUNT(*) AS n FROM _fm_pending WHERE agent = ? COLLATE NOCASE').get(account) as { n: number }).n;
       if (waiting >= MAX_PENDING_PER_AGENT) throw new StoreError(812, `"${account}" already has ${MAX_PENDING_PER_AGENT.toLocaleString('en')} changes waiting for approval, the most one agent can have. Approve or reject some of them (Manage Security, Pending changes), then the agent can propose more`);
-      const r = this.sql.prepare('INSERT INTO _fm_pending (at, agent, kind, layout, tbl, record_id, data, mod_id, summary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(new Date().toISOString(), account, kind, info.name, info.table, recordId ?? null, data ? JSON.stringify(data) : null, modId ?? null, summary);
+      const r = this.sql.prepare('INSERT INTO _fm_pending (at, agent, kind, layout, tbl, record_id, data, mod_id, summary, ceiling) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(new Date().toISOString(), account, kind, info.name, info.table, recordId ?? null, data ? JSON.stringify(data) : null, modId ?? null, summary, opts.privileges?.credentialCeiling ? JSON.stringify(opts.privileges.credentialCeiling) : null);
       this.logSecurity('agent-change-proposed', { account, target: info.name, detail: { id: Number(r.lastInsertRowid), kind, ...(recordId !== undefined ? { recordId } : {}) } });
       return Number(r.lastInsertRowid);
     });
@@ -3873,16 +3926,17 @@ export class Store {
 
   /**
    * Applies a pending agent change after a human approved it, as the agent and
-   * with the agent's own privileges (so approval never grants more than the
-   * agent could do), then removes the proposal. The record change is audited as
+   * with the agent's current privileges and the originating credential ceiling
+   * (so approval never grants more than that credential could do), then removes the proposal. The record change is audited as
    * the agent; the approval is logged against the approver.
    */
   approvePending(id: number, approver: string): { recordId?: number } {
     return this.securityChange(() => {
-      const row = this.sql.prepare('SELECT agent, kind, layout, record_id, data FROM _fm_pending WHERE id = ?').get(id) as
-        { agent: string; kind: string; layout: string; record_id: number | null; data: string | null } | undefined;
+      const row = this.sql.prepare('SELECT agent, kind, layout, record_id, data, ceiling FROM _fm_pending WHERE id = ?').get(id) as
+        { agent: string; kind: string; layout: string; record_id: number | null; data: string | null; ceiling: string | null } | undefined;
       if (!row) throw new StoreError(960, `No pending change ${id}`);
-      const privileges = this.privileges(row.agent);
+      const ceiling = row.ceiling ? JSON.parse(row.ceiling) as CredentialCeiling : undefined;
+      const privileges = narrowPrivileges(this, this.privileges(row.agent), ceiling, ceiling?.fileId);
       const data = row.data ? JSON.parse(row.data) as FieldData : {};
       const opts: WriteOptions = { privileges, account: row.agent, approvedChange: true, dataEntry: true };
       let result: { recordId?: number } = {};
@@ -9604,10 +9658,10 @@ export class Store {
 
   create(layout: string | LayoutInfo, data: FieldData = {}, opts: WriteOptions = {}): { id?: string; recordId: number; modId: number } {
     const info = this.layoutInfo(layout);
+    this.gateAgentWrite(opts, 'create', info, undefined, data, undefined);
     this.checkLayout(info, opts.privileges);
     this.checkWriteFields(info, opts.privileges, fieldNames(data));
     this.checkLayout(info, opts.privileges, true);
-    this.gateAgentWrite(opts, 'create', info, undefined, data, undefined);
     if (info.owner !== this) return info.owner.create(info, data, opts);
     this.joinTransaction();
     return this.withWriteTransaction(() => {
@@ -9714,21 +9768,12 @@ export class Store {
 
   update(layout: string | LayoutInfo, recordId: number, data: FieldData, modId?: number, opts: WriteOptions = {}, retry = 0): { modId: number } {
     const info = this.layoutInfo(layout);
+    this.gateAgentWrite(opts, 'update', info, recordId, data, modId);
     this.checkLayout(info, opts.privileges);
     this.checkWriteFields(info, opts.privileges, fieldNames(data));
     this.checkLayout(info, opts.privileges, true);
-    this.gateAgentWrite(opts, 'update', info, recordId, data, modId);
     if (info.owner !== this) return info.owner.update(info, recordId, data, modId, opts, retry);
-    // Related fields ("TO::Field") go to the first related record, as in FileMaker.
-    const own: FieldData = {};
-    const related = new Map<string, FieldData>();
-    for (const [k, v] of Object.entries(data)) {
-      const m = /^(.+?)::(.+)$/.exec(k);
-      if (m && info.home && m[1] !== info.occurrence) {
-        if (!related.has(m[1])) related.set(m[1], {});
-        related.get(m[1])![m[2]] = v;
-      } else own[k] = m ? m[2] : v;
-    }
+    const { own, related } = this.splitWriteFields(info, data);
     this.joinTransaction();
     return this.withWriteTransaction(() => {
       this.checkLock(info.table, recordId);
@@ -10338,8 +10383,8 @@ export class Store {
 
   delete(layout: string | LayoutInfo, recordId: number, opts: WriteOptions = {}): void {
     const info = this.layoutInfo(layout);
-    this.checkLayout(info, opts.privileges, true);
     this.gateAgentWrite(opts, 'delete', info, recordId, undefined, undefined);
+    this.checkLayout(info, opts.privileges, true);
     if (info.owner !== this) return info.owner.delete(info, recordId, opts);
     this.joinTransaction();
     this.withWriteTransaction(() => {

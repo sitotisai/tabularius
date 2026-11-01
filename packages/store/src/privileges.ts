@@ -12,6 +12,7 @@
 // FileMaker: a layout showing a table in another hosted file uses the
 // account's privileges in that file.
 
+import type { CredentialCeiling } from './token-scope.ts';
 import type { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
 import type { PrivilegeSet, Schema } from '../../fmp12/src/index.ts';
@@ -289,13 +290,17 @@ export class Privileges {
   /** A token's independent ceiling, reapplied after script elevation or a change of account. */
   readonly ceiling?: (privileges: Privileges) => Privileges;
 
-  constructor(account: string, set: PrivilegeDefinition, file: unknown, other: (file: unknown) => Privileges, captureDenials = true, ceiling?: (privileges: Privileges) => Privileges) {
+  /** Serializable token ceiling kept when an agent proposes a write. */
+  readonly credentialCeiling?: CredentialCeiling;
+
+  constructor(account: string, set: PrivilegeDefinition, file: unknown, other: (file: unknown) => Privileges, captureDenials = true, ceiling?: (privileges: Privileges) => Privileges, credentialCeiling?: CredentialCeiling) {
     this.account = account;
     this.set = set;
     this.file = file;
     this.other = other;
     this.captureDenials = captureDenials;
     this.ceiling = ceiling;
+    this.credentialCeiling = credentialCeiling;
   }
 
   /** The account whose row decides whether a container link made for this session still works: the mapping for an external sign-in. */
@@ -307,13 +312,13 @@ export class Privileges {
   }
 
   /** Carries a ceiling into other files without changing this file's account rules or denial attribution. */
-  withCeiling(ceiling: (privileges: Privileges) => Privileges): Privileges {
-    return new Privileges(this.account, this.set, this.file, (file) => ceiling(this.in(file)), this.captureDenials, ceiling).withVia(this.via);
+  withCeiling(ceiling: (privileges: Privileges) => Privileges, credentialCeiling = this.credentialCeiling): Privileges {
+    return new Privileges(this.account, this.set, this.file, (file) => ceiling(this.in(file)), this.captureDenials, ceiling, credentialCeiling).withVia(this.via);
   }
 
   /** These privileges looked at only from other hosted files: nothing is checked in the file they are for. */
   elsewhereOnly(): Privileges {
-    return new Privileges(this.account, { ...this.set, id: 1 }, this.file, this.other, this.captureDenials, this.ceiling).withVia(this.via);
+    return new Privileges(this.account, { ...this.set, id: 1 }, this.file, this.other, this.captureDenials, this.ceiling, this.credentialCeiling).withVia(this.via);
   }
 
   /** The same account's privileges in another hosted file (no access when it has no account there). */
