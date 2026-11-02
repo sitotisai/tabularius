@@ -25,7 +25,8 @@ import { renameCheckedFile as rename, renameCheckedSync as renameSync } from '..
 import { redactDiagnosticText } from '../../scripts/src/redaction.ts';
 import { mkdir, stat } from 'node:fs/promises';
 import { existsSync, mkdirSync, statSync } from 'node:fs';
-import { appendFile, appendFileSync, readFileSync } from '../../store/src/fs-boundary.ts';
+import { appendFile, appendFileSync } from '../../store/src/fs-boundary.ts';
+import { linesNewestFirst } from './tail-lines.ts';
 import { join } from 'node:path';
 
 export const LOGS = ['Event', 'Access', 'ScriptEvent', 'fmdapi', 'Admin'] as const;
@@ -199,10 +200,9 @@ export class ServerLogs {
     const q = filter.q?.toLowerCase();
     const out: LogEntry[] = [];
     for (const f of [join(this.dir, `${name}.log`), join(this.dir, `${name}-old.log`)]) {
-      if (!existsSync(f)) continue;
-      const lines = readFileSync(f, 'utf8').split('\n');
-      for (let i = lines.length - 1; i >= 0; i--) {
-        const [at, type, source, ...rest] = lines[i].split('\t');
+      // Latest-entry views read from the end; searches scan the files a chunk at a time.
+      for (const line of linesNewestFirst(f)) {
+        const [at, type, source, ...rest] = line.split('\t');
         if (!at || !type) continue;
         const message = rest.join('\t');
         if (filter.type && type !== filter.type) continue;
