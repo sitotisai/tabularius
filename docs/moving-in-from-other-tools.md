@@ -60,10 +60,13 @@ Kinds are worked out from the whole column:
 - **time**: `14:30`, `2:30 PM`.
 - **checkbox**: `checked`/`unchecked`, `yes`/`no`, `true`/`false`, as 0 and 1 in
   a number field.
-- **select**: text with few different values (12 or fewer, over at least eight
-  rows): a text field and a value list of the choices.
-- **multi**: comma-separated choices from a small set: the choices on separate
-  lines in one text field, and a value list.
+- **select**: text with few different values: at least eight rows, at most 12
+  different values, and no more than half as many different values as rows (ten
+  rows need five or fewer). A text field and a value list of the choices.
+- **multi**: comma-separated choices from a small set: at least eight rows, at
+  most 20 different choices of 40 characters or fewer, and no more than half
+  as many different choices as rows. The choices go on separate lines in one
+  text field, with a value list.
 - **link**: most of the column (90%) names rows in the first column of another
   file in the same import. See below.
 
@@ -93,8 +96,10 @@ links to the first, and is counted.
   container reference. Airtable says exported attachment URLs expire after a
   few hours.
 - Views, filters, sorts, forms, permissions and comments.
-- Row limits: at most 500,000 rows and 500 columns per sheet, and files up to
-  256 MB.
+- Size limits: at most 500,000 rows and 500 columns per sheet. On the command
+  line each file may be up to 256 MB. In the web client one import may carry at
+  most 20 files and about 50 MB in all, and a folder of Notion pages at most
+  5000 pages.
 
 ## Not verified
 
