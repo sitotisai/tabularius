@@ -255,7 +255,12 @@ export function formatNumber(n: number): string {
   if (!/e/i.test(short) && short.replace(/^-?0*\.?0*/, '').replace('.', '').length <= 16) return short;
   let s = n.toPrecision(16);
   if (/e/i.test(s)) {
-    s = Number(s).toLocaleString('en-US', { useGrouping: false, maximumSignificantDigits: 16 });
+    const rounded = Number(s);
+    if (!Number.isFinite(rounded)) {
+      const m = /^(-?)(\d)\.(\d+)e\+(\d+)$/i.exec(s)!;
+      return m[1] + m[2] + m[3] + '0'.repeat(Number(m[4]) - m[3].length);
+    }
+    s = rounded.toLocaleString('en-US', { useGrouping: false, maximumSignificantDigits: 16 });
   }
   if (s.includes('.')) s = s.replace(/0+$/, '').replace(/\.$/, '');
   return s;
@@ -360,6 +365,21 @@ export function exactIntegerText(s: string): bigint | undefined {
   const t = s.trim();
   if (!/^[+-]?\d{16,}$/.test(t) || t.replace(/^[+-]/, '').length > MAX_DIGITS) return undefined;
   return Number.isSafeInteger(Number(t)) ? undefined : BigInt(t);
+}
+
+/** A whole numeric literal whose written digits exceed the safe double range. */
+export function exactLiteralText(s: string): bigint | undefined {
+  const plain = exactIntegerText(s);
+  if (plain !== undefined) return plain;
+  const m = /^(\d+)(?:\.(\d*))?[eE]\+?(\d{1,4})$/.exec(s);
+  if (!m) return undefined;
+  const fraction = (m[2] ?? '').replace(/0+$/, '');
+  const zeros = Number(m[3]) - fraction.length;
+  if (zeros < 0) return undefined;
+  const digits = (m[1] + fraction).replace(/^0+/, '') || '0';
+  if (digits.length + zeros > MAX_DIGITS) return undefined;
+  const value = BigInt(digits) * 10n ** BigInt(zeros);
+  return value > BigInt(Number.MAX_SAFE_INTEGER) ? value : undefined;
 }
 
 /** The whole number a value holds, digit for digit, when it is one (a number, or text of digits); undefined for anything else. */

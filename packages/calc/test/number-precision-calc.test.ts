@@ -160,8 +160,8 @@ test('#113: SerialIncrement of a long digit run is exact and never goes backward
 test('#113: SerialIncrement returns ? for an amount that is not finite or not exact', () => {
   assert.equal(e('SerialIncrement ( "A99" ; 1/0 )'), '?');
   assert.equal(e('SerialIncrement ( "A99" ; -1/0 )'), '?');
-  // Unverified: what the product does with an increment of 1e30; we refuse rather than print exponent notation.
-  assert.equal(e('SerialIncrement ( "A001" ; 1e30 )'), '?');
+  // Unverified against FileMaker: a whole exponent increment keeps its digits as one written out does.
+  assert.equal(e('SerialIncrement ( "A001" ; 1e30 )'), 'A1000000000000000000000000000001');
 });
 
 test('#113: SerialIncrement keeps a whole increment beyond 2^53 exact when it is written with all its digits', () => {
