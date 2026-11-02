@@ -1175,6 +1175,8 @@ acquisition, and also when capacity is exhausted or locks are listed.
 Email notifications for server events are sent by that one process too. The
 others pass their error and warning lines to it, so they arrive in the same
 digest, marked `[worker N]`.
+The front process checks each worker message, uses the pipe’s sender identity,
+and drops malformed messages or kinds that worker may not send.
 
 HTTPS works with `--workers` whichever way the certificate comes: the
 server's own (`--https local`), given with `--tls-cert` and `--tls-key`, or
