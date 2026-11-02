@@ -32,6 +32,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { addressBucket, writer } from '../../store/src/index.ts';
 import { captureOnly, runScript } from '../../scripts/src/index.ts';
 import type { Host } from './host.ts';
+import { auditAutomation, changedFields } from './automation-audit.ts';
 import { readJsonStateSync, updateJsonStateSync, withStateLock, writeStateFileSync } from '../../store/src/durable.ts';
 import { appendFileSync, readFileSync } from '../../store/src/fs-boundary.ts';
 
@@ -193,6 +194,7 @@ export class InboundHooks {
     const hook: InboundHook = { ...this.clean(input), id: randomBytes(9).toString('hex'), secret: newSecret(), created: new Date().toISOString() };
     this.hooks.push(hook);
     this.save(hook, undefined, true);
+    this.audit('added', hook);
     return { ...hook, path: `/tabularius/hooks/v1/${hook.id}` };
   }
 
@@ -204,6 +206,7 @@ export class InboundHooks {
     const changed = { ...old, ...this.clean(input, old) };
     this.hooks[i] = changed;
     this.save(changed);
+    this.audit('changed', changed, changedFields(old, changed, ['name', 'database', 'script', 'account', 'layout', 'enabled', 'perMinute', 'network']));
     const { secret: _s, ...shown } = changed;
     return shown;
   }
@@ -215,6 +218,7 @@ export class InboundHooks {
     if (!h) throw new HookError('No such hook');
     h.secret = newSecret();
     this.save(h);
+    this.audit('changed', h, ['secret']);
     return { id, secret: h.secret };
   }
 
@@ -222,9 +226,14 @@ export class InboundHooks {
     this.load();
     const i = this.hooks.findIndex((x) => x.id === id);
     if (i < 0) return false;
-    this.hooks.splice(i, 1);
+    const [gone] = this.hooks.splice(i, 1);
     this.save(undefined, id);
+    this.audit('removed', gone);
     return true;
+  }
+
+  private audit(change: 'added' | 'changed' | 'removed', h: InboundHook, fields?: string[]): void {
+    auditAutomation(this.host, this.log, h.database, change, { what: 'inbound hook', id: h.id, name: h.name, script: h.script, account: h.account, network: h.network, fields });
   }
 
   // --- calls ---------------------------------------------------------------------------

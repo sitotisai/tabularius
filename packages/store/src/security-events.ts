@@ -37,6 +37,7 @@ export const SECURITY_EVENT_KINDS = [
   'web-viewer-hosts-changed',
   'standby-takeover',
   'data-exported', 'data-export-refused',
+  'automation-added', 'automation-changed', 'automation-removed',
 ] as const;
 
 /** The security and authentication events the audit log records, besides record changes. */
@@ -75,6 +76,7 @@ export const SECURITY_EVENT_CATEGORIES: Record<string, readonly SecurityEventKin
   'Web viewer hosts': ['web-viewer-hosts-changed'],
   'Standby takeover': ['standby-takeover'],
   'Data export': ['data-exported', 'data-export-refused'],
+  'Automations': ['automation-added', 'automation-changed', 'automation-removed'],
   'AI access': ['ai-turned-off', 'ai-turned-on', 'ai-access-refused', 'ai-policy-on', 'ai-policy-off', 'pii-isolation-on', 'pii-isolation-off', 'pii-field-marked', 'ai-data-masked'],
 };
 
@@ -108,6 +110,7 @@ const NOTICE = new Set<string>([
   'api-token-issued', 'scim-token-issued', 'privilege-set-unassigned', 'agent-added', 'agent-change-rejected',
   'ai-turned-on', 'ai-access-refused', 'blank-password-lan-allowed', 'pii-isolation-off', 'pii-field-marked',
   'audit-settings-changed', 'audit-pruned', 'plugin-installed', 'web-viewer-hosts-changed', 'standby-takeover', 'data-exported', 'file-approved',
+  'automation-added', 'automation-changed', 'automation-removed',
 ]);
 
 export function securityEventSeverity(kind: string): SecurityEventSeverity {
@@ -211,6 +214,14 @@ export function describeSecurityEvent(e: AuditEntry): string {
       ? `${e.account ?? 'An account'} discarded an unfinished full-file export${str(d.folder) ? ` at ${str(d.folder)}` : ''}`
       : `${e.account ?? 'An account'} exported a full copy of the file to ${str(d.folder) ?? '?'}`;
     case 'data-export-refused': return `A full-file export as ${e.account ?? 'an unknown account'} was refused: ${str(d.reason) ?? 'no reason given'}`;
+    case 'automation-added': case 'automation-changed': case 'automation-removed': {
+      const verb = e.kind === 'automation-added' ? 'added' : e.kind === 'automation-removed' ? 'removed' : 'changed';
+      const what = str(d.what) ?? 'automation';
+      const name = str(d.name) ?? str(d.id) ?? '?';
+      const fields = Array.isArray(d.fields) && d.fields.length ? ` (${d.fields.filter((f): f is string => typeof f === 'string').join(', ')})` : '';
+      const runs = str(d.script) ? `, running ${str(d.script)}${str(d.account) ? ` as ${str(d.account)}` : ''}` : '';
+      return `The ${what} ${name} was ${verb}${fields}${runs}${d.network === true ? ', allowed to reach the network' : ''}${str(d.sendsTo) ? `, sending changes to ${str(d.sendsTo)}` : ''}`;
+    }
     case 'blank-password-lan-disallowed': return 'Empty-password accounts limited to this computer again';
     default: return titleCase(e.kind);
   }

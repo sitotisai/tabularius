@@ -31,6 +31,7 @@ import type { Change, Store } from '../../store/src/index.ts';
 import { OutboundRefused, guardedFetch, isInternalHost, mappedIPv4, NAME_LOOKUP } from '../../scripts/src/net-guard.ts';
 import { ApiError, badPathError, sessionPrivileges, type DataApi } from './dataapi.ts';
 import type { Host } from './host.ts';
+import { auditAutomation } from './automation-audit.ts';
 import { readJsonStateSync, updateJsonStateSync } from '../../store/src/durable.ts';
 import { diagnosticEndpoint, redactDiagnosticText } from '../../scripts/src/redaction.ts';
 
@@ -312,14 +313,17 @@ export class Webhooks {
     };
     this.hooks.push(hook);
     this.save(hook, undefined, true);
+    this.audit('added', hook);
     return hook;
   }
 
   update(id: string, input: Record<string, unknown>): Omit<Webhook, 'secret'> {
     const h = this.hooks.find((x) => x.id === id);
     if (!h) throw new WebhookError('no such webhook');
+    const was = h.enabled;
     if (input.enabled !== undefined) h.enabled = input.enabled === true;
     this.save(h);
+    this.audit('changed', h, was === h.enabled ? [] : ['enabled']);
     const { secret: _s, ...shown } = h;
     return shown;
   }
@@ -327,11 +331,19 @@ export class Webhooks {
   remove(id: string): boolean {
     const i = this.hooks.findIndex((x) => x.id === id);
     if (i < 0) return false;
-    this.hooks.splice(i, 1);
+    const [gone] = this.hooks.splice(i, 1);
     this.queues.delete(id);
     this.states.delete(id);
     this.save(undefined, id);
+    this.audit('removed', gone);
     return true;
+  }
+
+  /** The entry names where changes go by host only: the address may carry a path that is itself a secret. */
+  private audit(change: 'added' | 'changed' | 'removed', h: Webhook, fields?: string[]): void {
+    let sendsTo = '';
+    try { sendsTo = new URL(h.url).host; } catch { /* a stored address that no longer parses is named by id only */ }
+    auditAutomation(this.host, this.log, h.database, change, { what: 'webhook', id: h.id, sendsTo, fields });
   }
 
   private save(changed?: Webhook, removedId?: string, create = false): void {

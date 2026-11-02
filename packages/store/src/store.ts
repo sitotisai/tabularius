@@ -4229,6 +4229,19 @@ export class Store {
     });
   }
 
+  /**
+   * A standing way in or out was added, changed or removed for this file: a schedule or inbound hook that runs a script as an account, or a
+   * webhook that sends its changes to an address. Kept in its security log; secrets and full addresses are never in the entry.
+   */
+  recordAutomationChange(change: 'added' | 'changed' | 'removed', detail: { what: 'schedule' | 'inbound hook' | 'webhook'; id: string; name?: string; script?: string; account?: string; network?: boolean; sendsTo?: string; fields?: string[] }): void {
+    const cut = (v: string | undefined): string | undefined => (v === undefined ? undefined : v.slice(0, 200));
+    const clean: Record<string, unknown> = { what: detail.what, id: cut(detail.id) };
+    for (const k of ['name', 'script', 'account', 'sendsTo'] as const) if (detail[k]) clean[k] = cut(detail[k]);
+    if (detail.network) clean.network = true;
+    if (detail.fields?.length) clean.fields = detail.fields.slice(0, 20).map((f) => f.slice(0, 40));
+    this.securityChange(() => this.logSecurity(`automation-${change}`, { detail: clean }));
+  }
+
   /** An administrator approved this file, which the host had held: kept in its security log, with why it was held. */
   recordFileApproved(opts: { account?: string; reason?: string } = {}): void {
     this.securityChange(() => this.logSecurity('file-approved', { account: opts.account ?? null, detail: { reason: opts.reason ?? '' } }));
