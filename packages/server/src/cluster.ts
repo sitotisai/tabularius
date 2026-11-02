@@ -79,6 +79,8 @@ import { sendError } from './pages.ts';
 import { certificateManaged } from './cert-import.ts';
 import type { LogType } from './server-logs.ts';
 import { sameSecret } from './secrets.ts';
+import { frontMessage, Refusals, workerMessage, workerNote } from './cluster-messages.ts';
+import { OPEN_FAILURE_PER_WORKER_MAX } from './open-failures.ts';
 
 /** Where this process sits in its cluster. */
 export interface ClusterRole {
@@ -131,20 +133,16 @@ export function logFromFollower(notifier: { note(type: LogType, source: string, 
   notifier.note(note.type, note.source, `[worker ${note.from}] ${note.message}`);
 }
 
-/** The longest error text the front process passes on in an open-state note. */
-export const OPEN_STATE_TEXT_MAX = 4096;
+export { OPEN_STATE_TEXT_MAX } from './cluster-messages.ts';
 
 /** What the front process accepts of an open-state note: a file name and a short text; `from` is the sender, whatever it claims. */
 export function openStateNote(note: unknown, from: number): Extract<Note, { k: 'open-state' }> | undefined {
-  const n = note as { k?: unknown; file?: unknown; error?: unknown } | null;
-  if (!n || n.k !== 'open-state' || typeof n.file !== 'string' || !n.file || n.file.length > 255) return undefined;
-  if (n.error !== undefined && typeof n.error !== 'string') return undefined;
-  // A long text is cut, not refused: the report that a file will not open matters more than the end of its reason.
-  return { k: 'open-state', from, file: n.file, ...(n.error !== undefined ? { error: n.error.slice(0, OPEN_STATE_TEXT_MAX) } : {}) };
+  const checked = workerNote(note, from);
+  return 'ok' in checked && checked.ok.k === 'open-state' ? checked.ok : undefined;
 }
 
 /** Between workers, through the front process. */
-type Note =
+export type Note =
   | { k: 'change'; change: Change }
   | { k: 'design'; file: string }
   /** An administrator approved a held file (only the leader approves): every follower stops holding it. */
@@ -164,14 +162,14 @@ type Note =
   | { k: 'open-state'; from: number; file: string; error?: string };
 type Question = { k: 'file'; name: string; action: 'close' | 'pause' | 'open' | 'offline'; detail?: string };
 
-type ToFront =
+export type ToFront =
   | { t: 'ready' }
   | { t: 'log'; text: string }
   | { t: 'tell'; note: Note }
   | { t: 'ask'; rid: number; q: Question }
   | { t: 'cancel'; rid: number }
   | { t: 'answer'; rid: number };
-type FromFront =
+export type FromFront =
   | { t: 'start'; role: ClusterRole; opts: Omit<ServeOptions, 'log'>; blankFromNetwork: boolean }
   | { t: 'tell'; note: Note }
   | { t: 'ask'; rid: number; q: Question }
@@ -327,8 +325,14 @@ export class ClusterLink {
     });
   }
 
+  /** What this worker dropped of the front process's messages (see cluster-messages.ts). */
+  readonly refusals = new Refusals((text) => this.send({ t: 'log', text }));
+
   /** A message from the front process. */
-  receive(m: FromFront): void {
+  receive(message: FromFront): void {
+    const checked = frontMessage(message, this.role.workers);
+    if ('refused' in checked) { this.refusals.refuse('worker', `worker ${this.role.id}`, checked.refused); return; }
+    const m = checked.ok;
     if (m.t === 'answer') {
       this.waiting.get(m.rid)?.();
       this.waiting.delete(m.rid);
@@ -533,6 +537,8 @@ export interface RestartTiming {
   stableMs?: number;
   /** Called before each start of a worker; one that throws makes that start fail (for tests). */
   beforeStart?: (id: number) => void;
+  /** The worker program (for tests that send messages a real worker never would). */
+  entry?: (id: number) => string;
 }
 
 /**
@@ -562,7 +568,7 @@ export async function whileLocked<T>(work: () => T, wait: (ms: number) => Promis
   }
 }
 
-export async function serveCluster(opts: ServeOptions, workers: number, blankFromNetwork = false, timing: RestartTiming = {}): Promise<{ server: Server; url: string; workers: number; tls?: AutoTls; pids(): (number | undefined)[]; close(): Promise<void> }> {
+export async function serveCluster(opts: ServeOptions, workers: number, blankFromNetwork = false, timing: RestartTiming = {}): Promise<{ server: Server; url: string; workers: number; tls?: AutoTls; pids(): (number | undefined)[]; refused(): Record<string, number>; close(): Promise<void> }> {
   validatePublicUrl(opts.publicUrl);
   const trustedProxies = trustedProxyAddresses(opts.trustedProxies);
   const problems = clusterProblems(opts);
@@ -725,11 +731,27 @@ export async function serveCluster(opts: ServeOptions, workers: number, blankFro
   }
   const answered = (key: number, by: Worker) => {
     const p = pending.get(key);
-    if (!p) return;
+    // A worker that was not asked, or already answered, changes nothing.
+    if (!p || !p.waiting.has(by.id)) return;
     p.waiting.delete(by.id);
     if (p.waiting.size) return;
     pending.delete(key);
     post(p.from, { t: 'answer', rid: p.rid });
+  };
+
+  const refusals = new Refusals(log);
+  /** The latest failures of each follower, retained while the leader is down. */
+  const openStates = new Map<number, Map<string, { file: string; error: string }>>();
+  const rememberOpenState = (from: number, file: string, error: string | undefined): void => {
+    const states = openStates.get(from) ?? new Map<string, { file: string; error: string }>();
+    const key = file.toLowerCase();
+    states.delete(key);
+    if (error !== undefined) {
+      states.set(key, { file, error });
+      // Match the leader's per-worker limit; evict the oldest first.
+      while (states.size > OPEN_FAILURE_PER_WORKER_MAX) states.delete(states.keys().next().value!);
+    }
+    if (states.size) openStates.set(from, states); else openStates.delete(from);
   };
 
   const start = (w: Worker): Promise<void> => new Promise((ok, fail) => {
@@ -743,27 +765,35 @@ export async function serveCluster(opts: ServeOptions, workers: number, blankFro
       browserOrigins: [...(opts.browserOrigins ?? []), ...(opts.acme ? acmeOrigins(opts.acme.domains, opts.port ?? 443) : [])],
       ...(role.leader ? {} : { backups: undefined, offsite: undefined, sqlPort: undefined, webhooks: false, watch: false }),
     };
-    const child = fork(join(import.meta.dirname, 'cluster-worker.ts'), [], { execArgv: ['--no-warnings', ...process.execArgv.filter((a) => a !== '--no-warnings')], stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
+    const child = fork(timing.entry?.(w.id) ?? join(import.meta.dirname, 'cluster-worker.ts'), [], { execArgv: ['--no-warnings', ...process.execArgv.filter((a) => a !== '--no-warnings')], stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
     w.child = child;
     child.on('error', (e) => log(`worker ${w.id}: ${e.message}`));
     let lastLog = '';
     post(w, { t: 'start', role, opts: workerOpts, blankFromNetwork });
-    child.on('message', (m: ToFront) => {
+    child.on('message', (received: unknown) => {
+      const checked = workerMessage(received, w.id);
+      if ('refused' in checked) { refusals.refuse('front', `worker ${w.id}`, checked.refused); return; }
+      const m = checked.ok;
       if (m.t === 'ready') {
+        if (w.ready) { refusals.refuse('front', `worker ${w.id}`, 'a second ready'); return; }
         w.ready = true;
         w.readyAt = performance.now();
         // A renewal while it was starting reached it neither in its role nor as a note.
         if (auto) post(w, { t: 'tell', note: { k: 'tls', tls: shared(w.id === 0)! } });
+        // A restarted leader lost these reports; followers do not repeat them unless their state changes.
+        if (w.id === 0) for (const [from, states] of openStates) for (const e of states.values()) post(w, { t: 'tell', note: { k: 'open-state', from, file: e.file, error: e.error } });
         for (const q of w.asked.splice(0)) post(w, q);
         ok();
       } else if (m.t === 'log') {
         lastLog = m.text;
         log(workers > 1 ? `[${w.id}] ${m.text}` : m.text);
       }
-      else if (m.t === 'tell' && m.note?.k === 'open-state') {
-        // Only the leader serves the status; drop notes of the wrong shape and use the sender's own id.
-        const note = openStateNote(m.note, w.id);
-        if (note && w.id !== 0) post(pool[0], { t: 'tell', note });
+      else if (m.t === 'tell' && m.note.k === 'open-state') {
+        // Only the leader serves the status; retain the latest follower state for a leader that starts again.
+        if (w.id !== 0) {
+          rememberOpenState(w.id, m.note.file, m.note.error);
+          post(pool[0], { t: 'tell', note: m.note });
+        }
       }
       else if (m.t === 'tell') broadcast(w, { t: 'tell', note: m.note });
       else if (m.t === 'cancel') {
@@ -800,6 +830,7 @@ export async function serveCluster(opts: ServeOptions, workers: number, blankFro
         if (p.from === w) pending.delete(key);
         else answered(key, w);
       }
+      openStates.delete(w.id);
       broadcast(undefined, { t: 'tell', note: { k: 'gone', from: w.id } });
       if (closing) return;
       if (!was) {
@@ -869,5 +900,5 @@ export async function serveCluster(opts: ServeOptions, workers: number, blankFro
     await close();
     throw e;
   }
-  return { server, url, workers, tls: auto, pids: () => pool.map((w) => w.child?.pid), close };
+  return { server, url, workers, tls: auto, pids: () => pool.map((w) => w.child?.pid), refused: () => Object.fromEntries(refusals.counts), close };
 }
