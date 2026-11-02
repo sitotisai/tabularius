@@ -11,8 +11,9 @@
 // two leaves a genuine record the manifest does not know about yet.
 
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { readFileSync } from '../../store/src/fs-boundary.ts';
 import { logRecords } from './logs.ts';
 
 /** Files of logs, one started every interval: UTC names end in Z; older local names remain readable. */
