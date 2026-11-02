@@ -35,52 +35,70 @@ function readChunk(fd: number, pos: number, length: number): Buffer {
   return piece.subarray(0, used);
 }
 
-/** Non-empty lines, last first. The descriptor closes even when the caller stops early. */
+/**
+ * Non-empty lines, last first. The descriptor closes even when the caller stops early. An unfinished line is kept as a list of
+ * pieces and joined once, so a line that spans many chunks costs time in proportion to its length, not its length times its chunks.
+ */
 export function* linesNewestFirst(path: string, chunk = CHUNK_BYTES): Generator<string> {
   const opened = openOrNothing(path, chunk);
   if (!opened) return;
   const { fd, size } = opened;
   try {
     let pos = size;
-    let carry: Buffer = Buffer.alloc(0);
+    // The bytes after the last piece read, up to the next newline, latest piece first (so the line is the reverse of this list).
+    let tail: Buffer[] = [];
+    const joined = (head: Buffer): Buffer => Buffer.concat([head, ...tail.slice().reverse()]);
     while (pos > 0) {
       const n = Math.min(chunk, pos);
       pos -= n;
       const piece = readChunk(fd, pos, n);
-      const data = carry.length ? Buffer.concat([piece, carry]) : piece;
-      let end = data.length;
-      let nl = end > 0 ? data.lastIndexOf(10, end - 1) : -1;
-      while (nl >= 0) {
-        if (end - nl - 1 > 0) yield data.toString('utf8', nl + 1, end);
-        end = nl;
-        nl = end > 0 ? data.lastIndexOf(10, end - 1) : -1;
+      let end = piece.length;
+      let nl = end > 0 ? piece.lastIndexOf(10, end - 1) : -1;
+      if (nl < 0) {
+        // Still inside one line: no newline in this piece.
+        if (piece.length) tail.push(piece);
+        continue;
       }
-      carry = Buffer.from(data.subarray(0, end));
+      // The line that ends in the later pieces starts after this piece's last newline.
+      const first = joined(piece.subarray(nl + 1));
+      tail = [];
+      if (first.length) yield first.toString('utf8');
+      end = nl;
+      nl = end > 0 ? piece.lastIndexOf(10, end - 1) : -1;
+      while (nl >= 0) {
+        if (end - nl - 1 > 0) yield piece.toString('utf8', nl + 1, end);
+        end = nl;
+        nl = end > 0 ? piece.lastIndexOf(10, end - 1) : -1;
+      }
+      // What comes before this piece's first newline is the end of a line that began in an earlier piece.
+      if (end > 0) tail.push(piece.subarray(0, end));
     }
-    if (carry.length) yield carry.toString('utf8');
+    if (tail.length) yield Buffer.concat(tail.slice().reverse()).toString('utf8');
   } finally { closeSync(fd); }
 }
 
-/** Non-empty lines, oldest first. Only bytes present when the file opened are considered. */
+/** Non-empty lines, oldest first. Only bytes present when the file opened are considered. An unfinished line is joined once (see above). */
 export function* linesOldestFirst(path: string, chunk = CHUNK_BYTES): Generator<string> {
   const opened = openOrNothing(path, chunk);
   if (!opened) return;
   const { fd, size } = opened;
   try {
     let pos = 0;
-    let carry: Buffer = Buffer.alloc(0);
+    // The start of the line that has not ended yet, in file order.
+    let pending: Buffer[] = [];
     while (pos < size) {
       const piece = readChunk(fd, pos, Math.min(chunk, size - pos));
       if (!piece.length) break;
       pos += piece.length;
-      const data = carry.length ? Buffer.concat([carry, piece]) : piece;
       let start = 0;
-      for (let nl = data.indexOf(10, start); nl >= 0; nl = data.indexOf(10, start)) {
-        if (nl > start) yield data.toString('utf8', start, nl);
+      for (let nl = piece.indexOf(10, start); nl >= 0; nl = piece.indexOf(10, start)) {
+        const line = pending.length ? Buffer.concat([...pending, piece.subarray(start, nl)]) : piece.subarray(start, nl);
+        pending = [];
+        if (line.length) yield line.toString('utf8');
         start = nl + 1;
       }
-      carry = Buffer.from(data.subarray(start));
+      if (start < piece.length) pending.push(piece.subarray(start));
     }
-    if (carry.length) yield carry.toString('utf8');
+    if (pending.length) yield Buffer.concat(pending).toString('utf8');
   } finally { closeSync(fd); }
 }
