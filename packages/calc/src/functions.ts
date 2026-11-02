@@ -780,7 +780,21 @@ numeric('Mod', 2, 2, (n, d) => {
 }, exactMod);
 numeric('Div', 2, 2, (n, d) => (d === 0 ? NaN : decimalFloorQuotient(n, d)), exactDivFloor);
 numeric('Sign', 1, 1, Math.sign, exactSign);
-numeric('Sqrt', 1, 1, Math.sqrt);
+/** The whole square root, if one exists; the double estimate only seeds the integer search. */
+function wholeSquareRoot(x: bigint): bigint | undefined {
+  if (x < 0n) return undefined;
+  if (x < 2n) return x;
+  const estimate = Math.sqrt(Number(x));
+  let r = Number.isFinite(estimate) ? BigInt(Math.trunc(estimate)) : 10n ** BigInt(Math.ceil(x.toString().length / 2));
+  if (r * r < x) r = x / r + 1n;
+  while (r * r > x) r = (r + x / r) / 2n;
+  while ((r + 1n) * (r + 1n) <= x) r++;
+  return r * r === x ? r : undefined;
+}
+numeric('Sqrt', 1, 1, Math.sqrt, (v) => {
+  const x = exactOf(v);
+  return x === undefined ? undefined : wholeSquareRoot(x);
+});
 numeric('Exp', 1, 1, Math.exp);
 numeric('Ln', 1, 1, Math.log);
 numeric('Log', 1, 1, Math.log10);
@@ -793,31 +807,56 @@ numeric('Acos', 1, 1, Math.acos);
 numeric('Atan', 1, 1, Math.atan);
 numeric('Degrees', 1, 1, (r) => (r * 180) / Math.PI);
 numeric('Radians', 1, 1, (d) => (d * Math.PI) / 180);
-numericWithEnv('Factorial', 1, 2, ([n, k = 0], env) => {
+eager('Factorial', 1, 2, (v, env) => {
+  const ns = v.map(asNumberOrEmpty);
+  if (ns[0] === undefined) return EMPTY;
+  if (v.some((value) => value.type === 'text' && isOverlongWholeText(value.value))) return num(NaN);
+  const [n, k = 0] = ns.map((value) => value ?? 0);
   if (!Number.isSafeInteger(Math.trunc(n)) || !Number.isFinite(k)) {
     throw new ComplexityError('Factorial exceeds the supported work budget');
   }
   let r = 1;
+  let big: bigint | undefined = Number.isInteger(n) ? 1n : undefined;
   const stop = k ? Math.max(0, n - k) : 0;
   // Bound clock-sampling overhead while charging every multiplication to the step budget.
   for (let i = Math.trunc(n); i > stop;) {
     const end = Math.max(stop, i - 16);
     env.checkWorkBudget(Math.ceil(i - end));
-    for (; i > end; i--) r *= i;
+    for (; i > end; i--) {
+      r *= i;
+      if (big !== undefined) {
+        big *= BigInt(i);
+        if (big >= 10n ** BigInt(MAX_DIGITS)) big = undefined;
+      }
+    }
   }
-  return r;
+  if (big !== undefined && (v.some(isBeyondDouble) || !Number.isSafeInteger(Number(big)))) return fromExact(big);
+  return num(r);
 });
-numericWithEnv('Combination', 2, 2, ([n, k], env) => {
+eager('Combination', 2, 2, (v, env) => {
+  const ns = v.map(asNumberOrEmpty);
+  if (ns[0] === undefined) return EMPTY;
+  if (v.some((value) => value.type === 'text' && isOverlongWholeText(value.value))) return num(NaN);
+  const [n, k] = ns.map((value) => value ?? 0);
   if (!Number.isSafeInteger(Math.trunc(n)) || !Number.isSafeInteger(Math.trunc(k))) {
     throw new ComplexityError('Combination exceeds the supported work budget');
   }
   let r = 1;
+  let big: bigint | undefined = Number.isInteger(n) && Number.isInteger(k) && k >= 0 && k <= n ? 1n : undefined;
   for (let i = 1; i <= k;) {
     const end = Math.min(k, i + 15);
     env.checkWorkBudget(Math.floor(end - i) + 1);
-    for (; i <= end; i++) r = (r * (n - k + i)) / i;
+    for (; i <= end; i++) {
+      r = (r * (n - k + i)) / i;
+      if (big !== undefined) {
+        big = big * BigInt(n - k + i) / BigInt(i);
+        if (big >= 10n ** BigInt(MAX_DIGITS)) big = undefined;
+      }
+    }
   }
-  return Math.round(r);
+  const rounded = Math.round(r);
+  if (big !== undefined && (v.some(isBeyondDouble) || !Number.isSafeInteger(rounded))) return fromExact(big);
+  return num(rounded);
 });
 numeric('PMT', 3, 3, (p, r, t) => (r === 0 ? p / t : (p * r) / (1 - Math.pow(1 + r, -t))));
 numeric('FV', 3, 3, (pmt, r, n) => (r === 0 ? pmt * n : (pmt * (Math.pow(1 + r, n) - 1)) / r));
@@ -879,15 +918,34 @@ const variance = (ns: number[], sample: boolean) => {
   });
   return tidy(decimalSum(squares) / (ns.length - (sample ? 1 : 0)));
 };
-aggregate('Variance', (ns) => variance(ns, true));
-aggregate('VarianceP', (ns) => variance(ns, false));
-aggregate('StDev', (ns) => {
-  const v = variance(ns, true);
-  return v === undefined ? undefined : Math.sqrt(v);
-});
-aggregate('StDevP', (ns) => {
-  const v = variance(ns, false);
-  return v === undefined ? undefined : Math.sqrt(v);
+for (const [name, sample, deviation] of [
+  ['Variance', true, false], ['VarianceP', false, false],
+  ['StDev', true, true], ['StDevP', false, true],
+] as const) spread(name, 1, undefined, (all) => {
+  const values = aggregateValues(all);
+  if (!values.length) return EMPTY;
+  const wholes = values.map(exactOf);
+  if (values.some(isBeyondDouble) && wholes.every((x): x is bigint => x !== undefined)) {
+    if (sample && wholes.length === 1) return num(NaN);
+    const count = BigInt(wholes.length);
+    const sum = wholes.reduce((total, x) => total + x, 0n);
+    const squares = wholes.reduce((total, x) => total + x * x, 0n);
+    const numerator = count * squares - sum * sum;
+    const denominator = count * (count - (sample ? 1n : 0n));
+    if (numerator % denominator === 0n) {
+      const whole = numerator / denominator;
+      if (!deviation) return fromExact(whole);
+      const root = wholeSquareRoot(whole);
+      if (root !== undefined) return fromExact(root);
+    }
+    const quotient = numerator / denominator;
+    const fraction = (numerator % denominator) * 10n ** 30n / denominator;
+    const decimal = `${quotient}.${fraction.toString().padStart(30, '0')}`;
+    const result = Number(decimal);
+    return num(deviation ? Math.sqrt(result) : result);
+  }
+  const v = variance(values.map(asNumber), sample);
+  return v === undefined ? EMPTY : num(deviation ? Math.sqrt(v) : v);
 });
 spread('Count', 1, undefined, (values) => {
   let n = 0;
