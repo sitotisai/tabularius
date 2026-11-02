@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**251 entries in 30 areas.** Unverified: 117. Waiting on: 22 on a sample file, 148 on a FileMaker run or Design Report, 14 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
+**252 entries in 30 areas.** Unverified: 118. Waiting on: 22 on a sample file, 148 on a FileMaker run or Design Report, 14 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
 
 ## Conversion
 
@@ -409,3 +409,4 @@ part of it.
 | Windows execution is unverified | A Windows build or install can fail where the offline tests pass | Follow the Windows readiness checklist on a real Windows machine | [docs/release-builds.md › Windows readiness](release-builds.md) — “Windows execution is unverified. See the [Windows readiness audit](audits/audit-windows.md) for the offline…” |
 | Direct Task Scheduler End, logoff and OS shutdown are unverified | The server may stop without its graceful cleanup | Try each on a Windows machine with the scheduled task installed | [docs/service-files.md › --system and who can change the code it runs](service-files.md) — “…Scheduler End, logoff and OS shutdown are still unverified; use the [Windows readiness…” |
 | The --system install check of who can change the code has not run on Windows | It could refuse a safe layout or accept a writable one | Try --system with Node and the app in a user folder (must be refused) and under Program Files (must install; the task Windows registers is read back and must match) | [docs/service-files.md › --system and who can change the code it runs](service-files.md) — “The check runs PowerShell, icacls and schtasks on Windows and none of it has been run on a Windows machine:…” |
+| ACL enforcement for same-folder credential files is unverified on Windows | Owner and mode checks are skipped there, so privacy depends on the hosted folder and file ACLs | Validate the credential-file ACLs on Windows | [docs/threat-model.md › Filesystem boundary](threat-model.md) — “…depends on ACLs; Windows ACL enforcement is unverified. An unusable admin password keeps password sign-in…” |

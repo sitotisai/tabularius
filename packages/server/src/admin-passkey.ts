@@ -25,7 +25,7 @@ function load(folder: string): StoredPasskey[] {
   const f = file(folder);
   if (!existsSync(f)) return [];
   try {
-    const parsed = readJsonStateSync<StoredPasskey[]>(f);
+    const parsed = readJsonStateSync<StoredPasskey[]>(f, { credential: true, sensitive: true });
     return Array.isArray(parsed) ? parsed as StoredPasskey[] : [];
   } catch {
     return [];
@@ -58,7 +58,7 @@ export function registerAdminPasskey(folder: string, response: { attestationObje
   } catch (e) {
     throw new AdminPasskeyError(`The passkey could not be registered: ${(e as Error).message}`);
   }
-  updateJsonStateSync<StoredPasskey[]>(file(folder), [], (list) => [...list, { id: cred.credentialId, publicKey: cred.publicKey, signCount: cred.signCount, alg: cred.alg, ...(label ? { label } : {}), created: new Date().toISOString() }], { mode: 0o600 });
+  updateJsonStateSync<StoredPasskey[]>(file(folder), [], (list) => [...list, { id: cred.credentialId, publicKey: cred.publicKey, signCount: cred.signCount, alg: cred.alg, ...(label ? { label } : {}), created: new Date().toISOString() }], { mode: 0o600, credential: true, sensitive: true });
   return { id: cred.credentialId };
 }
 
@@ -69,7 +69,7 @@ export function removeAdminPasskey(folder: string, id: string): boolean {
     const next = list.filter((p) => p.id !== id);
     removed = next.length !== list.length;
     return next;
-  }, { mode: 0o600 });
+  }, { mode: 0o600, credential: true, sensitive: true });
   return removed;
 }
 
@@ -96,5 +96,5 @@ export function verifyAdminPasskeyAssertion(folder: string,
     row.signCount = result.signCount;
     row.lastUsed = new Date().toISOString();
     return list;
-  }, { mode: 0o600 });
+  }, { mode: 0o600, credential: true, sensitive: true });
 }

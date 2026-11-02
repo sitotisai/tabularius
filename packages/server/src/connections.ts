@@ -27,11 +27,11 @@
 import { secret } from '../../store/src/settings.ts';
 import { encryptionKeyFromEnv } from './setting-values.ts';
 import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, statSync } from 'node:fs';
 import { isIP } from 'node:net';
 import { join } from 'node:path';
 import { readJsonStateSync, updateJsonStateSync, withStateLock } from '../../store/src/durable.ts';
-import { writeFileSync } from '../../store/src/fs-boundary.ts';
+import { readCredentialFileSync, writeFileSync } from '../../store/src/fs-boundary.ts';
 import { captureOnly, type ConnectionRequest, type ScriptConnections } from '../../scripts/src/index.ts';
 import { OutboundRefused, guardedFetch as guardedRequest, isInternalHost, mappedIPv4 } from '../../scripts/src/net-guard.ts';
 import { S3 } from './s3.ts';
@@ -741,7 +741,7 @@ class Vault {
     return Buffer.concat([d.update(raw.subarray(28)), d.final()]).toString('utf8');
   }
 
-  /** Reads the file again if it changed (another process of a cluster may have written it), and makes the key. */
+  /** Recheck file-backed keys on every use; passphrase-backed state can reuse an unchanged document. */
   private load(): void {
     let st;
     try {
@@ -749,7 +749,7 @@ class Vault {
     } catch {
       st = undefined;
     }
-    if (this.key && (st ? this.seen?.mtimeMs === st.mtimeMs && this.seen.size === st.size : !this.seen)) return;
+    if (this.key && this.salt && (st ? this.seen?.mtimeMs === st.mtimeMs && this.seen.size === st.size : !this.seen)) return;
     this.problem = undefined;
     this.items = {};
     this.seen = st ? { mtimeMs: st.mtimeMs, size: st.size } : undefined;
@@ -775,12 +775,14 @@ class Vault {
     } else {
       this.salt = undefined;
       if (existsSync(this.keyFile)) {
-        if (process.platform !== 'win32' && statSync(this.keyFile).mode & 0o077) {
+        try {
+          // Keep the existing private-mode rule, checked on the same descriptor as owner and links.
+          this.key = Buffer.from(readCredentialFileSync(this.keyFile, 0o077).trim(), 'hex');
+        } catch {
           this.key = undefined;
-          this.problem = `${KEY_FILE} can be read by other users (chmod 600)`;
+          this.problem = `${KEY_FILE} is not a plain file owned by the server's user with one link and private permissions (chmod 600)`;
           return;
         }
-        this.key = Buffer.from(readFileSync(this.keyFile, 'utf8').trim(), 'hex');
         if (this.key.length !== 32) {
           this.key = undefined;
           this.problem = `${KEY_FILE} is damaged`;

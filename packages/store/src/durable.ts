@@ -1,5 +1,5 @@
 import { chmodSync, closeSync, existsSync, fstatSync, fsyncSync, lstatSync, openSync as openRaw, readFileSync, readdirSync, realpathSync, statSync, unlinkSync } from 'node:fs';
-import { cleanupPath, openSync, renameSync, writeFileSync } from './fs-boundary.ts';
+import { cleanupPath, openSync, readCredentialFileSync, renameSync, writeFileSync } from './fs-boundary.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import { basename, dirname, join, resolve, win32, posix } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -73,6 +73,8 @@ export interface StateWriteOptions {
   platform?: NodeJS.Platform;
   /** Redact parse diagnostics and keep recovery copies private for credential state. */
   sensitive?: boolean;
+  /** Refuse untrusted same-folder credentials before reading, including during locked updates. */
+  credential?: boolean;
   mode?: number;
   /** How long to wait for another process's write to the same file; default 30 s. */
   lockWaitMs?: number;
@@ -241,15 +243,16 @@ export function writeStateFileSync(file: string, data: string | Uint8Array, opti
 }
 
 /** Preserve malformed state once per distinct content before reporting it; never silently turn it into an empty value. */
-export function readJsonStateSync<T>(file: string, options: Pick<StateWriteOptions, 'sensitive' | 'platform'> = {}): T {
+export function readJsonStateSync<T>(file: string, options: Pick<StateWriteOptions, 'sensitive' | 'platform' | 'credential'> = {}): T {
   sweepStateDirectoryOnce(file);
   let bytes: string;
-  try { bytes = readFileSync(file, 'utf8'); }
+  try { bytes = options.credential ? readCredentialFileSync(file) : readFileSync(file, 'utf8'); }
   catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
       damagedStates.delete(file);
       throw e;
     }
+    if (options.credential && (e as NodeJS.ErrnoException).code === 'ESTALE') throw e;
     throw new Error(`${file} could not be read: ${(e as Error).message}`, { cause: e });
   }
   const hash = createHash('sha256').update(bytes).digest('hex');

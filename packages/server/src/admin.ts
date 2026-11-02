@@ -144,7 +144,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSy
 import { basename, dirname, extname, join, resolve, sep } from 'node:path';
 import { discardExitBundle, exitBundle, ExitBundleError, webViewerEntryCovers, hashPassword, defaultMinPasswordLength, checkPassword, addressBucket, StoreError, findStaleCalcs, refreshStaleCalcs, undoStaleRefresh, staleRefreshHistory, StaleCalcError, SECURITY_EVENT_CATEGORIES, isFullAccess, ownPrivilegeEntry, setOwn, type AuditEntry, type FieldLevel, type SecurityEvent, type Store } from '../../store/src/index.ts';
 import { atomicWrite } from '../../store/src/durable.ts';
-import { copyFileSync as copyChecked, readFileSync as readChecked } from '../../store/src/fs-boundary.ts';
+import { copyFileSync as copyChecked, readCredentialFileSync } from '../../store/src/fs-boundary.ts';
 import { loadAsset, sendAsset } from './static-cache.ts';
 import { inlineScriptSources } from './csp.ts';
 import type { DataApi } from './dataapi.ts';
@@ -622,31 +622,32 @@ export class Admin {
   }
 
   /**
-   * The stored admin password, or undefined only when no entry exists. A link, pipe or folder is never
+   * The stored admin password, or undefined only when no entry exists. An untrusted regular file, link, pipe or folder is never
    * read or followed, and is not "no password": nobody can match it, so the console stays closed until repaired.
    */
   private passwordHash(): string | undefined {
     const f = join(this.host.dir, PASSWORD_FILE);
-    let plain: boolean;
     try {
-      plain = lstatSync(f).isFile();
+      const hash = readCredentialFileSync(f).trim();
+      this.passwordFileRefused = false;
+      return hash;
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
-      throw e;
-    }
-    if (plain) {
-      try {
-        return readChecked(f, 'utf8').trim();
-      } catch (e) {
-        // The boundary detects replacement; a directory opened in the remaining race is not a password either.
-        if (!['ESTALE', 'EISDIR'].includes((e as NodeJS.ErrnoException).code ?? '')) throw e;
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+        this.passwordFileRefused = false;
+        return undefined;
       }
+      if (!['ESTALE', 'EISDIR'].includes((e as NodeJS.ErrnoException).code ?? '')) throw e;
     }
-    if (!this.passwordFileRefused) this.host.logs?.write('Event', 'Warning', 'admin', `${PASSWORD_FILE} is not a plain file (a link, a pipe or a folder stands there), so the admin console stays closed; remove it and set the password again`);
+    if (!this.passwordFileRefused) this.host.logs?.write('Event', 'Warning', 'admin', `${PASSWORD_FILE} is not a plain file owned by the server's user with one link and no group or world write permission, so the admin console stays closed; remove it and set the password again`);
     this.passwordFileRefused = true;
     return UNUSABLE_PASSWORD;
   }
   private passwordFileRefused = false;
+
+  private passwordSet(): boolean {
+    const hash = this.passwordHash();
+    return !!hash && !this.passwordFileRefused;
+  }
 
   /** null when allowed, else the status and message to send. */
   check(req: IncomingMessage): { status: number; message: string; retryAfter?: number } | null {
@@ -776,7 +777,7 @@ export class Admin {
   private signInInfo(req: IncomingMessage) {
     const loopback = directFromThisComputer(req);
     return {
-      passwordSet: !!this.passwordHash(),
+      passwordSet: this.passwordSet(),
       // Only the state: the provider's own messages and the model are for the signed-in console (status).
       ai: { state: this.assistant?.state.state ?? ('no-key' as const) },
       local: loopback,
@@ -2873,7 +2874,7 @@ export class Admin {
   setup(sets: unknown[]) {
     const stores = this.host.openStores();
     return {
-      passwordSet: !!this.passwordHash(),
+      passwordSet: this.passwordSet(),
       // Every hosted file has a password on each of its accounts (a file from FileMaker often has Admin with none).
       accountsSecured: stores.length > 0 && stores.every((s) => s.blankPasswordAccounts().length === 0),
       backupMade: sets.length > 0,
@@ -2934,7 +2935,7 @@ export class Admin {
     const sets = this.backupStatus.read(dest);
     return {
       server: {
-        version: SERVER_VERSION, ...(serverCommit() ? { commit: serverCommit() } : {}), started: new Date(this.started).toISOString(), folder: this.host.dir, scriptNetwork: this.host.scriptNetwork, outbound: this.outboundStatus(), mail: this.host.mail && !this.host.outbound ? { from: this.host.mailFrom, ...(this.host.mailConnection ? { connection: this.host.mailConnection } : {}) } : null, passwordSet: !!this.passwordHash(),
+        version: SERVER_VERSION, ...(serverCommit() ? { commit: serverCommit() } : {}), started: new Date(this.started).toISOString(), folder: this.host.dir, scriptNetwork: this.host.scriptNetwork, outbound: this.outboundStatus(), mail: this.host.mail && !this.host.outbound ? { from: this.host.mailFrom, ...(this.host.mailConnection ? { connection: this.host.mailConnection } : {}) } : null, passwordSet: this.passwordSet(),
         // Sign-ins refused (the Admin API's blocknewusers): sessions already open carry on.
         blockNewUsers: this.host.config.blockNewUsers(),
         // Minutes a Data API session, and a web client session, may sit idle before it ends.
