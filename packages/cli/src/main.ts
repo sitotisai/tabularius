@@ -4,8 +4,8 @@ import { encryptionKeyFromEnv, positiveWholeNumber } from '../../server/src/sett
 import { checkSqlExportPath } from '../../store/src/portable-path.ts';
 import { listenForStop } from './stop-request.ts';
 import { auditJsonLine } from '../../store/src/audit-output.ts';
-import { writeFileSync as writeChecked } from '../../store/src/fs-boundary.ts';
-import { plainFolders, writeKitFiles } from './output-files.ts';
+import { openSync as openChecked, writeFileSync as writeChecked, writeSync as writeSyncChecked } from '../../store/src/fs-boundary.ts';
+import { nearestExisting, plainFolders, refusePlantedLinks, writeKitFiles } from './output-files.ts';
 // tabularius: inspect and convert FileMaker .fmp12 files.
 
 import '../../store/src/legacy-env.ts';
@@ -15,7 +15,7 @@ import { availableParallelism, homedir, tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import { createServer as createNetServer } from 'node:net';
-import { accessSync, closeSync, constants, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, renameSync, rmSync, readFileSync, statSync, writeSync } from 'node:fs';
+import { accessSync, closeSync, constants, existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { readSecret } from './prompt.ts';
 import { askServer } from './ask-server.ts';
@@ -2351,9 +2351,12 @@ function main(argv: string[]): number {
       try {
         const privileges = account ? store.privileges(account) : undefined;
         const filesFolder = `${basename(out).replace(/\.sql$/i, '')}.files`;
-        fd = openSync(out, 'wx', 0o600);
+        // The script is the whole file's data: it does not go into a folder a link planted by someone else points out of, and it is
+        // made through the filesystem boundary (exclusively, owner only), as its container files are.
+        refusePlantedLinks(nearestExisting(dirname(out)));
+        fd = openChecked(out, 'wx', 0o600);
         const report = exportSql(store, {
-          write: (text) => { writeSync(fd!, text); },
+          write: (text) => { writeSyncChecked(fd!, text); },
           file: (rel, data) => {
             const target = join(dirname(out), rel);
             plainFolders(dirname(out), rel);

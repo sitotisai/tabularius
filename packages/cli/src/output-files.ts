@@ -1,7 +1,7 @@
 // Files a command writes into a folder the person names (export-sql's container files, write-back's paste files). Someone who can
 // write into that folder beforehand can plant a symbolic link or a second name for a file; these helpers refuse them, and the
 // files themselves go through the filesystem boundary (never through a link, owner only).
-import { lstatSync, mkdirSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { writeFileSync as writeChecked } from '../../store/src/fs-boundary.ts';
 import type { WriteBackKit } from '../../store/src/index.ts';
@@ -17,6 +17,24 @@ export function refusePlantedLinks(folder: string): void {
       throw new Error(`${at} is a link in a folder others can write to, so the export may not end up where you meant; use the real path of the folder, or remove the link`);
     }
   }
+}
+
+/** The folder at `path`, or the nearest one above it that is there. */
+export function nearestExisting(path: string): string {
+  let at = resolve(path);
+  while (!existsSync(at) && dirname(at) !== at) at = dirname(at);
+  return at;
+}
+
+/**
+ * Makes the folder `path` (and any above it that are missing) closed to other users, after checking what is already there: a link
+ * planted above the first missing folder in a folder others can write to is refused before anything is made, so nothing is created
+ * where the link points.
+ */
+export function privateFolder(path: string): void {
+  refusePlantedLinks(nearestExisting(path));
+  mkdirSync(path, { recursive: true, mode: 0o700 });
+  refusePlantedLinks(path);
 }
 
 /**
@@ -37,8 +55,7 @@ export function plainFolders(base: string, rel: string): void {
 
 /** Writes the numbered paste files and the README of a write-back kit into the (empty or new) folder `out`; returns the README's path. */
 export function writeKitFiles(out: string, database: string, source: string, kit: WriteBackKit): string {
-  mkdirSync(out, { recursive: true, mode: 0o700 });
-  refusePlantedLinks(out);
+  privateFolder(out);
   const lines = [`# Taking ${database}'s changes back to FileMaker`, '', `Made from ${source} and the changes made in Tabularius since.`, ''];
   if (!kit.paste.length && !kit.byHand.length) lines.push('Nothing has changed: there is nothing to do.');
   if (kit.paste.length) {

@@ -11,10 +11,12 @@
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { availableParallelism, tmpdir } from 'node:os';
-import { createReadStream, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { FmpDatabase, encryptionInfo, fileSource, observeCalcs, readLayoutDesigns, scriptStepName, type BlockSource, type LayoutObject } from '../../fmp12/src/index.ts';
 import { importFmp12 } from '../../store/src/index.ts';
+import { writeFileSync as writeChecked } from '../../store/src/fs-boundary.ts';
+import { nearestExisting, refusePlantedLinks } from './output-files.ts';
 
 type Tally = Record<string, number>;
 const STAGES = ['read blocks', 'schema', 'tables', 'records', 'calcs', 'layouts', 'scripts'] as const;
@@ -648,6 +650,8 @@ export async function corpusScan(dir: string, opts: { out: string; entry: string
   if (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0) throw new Error('corpus-scan --timeout needs a positive number of seconds');
   if (timeoutSeconds > 2147483) throw new Error('corpus-scan --timeout must be at most 2147483 seconds');
   const log = opts.log ?? (() => {});
+  // Before the scan, which can take hours: the report's folder is not one a link planted by someone else points out of.
+  refusePlantedLinks(nearestExisting(opts.out));
   const { paths, unreadable } = opts.list ? listedFiles(opts.list) : findFiles(dir, { all: opts.all });
   if (unreadable) log(`${unreadable} folders or files couldn't be read and were skipped`);
   if (!paths.length) throw new Error(`corpus-scan: no .fmp12 files in ${opts.list ? 'the list' : dir}`);
@@ -674,8 +678,12 @@ export async function corpusScan(dir: string, opts: { out: string; entry: string
   };
   await Promise.all(Array.from({ length: jobs }, worker));
   const report = buildReport(found, uniqueBytes, results);
+  // The report holds counts only and is meant to be shared (mode 0644), but it is not written into a folder a link planted by someone
+  // else points out of, nor through a link or a second name for another file.
+  refusePlantedLinks(nearestExisting(opts.out));
   mkdirSync(opts.out, { recursive: true });
-  writeFileSync(join(opts.out, 'corpus-report.json'), JSON.stringify(report, null, 2) + '\n');
-  writeFileSync(join(opts.out, 'corpus-report.md'), reportMarkdown(report));
+  refusePlantedLinks(opts.out);
+  writeChecked(join(opts.out, 'corpus-report.json'), JSON.stringify(report, null, 2) + '\n', { mode: 0o644 });
+  writeChecked(join(opts.out, 'corpus-report.md'), reportMarkdown(report), { mode: 0o644 });
   return report;
 }

@@ -174,12 +174,12 @@ The following reasons apply to the exact enumerated expressions in each named fu
 <!-- generated read-gate inventory -->
 | Function | Store read / capability (source lines) | Gate |
 | --- | --- | --- |
-| [packages/cli/src/diagnostics.ts:205](../../packages/cli/src/diagnostics.ts#L205) `designCopy` | `SQLite.all` (205); `SQLite.prepare` (205, 208) | OPERATOR |
-| [packages/cli/src/diagnostics.ts:445](../../packages/cli/src/diagnostics.ts#L445) `diagnostics` | `SQLite.get` (445); `SQLite.prepare` (445, 449); `SQLite.all` (449) | OPERATOR |
+| [packages/cli/src/diagnostics.ts:207](../../packages/cli/src/diagnostics.ts#L207) `designCopy` | `SQLite.all` (207); `SQLite.prepare` (207, 210) | OPERATOR |
+| [packages/cli/src/diagnostics.ts:447](../../packages/cli/src/diagnostics.ts#L447) `diagnostics` | `SQLite.get` (447); `SQLite.prepare` (447, 451); `SQLite.all` (451) | OPERATOR |
 | [packages/cli/src/doctor.ts:140](../../packages/cli/src/doctor.ts#L140) `accountChecks` | `SQLite.all` (140); `SQLite.prepare` (140) | OPERATOR |
 | [packages/cli/src/main.ts:735](../../packages/cli/src/main.ts#L735) `accountsWithPasswordOff` | `SQLite.all` (735); `SQLite.prepare` (735) | OPERATOR |
 | [packages/cli/src/main.ts:764](../../packages/cli/src/main.ts#L764) `hostedRead` | `SQLite.all` (764, 767); `SQLite.prepare` (764, 767); `Store.sql` (764, 767) | OPERATOR |
-| [packages/cli/src/main.ts:2474](../../packages/cli/src/main.ts#L2474) `main` | `Store.orphanContainerReport` (2474); `Store.auditLog` (2948); `SQLite.get` (3210); `SQLite.prepare` (3210) | OPERATOR |
+| [packages/cli/src/main.ts:2477](../../packages/cli/src/main.ts#L2477) `main` | `Store.orphanContainerReport` (2477); `Store.auditLog` (2951); `SQLite.get` (3213); `SQLite.prepare` (3213) | OPERATOR |
 | [packages/scripts/src/data-api-step.ts:104](../../packages/scripts/src/data-api-step.ts#L104) `respond` | `Store.get` (104, 131, 140); `Store.find` (105, 117) | SCRIPT |
 | [packages/scripts/src/engine.ts:9441](../../packages/scripts/src/engine.ts#L9441) `clearRecords` | `SQLite.all` (9441); `SQLite.prepare` (9441) | SCRIPT |
 | [packages/scripts/src/engine.ts:8211](../../packages/scripts/src/engine.ts#L8211) `ScriptEngine/containerFile` | `Store.get` (8211); `Store.containerId` (8212); `Store.container` (8213) | SCRIPT |

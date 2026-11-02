@@ -48,6 +48,8 @@ These checks are not `openat(2)` and do not make path-based operations atomic. T
 
 **Modules that use it**
 
+- `packages/cli/src/corpus-scan.ts`
+- `packages/cli/src/diagnostics.ts`
 - `packages/cli/src/main.ts`
 - `packages/cli/src/output-files.ts`
 - `packages/cli/src/service.ts`

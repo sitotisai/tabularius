@@ -8,6 +8,6 @@ How many hours an upload in pieces (`container-uploads`) may receive nothing bef
 | Accepted values | Whole hours from 0 to 87600, digits only; 0 keeps uploads until restart |
 | Restart needed | Yes for a running server. |
 | Explained in | [ADMIN.md](../../../../ADMIN.md) |
-| Code | [packages/cli/src/diagnostics.ts:45](../../../../packages/cli/src/diagnostics.ts#L45) |
+| Code | [packages/cli/src/diagnostics.ts:47](../../../../packages/cli/src/diagnostics.ts#L47) |
 
 [All environment variables](../../../environment-variables.md)
