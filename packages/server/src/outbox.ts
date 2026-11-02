@@ -5,7 +5,8 @@
 // about OUTBOX_MAX_BYTES, so it cannot grow without end.
 
 import { closeSync, mkdirSync, statSync } from 'node:fs';
-import { appendFileSync, cleanupPath, openSync, readFileSync, renameSync } from '../../store/src/fs-boundary.ts';
+import { appendFileSync, cleanupPath, openSync, renameSync } from '../../store/src/fs-boundary.ts';
+import { linesNewestFirst, linesOldestFirst } from './tail-lines.ts';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type { OutboxEntry } from '../../scripts/src/index.ts';
@@ -61,15 +62,30 @@ export class Outbox {
     }
   }
 
-  /** Newest first, without attachment contents. */
+  /** Newest first, without attachment contents. Reads only as far back as the newest limit entries. */
   list(limit = 200): StoredEntry[] {
-    return this.all().reverse().slice(0, limit).map((e) => (e.kind === 'mail'
-      ? { ...e, attachments: e.attachments.map(({ name, size }) => ({ name, size })) }
-      : e));
+    const out: StoredEntry[] = [];
+    if (limit <= 0) return out;
+    for (const file of [this.file, this.older]) {
+      for (const line of linesNewestFirst(file)) {
+        const e = parse(line);
+        if (e) out.push(e.kind === 'mail' ? { ...e, attachments: e.attachments.map(({ name, size }) => ({ name, size })) } : e);
+        if (out.length >= limit) return out;
+      }
+    }
+    return out;
   }
 
+  /** One entry by id, reading chunks and parsing only lines that contain the id. */
   get(id: string): StoredEntry | undefined {
-    return this.all().find((e) => e.id === id);
+    for (const file of [this.older, this.file]) {
+      for (const line of linesOldestFirst(file)) {
+        if (!line.includes(id)) continue;
+        const e = parse(line);
+        if (e?.id === id) return e;
+      }
+    }
+    return undefined;
   }
 
   /** Removes the outbox file itself (never what a link at its name points to); a failure to remove it is thrown. */
@@ -77,22 +93,10 @@ export class Outbox {
     cleanupPath(this.file, { force: true })({ throwOnError: true });
     cleanupPath(this.older, { force: true })({ throwOnError: true });
   }
+}
 
-  /** Oldest first: the older half, then the live file. */
-  private all(): StoredEntry[] {
-    return [this.older, this.file].flatMap((file) => {
-      let text: string;
-      try { text = readFileSync(file, 'utf8'); }
-      catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return []; throw e; }
-      return text.split('\n').filter(Boolean).flatMap((line) => {
-        try {
-          return [JSON.parse(line) as StoredEntry];
-        } catch {
-          return [];
-        }
-      });
-    });
-  }
+function parse(line: string): StoredEntry | undefined {
+  try { return JSON.parse(line) as StoredEntry; } catch { return undefined; }
 }
 
 /** An oversized entry loses attachment contents and keeps the start of its texts and lists. */
