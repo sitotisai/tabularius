@@ -100,10 +100,16 @@ export function configuredBackupDir(folder: string, override?: string): string {
   return override ?? process.env.TABULARIUS_BACKUP_DIR ?? readSettings(folder).backupDir ?? defaultBackupDir(folder);
 }
 
-/** Backup sets in a backup folder, oldest first. */
+/**
+ * Backup sets in a backup folder, oldest first. A set is a real folder: a link, a pipe or a file that merely has a set's name is
+ * not one (and a link whose target is gone cannot make the whole list fail), so it is left alone, never read, restored or pruned.
+ */
 export function backupSets(dest: string): string[] {
   if (!existsSync(dest)) return [];
-  return readdirSync(dest).filter((n) => SET.test(n) && statSync(join(dest, n)).isDirectory()).sort();
+  const isFolder = (n: string): boolean => {
+    try { return lstatSync(join(dest, n)).isDirectory(); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return false; throw e; }
+  };
+  return readdirSync(dest).filter((n) => SET.test(n) && isFolder(n)).sort();
 }
 
 /** The passphrase backups are encrypted with, if one is set (set but empty is an error, not "no passphrase"). */

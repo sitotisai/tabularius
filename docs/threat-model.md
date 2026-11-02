@@ -59,6 +59,8 @@ These checks are not `openat(2)` and do not make path-based operations atomic. T
 - `packages/server/src/agent.ts`
 - `packages/server/src/ai-usage.ts`
 - `packages/server/src/backup-external.ts`
+- `packages/server/src/backup-info.ts`
+- `packages/server/src/backup-log-chain.ts`
 - `packages/server/src/backup-verify.ts`
 - `packages/server/src/backup.ts`
 - `packages/server/src/connections.ts`

@@ -963,6 +963,13 @@ working. Each set is read back and checked before it's kept, and one older
 set is checked again each time, so damage on disk is found while there are
 good sets to fall back on.
 
+A set's `backup.json` is read only if it is an ordinary file. A link, a pipe or a
+folder at its name is refused, never followed, so a symbolic link standing in
+for the previous set's manifest makes the next backup fail with `unreadable
+manifest <path>: not a plain file`. Replace the link with the real file, or
+remove it. Entries in the backup folder that have a set's name but are not
+folders are ignored.
+
 Once a day, a good set is also **restored as a test**: copied to a scratch
 folder, each file opened as the server opens a hosted file, and its tables,
 records and accounts counted, then the scratch copy is deleted. The admin

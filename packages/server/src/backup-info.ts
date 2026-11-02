@@ -1,6 +1,6 @@
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { atomicWrite, withStateLock } from '../../store/src/durable.ts';
+import { readFileSync } from '../../store/src/fs-boundary.ts';
 import { checkManifestKeys, ManifestKeyError } from './backup-json-keys.ts';
 
 /** Missing is allowed only when building a new manifest or reading legacy metadata. */
@@ -15,7 +15,9 @@ export function readBackupInfo<T extends object = Record<string, unknown>>(setDi
   } catch (e) {
     if (allowMissing && (e as NodeJS.ErrnoException).code === 'ENOENT') return {} as T;
     // The cause's own text can hold file contents; say only which kind of problem it was.
-    const why = e instanceof ManifestKeyError ? e.message : e instanceof SyntaxError ? 'invalid JSON' : 'manifest could not be read';
+    // A link, a pipe or a folder at the manifest's name is refused by the filesystem boundary before anything is read.
+    const why = e instanceof ManifestKeyError ? e.message : e instanceof SyntaxError ? 'invalid JSON'
+      : (e as NodeJS.ErrnoException).code === 'ESTALE' ? 'not a plain file (a link, a pipe or a folder stands where the manifest should be)' : 'manifest could not be read';
     throw new Error(`unreadable manifest ${path}: ${why}`);
   }
 }
