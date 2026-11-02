@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**251 entries in 30 areas.** Unverified: 117. Waiting on: 22 on a sample file, 148 on a FileMaker run or Design Report, 14 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
+**252 entries in 31 areas.** Unverified: 117. Waiting on: 22 on a sample file, 148 on a FileMaker run or Design Report, 14 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
 
 ## Conversion
 
@@ -342,6 +342,12 @@ part of it.
 | What differs or is unknown | How it shows | What would settle it | Where it is written |
 | --- | --- | --- | --- |
 | vendor behavior for DATE, TIME and TIMESTAMP casts is unverified in the cited pages | Tabularius follows the SQL standard and errors on invalid values | run these casts through FileMaker and compare results | [docs/sql-grammar-conformance.md › What the check found and what changed](sql-grammar-conformance.md) — “…follow the SQL standard. Vendor behavior remains unverified.” |
+
+## SQL time columns
+
+| What differs or is unknown | How it shows | What would settle it | Where it is written |
+| --- | --- | --- | --- |
+| ORDER BY, MAX, MIN and comparisons use stored text instead of seconds | times of 100 hours or more and negative times can order wrongly in SQL queries | translate SQL with knowledge of the column type | [docs/sql-grammar-conformance.md › What still differs (the KNOWN list)](sql-grammar-conformance.md) — “…SQL limit; the other product's behavior is unverified.” |
 
 ## Standby servers
 

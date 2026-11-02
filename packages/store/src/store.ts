@@ -27,7 +27,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } 
 import { closeSync, constants as fsConstants, copyFileSync, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, readdirSync, readSync, renameSync, rmSync, statSync } from 'node:fs';
 import { checkedFile, cleanupPath, openSync, readFileSync, writeFileSync, writeSync } from './fs-boundary.ts';
 import { externalFieldNames, parseDate, parseTime, parseTimestamp, type DateStyle, type Field, type FieldType, type LayoutDesign, type LayoutDesigns, type LayoutObject, type Schema, type Table } from '../../fmp12/src/index.ts';
-import { findWhere, findScope, registerFindFunctions, beginFindBudget, findBudgetScope, FindError, type RelatedCriteria, type FieldInfo, type FindRequest, type SqlValue, type WordIndex } from './find.ts';
+import { findWhere, findScope, registerFindFunctions, timeSeconds, beginFindBudget, findBudgetScope, FindError, type RelatedCriteria, type FieldInfo, type FindRequest, type SqlValue, type WordIndex } from './find.ts';
 import { defineFold, WordIndexes, wordIndexName } from './words.ts';
 import { q, dataSourceFile, SQL_TYPES, DESIGN_LOG, writeDesign, addExternalSizeColumn } from './import.ts';
 import { decimalKey, decimalNumberText, nativeValue } from './native-types.ts';
@@ -8984,7 +8984,7 @@ export class Store {
       const field = info.owner.schema.tables.find((t) => t.name === info.table)?.fields.find((x) => x.name === f.name);
       const raw = (field?.options?.repetitions ?? 1) > 1 || (this.repeating[info.table] ?? []).includes(f.name)
         ? `fm_first_repetition(${q(f.name)})` : q(f.name);
-      const col = f.type === 'number' ? `CAST(${raw} AS REAL)` : f.type === 'decimal' ? `fm_decimal_key(${raw})` : raw;
+      const col = f.type === 'number' ? `CAST(${raw} AS REAL)` : f.type === 'decimal' ? `fm_decimal_key(${raw})` : f.type === 'time' ? `fm_time_seconds(${raw})` : raw;
       const language = recordSortLanguage(field?.options?.indexLanguage, field?.options?.indexLanguageId);
       const key = f.type === 'text' ? language === 'unicode' ? col
         : `${sortFunction(language).replace('fm_sort_key', 'fm_record_sort_key')}(${col})` : col;
@@ -11166,6 +11166,10 @@ export class Store {
         if (field.type === 'decimal') {
           const x = decimalKey(String(a)) ?? '', y = decimalKey(String(b)) ?? '';
           return x < y ? -1 : x > y ? 1 : 0;
+        }
+        if (field.type === 'time') {
+          const x = timeSeconds(String(a)), y = timeSeconds(String(b));
+          if (x !== undefined && y !== undefined) return x - y;
         }
         const language = field.type === 'text' ? recordSortLanguage(field.options?.indexLanguage, field.options?.indexLanguageId) : 'unicode';
         const x = language === 'unicode' ? String(a) : recordSortKey(String(a), language);

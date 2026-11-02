@@ -207,8 +207,17 @@ function textPattern(raw: string, relaxed: boolean, japanese = false): TextPatte
   };
 }
 
-/** Functions used only by the shared find compiler; no caller interprets operators itself. */
+/** A stored time is a signed duration in seconds; leave other text for the existing comparison path. */
+export function timeSeconds(s: string): number | undefined {
+  const match = /^(-?)(\d+):(\d{2})(?::(\d{2}(?:\.\d+)?))?$/.exec(s);
+  if (!match) return undefined;
+  const seconds = Number(match[2]) * 3600 + Number(match[3]) * 60 + Number(match[4] ?? 0);
+  return (match[1] ? -1 : 1) * seconds;
+}
+
+/** SQL functions used by the shared find compiler and time sorts. */
 export function registerFindFunctions(db: DatabaseSync): void {
+  db.function('fm_time_seconds', { deterministic: true }, (v) => v == null || v === '' ? null : timeSeconds(String(v)) ?? v);
   db.function('fm_find_key', { deterministic: true }, (v) => v == null ? null : fold(String(v), false));
   db.function('fm_find_invalid', { deterministic: true }, (v, type) => {
     if (v == null || v === '') return 0;
@@ -280,8 +289,9 @@ function compare(col: string, type: FieldType, op: string, raw: string, norm: No
     params.push(...(lower ? [bound, op === '>=' ? 1 : 0, null, 0] : [null, 0, bound, op === '<=' ? 1 : 0]), language);
     return `fm_find_word_range(${col}, ?, ?, ?, ?, ?) = 1`;
   }
-  params.push(norm(raw.trim(), type));
-  const lhs = type === 'number' ? `CAST(${col} AS REAL)` : type === 'decimal' ? `fm_decimal_key(${col})` : col;
+  const value = norm(raw.trim(), type);
+  params.push(type === 'time' && typeof value === 'string' ? timeSeconds(value) ?? value : value);
+  const lhs = type === 'number' ? `CAST(${col} AS REAL)` : type === 'decimal' ? `fm_decimal_key(${col})` : type === 'time' ? `fm_time_seconds(${col})` : col;
   return `${col} IS NOT NULL AND ${col} != '' AND ${lhs} ${op} ${type === 'decimal' ? 'fm_decimal_key(?)' : '?'}`;
 }
 
@@ -414,8 +424,10 @@ function criterion(col: string, type: FieldType, value: string, norm: Normalizer
   }
   if (range) {
     if (scalarOnly(type)) throw new FindError(`Ranges are unavailable for ${type} fields`, 400);
-    const lhs = type === 'number' ? `CAST(${col} AS REAL)` : type === 'decimal' ? `fm_decimal_key(${col})` : col;
-    params.push(norm(range[1].trim(), type), norm(range[2].trim(), type));
+    const lhs = type === 'number' ? `CAST(${col} AS REAL)` : type === 'decimal' ? `fm_decimal_key(${col})` : type === 'time' ? `fm_time_seconds(${col})` : col;
+    const low = norm(range[1].trim(), type), high = norm(range[2].trim(), type);
+    params.push(type === 'time' && typeof low === 'string' ? timeSeconds(low) ?? low : low,
+      type === 'time' && typeof high === 'string' ? timeSeconds(high) ?? high : high);
     return `${col} IS NOT NULL AND ${col} != '' AND ${lhs} BETWEEN ${type === 'decimal' ? 'fm_decimal_key(?)' : '?'} AND ${type === 'decimal' ? 'fm_decimal_key(?)' : '?'}`;
   }
   if (type !== 'text' && type !== 'unknown' && !/[*@"]/.test(v)) {
