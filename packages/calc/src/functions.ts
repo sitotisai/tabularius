@@ -363,7 +363,16 @@ eager('Middle', 3, 3, (v, env) => {
 eager('Length', 1, 1, (v, env) => (isEmpty(v[0]) ? num(0) : num(charCount(T(v[0], env)))));
 eager('Upper', 1, 1, (v, env) => text(T(v[0], env).toUpperCase()));
 eager('Lower', 1, 1, (v, env) => text(T(v[0], env).toLowerCase()));
-eager('Proper', 1, 1, (v, env) => text(T(v[0], env).toLowerCase().replace(/(^|[^\p{L}\p{N}'’])(\p{L})/gu, (_m, p, c) => p + c.toUpperCase())));
+// The original product's answer for these titlecase letters is unverified.
+const titleCase = (c: string): string => {
+  const cp = c.codePointAt(0)!;
+  if (cp === 0x01c6 || cp === 0x01c9 || cp === 0x01cc || cp === 0x01f3) return String.fromCodePoint(cp - 1);
+  if (cp >= 0x1f80 && cp <= 0x1faf && (cp & 8) === 0) return String.fromCodePoint(cp + 8);
+  if (cp === 0x1fb3 || cp === 0x1fc3 || cp === 0x1ff3) return String.fromCodePoint(cp + 9);
+  const [first, ...rest] = [...c.toUpperCase()];
+  return first + rest.join('').toLowerCase();
+};
+eager('Proper', 1, 1, (v, env) => text(T(v[0], env).toLowerCase().replace(/(^|[^\p{L}\p{N}\p{M}\u200c\u200d'’])(\p{L})/gu, (_m, p, c) => p + titleCase(c))));
 // Trim and the path helpers below scan from the ends: a pattern such as / +$/ retries from every position of a long run.
 const trimSpaces = (t: string) => {
   let start = 0;
