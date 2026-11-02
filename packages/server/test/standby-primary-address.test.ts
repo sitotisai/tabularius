@@ -8,6 +8,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, wri
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Standby, checkPrimaryAddress } from '../src/index.ts';
+import { notOnWindows } from '../../store/test/windows.ts';
 
 const main = join(import.meta.dirname, '..', '..', 'cli', 'src', 'main.ts');
 const TOKEN = ['a', 'replication', 'token', 'for', 'tests'].join('-');
@@ -72,7 +73,7 @@ test('checkPrimaryAddress refuses what is not the address of a server', () => {
   assert.throws(() => checkPrimaryAddress(`https://admin:${secret}@main.example.com`), (e: Error) => !e.message.includes(secret));
 });
 
-test('the standby command refuses unsafe addresses before it creates anything, and accepts explicit plain http', { timeout: 60_000 }, async (t) => {
+test('the standby command refuses unsafe addresses before it creates anything, and accepts explicit plain http', { timeout: 60_000, skip: notOnWindows('it stops the command with SIGINT and expects a clean exit; on Windows a signal ends the process at once') }, async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-standby-address-'));
   const { env, marker } = stubs(dir);
   const primary = createServer((_, res) => res.end('{"files":[]}'));
