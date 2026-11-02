@@ -1803,7 +1803,7 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'standby': {
-      const primary = flag(args, '--primary') ?? process.env.TABULARIUS_PRIMARY;
+      const primary = (flag(args, '--primary') ?? process.env.TABULARIUS_PRIMARY)?.trim();
       const token = tokenOption(args, '--token', '--token-file', secret('TABULARIUS_REPLICATION_TOKEN'), process.env.TABULARIUS_REPLICATION_TOKEN_FILE, 'standby').value;
       if (!primary || !token) throw new Error('standby: give --primary URL and --token or --token-file (the main server\'s replication token)');
       checkPrimaryAddress(primary, bool(args, '--allow-plain-http') || boolean('TABULARIUS_ALLOW_PLAIN_HTTP'));

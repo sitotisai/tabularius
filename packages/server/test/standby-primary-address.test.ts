@@ -8,7 +8,6 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, wri
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Standby, checkPrimaryAddress } from '../src/index.ts';
-import { notOnWindows } from '../../store/test/windows.ts';
 
 const main = join(import.meta.dirname, '..', '..', 'cli', 'src', 'main.ts');
 const TOKEN = ['a', 'replication', 'token', 'for', 'tests'].join('-');
@@ -27,7 +26,7 @@ function stubs(dir: string): { env: NodeJS.ProcessEnv; marker: string } {
   return { env: { ...env, PATH: bin }, marker };
 }
 
-function run(env: NodeJS.ProcessEnv, args: string[], stopWhen?: RegExp): Promise<{ status: number | null; stdout: string; stderr: string }> {
+function run(env: NodeJS.ProcessEnv, args: string[], stopWhen?: RegExp): Promise<{ status: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['--no-warnings', main, ...args], { env, stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000 });
     let stdout = '';
@@ -39,7 +38,7 @@ function run(env: NodeJS.ProcessEnv, args: string[], stopWhen?: RegExp): Promise
     });
     child.stderr.setEncoding('utf8').on('data', (c: string) => { stderr += c; });
     child.once('error', reject);
-    child.once('close', (status) => resolve({ status, stdout, stderr }));
+    child.once('close', (status, signal) => resolve({ status, signal, stdout, stderr }));
   });
 }
 
@@ -73,7 +72,7 @@ test('checkPrimaryAddress refuses what is not the address of a server', () => {
   assert.throws(() => checkPrimaryAddress(`https://admin:${secret}@main.example.com`), (e: Error) => !e.message.includes(secret));
 });
 
-test('the standby command refuses unsafe addresses before it creates anything, and accepts explicit plain http', { timeout: 60_000, skip: notOnWindows('it stops the command with SIGINT and expects a clean exit; on Windows a signal ends the process at once') }, async (t) => {
+test('the standby command refuses unsafe addresses before it creates anything, and accepts explicit plain http', { timeout: 60_000 }, async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-standby-address-'));
   const { env, marker } = stubs(dir);
   const primary = createServer((_, res) => res.end('{"files":[]}'));
@@ -103,11 +102,29 @@ test('the standby command refuses unsafe addresses before it creates anything, a
 
   for (const extra of [{ args: ['--allow-plain-http'], env: {} }, { args: [], env: { TABULARIUS_ALLOW_PLAIN_HTTP: '1' } }]) {
     const started = await run({ ...env, ...extra.env }, ['standby', folder, '--primary', address, '--token', TOKEN, ...extra.args], /standby of /);
-    assert.equal(started.status, 0, started.stderr);
+    // On Windows a signal ends the process at once: it never prints "stopped" and has no exit status.
+    if (process.platform === 'win32') assert.equal(started.signal, 'SIGINT', started.stderr);
+    else { assert.equal(started.status, 0, started.stderr); assert.match(started.stdout, /stopped/); }
     assert.match(started.stdout, /standby of /);
-    assert.match(started.stdout, /stopped/);
     assert.ok(!started.stdout.includes(TOKEN) && !started.stderr.includes(TOKEN));
   }
+});
+
+test('the standby command trims blanks around the primary address, for the check and for the requests', { timeout: 60_000 }, async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-standby-trim-'));
+  const { env } = stubs(dir);
+  const primary = createServer((_, res) => res.end('{"files":[]}'));
+  const port = await listen(primary);
+  t.after(() => { primary.close(); rmSync(dir, { recursive: true, force: true }); });
+  const address = `http://[::ffff:127.0.0.1]:${port}`;
+  const folder = join(dir, 'copy');
+  mkdirSync(folder);
+  const started = await run(env, ['standby', folder, '--primary', `  ${address} `, '--token', TOKEN, '--allow-plain-http'], /standby of /);
+  if (process.platform === 'win32') assert.equal(started.signal, 'SIGINT', started.stderr);
+  else assert.equal(started.status, 0, started.stderr);
+  // The address that is checked is the address that is used: without blanks.
+  assert.ok(started.stdout.includes(`standby of ${address} in `), started.stdout);
+  assert.ok(!started.stdout.includes('Invalid URL') && !started.stderr.includes('Invalid URL'), started.stderr);
 });
 
 test('a standby does not follow a redirect from the main server, and says why', { timeout: 30_000 }, async (t) => {
