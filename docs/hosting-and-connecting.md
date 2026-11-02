@@ -179,11 +179,11 @@ token acts as one account (so it carries that account's privilege set), is used
 as a Bearer token on the Data API and SQL endpoints, and can be revoked on its
 own. `--read-only` makes it refuse every write and script. A token stops
 working after 90 days unless `--expires-days N` (up to 3650) says otherwise; every
-token expires, and `TABULARIUS_TOKEN_DEFAULT_DAYS` changes the default.
+token expires, and `TABULARIUS_TOKEN_DEFAULT_DAYS` changes the default. The name after `create` is the account the token acts as; `--label` is the name shown in the list.
 
 <!-- docs-example: illustrative -->
 ```sh
-npm run tabularius -- token ~/FileMakerFiles Contacts create "Reporting" --read-only --expires-days 90
+npm run tabularius -- token ~/FileMakerFiles Contacts create Admin --label Reporting --read-only --expires-days 90
 # ohbt_… (shown once; store it now)
 curl -H "Authorization: Bearer ohbt_…" http://127.0.0.1:8080/fmi/data/vLatest/databases/Contacts/layouts
 npm run tabularius -- token ~/FileMakerFiles Contacts list
