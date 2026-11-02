@@ -21,6 +21,9 @@ letter are *canonically* equal (the same letters); the others are *compatibility
 | SQL `LIKE` | ASCII letters only | kept | not equal | not equal |
 | Account names | ASCII letters only | kept | two accounts, but a new one that looks like another is refused | not equal |
 
+`Proper` capitalises a letter that does not follow a letter, digit, apostrophe, combining mark or joiner, and writes
+the titlecase letter (for example, **ǅ**, **Ss** or **Fi**). FileMaker's answer for these letters is unverified.
+
 - **Account names**: a sign-in and an account lookup match a name exactly apart from the case of ASCII letters,
   so the two forms of **José** are two accounts that each need their own password. Adding an account whose name is another
   account's written another way (also another capital that the database does not fold, **Émile** and **émile**) is refused,
