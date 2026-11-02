@@ -46,6 +46,8 @@ One page: what Tabularius is built to defend, against whom, and what it does not
 
 These checks are not `openat(2)` and do not make path-based operations atomic. The folders must belong to the service user. A hostile concurrent rename of a parent folder is out of scope.
 
+Known gap: the admin password file (`.openhbam-admin`) is refused when a link, pipe or folder stands at its name, but a plain file planted there by someone who can write to the hosted folder is still accepted. That covers a file owned by another user, a hard-linked file and a file with mode 0666. Anyone who can create entries in the hosted folder can therefore still set the admin password. A follow-up is meant to close this; until then, keep the hosted folder writable only by the service user.
+
 **Modules that use it**
 
 - `packages/cli/src/main.ts`
@@ -57,6 +59,7 @@ These checks are not `openat(2)` and do not make path-based operations atomic. T
 - `packages/scripts/src/engine.ts`
 - `packages/server/src/admin.ts`
 - `packages/server/src/agent.ts`
+- `packages/server/src/ai-credentials.ts`
 - `packages/server/src/ai-usage.ts`
 - `packages/server/src/backup-external.ts`
 - `packages/server/src/backup-verify.ts`

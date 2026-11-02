@@ -10,9 +10,9 @@
 // server stops.
 
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { readFileSync, rmSync, statSync } from 'node:fs';
+import { lstatSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { removeEntrySync, writeFileSync } from '../../store/src/fs-boundary.ts';
+import { readFileSync, removeEntrySync, writeFileSync } from '../../store/src/fs-boundary.ts';
 import { sameSecret } from './secrets.ts';
 
 export const LOCAL_FILE = '.openhbam.local';
@@ -53,7 +53,7 @@ export function openLocalAccess(folder: string, url: string): () => void {
   };
 }
 
-/** The running server's local channel, if it has one. */
+/** The running server's local channel, if it has one. A link, pipe or folder is not a channel and is never waited on. */
 export function localAccess(folder: string): LocalAccess | undefined {
   try {
     return JSON.parse(readFileSync(join(folder, LOCAL_FILE), 'utf8')) as LocalAccess;
@@ -71,7 +71,9 @@ export function isLocalAdmin(folder: string, header: string | string[] | undefin
   let token: string;
   try {
     // A replaced file differs in its inode or size as well as its modification time (which some filesystems keep to the second).
-    const st = statSync(file);
+    // Look at the name itself, not a link's target. The boundary also refuses a pipe swapped in before the read.
+    const st = lstatSync(file);
+    if (!st.isFile()) return false;
     const stamp = `${st.mtimeMs}:${st.ino}:${st.size}`;
     const c = cached.get(file);
     if (c && c.stamp === stamp) token = c.token;

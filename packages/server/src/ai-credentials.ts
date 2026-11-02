@@ -2,7 +2,8 @@
 // to run in (Anthropic's `anthropic-workspace-id` header). Either may live in a file that is read again when it
 // changes, so saving a new key doesn't need the service reinstalled. The key is never logged or shown.
 
-import { readFileSync, statSync } from 'node:fs';
+import { closeSync, fstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { openSync } from '../../store/src/fs-boundary.ts';
 import { monotonicClock } from '../../store/src/monotonic.ts';
 
 export interface AiCredentialOptions {
@@ -74,8 +75,7 @@ export class AiCredentials {
 
   private reloadKey(file: string): void {
     try {
-      if (process.platform !== 'win32' && statSync(file).mode & 0o077) throw new Error('it can be read by other users (chmod 600)');
-      const next = readFileSync(file, 'utf8').trim();
+      const next = readPlainFile(file, true).trim();
       if (!next) throw new Error('it is empty');
       // A space or a line break inside would be sent in a header and break every request.
       if (/[\s\u0000-\u001f\u007f]/.test(next)) throw new Error('it holds a space or a line break inside the key');
@@ -95,7 +95,7 @@ export class AiCredentials {
     let next = this.opts.workspaceId;
     this.workspaceProblem = undefined;
     try {
-      const text = readFileSync(file, 'utf8').trim();
+      const text = readPlainFile(file, false).trim();
       if (isWorkspaceId(text)) next = text;
       else throw new Error(text ? 'it does not hold a workspace id (wrkspc_ and letters, digits, - or _)' : 'it is empty');
     } catch (e) {
@@ -106,6 +106,28 @@ export class AiCredentials {
       this.workspace = next;
       this.version++;
     }
+  }
+}
+
+/**
+ * Read through one descriptor, opened without waiting and checked before reading: a named pipe must not
+ * block the thread serving requests. The operator's own path may be a link (for example, a secrets mount).
+ * `mustBePrivate` also refuses a file other users can read, using that same descriptor for the mode check.
+ */
+function readPlainFile(file: string, mustBePrivate: boolean): string {
+  // Resolve the operator's link, then let the boundary guard the real name against replacement and pipes.
+  let fd: number;
+  try { fd = openSync(realpathSync(file), 'r'); } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ESTALE') throw new Error('it is not a plain file (a pipe or a folder stands there)');
+    throw e;
+  }
+  try {
+    const st = fstatSync(fd);
+    if (!st.isFile()) throw new Error('it is not a plain file');
+    if (mustBePrivate && process.platform !== 'win32' && st.mode & 0o077) throw new Error('it can be read by other users (chmod 600)');
+    return readFileSync(fd, 'utf8');
+  } finally {
+    closeSync(fd);
   }
 }
 

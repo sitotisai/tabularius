@@ -144,7 +144,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSy
 import { basename, dirname, extname, join, resolve, sep } from 'node:path';
 import { discardExitBundle, exitBundle, ExitBundleError, webViewerEntryCovers, hashPassword, defaultMinPasswordLength, checkPassword, addressBucket, StoreError, findStaleCalcs, refreshStaleCalcs, undoStaleRefresh, staleRefreshHistory, StaleCalcError, SECURITY_EVENT_CATEGORIES, isFullAccess, ownPrivilegeEntry, setOwn, type AuditEntry, type FieldLevel, type SecurityEvent, type Store } from '../../store/src/index.ts';
 import { atomicWrite } from '../../store/src/durable.ts';
-import { copyFileSync as copyChecked } from '../../store/src/fs-boundary.ts';
+import { copyFileSync as copyChecked, readFileSync as readChecked } from '../../store/src/fs-boundary.ts';
 import { loadAsset, sendAsset } from './static-cache.ts';
 import { inlineScriptSources } from './csp.ts';
 import type { DataApi } from './dataapi.ts';
@@ -206,6 +206,8 @@ import { SERVER_VERSION, serverCommit } from './version.ts';
 import { said } from './said.ts';
 
 const PASSWORD_FILE = '.openhbam-admin';
+/** Stands for an unusable password file: it is no stored hash, so no password matches it. */
+const UNUSABLE_PASSWORD = '!unusable';
 
 /** Whole seconds left of a wait given in milliseconds; the clock has fractions, so a sum like (now + 900000) - now can come out a hair over 900000. */
 function secondsLeft(ms: number): number {
@@ -619,10 +621,32 @@ export class Admin {
     });
   }
 
+  /**
+   * The stored admin password, or undefined only when no entry exists. A link, pipe or folder is never
+   * read or followed, and is not "no password": nobody can match it, so the console stays closed until repaired.
+   */
   private passwordHash(): string | undefined {
     const f = join(this.host.dir, PASSWORD_FILE);
-    return existsSync(f) ? readFileSync(f, 'utf8').trim() : undefined;
+    let plain: boolean;
+    try {
+      plain = lstatSync(f).isFile();
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+      throw e;
+    }
+    if (plain) {
+      try {
+        return readChecked(f, 'utf8').trim();
+      } catch (e) {
+        // The boundary detects replacement; a directory opened in the remaining race is not a password either.
+        if (!['ESTALE', 'EISDIR'].includes((e as NodeJS.ErrnoException).code ?? '')) throw e;
+      }
+    }
+    if (!this.passwordFileRefused) this.host.logs?.write('Event', 'Warning', 'admin', `${PASSWORD_FILE} is not a plain file (a link, a pipe or a folder stands there), so the admin console stays closed; remove it and set the password again`);
+    this.passwordFileRefused = true;
+    return UNUSABLE_PASSWORD;
   }
+  private passwordFileRefused = false;
 
   /** null when allowed, else the status and message to send. */
   check(req: IncomingMessage): { status: number; message: string; retryAfter?: number } | null {
