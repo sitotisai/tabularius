@@ -9,6 +9,6 @@
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | No direct environment equivalent |
 | Explained in | [docs/hosting-for-a-team.md](../../../hosting-for-a-team.md) |
-| Code | [packages/cli/src/main.ts:1555](../../../../packages/cli/src/main.ts#L1555) |
+| Code | [packages/cli/src/main.ts:1559](../../../../packages/cli/src/main.ts#L1559) |
 
 [All serve flags](../serve-flags.md)

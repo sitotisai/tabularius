@@ -177,9 +177,9 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/cli/src/diagnostics.ts:205](../../packages/cli/src/diagnostics.ts#L205) `designCopy` | `SQLite.all` (205); `SQLite.prepare` (205, 208) | OPERATOR |
 | [packages/cli/src/diagnostics.ts:445](../../packages/cli/src/diagnostics.ts#L445) `diagnostics` | `SQLite.get` (445); `SQLite.prepare` (445, 449); `SQLite.all` (449) | OPERATOR |
 | [packages/cli/src/doctor.ts:140](../../packages/cli/src/doctor.ts#L140) `accountChecks` | `SQLite.all` (140); `SQLite.prepare` (140) | OPERATOR |
-| [packages/cli/src/main.ts:735](../../packages/cli/src/main.ts#L735) `accountsWithPasswordOff` | `SQLite.all` (735); `SQLite.prepare` (735) | OPERATOR |
-| [packages/cli/src/main.ts:764](../../packages/cli/src/main.ts#L764) `hostedRead` | `SQLite.all` (764, 767); `SQLite.prepare` (764, 767); `Store.sql` (764, 767) | OPERATOR |
-| [packages/cli/src/main.ts:2474](../../packages/cli/src/main.ts#L2474) `main` | `Store.orphanContainerReport` (2474); `Store.auditLog` (2948); `SQLite.get` (3210); `SQLite.prepare` (3210) | OPERATOR |
+| [packages/cli/src/main.ts:739](../../packages/cli/src/main.ts#L739) `accountsWithPasswordOff` | `SQLite.all` (739); `SQLite.prepare` (739) | OPERATOR |
+| [packages/cli/src/main.ts:768](../../packages/cli/src/main.ts#L768) `hostedRead` | `SQLite.all` (768, 771); `SQLite.prepare` (768, 771); `Store.sql` (768, 771) | OPERATOR |
+| [packages/cli/src/main.ts:2479](../../packages/cli/src/main.ts#L2479) `main` | `Store.orphanContainerReport` (2479); `Store.auditLog` (2953); `SQLite.get` (3215); `SQLite.prepare` (3215) | OPERATOR |
 | [packages/scripts/src/data-api-step.ts:104](../../packages/scripts/src/data-api-step.ts#L104) `respond` | `Store.get` (104, 131, 140); `Store.find` (105, 117) | SCRIPT |
 | [packages/scripts/src/engine.ts:9441](../../packages/scripts/src/engine.ts#L9441) `clearRecords` | `SQLite.all` (9441); `SQLite.prepare` (9441) | SCRIPT |
 | [packages/scripts/src/engine.ts:8211](../../packages/scripts/src/engine.ts#L8211) `ScriptEngine/containerFile` | `Store.get` (8211); `Store.containerId` (8212); `Store.container` (8213) | SCRIPT |
@@ -453,7 +453,7 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/server/src/semantic-find.ts:108](../../packages/server/src/semantic-find.ts#L108) `vectorOf` | `Store.containerId` (108); `Store.containerInfo` (110); `Store.container` (112); `Store.get` (117) | SEARCH |
 | [packages/server/src/sql.ts:103](../../packages/server/src/sql.ts#L103) `SqlEndpoint/handle` | `Calculations.translateSQL` (103); `Store.select` (110) | SQL |
 | [packages/server/src/sql.ts:163](../../packages/server/src/sql.ts#L163) `SqlEndpoint/tables` | `SQLite.all` (163); `SQLite.prepare` (163); `Store.sql` (163) | SQL |
-| [packages/server/src/standby.ts:419](../../packages/server/src/standby.ts#L419) `Standby/copy` | `SQLite.get` (419); `SQLite.prepare` (419) | OPERATOR |
+| [packages/server/src/standby.ts:445](../../packages/server/src/standby.ts#L445) `Standby/copy` | `SQLite.get` (445); `SQLite.prepare` (445) | OPERATOR |
 | [packages/server/src/summarize.ts:184](../../packages/server/src/summarize.ts#L184) `summarizeByRecord` | `Store.evaluateEach` (184); `Store.row` (186) | SUMMARY |
 | [packages/server/src/summarize.ts:69](../../packages/server/src/summarize.ts#L69) `summarizeRecords` | `Store.findIds` (69); `Store.select` (126, 133, 143) | SUMMARY |
 | [packages/server/src/sync-console.ts:458](../../packages/server/src/sync-console.ts#L458) `SyncConsole/runCheck` | `Store.sql` (458) | DESIGN |

@@ -142,7 +142,7 @@ export { S3, mirrorDown, mirrorUp, s3FromEnv, scheduleOffsite, signV4, type Offs
 export { PgServer, type PgServerOptions } from './pgwire.ts';
 export { LogShipper, type LogFollower } from './logs.ts';
 export { Replication, type StandbyClient } from './replication.ts';
-export { Standby, STANDBY_STATE, standbyState, type StandbyOptions, type StandbyState } from './standby.ts';
+export { Standby, STANDBY_STATE, checkPrimaryAddress, standbyState, type StandbyOptions, type StandbyState } from './standby.ts';
 export { DesignApi, canDesign, designOf } from './design.ts';
 export { SecurityApi, securityOf } from './security.ts';
 export { DebugApi } from './debug.ts';

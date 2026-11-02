@@ -29,7 +29,7 @@ import { FmpDatabase, fileSource, encryptionInfo, readLayoutDesigns, segmentOf, 
 import { BUILT_IN_EXTENDED_PRIVILEGES, addCensus, styleCensus, styleCensusText, calcFidelity, censusText, exportSql, exportSqlSummary, planImportTables, importTables, importTablesSummary, notionMarkdownSheet, MAX_IMPORT_ROWS, type SheetInput, type ColumnOverrides, type ColumnKind, findStaleCalcs, layoutCensus, type LayoutCensus, createStore, designReport, importFmp12, PASSWORD_POLICY, DEFAULT_MIN_PASSWORD_LENGTH, reconvert, reconvertCheck, verifySecurityAudit, verifyRecordAudit, anchorHead, checkAnchor, Store, syncPlan, openForPlanning, applySync, readSyncLog, releaseHeldTables, type ConflictPolicy, writeBackKit, designText, writeDesignText, diffDesigns, planDesignApply, readDesignFolder, type DesignOp, type ReconvertPreview, csvField, exitBundle, discardExitBundle } from '../../store/src/index.ts';
 import { xlsxSheetNames } from '../../scripts/src/xlsx.ts';
 import { importFileRowIterator, neverAllowed, parseAllowList, SCREEN_STEPS, SERVER_STEPS, testScripts, type ScriptTestResult } from '../../scripts/src/index.ts';
-import { conversionReport, explainScriptFailure, type ScriptFailure, DEFAULT_MODEL, DEFAULT_RUN_TOKENS, MAX_RUN_TOKENS, parseRunTokens, Host, serve, serveCluster, serveStdio, aiStatus, STORE_EXT, ENCRYPTED_EXT, encryptFileSync, decryptFileSync, setAdminPassword, adminPasswordProblem, tokenExpiry, readLocalMcpToken, backupFolder, backupSets, defaultBackupDir, parseInterval, parseTime, restoreAt, restoreBackup, AccountChangesError, type AccountDifference, type ChangedSince, verifySet, describeCheck, resolveEmbedEndpoint, resolveImageEmbed, localCertificateFiles, Standby, S3, s3FromEnv, mirrorDown, fetchFmsExport, migrateFms, describeMigration, copySize, readSettings, runningServer, dataApiSource, dataApiClient, checkSyncAllowed, describeApply, describePlan, verifySync, describeSyncVerification, parseSyncConfig, CONTAINER_PULL_MAX_BYTES, type FmsExport } from '../../server/src/index.ts';
+import { conversionReport, explainScriptFailure, type ScriptFailure, DEFAULT_MODEL, DEFAULT_RUN_TOKENS, MAX_RUN_TOKENS, parseRunTokens, Host, serve, serveCluster, serveStdio, aiStatus, STORE_EXT, ENCRYPTED_EXT, encryptFileSync, decryptFileSync, setAdminPassword, adminPasswordProblem, tokenExpiry, readLocalMcpToken, backupFolder, backupSets, defaultBackupDir, parseInterval, parseTime, restoreAt, restoreBackup, AccountChangesError, type AccountDifference, type ChangedSince, verifySet, describeCheck, resolveEmbedEndpoint, resolveImageEmbed, localCertificateFiles, Standby, checkPrimaryAddress, S3, s3FromEnv, mirrorDown, fetchFmsExport, migrateFms, describeMigration, copySize, readSettings, runningServer, dataApiSource, dataApiClient, checkSyncAllowed, describeApply, describePlan, verifySync, describeSyncVerification, parseSyncConfig, CONTAINER_PULL_MAX_BYTES, type FmsExport } from '../../server/src/index.ts';
 // optimize's report (kept apart from the busy import line above).
 import { sheetsFromFile, checkSheetNames, sheetNameOf } from '../../server/src/import-sheets.ts';
 import { optimizationReport, openApiDocument, typesFromOpenApi, checkSolution, checkSolutionText, createFeed, importIcs, listFeeds, revokeFeed } from '../../server/src/index.ts';
@@ -177,7 +177,7 @@ Hosting (point it at a folder of .fmp12 files; each is converted once):
                                              sent while a capture-only file (--capture-only or
                                              TABULARIUS_CAPTURE_ONLY) is in the folder. Not with
                                              --test-outbound.
-  tabularius standby <folder> --primary URL [--token T|--token-file F] [--overwrite]
+  tabularius standby <folder> --primary URL [--token T|--token-file F] [--overwrite] [--allow-plain-http]
                                              Keep copies of another server's files a second
                                              or so behind it (it runs serve --replication-token
                                              T; token also in TABULARIUS_REPLICATION_TOKEN or
@@ -186,7 +186,11 @@ Hosting (point it at a folder of .fmp12 files; each is converted once):
                                              tokens are ended unless serve gets
                                              --keep-api-tokens-on-takeover). Copies that did not
                                              reach a whole state are refused unless serve gets
-                                             --accept-partial-standby.
+                                             --accept-partial-standby. URL
+                                             is https://, or http:// for this computer
+                                             only; --allow-plain-http (or
+                                             TABULARIUS_ALLOW_PLAIN_HTTP) accepts http://
+                                             to another computer on a network you trust.
   tabularius migrate-fms <folder> [--fms-dir DIR] [--from URL|export.json] [--user admin] [--insecure]
                 [--save export.json] [--dry-run]
                                              Switch from FileMaker Server in one step: its hosted
@@ -1802,6 +1806,7 @@ function main(argv: string[]): number {
       const primary = flag(args, '--primary') ?? process.env.TABULARIUS_PRIMARY;
       const token = tokenOption(args, '--token', '--token-file', secret('TABULARIUS_REPLICATION_TOKEN'), process.env.TABULARIUS_REPLICATION_TOKEN_FILE, 'standby').value;
       if (!primary || !token) throw new Error('standby: give --primary URL and --token or --token-file (the main server\'s replication token)');
+      checkPrimaryAddress(primary, bool(args, '--allow-plain-http') || boolean('TABULARIUS_ALLOW_PLAIN_HTTP'));
       const standby = new Standby({ folder: path, primary, token, overwrite: bool(args, '--overwrite'), log: (m) => console.log(m) });
       standby.start();
       const stop = () => {
