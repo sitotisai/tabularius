@@ -6,7 +6,7 @@
 // (longest match wins), the way FileMaker resolves them. Without names, a
 // field is a single word.
 
-import { CalcError, CalcNestingError, ERR, exactIntegerText } from './values.ts';
+import { CalcError, CalcNestingError, ERR, exactLiteralText } from './values.ts';
 import { nodeChildren, unknownFunctionId } from './unknown.ts';
 
 const MISSING = /^<(Field|Table|Function) Missing>/;
@@ -302,8 +302,8 @@ function lex(src: string, names: NameTable, localNames: Iterable<string> = []): 
       i = j + 1;
     } else if ((/^[0-9]$/.test(c) || (c === '.' && /[0-9]/.test(src[i + 1] ?? ''))) && !digitLedName(i)) {
       const m = /^(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/.exec(src.slice(i))!;
-      // A whole number of more than 15 digits keeps every digit (values.ts: exactIntegerText).
-      const exact = exactIntegerText(m[0]);
+      // Whole literals past the safe double range keep their digits, including exponent notation.
+      const exact = exactLiteralText(m[0]);
       const value = Number(m[0]);
       out.push({ t: 'num', v: value, at: i, ...(/[.e]/i.test(m[0]) || m[0] !== String(value) ? { raw: m[0] } : {}), ...(exact !== undefined ? { exact } : {}) });
       i += m[0].length;
