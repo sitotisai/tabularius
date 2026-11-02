@@ -8,6 +8,6 @@ The attribute holding the user name.
 | Accepted values | LDAP distinguished name, template, attribute, or password as named by the variable |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1509](../../../../packages/cli/src/main.ts#L1509) |
+| Code | [packages/cli/src/main.ts:1515](../../../../packages/cli/src/main.ts#L1515) |
 
 [All environment variables](../../../environment-variables.md)

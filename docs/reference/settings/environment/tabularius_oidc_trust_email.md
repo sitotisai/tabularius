@@ -8,6 +8,6 @@
 | Accepted values | 1, true or yes to turn on; 0, false, no or empty for off; "on", "off" and anything else stop `serve` |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1485](../../../../packages/cli/src/main.ts#L1485) |
+| Code | [packages/cli/src/main.ts:1491](../../../../packages/cli/src/main.ts#L1491) |
 
 [All environment variables](../../../environment-variables.md)

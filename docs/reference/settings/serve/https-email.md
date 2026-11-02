@@ -9,6 +9,6 @@
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | [`TABULARIUS_HTTPS`](../environment/tabularius_https.md), [`TABULARIUS_HTTPS_EMAIL`](../environment/tabularius_https_email.md) |
 | Explained in | [docs/hosting-for-a-team.md](../../../hosting-for-a-team.md) |
-| Code | [packages/cli/src/main.ts:1385](../../../../packages/cli/src/main.ts#L1385) |
+| Code | [packages/cli/src/main.ts:1391](../../../../packages/cli/src/main.ts#L1391) |
 
 [All serve flags](../serve-flags.md)
