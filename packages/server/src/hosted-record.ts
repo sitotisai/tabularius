@@ -25,7 +25,8 @@ export function loadHostedRecord(dir: string): HostedRecord | null | undefined {
   // and must open the path again, not call the record damaged.
   for (let attempt = 0; ; attempt++) {
     try {
-      const fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+      // Without waiting: a named pipe at the name must be seen as not a plain file (damaged), not waited on for ever.
+      const fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK | (constants.O_NOFOLLOW ?? 0));
       try {
         const stat = fstatSync(fd);
         if (!stat.isFile() || stat.nlink > 1) return null;

@@ -1,8 +1,9 @@
 import { createHash, createPrivateKey, X509Certificate } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { createSecureContext } from 'node:tls';
 import { atomicWrite } from '../../store/src/durable.ts';
+import { readFileSync } from '../../store/src/fs-boundary.ts';
 
 export interface TlsPair { cert: string; key: string }
 
