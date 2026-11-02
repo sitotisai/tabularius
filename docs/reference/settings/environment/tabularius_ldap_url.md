@@ -8,6 +8,6 @@ The directory server's `ldaps://` address.
 | Accepted values | ldaps:// URL |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1501](../../../../packages/cli/src/main.ts#L1501) |
+| Code | [packages/cli/src/main.ts:1507](../../../../packages/cli/src/main.ts#L1507) |
 
 [All environment variables](../../../environment-variables.md)

@@ -8,6 +8,6 @@ The model used for design work.
 | Accepted values | Model id |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1537](../../../../packages/cli/src/main.ts#L1537) |
+| Code | [packages/cli/src/main.ts:1543](../../../../packages/cli/src/main.ts#L1543) |
 
 [All environment variables](../../../environment-variables.md)

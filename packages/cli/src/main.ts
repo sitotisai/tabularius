@@ -889,9 +889,11 @@ function printSchema(s: Schema): void {
 
 /** `tabularius privileges`: list, show, save, assign, grant and revoke. */
 function privileges(store: Store, action?: string, a?: string, b?: string): void {
-  const set = (name?: string) => {
-    const s = name && store.privilegeSet(name);
-    if (!s) throw new Error(`no privilege set "${name ?? ''}"; sets: ${store.privilegeSets().map((p) => p.name).join(', ')}`);
+  const set = (name: string | undefined, verb: string) => {
+    const names = store.privilegeSets().map((p) => p.name).join(', ');
+    if (!name) throw new Error(`privileges ${verb}: give a privilege set (${names})`);
+    const s = store.privilegeSet(name);
+    if (!s) throw new Error(`no privilege set "${name}"; sets: ${names}`);
     return s;
   };
   switch (action) {
@@ -914,23 +916,27 @@ function privileges(store: Store, action?: string, a?: string, b?: string): void
       return;
     }
     case 'show':
-      console.log(JSON.stringify(set(a), null, 2));
+      console.log(JSON.stringify(set(a, action), null, 2));
       return;
     case 'save': {
       if (!a) throw new Error('privileges save: give a JSON file');
       console.log(`saved ${store.savePrivilegeSet(JSON.parse(readFileSync(a, 'utf8'))).name}`);
       return;
     }
-    case 'account':
+    case 'account': {
       if (!a || !b) throw new Error('privileges account: give an account and a privilege set');
-      store.setAccountPrivilegeSet(a, b);
-      console.log(`${a} now uses ${set(b).name}`);
+      const privilegeSet = set(b, action);
+      store.setAccountPrivilegeSet(a, privilegeSet.name);
+      console.log(`${a} now uses ${privilegeSet.name}`);
       return;
-    case 'external':
+    }
+    case 'external': {
       if (!a || !b) throw new Error('privileges external: give a group or email address and a privilege set');
-      store.setExternalAccount(a, set(b).name);
-      console.log(`people the identity provider signs in as ${a} now use ${set(b).name}`);
+      const privilegeSet = set(b, action);
+      store.setExternalAccount(a, privilegeSet.name);
+      console.log(`people the identity provider signs in as ${a} now use ${privilegeSet.name}`);
       return;
+    }
     case 'policy': {
       const describe = () => {
         const p = store.passwordPolicy();
@@ -952,7 +958,7 @@ function privileges(store: Store, action?: string, a?: string, b?: string): void
     }
     case 'grant':
     case 'revoke': {
-      const s = set(a);
+      const s = set(a, action);
       if (!b) throw new Error(`privileges ${action}: give an extended privilege keyword (fmrest, fmapp, fmwebdirect, fmmcp, ...)`);
       const others = s.extendedPrivileges.filter((e) => e.toLowerCase() !== b.toLowerCase());
       if (action === 'revoke' && others.length === s.extendedPrivileges.length) throw new Error(`${s.name} had no extended privilege "${b}"`);
@@ -1911,7 +1917,11 @@ function main(argv: string[]): number {
     case 'verify-backup': {
       const dest = configuredBackupDir(path, flag(args, '--from'));
       const sign = bool(args, '--sign');
-      const sets = args[0] ? [args[0]] : backupSets(dest);
+      const names = backupSets(dest);
+      if (args[0] && !existsSync(args[0]) && !existsSync(join(dest, args[0]))) {
+        throw new Error(`verify-backup: no backup set "${args[0]}" in ${dest}; sets there: ${names.map((set) => basename(set)).join(', ') || 'none'}`);
+      }
+      const sets = args[0] ? [args[0]] : names;
       if (!sets.length) throw new Error(`verify-backup: no backup sets in ${dest}`);
       // Signing says "I trust this set as it is": one set, named, never every set at once.
       if (sign && sets.length !== 1) throw new Error('verify-backup --sign: name the one backup set to sign');
@@ -2814,7 +2824,9 @@ function main(argv: string[]): number {
     }
     case 'ai-policy': {
       const [database, action] = args;
-      if (!database || !['on', 'off'].includes(action)) throw new Error('ai-policy: give a database and on|off');
+      if (!database) throw new Error('ai-policy: give a database and on|off');
+      if (action === undefined) throw new Error('ai-policy: say on or off after the database name');
+      if (!['on', 'off'].includes(action)) throw new Error(`ai-policy: say on or off after the database name, not "${action}"`);
       const store = openDatabase(path, database);
       try { store.setAiPolicy(action === 'on'); console.log(`AI policy ${store.aiPolicy ? 'on' : 'off'} for ${store.name}`); }
       finally { store.close(); }
