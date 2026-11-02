@@ -86,6 +86,8 @@ Each of these is an entry in the file with `known` set to the reason, and the te
 | agg-09 | An aggregate inside another function (`ROUND(SUM(x))`) | An error in FileMaker (8309, FQL0005); works here. Left lenient for the same reason. |
 | expr-06 | `{D '...'}` braces in `ExecuteSQL` | The page says `ExecuteSQL` refuses them; here they work, because one translation serves the SQL connection, which accepts them. |
 
+SQL queries still compare a time column as stored text for `ORDER BY`, `MAX`, `MIN` and comparisons. With times including 9, 10, 99 and 100 hours, `SELECT Tm FROM T ORDER BY Tm` places `100:00:00` between `09:00:00` and `10:00:00`; `SELECT MAX(Tm) FROM T` returns `99:00:00`; and `SELECT Tm FROM T WHERE Tm > TIME '50:00:00'` finds `99:00:00` but misses `100:00:00`. Negative times can order wrongly too. Sort Records and finds compare times by seconds. This stored-text comparison is a Tabularius SQL limit; the other product's behavior is unverified. <!-- known-difference: SQL time columns ;; ORDER BY, MAX, MIN and comparisons use stored text instead of seconds ;; times of 100 hours or more and negative times can order wrongly in SQL queries ;; translate SQL with knowledge of the column type -->
+
 ## Not verified
 
 The pages read do not say, so the file marks these entries `unverified` with no expected result (`paths: []`). The test reports current behavior on all three paths: <!-- known-difference: SQL grammar ;; vendor results for five constructs are unspecified in the cited pages ;; the conformance test records current behavior without an expected result ;; compare each construct with FileMaker and record the observed result -->
