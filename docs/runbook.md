@@ -234,10 +234,11 @@ tabularius doctor <folder>
 tabularius verify-backup <folder>
 ```
 
-To look at the backup before it replaces anything, restore it into a scratch folder and read it:
+To look at the backup before it replaces anything, restore it into a scratch folder and read it. Make the scratch folder first (an empty one anywhere with room for the file); the restore does not create it:
 
 <!-- docs-example: illustrative -->
 ```sh
+mkdir <scratch-folder>
 tabularius restore <scratch-folder> <folder>/Backups/<backup-set> <database>
 tabularius records <scratch-folder> <database> <table>
 ```
