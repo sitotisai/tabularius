@@ -9,6 +9,6 @@
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | [`TABULARIUS_AI_KEY_FILE`](../environment/tabularius_ai_key_file.md) |
 | Explained in | [docs/features.md](../../../features.md) |
-| Code | [packages/cli/src/main.ts:1523](../../../../packages/cli/src/main.ts#L1523) |
+| Code | [packages/cli/src/main.ts:1527](../../../../packages/cli/src/main.ts#L1527) |
 
 [All serve flags](../serve-flags.md)

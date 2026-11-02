@@ -54,7 +54,7 @@ Each command page includes the current help text, options, exit codes, and a tes
 | [`service`](service.md) | 3 |
 | [`sql-privilege`](sql-privilege.md) | 0 |
 | [`stale-calcs`](stale-calcs.md) | 3 |
-| [`standby`](standby.md) | 7 |
+| [`standby`](standby.md) | 8 |
 | [`style-census`](style-census.md) | 1 |
 | [`sync-apply`](sync-apply.md) | 12 |
 | [`sync-log`](sync-log.md) | 3 |

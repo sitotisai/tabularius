@@ -75,7 +75,7 @@ export interface StandbyState {
 
 export interface StandbyOptions {
   folder: string;
-  /** The main server's address, like https://main.example.com:8080. */
+  /** The main server's address, like https://main.example.com:8080 (the command checks it with checkPrimaryAddress before it makes a Standby). */
   primary: string;
   token: string;
   /** Copy files over ones in the folder that this standby didn't make. */
@@ -83,6 +83,26 @@ export interface StandbyOptions {
   /** Seconds to wait for changes in each request. */
   wait?: number;
   log?: (m: string) => void;
+}
+
+/** Loopback as written in the URL, not what a name might resolve to. */
+const isLoopbackHost = (hostname: string): boolean => hostname === 'localhost' || hostname === '[::1]' || /^127(?:\.\d{1,3}){3}$/.test(hostname);
+
+/**
+ * Checks the main server's address before anything is sent: http or https only, without credentials, query or fragment.
+ * Plain http to another computer would expose the replication token and every hosted file to anyone on the network path.
+ * The command calls this before making a Standby. It leaves the original text intact so existing standby state still matches.
+ */
+export function checkPrimaryAddress(primary: string, allowPlainHttp = false): void {
+  let url: URL;
+  try { url = new URL(primary.trim()); } catch { throw new Error('standby: --primary needs an address like https://main.example.com:8080'); }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error(`standby: --primary must start with https:// (or http://), not ${url.protocol}//`);
+  if (url.username || url.password) throw new Error('standby: --primary may not hold a user name or password; give the replication token with --token or --token-file');
+  // Empty ? and # parts also swallow routes appended to the original address; URL.search/hash omit those empty parts.
+  if (url.href.includes('?') || url.href.includes('#')) throw new Error('standby: --primary is the address of the server only, without a ? or # part');
+  if (url.protocol === 'http:' && !allowPlainHttp && !isLoopbackHost(url.hostname)) {
+    throw new Error(`standby: --primary ${url.protocol}//${url.host} is plain http to another computer: the replication token and a copy of every hosted file (with password hashes and one-time secrets) would cross the network unencrypted. Use an https:// address, or add --allow-plain-http (TABULARIUS_ALLOW_PLAIN_HTTP) on a network you trust`);
+  }
 }
 
 /** The standby state of a folder, if it is (or was) a standby. */
@@ -106,6 +126,12 @@ export function unfinishedStandbyFiles(state: StandbyState): string[] {
 }
 
 class Stop extends Error {}
+
+/** Same-origin redirects retain the token; even a cross-origin redirect would download from an address nobody chose. */
+function redirectReason(e: unknown): string | undefined {
+  const cause = (e as { cause?: { message?: unknown } } | null)?.cause?.message;
+  return typeof cause === 'string' && /redirect/.test(cause) ? 'the main server answered with a redirect; give --primary its final address (a standby never follows one; a same-origin redirect would carry the token with it)' : undefined;
+}
 
 export class Standby {
   readonly opts: StandbyOptions;
@@ -191,7 +217,7 @@ export class Standby {
     if (this.abort.signal.aborted || stop.aborted) throw new Stop();
     const signal = AbortSignal.any([this.abort.signal, stop, AbortSignal.timeout(timeoutS * 1000)]);
     try {
-      return await guardedFetch(this.opts.primary + path, { headers: { authorization: `Bearer ${this.opts.token}`, 'x-tabularius-standby-id': this.clientId }, signal }, { policy: { private: true }, timeoutMs: Infinity, maxBytes: Infinity });
+      return await guardedFetch(this.opts.primary + path, { headers: { authorization: `Bearer ${this.opts.token}`, 'x-tabularius-standby-id': this.clientId }, signal, redirect: 'error' }, { policy: { private: true }, timeoutMs: Infinity, maxBytes: Infinity });
     } catch (e) {
       if (this.abort.signal.aborted || stop.aborted) throw new Stop();
       throw e;
@@ -266,7 +292,7 @@ export class Standby {
         await this.pause(10_000);
       } catch (e) {
         if (e instanceof Stop) return;
-        this.trouble(`can't reach ${this.opts.primary}: ${(e as Error).message}`);
+        this.trouble(`can't reach ${this.opts.primary}: ${redirectReason(e) ?? (e as Error).message}`);
         try {
           await this.pause(5_000);
         } catch {
