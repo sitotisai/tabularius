@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**251 entries in 30 areas.** Unverified: 117. Waiting on: 22 on a sample file, 148 on a FileMaker run or Design Report, 14 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
+**252 entries in 30 areas.** Unverified: 118. Waiting on: 22 on a sample file, 149 on a FileMaker run or Design Report, 14 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
 
 ## Conversion
 
@@ -287,7 +287,8 @@ part of it.
 | What differs or is unknown | How it shows | What would settle it | Where it is written |
 | --- | --- | --- | --- |
 | Each ICU locale mapping is an approximation of Claris, unverified; contractions (such as Czech ch) are not applied | A person sorts or finds with `<`, `>` or a range on a field set to that language can see an order that differs from FileMaker's | A FileMaker run sorting generated words in each language, compared language by language | [docs/sort-languages.md](sort-languages.md) — “(the whole page)” |
-| An omitted or blank SortValues locale uses English rather than the file locale Claris specifies | A file with a non-English locale can sort an omitted-locale list differently | Persist the file locale and compare a generated SortValues probe in FileMaker | [docs/sort-languages.md › Where the language applies](sort-languages.md) — “Claris specifies the file's locale, so this needs a file-locale check before it can claim parity.” |
+| A field index keeps accent variants with equal language keys as separate entries in code point order, unverified against FileMaker | View Index, Insert From Index and auto-complete may show a different number or order of entries | Compare generated accent variants in a field index in FileMaker | [docs/sort-languages.md › Where the language applies](sort-languages.md) — “choice, unverified: whether FileMaker's index keeps such values as one entry is not shown by the pages read.” |
+| An omitted or blank SortValues locale uses English rather than the file locale Claris specifies | A file with a non-English locale can sort an omitted-locale list differently | Persist the file locale and compare a generated SortValues probe in FileMaker | [docs/sort-languages.md › Where the language applies](sort-languages.md) — “choice, unverified: whether FileMaker's index keeps such values as one entry is not shown by the pages read.” |
 | Direct-field SQL ORDER BY uses the field's language where Claris documents Unicode binary SQL order | ExecuteSQL and read-only SQL can order a text field differently from FileMaker Server | An owner decision on cross-surface consistency versus Claris SQL parity | [docs/sort-languages.md › Where the language applies](sort-languages.md) — “SQL ORDER BY on a direct text field in a single table uses the field's Default language here, so it agrees…” |
 
 ## SQL and calculations

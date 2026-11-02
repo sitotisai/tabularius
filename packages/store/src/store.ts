@@ -34,7 +34,7 @@ import { decimalKey, decimalNumberText, nativeValue } from './native-types.ts';
 import { Calculations, ValidationError, rowsById, sortKeyFunction, summaryColumns, summaryType, summedFor, type Pass, type Rec, type Row, type Summed, type EditedRecord } from './calc.ts';
 import { assertMayReadWhatItSaves } from './formula-access.ts';
 import { asBoolean, asNumberOrEmpty, asText, CalcError, compare, decimalSum, editRuns, evaluate as evaluateFormula, fromStored, isEmpty, toStored, type CalcContext, type InstalledPlugin, type PluginFunction, type StyleRun, type Value } from '../../calc/src/index.ts';
-import { foldCase, recordSortKey, recordSortLanguage, SORT_LANGUAGE_IDS, sortFunction, sortKey, sortLanguage } from '../../calc/src/collation.ts';
+import { foldCase, recordSortKey, recordSortLanguage, SORT_LANGUAGE_IDS, sortFunction, sortKey, sortLanguage, sortLocale } from '../../calc/src/collation.ts';
 import { valueListOrder } from './value-list-sort.ts';
 import { languageOrderBy } from './sql-language-order.ts';
 import { authorityOf, ownPrivilegeEntry, countObjectUse, ensurePrivilegeTables, isFullAccess, privilegeSets, relaxUnverified, validateDefinition, Privileges, PrivilegeError, NO_ACCESS, maskValue, type FieldMask, type PrivilegeDefinition, type Rule } from './privileges.ts';
@@ -7848,6 +7848,7 @@ export class Store {
     const occ = to && occurrence(this, to.id);
     const field = occ?.table.fields.find((f) => f.name === name.replace(/\(\d+\)$/, ''));
     if (!occ || !field) throw new StoreError(102, `Field "${key}" is missing`);
+    const language = recordSortLanguage(field.options?.indexLanguage, field.options?.indexLanguageId);
     if (field.kind === 'summary' || field.options?.global || (field.kind === 'calculation' && field.options?.unstored) || field.type === 'container') return [];
     const pv = occ.store.local(opts.privileges);
     if (pv && pv.field(occ.table.name, field.name) === 'none') return [];
@@ -7879,7 +7880,13 @@ export class Store {
       ? (a, b) => { const x = decimalKey(a.text) ?? '', y = decimalKey(b.text) ?? ''; return x < y ? -1 : x > y ? 1 : 0; }
       : field.type === 'number' || field.type === 'integer' || field.type === 'boolean'
       ? (a, b) => Number(a.text) - Number(b.text) || a.text.localeCompare(b.text)
-      : (a, b) => a.key.localeCompare(b.key, undefined, { sensitivity: 'base' })).map((e) => e.text);
+      : dated
+      ? (a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0
+      : (a, b) => {
+        const key = (value: string) => language === 'unicode' ? value : recordSortKey(value.normalize('NFC').toLocaleLowerCase(sortLocale(language)), language);
+        return Buffer.compare(Buffer.from(key(a.key)), Buffer.from(key(b.key)))
+          || Buffer.compare(Buffer.from(a.text), Buffer.from(b.text));
+      }).map((e) => e.text);
     return opts.limit ? out.slice(0, opts.limit) : out;
   }
 

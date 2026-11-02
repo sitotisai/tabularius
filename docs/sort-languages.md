@@ -18,6 +18,10 @@ language) or with `indexLanguage` in a design change. Nothing is rebuilt: the or
 A field's language puts text in order in each of these, so they agree with one another:
 
 - **Sort Records** and the Sort dialog, the Data API's `_sort`, portals and their sorts, value lists sorted by their field.
+- **Field index** (View Index, Insert From Index and auto-complete): sorted in the field's language; values the language
+  sorts as equal (an accent it ignores) are kept as separate entries and listed in code point order. This is a Tabularius
+  choice, unverified: whether FileMaker's index keeps such values as one entry is not shown by the pages read.
+  <!-- known-difference: Sorting and languages ;; A field index keeps accent variants with equal language keys as separate entries in code point order, unverified against FileMaker ;; View Index, Insert From Index and auto-complete may show a different number or order of entries ;; Compare generated accent variants in a field index in FileMaker -->
 - **A find** with `<`, `>`, `<=`, `>=` and a range (`a...m`): the words of the value that lie between the bounds in the
   field's order, as Claris describes a text range. For Japanese fields, full-width letters and digits share the ordinary
   width's key, and half-width katakana with voiced marks share the full-width key. This range behavior has not been
