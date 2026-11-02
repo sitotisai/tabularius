@@ -27,11 +27,11 @@
 import { secret } from '../../store/src/settings.ts';
 import { encryptionKeyFromEnv } from './setting-values.ts';
 import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { isIP } from 'node:net';
 import { join } from 'node:path';
 import { readJsonStateSync, updateJsonStateSync, withStateLock } from '../../store/src/durable.ts';
-import { writeFileSync } from '../../store/src/fs-boundary.ts';
+import { readFileSync as readChecked, writeFileSync } from '../../store/src/fs-boundary.ts';
 import { captureOnly, type ConnectionRequest, type ScriptConnections } from '../../scripts/src/index.ts';
 import { OutboundRefused, guardedFetch as guardedRequest, isInternalHost, mappedIPv4 } from '../../scripts/src/net-guard.ts';
 import { S3 } from './s3.ts';
@@ -699,6 +699,11 @@ export function mailFailure(message: string, secrets: readonly string[]): string
 
 export const CONNECTION_TYPES: ConnectionType[] = [s3Type, restType, smtpType];
 
+/** Whether anything, a link or a pipe included, is at the name (a link's target is not looked at). */
+function lstatOrNothing(path: string): boolean {
+  try { lstatSync(path); return true; } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return false; throw e; }
+}
+
 // --- the vault ----------------------------------------------------------------------------------------------
 
 /** Secrets sealed on disk. A name like "<connection id>/<field>" is also what is bound into each seal. */
@@ -774,13 +779,23 @@ class Vault {
       this.key = scryptSync(pass, Buffer.from(this.salt, 'base64'), 32, { N: 1 << 15, r: 8, p: 1, maxmem: 64 << 20 });
     } else {
       this.salt = undefined;
-      if (existsSync(this.keyFile)) {
+      if (lstatOrNothing(this.keyFile)) {
+        // Read through the boundary: a link or a pipe at the key's name is refused, never followed or waited on (a key a stranger chose would seal every secret with it).
+        let text: string;
+        try {
+          text = readChecked(this.keyFile, 'utf8');
+        } catch (e) {
+          if ((e as NodeJS.ErrnoException).code !== 'ESTALE') throw e;
+          this.key = undefined;
+          this.problem = `${KEY_FILE} is not a plain file (a link, a pipe or a folder stands there); remove it`;
+          return;
+        }
         if (process.platform !== 'win32' && statSync(this.keyFile).mode & 0o077) {
           this.key = undefined;
           this.problem = `${KEY_FILE} can be read by other users (chmod 600)`;
           return;
         }
-        this.key = Buffer.from(readFileSync(this.keyFile, 'utf8').trim(), 'hex');
+        this.key = Buffer.from(text.trim(), 'hex');
         if (this.key.length !== 32) {
           this.key = undefined;
           this.problem = `${KEY_FILE} is damaged`;
