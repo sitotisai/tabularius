@@ -358,7 +358,7 @@ const NAMES_ONLY: Record<string, string> = {
   'nodejs.org': 'part of a message telling a person where to download Node',
   'localhost': 'this computer',
   'api.example.com': 'example text in a connection form', 'auth.example.com': 'example text in a connection form',
-  'files.example.com': 'example text in a message', 'fms.example.com': 'example text in a message', 'maps.example.com': 'example text in the layout editor',
+  'files.example.com': 'example text in a message', 'main.example.com': 'example text in a message', 'fms.example.com': 'example text in a message', 'maps.example.com': 'example text in the layout editor',
   'your.address': 'example text in a message',
 };
 
