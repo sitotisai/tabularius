@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 // report is made from a scratch copy of each file's design, never from the file itself.
 
 import { createHmac, randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, openSync, closeSync, readFileSync, readSync, readdirSync, rmSync, statSync, statfsSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, openSync, closeSync, readFileSync, readSync, readdirSync, rmSync, statSync, statfsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { findExecutable } from '../../server/src/find-executable.ts';
 import { arch, cpus, hostname, homedir, platform, release, tmpdir, totalmem } from 'node:os';
@@ -28,7 +28,9 @@ import { pluginStatus } from '../../plugins/src/index.ts';
 import { conversionReport, readSettings, runningServer, STORE_EXT } from '../../server/src/index.ts';
 import { SERVER_VERSION } from '../../server/src/version.ts';
 import { createStore, Store, STORE_FORMAT } from '../../store/src/index.ts';
+import { writeFileSync as writeChecked } from '../../store/src/fs-boundary.ts';
 import { runDoctor, doctorText } from './doctor.ts';
+import { nearestExisting, privateFolder, refusePlantedLinks } from './output-files.ts';
 import { installed } from './service.ts';
 
 const REDACTED = '‹redacted›';
@@ -634,16 +636,20 @@ export async function diagnostics(folderArg: string, opts: DiagnosticsOptions = 
   return out;
 }
 
-/** Writes a bundle as a .zip file or into a new folder; returns what was written. Refuses to replace anything. */
+/**
+ * Writes a bundle as a .zip file or into a new folder; returns what was written. Refuses to replace anything, to make folders
+ * above it where a link planted in a shared folder points, and to write through a link or a second name.
+ */
 export function writeBundle(bundle: Map<string, string>, out: string, now = new Date()): string {
   const target = resolve(out);
   if (existsSync(target)) throw new Error(`diagnostics: ${target} is already there; give another --out`);
   if (/\.zip$/i.test(target)) {
+    refusePlantedLinks(nearestExisting(dirname(target)));
     mkdirSync(dirname(target), { recursive: true });
-    writeFileSync(target, zip([...bundle].map(([name, text]) => ({ name: `tabularius-diagnostics/${name}`, data: Buffer.from(text, 'utf8') })), now), { flag: 'wx', mode: 0o600 });
+    writeChecked(target, zip([...bundle].map(([name, text]) => ({ name: `tabularius-diagnostics/${name}`, data: Buffer.from(text, 'utf8') })), now), { flag: 'wx', mode: 0o600 });
   } else {
-    mkdirSync(target, { recursive: true, mode: 0o700 });
-    for (const [name, text] of bundle) writeFileSync(join(target, name), text, { flag: 'wx', mode: 0o600 });
+    privateFolder(target);
+    for (const [name, text] of bundle) writeChecked(join(target, name), text, { flag: 'wx', mode: 0o600 });
   }
   return target;
 }
