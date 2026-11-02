@@ -8,12 +8,14 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { availableParallelism, tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { delimiter, join, relative, sep } from 'node:path';
 import { runCli } from './cli-run.ts';
 import { handWrittenDocs, inlineCode, tabulariusCall, root, shellCommands, shellFences } from './docs-examples.ts';
+import { testCommandPath } from '../../../scripts/test-command-path.ts';
 
 const main = join(import.meta.dirname, '..', 'src', 'main.ts');
 const fixtures = join(root, 'fixtures', 'fmp12');
+const samplePath = `${relative(root, fixtures).split(sep).join('/')}/`;
 const NEVER_RETURN = new Set(['serve', 'standby', 'mcp', 'service', 'upgrade', 'backup-loop']);
 const GLOBAL = new Set(['--help', '--version']);
 
@@ -90,9 +92,14 @@ test('every command, option and npm script the hand-written pages show exists', 
   assert.deepEqual(wrong, []);
 });
 
-const skip = existsSync(join(fixtures, 'Charts.fmp12')) ? false : 'fixtures missing: run npm run fixtures';
+const haveSamples = existsSync(join(fixtures, 'Charts.fmp12'));
 
-test('the examples marked run or placeholders work, in an empty home folder with a hosted Invoices', { skip, timeout: 600_000 }, async () => {
+// Without the downloaded sample files only the examples that name one are left out.
+function needsSample(f: ReturnType<typeof shellFences>[number]): boolean {
+  return f.body.includes(samplePath) || (f.subs ?? []).some(([, replacement]) => replacement.includes(samplePath));
+}
+
+test('the examples marked run or placeholders work, in an empty home folder with a hosted Invoices', { timeout: 600_000 }, async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-docs-run-'));
   const bin = join(dir, 'bin');
   mkdirSync(bin);
@@ -101,7 +108,7 @@ test('the examples marked run or placeholders work, in an empty home folder with
     chmodSync(join(bin, 'tabularius'), 0o755);
     const byFile = new Map<string, ReturnType<typeof shellFences>>();
     for (const file of handWrittenDocs()) {
-      const runnable = shellFences(file).filter((f) => f.mark === 'run' || f.mark === 'placeholders');
+      const runnable = shellFences(file).filter((f) => (f.mark === 'run' || f.mark === 'placeholders') && (haveSamples || !needsSample(f)));
       if (runnable.length) byFile.set(file, runnable);
     }
     // Each page gets its own empty home, so one page's examples can't lean on another's, and the pages can run side by side.
@@ -109,7 +116,8 @@ test('the examples marked run or placeholders work, in an empty home folder with
       const home = mkdtempSync(join(dir, 'home-'));
       symlinkSync(join(root, 'examples'), join(home, 'examples'));
       symlinkSync(join(root, 'fixtures'), join(home, 'fixtures'));
-      const env = { ...process.env, HOME: home, USERPROFILE: home, PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`, PORT: '1' };
+      const stubs = testCommandPath(t);
+      const env = { ...process.env, ...stubs, HOME: home, USERPROFILE: home, PATH: `${bin}${delimiter}${stubs.PATH}${delimiter}${process.env.PATH ?? ''}`, PORT: '1' };
       const sh = (cmd: string, input = 'a-test-password\n') => new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve) => {
         const child = spawn('sh', ['-c', cmd], { cwd: home, env, timeout: 120_000, stdio: ['pipe', 'pipe', 'pipe'] });
         let stdout = '';
@@ -142,6 +150,6 @@ test('the examples marked run or placeholders work, in an empty home folder with
       return ran;
     });
     const total = counts.reduce((a, b) => a + b, 0);
-    assert.ok(total >= 15, `ran ${total} commands`);
+    assert.ok(total >= 60, `ran ${total} commands`);
   } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }); }
 });
