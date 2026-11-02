@@ -9,7 +9,7 @@ import { rethrowExecutionRefusal } from '../../calc/src/execution-refusal.ts';
 import { charCount } from '../../calc/src/text.ts';
 import { FUNCTIONS, pluginNotInstalled } from '../../calc/src/functions.ts';
 import { fileMakerSqlSyntax, oneStatement, withAccount } from './sql-dates.ts';
-import { anyAllToIn, castsToTypes, containerCastsToName, expandStars, fetchToLimit, refuseUnsupportedJoins } from './sql-grammar.ts';
+import { anyAllToIn, castsToTypes, containerCastsToName, expandStars, fetchToLimit, refuseUnsupportedJoins, setOperationQuantifiers } from './sql-grammar.ts';
 import { checkGrouping, checkUnionTypes } from './sql-checks.ts';
 import {
   compile, CalcError, CalcNestingError, ERR, EMPTY, fromStored, toStored, asText, asNumberOrEmpty, asDate, asTime, asTimestamp, asBoolean,
@@ -2046,6 +2046,7 @@ export class Calculations {
     query = cleanSql(query);
     if (!oneStatement(query)) throw new CalcError(ERR.calculation, 'SQL runs one statement at a time');
     refuseUnsupportedJoins(query);
+    query = setOperationQuantifiers(query);
     // Text and date fields by name (not one that another table has as something else): `+` and `-` on them join
     // strings and add days.
     const kinds = new Map<string, 'string' | 'date' | null>();
@@ -2104,7 +2105,7 @@ export class Calculations {
       return t && !unreadable(t.store) ? t.store.calc.columnNames(t.table) : undefined;
     });
     // FROM / JOIN <occurrence> [[AS] alias] becomes its base table, named as the query names it.
-    const tableRef = /(\b(?:FROM|JOIN)\s+)("(?:[^"]|"")+"|[\w.~]+)(?:\s+(?:AS\s+)?(?!(?:WHERE|JOIN|INNER|LEFT|RIGHT|FULL|OUTER|CROSS|ON|ORDER|GROUP|HAVING|UNION|LIMIT|OFFSET|FETCH)\b)("(?:[^"]|"")+"|\w+))?/gi;
+    const tableRef = /(\b(?:FROM|JOIN)\s+)("(?:[^"]|"")+"|[\w.~]+)(?:\s+(?:AS\s+)?(?!(?:WHERE|JOIN|INNER|LEFT|RIGHT|FULL|OUTER|CROSS|NATURAL|ON|ORDER|GROUP|HAVING|UNION|INTERSECT|EXCEPT|WINDOW|LIMIT|OFFSET|FETCH)\b)("(?:[^"]|"")+"|\w+))?/gi;
     const tableKeywords = new Set(sqlTokens(sql)
       .filter((t) => t.kind === 'word' && /^(?:FROM|JOIN)$/i.test(t.text)).map((t) => t.start));
     sql = sql.replace(tableRef, (m, from: string, name: string, alias: string | undefined, offset: number) => {

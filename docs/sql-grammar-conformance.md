@@ -6,7 +6,7 @@ The grammar is in [`packages/server/test/data/sql-grammar.json`](../packages/ser
 
 ## What was checked
 
-248 entries, 243 with an expectation and 5 recorded as not verified (below). Each entry with an expectation runs on the applicable paths.
+252 entries, 247 with an expectation and 5 recorded as not verified (below). Each entry with an expectation runs on the applicable paths.
 
 | Area | Constructs |
 | --- | --- |
@@ -15,7 +15,7 @@ The grammar is in [`packages/server/test/data/sql-grammar.json`](../packages/ser
 | WHERE (the relational operators, `LIKE`, `BETWEEN`, `IN`, `EXISTS`, `IS NULL`, `ANY`, `ALL`, `AND`/`OR`/`NOT`, precedence) | 36 |
 | GROUP BY, HAVING | 8 |
 | Aggregates (`SUM`, `AVG`, `COUNT`, `MAX`, `MIN`, `DISTINCT`, aggregate in a function) | 11 |
-| UNION, ORDER BY (names, ordinals, `ASC`/`DESC`, binary order) | 13 |
+| UNION, ORDER BY (names, ordinals, `ASC`/`DESC`, binary order) | 17 |
 | OFFSET, FETCH FIRST (`ROW`/`ROWS`, count omitted, `WITH TIES`, `PERCENT`, subqueries, count under 1) | 26 |
 | Constants and operators (strings, scientific notation, `DATE`/`TIME`/`TIMESTAMP`, `{D '...'}`, `^`, `**`, precedence, string `+` and `-`, date arithmetic) | 26 |
 | Functions: string, numeric, date, `CASE`, `COALESCE`, `NULLIF`, `CAST`, container `GetAs` | 84 |
@@ -24,7 +24,7 @@ The grammar is in [`packages/server/test/data/sql-grammar.json`](../packages/ser
 | Statements that write (`INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`, `ALTER TABLE`, `CREATE`/`DROP INDEX`, `TRUNCATE`) | 8 |
 | `?` parameters (one, multiple in order, a value containing a quote) | 3 |
 
-98 results are ones the Claris page states, with the example it gives. 145 are worked out from a stated rule or the SQL standard (marked `derived` in the file); the character, date and time, and DECIMAL CAST cases follow the standard because the cited pages do not state their results. The Claris pages read give no example of `DECIMAL(p,s)` or `NUMERIC(p,s)` casts, so their precision, scale and overflow expectations come from the SQL standard; the vendor result is unverified. <!-- known-difference: SQL grammar ;; vendor results for parameterized DECIMAL and NUMERIC casts are unspecified in the cited pages ;; the conformance test uses the SQL standard for these derived expectations ;; compare the casts with FileMaker and record the observed result --> Five entries are marked `unverified` because the vendor result is not stated. Every entry names its page. The `?` cases follow [Claris's ExecuteSQL help](https://help.claris.com/en/pro-help/content/executesql.html), which specifies argument binding order; the quoted-name cases follow its `"Last Name"` example and the [reserved keyword rule](https://help.claris.com/en/sql-reference/content/reserved-sql-keywords.html). <!-- known-difference-ok: describes evidence categories rather than a product behavior difference -->
+98 results are ones the Claris page states, with the example it gives. 149 are worked out from a stated rule or the SQL standard (marked `derived` in the file); the character, date and time, and DECIMAL CAST cases follow the standard because the cited pages do not state their results. The Claris pages read give no example of `DECIMAL(p,s)` or `NUMERIC(p,s)` casts, so their precision, scale and overflow expectations come from the SQL standard; the vendor result is unverified. <!-- known-difference: SQL grammar ;; vendor results for parameterized DECIMAL and NUMERIC casts are unspecified in the cited pages ;; the conformance test uses the SQL standard for these derived expectations ;; compare the casts with FileMaker and record the observed result --> Five entries are marked `unverified` because the vendor result is not stated. Every entry names its page. The `?` cases follow [Claris's ExecuteSQL help](https://help.claris.com/en/pro-help/content/executesql.html), which specifies argument binding order; the quoted-name cases follow its `"Last Name"` example and the [reserved keyword rule](https://help.claris.com/en/sql-reference/content/reserved-sql-keywords.html). <!-- known-difference-ok: describes evidence categories rather than a product behavior difference -->
 
 ## What the check found and what changed
 
@@ -32,6 +32,7 @@ The first run disagreed with the pages on 42 entries. Some were mistakes in the 
 
 | Construct | Before | Now |
 | --- | --- | --- |
+| `SELECT ... FROM t INTERSECT/EXCEPT ...` and `WINDOW` after a table | A syntax error because the next word was read as an alias | Run with the set operator or window clause |
 | `SELECT *` | Also returned the record id and modification count columns | Returns the fields only; `ROWID` and `ROWMODID` still work when asked for |
 | `FETCH FIRST ROW ONLY` and `FETCH NEXT` | A syntax error | One row, as the page says the count defaults to 1 |
 | `FETCH FIRST 0 ROWS ONLY` | No rows | An error (the count is at least 1) |
@@ -65,6 +66,7 @@ The two rewrites with the widest reach are the string and date operators and the
 The Claris string-function page read for this check shows only the comma form with a start of 1 or more. The SQL standard supplies the rule for the FROM forms and positions before 1. Whether FileMaker accepts the FROM forms is unverified. <!-- known-difference: SQL grammar ;; acceptance of SUBSTRING and TRIM FROM forms by FileMaker is unknown ;; Tabularius runs these forms with SQL standard semantics ;; run the same forms on FileMaker and record whether they are accepted -->
 
 - **`+` and `-`** are rewritten only where an operand shows what it is. A string constant or the result of a string function (`UPPER`, `LEFT`, `STRVAL`...) joins with anything. A text field joins only a string or another text field, so a number kept in a text field still adds (`Code + 0`). A date constant, date function or date field makes it date arithmetic, which falls back to ordinary arithmetic when the value is not a date. Two numbers, or a number and a field of unknown type, keep SQLite's arithmetic. An operand that is followed or preceded by `*`, `/` or `%` takes the whole product (`'n=' + Pay * 2`). Fields are told apart by name across the file's tables, and a name that two tables give different types is not rewritten. A name the account cannot read is not looked up. An alias or derived column that shares a text field's name is read as that field.
+- **Set operations.** `INTERSECT` and `EXCEPT` run as SQLite runs them. `DISTINCT` after `UNION`, `INTERSECT` or `EXCEPT` is the SQL standard's default and is accepted. `INTERSECT ALL` and `EXCEPT ALL` are refused by name because SQLite has no multiset form. Whether the vendor product lists `INTERSECT` and `EXCEPT` is unverified by the cited pages; no product difference is established. <!-- known-difference-ok: vendor support for these operators is unverified, so no product difference is established -->
 - **Quantified comparisons.** `x > ALL (S)` is rewritten to `NOT EXISTS (WITH q(v) AS (S) SELECT 1 FROM q WHERE NOT COALESCE(x > v, 0))` and `x < ANY (S)` to `EXISTS (WITH q(v) AS (S) SELECT 1 FROM q WHERE x < v)`; `= ALL` and `<> ANY` the same way. The column list names the subquery's one column, so a subquery with two columns is an error. `ALL` over no rows is true, `ANY` over none is false, and a NULL among the values keeps `ALL` from being true (the SQL standard; the Claris page gives no example of either). The left side must be a name, a constant or a call: `a + b > ALL (...)` is left for SQLite to report, because the rewrite would take only `b`. Under a `NOT` the three-valued logic of a NULL is lost (`NOT (x > ALL (S))` is true where S holds a NULL).
 - **`WITH TIES`.** `FETCH FIRST n ROWS WITH TIES` becomes a limit equal to the number of rows whose `RANK()` over the `ORDER BY` is no greater than the rank of the row at position offset + n, less the offset. The `ORDER BY` items that are a select-list alias or a position are replaced by their expressions for that count. A `DISTINCT`, a `UNION`/`INTERSECT`/`EXCEPT` and a query with no `FROM` are refused: the page does not say what ties mean there. A tie is equality on every `ORDER BY` key, with SQLite's ordering and collation.
 - **`?` as a count.** `OFFSET ? ROWS` and `FETCH FIRST ? ROWS ONLY` (also `NEXT` and `ROW`) take the count from a parameter, in the order the parameters are written; the same rules as a written count apply when the query runs (a fetch under 1 and an offset under 0 are errors, a fraction or text that is not a number is an error). With `WITH TIES` or `PERCENT` a `?` count is refused.
