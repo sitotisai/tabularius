@@ -5,6 +5,7 @@ import { syncBuiltinESMExports } from 'node:module';
 import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fileId } from '../../store/src/fs-boundary.ts';
 import { isLocalAdmin, openLocalAccess, LOCAL_FILE } from '../src/local-admin.ts';
 import { MailLimit, MAIL_LIMIT_FILE } from '../src/mail-limit.ts';
 
@@ -13,11 +14,13 @@ test('unchanged local bearer files are cached; repeated checks do not reread the
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   openLocalAccess(dir, 'http://localhost:8080');
   const path = join(dir, LOCAL_FILE);
+  const identity = fileId(path);
   const token = JSON.parse(fs.readFileSync(path, 'utf8')).token as string;
   const read = fs.readFileSync;
   let reads = 0;
   const mock = t.mock.method(fs, 'readFileSync', (...args: Parameters<typeof read>) => {
-    if (args[0] === path) reads++;
+    // Guarded reads use a checked descriptor; count reads of this file through either form.
+    if (args[0] === path || (typeof args[0] === 'number' && fileId(args[0]) === identity)) reads++;
     return Reflect.apply(read, fs, args);
   });
   syncBuiltinESMExports();
