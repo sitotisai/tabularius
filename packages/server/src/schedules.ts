@@ -21,6 +21,7 @@ import { basename, join } from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { captureOnly, runScript } from '../../scripts/src/index.ts';
 import type { Host } from './host.ts';
+import { auditAutomation, changedFields } from './automation-audit.ts';
 import { backupFolder, defaultBackupDir } from './backup.ts';
 import { describeCheck, verifyAfterBackup } from './backup-verify.ts';
 import { backupFolderProblem, checkBackupFolder } from './backup-folder.ts';
@@ -443,6 +444,7 @@ export class Schedules {
     this.list.push(s);
     if (s.kind === 'backup' && s.dest) this.backupProblems.set(s.id, { dest: s.dest, at: performance.now() });
     this.save(s, undefined, true);
+    this.audit('added', s);
     const current = this.get(s.id);
     if (current) this.arm(current);
     return s;
@@ -497,9 +499,16 @@ export class Schedules {
     if (s.kind === 'backup' && s.dest && s.dest !== old.dest) this.backupProblems.set(s.id, { dest: s.dest, at: performance.now() });
     else if (!s.dest) this.backupProblems.delete(s.id);
     this.save(s);
+    this.audit('changed', s, changedFields(old, s, ['name', 'database', 'script', 'account', 'parameter', 'everyMinutes', 'at', 'enabled', 'network', 'onOpen', 'sealed', 'sync', 'dest']));
     const current = this.get(s.id);
     if (current) this.arm(current);
     return s;
+  }
+
+  /** A schedule that names a file (a script, a sync) is kept in that file's security log; a backup, a check and a message belong to no file. */
+  private audit(change: 'added' | 'changed' | 'removed', s: Schedule, fields?: string[]): void {
+    if (s.kind === 'backup' || s.kind === 'verify' || s.kind === 'message') return;
+    auditAutomation(this.host, this.log, s.database, change, { what: 'schedule', id: s.id, name: s.name, script: s.sync ? 'sync' : s.script, account: s.account, network: s.network, fields });
   }
 
   /** Records the hosted files as they are now as the ones a person looked at for this schedule. */
@@ -548,6 +557,7 @@ export class Schedules {
     this.backupProblems.delete(id);
     this.save(undefined, id);
     this.saveRuns(id, true);
+    this.audit('removed', s);
     return true;
   }
 
