@@ -16,12 +16,17 @@ const NOT_RUN: Record<string, string> = {
   '--from s3://': 'network',
   'docker compose exec': 'Docker',
   ' standby ': 'never returns',
-  ' encrypt ': 'needs a passphrase variable and rewrites the folder',
 };
 
-function block(file: string, first: string) {
-  const found = fences(file).filter((f) => shellCommands(f.body)[0]?.startsWith(first));
-  assert.equal(found.length, 1, 'the page changed: update this table');
+// The one code block of `file` whose first command starts with `first`; with `anywhere`, the one block that has a command
+// starting with it on any line (for blocks that open with an `export` line). Exactly one block must match, so a page that
+// gains or loses such a block fails here instead of silently leaving commands unchecked.
+function block(file: string, first: string, anywhere = false) {
+  const found = fences(file).filter((f) => {
+    const commands = shellCommands(f.body);
+    return anywhere ? commands.some((c) => c.startsWith(first)) : commands[0]?.startsWith(first);
+  });
+  assert.equal(found.length, 1, `the page changed: ${found.length} code blocks in ${file} ${anywhere ? 'have a command' : 'start with'} "${first}" (expected exactly 1); update this table`);
   return found[0];
 }
 
@@ -37,7 +42,7 @@ function argsOf(command: string): string[] {
 test('connecting, team hosting and native compatibility commands run against a generated hosted file', async (t) => {
   const home = mkdtempSync(join(tmpdir(), 'tabularius-connecting-'));
   t.after(() => rmSync(home, { recursive: true, force: true }));
-  const env = { ...commandStubEnv(t), HOME: home, USERPROFILE: home, TABULARIUS_PASSWORD: 'test-password-1234' };
+  const env: Record<string, string | undefined> = { ...commandStubEnv(t), HOME: home, USERPROFILE: home, TABULARIUS_PASSWORD: 'test-password-1234' };
   const folder = join(home, 'Databases');
   const call = async (line: string) => {
     const argv = argsOf(line).map((arg) => {
@@ -104,9 +109,18 @@ test('connecting, team hosting and native compatibility commands run against a g
   await run(shellCommands(upgrade.body)[0], 0, 'nothing changed');
   await run(shellCommands(upgrade.body)[1], 0, 'upgraded to native');
 
+  // Last, because it rewrites the hosted stores: the page's own lines in order. An `export VAR=value` line is applied to the
+  // test's environment instead of being run; `serve` never returns and is accounted for in NOT_RUN.
+  const encrypt = block('docs/hosting-for-a-team.md', 'tabularius encrypt ~/FileMakerFiles', true);
+  for (const line of shellCommands(encrypt.body)) {
+    const exported = /^export\s+([A-Z_][A-Z0-9_]*)=(['"]?)(.*)\2$/.exec(line);
+    if (exported) env[exported[1]] = exported[3];
+    else if (line.startsWith('tabularius encrypt ')) await run(line, 0);
+  }
+
   const relevant = [setup, security, block(connecting, 'TABULARIUS_OIDC_CLIENT_SECRET=...'), block(connecting, 'TABULARIUS_LDAP_SEARCH_PASSWORD=...'), token, totp, backup,
-    block('docs/hosting-for-a-team.md', 'tabularius restore ~/Databases --at'), block('docs/hosting-for-a-team.md', 'tabularius encrypt ~/FileMakerFiles'),
-    block('docs/hosting-for-a-team.md', 'tabularius serve ~/Databases --backup-s3'), block('docs/hosting-for-a-team.md', 'tabularius standby ~/Standby'), compat, upgrade];
+    block('docs/hosting-for-a-team.md', 'docker compose exec tabularius tabularius admin-password'), block('docs/hosting-for-a-team.md', 'tabularius restore ~/Databases --at'), encrypt,
+    block('docs/hosting-for-a-team.md', 'tabularius serve ~/Databases --backup-s3', true), block('docs/hosting-for-a-team.md', 'tabularius standby ~/Standby', true), compat, upgrade];
   const all = relevant.flatMap((f) => shellCommands(f.body).filter((c) => /\b(?:npm run tabularius|tabularius)\b/.test(c)));
   for (const key of Object.keys(NOT_RUN)) assert.ok(all.some((line) => line.includes(key)), `NOT_RUN command disappeared: ${key}`);
   assert.deepEqual(all.filter((line) => !results.includes(line) && !Object.keys(NOT_RUN).some((key) => line.includes(key))), [], 'unaccounted Tabularius commands');
