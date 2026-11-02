@@ -1147,6 +1147,42 @@
   "note": "SUM over no rows is NULL (the pages read do not state it)"
  },
  {
+  "id": "union-14",
+  "area": "UNION",
+  "construct": "INTERSECT after a table keeps common rows",
+  "source": "https://help.claris.com/en/sql-reference/content/union-operator.html",
+  "sql": "SELECT dept FROM emp INTERSECT SELECT dept FROM emp WHERE emp_id IN ('E1', 'E3') ORDER BY 1",
+  "rows": [["D101"], ["D102"]],
+  "expected": "derived"
+ },
+ {
+  "id": "union-15",
+  "area": "UNION",
+  "construct": "EXCEPT after a table removes matching rows",
+  "source": "https://help.claris.com/en/sql-reference/content/union-operator.html",
+  "sql": "SELECT dept FROM emp EXCEPT SELECT dept FROM emp WHERE emp_id IN ('E1', 'E3') ORDER BY 1",
+  "rows": [["D103"], ["D104"]],
+  "expected": "derived"
+ },
+ {
+  "id": "union-16",
+  "area": "UNION",
+  "construct": "explicit DISTINCT after UNION has the default result",
+  "source": "https://help.claris.com/en/sql-reference/content/union-operator.html",
+  "sql": "SELECT dept FROM emp WHERE emp_id = 'E1' UNION DISTINCT SELECT dept FROM emp WHERE emp_id = 'E2'",
+  "rows": [["D101"]],
+  "expected": "derived"
+ },
+ {
+  "id": "union-17",
+  "area": "UNION",
+  "construct": "INTERSECT ALL is refused without multiset support",
+  "source": "https://help.claris.com/en/sql-reference/content/union-operator.html",
+  "sql": "SELECT dept FROM emp INTERSECT ALL SELECT dept FROM emp",
+  "error": true,
+  "expected": "derived"
+ },
+ {
   "id": "union-01",
   "area": "UNION",
   "construct": "UNION removes duplicates (stated)",

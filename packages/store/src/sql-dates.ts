@@ -383,7 +383,7 @@ function closingWithin(sql: string, from: number, limit: number): number {
 }
 
 /** Words that are never the operand of an operator (a keyword in front of the operator is not its left side). */
-const KEYWORDS = new Set(['SELECT', 'DISTINCT', 'ALL', 'FROM', 'WHERE', 'AND', 'OR', 'NOT', 'IN', 'IS', 'LIKE', 'BETWEEN', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'ON', 'BY', 'HAVING', 'AS', 'UNION', 'LIMIT', 'OFFSET', 'SET', 'VALUES', 'EXISTS', 'ANY', 'SOME', 'ESCAPE', 'GROUP', 'ORDER', 'JOIN', 'USING', 'WITH', 'INTERVAL', 'ASC', 'DESC', 'COLLATE', 'BY']);
+const KEYWORDS = new Set(['SELECT', 'DISTINCT', 'ALL', 'FROM', 'WHERE', 'AND', 'OR', 'NOT', 'IN', 'IS', 'LIKE', 'BETWEEN', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'ON', 'BY', 'HAVING', 'AS', 'UNION', 'INTERSECT', 'EXCEPT', 'LIMIT', 'OFFSET', 'SET', 'VALUES', 'EXISTS', 'ANY', 'SOME', 'ESCAPE', 'GROUP', 'ORDER', 'JOIN', 'USING', 'WITH', 'INTERVAL', 'ASC', 'DESC', 'COLLATE', 'BY']);
 
 /** The operand ending the text: a quoted run, a name, a number, a call with its brackets, or a date constant. */
 function leftOperand(text: string, end = text.trimEnd().length): { start: number; text: string } | undefined {

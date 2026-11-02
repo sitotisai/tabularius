@@ -112,6 +112,25 @@ export function refuseUnsupportedJoins(sql: string): void {
   if (found) throw unsupported(`${found[1].toUpperCase()} OUTER JOIN`);
 }
 
+/** SQLite already uses DISTINCT for set operations, but does not read the explicit quantifier. */
+export function setOperationQuantifiers(sql: string): string {
+  const tokens = sqlTokens(sql);
+  const removed = new Set<number>();
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token.kind !== 'word') continue;
+    const operator = token.text.toUpperCase();
+    if (operator !== 'UNION' && operator !== 'INTERSECT' && operator !== 'EXCEPT') continue;
+    let next = i + 1;
+    while (tokens[next]?.kind === 'space' || tokens[next]?.kind === 'comment') next++;
+    if (tokens[next]?.kind !== 'word') continue;
+    const quantifier = tokens[next].text.toUpperCase();
+    if (quantifier === 'DISTINCT') removed.add(next);
+    else if (quantifier === 'ALL' && operator !== 'UNION') throw unsupported(`${operator} ALL`);
+  }
+  return tokens.filter((_, i) => !removed.has(i)).map((token) => token.text).join('');
+}
+
 /**
  * ANY, SOME and ALL with a subquery. `= ANY` and `<> ALL` mean IN and NOT IN. The other comparisons (`> ALL`, `< ANY`,
  * `= ALL`...) have no SQLite form, so a scalar aggregate of the comparisons supplies true, false, or unknown. The
