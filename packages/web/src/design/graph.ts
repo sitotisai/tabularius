@@ -450,9 +450,9 @@ function relationshipPanel(studio: Studio, r: DesignRelationship): HTMLElement[]
   const rf = fieldsOf(studio, r.rightTableOccurrenceId);
   const rows = h('div', { class: 'd-stack' });
   const addRow = (p?: DesignRelationship['predicates'][number]) => {
-    const l = select(lf.map((f) => [String(f.id), f.name] as [string, string]), String(p?.leftFieldId ?? lf[0]?.id ?? ''));
-    const o = select(OPERATORS, p?.operator ?? '=');
-    const rr = select(rf.map((f) => [String(f.id), f.name] as [string, string]), String(p?.rightFieldId ?? rf[0]?.id ?? ''));
+    const l = select(lf.map((f) => [String(f.id), f.name] as [string, string]), String(p?.leftFieldId ?? lf[0]?.id ?? ''), { 'aria-label': `Field in ${r.leftTableOccurrence ?? 'the left table'}` });
+    const o = select(OPERATORS, p?.operator ?? '=', { 'aria-label': 'Comparison' });
+    const rr = select(rf.map((f) => [String(f.id), f.name] as [string, string]), String(p?.rightFieldId ?? rf[0]?.id ?? ''), { 'aria-label': `Field in ${r.rightTableOccurrence ?? 'the right table'}` });
     const row = h('div', { class: 'd-row d-predicate' }, l, o, rr, button('×', () => row.remove(), { title: 'Remove', class: 'quiet' }));
     rows.append(row);
   };

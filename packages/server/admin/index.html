@@ -922,7 +922,7 @@
   <section id="passkeys-section">
     <h2>Console passkeys <span class="count" id="passkeys-count"></span></h2>
     <p class="meta">An extra way to sign in to this console, alongside the one admin password. There is no per-person login here, so a console passkey isn't tied to anyone in particular — anyone who registers one, or anyone who already has one, can sign in with it, the same as everyone already shares the one admin password.</p>
-    <p class="filters"><input id="passkeys-label" placeholder="Label (e.g. this MacBook)"><button id="passkeys-add">Add a passkey</button></p>
+    <p class="filters"><input id="passkeys-label" aria-label="Name for this passkey" placeholder="Label (e.g. this MacBook)"><button id="passkeys-add">Add a passkey</button></p>
     <p class="bad" id="passkeys-error" role="alert"></p>
     <div id="passkeys"></div>
   </section>
@@ -4167,7 +4167,7 @@ async function showFieldAccess() {
   $('fieldaccess-count').textContent = noneCount || '';
   $('fieldaccess').innerHTML = table(r.fields, [
     { label: 'Field', get: (f) => f.name },
-    { label: 'Access', html: (f) => `<select data-field-access="${esc(f.name)}">` +
+    { label: 'Access', html: (f) => `<select data-field-access="${esc(f.name)}" aria-label="Access to ${esc(f.name)}">` +
       `<option value="modifiable"${f.access === 'modifiable' ? ' selected' : ''}>Modifiable</option>` +
       `<option value="viewOnly"${f.access === 'viewOnly' ? ' selected' : ''}>View only</option>` +
       `<option value="masked:last4"${f.access === 'masked' && f.mask?.kind !== 'placeholder' ? ' selected' : ''}>Masked: last 4 characters</option>` +

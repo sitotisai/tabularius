@@ -350,7 +350,7 @@ export async function copyXml(make: () => Promise<{ xml: string; notes: string[]
       toast(`Copied ${what} as FileMaker XML`, 'info');
       return true;
     }
-    const text = h('textarea', { class: 'd-paste-xml', rows: '12', spellcheck: 'false', readonly: '' });
+    const text = h('textarea', { class: 'd-paste-xml', rows: '12', spellcheck: 'false', readonly: '', 'aria-label': 'FileMaker XML' });
     text.value = xml;
     const d = h('dialog', { class: 'd-dialog', 'aria-labelledby': 'd-xml-title' },
       h('h3', { id: 'd-xml-title' }, copied ? `Copied ${what} as FileMaker XML` : `${what} as FileMaker XML`),
@@ -387,7 +387,7 @@ function pasteDialog(studio: Studio, tab: () => TabId): void {
     target.table !== undefined ? `Fields go into ${studio.design.tables.find((t) => t.id === target.table)?.name}.` : 'Select a table on the Tables tab to paste fields into it.',
     target.script !== undefined ? `Steps go at the end of ${studio.design.scripts.find((x) => x.id === target.script)?.name}.` : 'Steps without a script make a new script (select one on the Scripts tab to add them to it).',
   ].join(' ');
-  const text = h('textarea', { class: 'd-paste-xml', rows: '14', spellcheck: 'false', placeholder: '<fmxmlsnippet type="FMObjectList"> ...' });
+  const text = h('textarea', { class: 'd-paste-xml', rows: '14', spellcheck: 'false', placeholder: '<fmxmlsnippet type="FMObjectList"> ...', 'aria-label': 'FileMaker XML to paste' });
   const d = h('dialog', { class: 'd-dialog', 'aria-labelledby': 'd-paste-title' },
     h('h3', { id: 'd-paste-title' }, 'Paste from FileMaker'),
     h('p', {}, 'In FileMaker Pro, copy tables or fields (Manage Database), scripts or steps (Script Workspace), custom functions, value lists, or objects in Layout mode (into the open layout editor). ' +
