@@ -215,10 +215,10 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/scripts/src/testrun.ts:199](../../packages/scripts/src/testrun.ts#L199) `seedSelections` | `Calculations.globalValue` (199); `Store.find` (204) | DESIGN |
 | [packages/scripts/src/testrun.ts:338](../../packages/scripts/src/testrun.ts#L338) `testRun` | `Store.evaluateEach` (338) | DESIGN |
 | [packages/scripts/src/testrun.ts:270](../../packages/scripts/src/testrun.ts#L270) `testScript` | `Store.findIds` (270) | DESIGN |
-| [packages/server/src/admin.ts:2462](../../packages/server/src/admin.ts#L2462) `Admin/audit` | `Store.auditLog` (2462) | ADMIN |
-| [packages/server/src/admin.ts:1167](../../packages/server/src/admin.ts#L1167) `Admin/handle` | `Store.externalContainerReport` (1167); `Store.orphanContainerReport` (1172, 1176) | ADMIN |
-| [packages/server/src/admin.ts:2902](../../packages/server/src/admin.ts#L2902) `Admin/status` | `Store.externalContainerCount` (2902) | ADMIN |
-| [packages/server/src/admin.ts:2545](../../packages/server/src/admin.ts#L2545) `Admin/viewAs` | `Store.find` (2545) | ADMIN |
+| [packages/server/src/admin.ts:2463](../../packages/server/src/admin.ts#L2463) `Admin/audit` | `Store.auditLog` (2463) | ADMIN |
+| [packages/server/src/admin.ts:1168](../../packages/server/src/admin.ts#L1168) `Admin/handle` | `Store.externalContainerReport` (1168); `Store.orphanContainerReport` (1173, 1177) | ADMIN |
+| [packages/server/src/admin.ts:2903](../../packages/server/src/admin.ts#L2903) `Admin/status` | `Store.externalContainerCount` (2903) | ADMIN |
+| [packages/server/src/admin.ts:2546](../../packages/server/src/admin.ts#L2546) `Admin/viewAs` | `Store.find` (2546) | ADMIN |
 | [packages/server/src/agent.ts:319](../../packages/server/src/agent.ts#L319) `dryRunPlan` | `Store.findIds` (319) | DESIGN |
 | [packages/server/src/agent.ts:342](../../packages/server/src/agent.ts#L342) `runApprovedStep` | `Store.findIds` (342) | DESIGN |
 | [packages/server/src/agent.ts:163](../../packages/server/src/agent.ts#L163) `runStep` | `Store.findIds` (163); `Store.auditLog` (232); `Store.canViewRecord` (244) | DESIGN |

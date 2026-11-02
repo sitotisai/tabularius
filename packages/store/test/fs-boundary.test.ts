@@ -276,3 +276,39 @@ test('a folder swapped for another folder between the check and the open is stil
   }, () => safe.openSync(folder, 'r')), /not a safe regular file/);
   assert.throws(() => safe.openSync(s.inside, 'r+'), /not a safe regular file|EISDIR/);
 });
+
+for (const attack of ['mode', 'hardlink'] as const) {
+  test(`credential reads check ${attack} on the opened descriptor`, { skip: notOnWindows('POSIX mode bits are required for this credential check') }, (t) => {
+    const s = setup(t);
+    fs.chmodSync(s.file, 0o600);
+    let opened: number | undefined;
+    assert.throws(() => safe.withFilesystemHook((event) => {
+      if (event.operation !== 'open' || event.phase !== 'opened' || event.path !== s.file) return;
+      opened = event.fd;
+      if (attack === 'mode') fs.chmodSync(s.file, 0o666);
+      else fs.linkSync(s.file, join(s.outside, 'planted'));
+    }, () => safe.readCredentialFileSync(s.file)), { code: 'ESTALE' });
+    assert.ok(opened !== undefined);
+    assert.throws(() => fs.fstatSync(opened!), { code: 'EBADF' }, 'a refused descriptor is closed');
+  });
+}
+
+test('credential reads accept owner-only writes and refuse a different server uid', { skip: notOnWindows('Windows uses ACLs rather than POSIX owners and modes') }, (t) => {
+  const s = setup(t);
+  fs.chmodSync(s.file, 0o644);
+  assert.equal(safe.readCredentialFileSync(s.file), 'original', 'existing non-writable shared files remain usable');
+  assert.throws(() => safe.readCredentialFileSync(s.file, 0o077), { code: 'ESTALE' }, 'sealing keys still require private mode');
+  fs.chmodSync(s.file, 0o600);
+  assert.equal(safe.readCredentialFileSync(s.file, 0o077), 'original');
+  // Simulate a server running as another uid without requiring privileged chown.
+  t.mock.method(process as NodeJS.Process & { getuid(): number }, 'getuid', () => fs.statSync(s.file).uid + 1);
+  assert.throws(() => safe.readCredentialFileSync(s.file), { code: 'ESTALE' });
+});
+
+test('credential permission denial is a refusal, not an internal read error', {
+  skip: notOnWindows('Windows privacy depends on ACLs') || (process.getuid?.() === 0 && 'root can read files with no mode permissions'),
+}, (t) => {
+  const s = setup(t);
+  fs.chmodSync(s.file, 0);
+  assert.throws(() => safe.readCredentialFileSync(s.file), { code: 'ESTALE' });
+});

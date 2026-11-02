@@ -143,6 +143,22 @@ export const readFileSync = ((path: fs.PathOrFileDescriptor, options?: Parameter
   try { return fs.readFileSync(fd, options); } finally { fs.closeSync(fd); }
 }) as typeof fs.readFileSync;
 
+/** Read a same-folder credential only from its verified descriptor. Windows privacy relies on ACLs. */
+export function readCredentialFileSync(path: string, forbiddenMode = 0o022): string {
+  let fd: number;
+  try {
+    fd = openSync(path, 'r', 0o600, (st) => {
+      if (!st.isFile() || st.nlink > 1 || (process.platform !== 'win32' &&
+          (st.uid !== process.getuid!() || (st.mode & forbiddenMode) !== 0))) refused(path);
+    });
+  } catch (e) {
+    // An unreadable foreign-owned credential is unusable too, rather than an internal sign-in error.
+    if (['EACCES', 'EPERM'].includes((e as NodeJS.ErrnoException).code ?? '')) refused(path);
+    throw e;
+  }
+  try { return fs.readFileSync(fd, 'utf8'); } finally { fs.closeSync(fd); }
+}
+
 export const writeFileSync: typeof fs.writeFileSync = (path, data, options) => {
   if (typeof path === 'number') {
     checkWritable(path);

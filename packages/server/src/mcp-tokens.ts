@@ -6,7 +6,6 @@
 import { expiryClock } from '../../store/src/clock.ts';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { BoundedMap } from './bounded-map.ts';
-import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJsonStateSync, updateJsonStateSync } from '../../store/src/durable.ts';
 import { DEFAULT_TOKEN_DAYS, MAX_TOKEN_DAYS } from './token-expiry.ts';
@@ -40,7 +39,6 @@ const hashOf = (token: string) => createHash('sha256').update(token).digest('hex
 
 export class McpTokens {
   private readonly file: string;
-  private cache?: { mtime: number; tokens: Stored[] };
   /** Last-used times not yet written: written at most once a minute per token, not on every call. */
   private readonly touched = new BoundedMap<string, number>(1024);
 
@@ -55,11 +53,14 @@ export class McpTokens {
   private readonly onLastUsedWriteAttempt?: () => void;
 
   private read(): Stored[] {
-    if (!existsSync(this.file)) return [];
-    const mtime = statSync(this.file).mtimeMs;
-    if (this.cache?.mtime === mtime) return this.cache.tokens;
-    const tokens = readJsonStateSync<Stored[]>(this.file);
-    this.cache = { mtime, tokens };
+    // Recheck the descriptor on every use: chmod/chown/link do not change mtime.
+    let tokens: Stored[];
+    try { tokens = readJsonStateSync<Stored[]>(this.file, { credential: true, sensitive: true }); }
+    catch (e) {
+      if (!['ENOENT', 'ESTALE'].includes((e as NodeJS.ErrnoException).code ?? '')) throw e;
+      this.touched.clear();
+      return [];
+    }
     const live = new Set(tokens.map((t) => t.id));
     for (const id of this.touched.keys()) if (!live.has(id)) this.touched.delete(id);
     return tokens;
@@ -85,8 +86,7 @@ export class McpTokens {
       id: randomBytes(6).toString('hex'), database, account, label: String(input.label ?? '').trim().slice(0, 200) || `${account} in ${database}`,
       created: now.toISOString(), expires: new Date(expiryClock.now() + days * 86_400_000).toISOString(), hash: hashOf(token), ...(accountIdentity ? { accountIdentity } : {}),
     };
-    updateJsonStateSync<Stored[]>(this.file, [], (tokens) => [...tokens, t], { mode: 0o600 });
-    this.cache = undefined;
+    updateJsonStateSync<Stored[]>(this.file, [], (tokens) => [...tokens, t], { mode: 0o600, credential: true, sensitive: true });
     const { hash: _, accountIdentity: _identity, ...shown } = t;
     return { ...shown, token };
   }
@@ -97,8 +97,7 @@ export class McpTokens {
       const kept = tokens.filter((t) => t.id !== id);
       removed = kept.length !== tokens.length;
       return kept;
-    }, { mode: 0o600 });
-    this.cache = undefined;
+    }, { mode: 0o600, credential: true, sensitive: true });
     this.touched.delete(id);
     return removed;
   }
@@ -118,8 +117,7 @@ export class McpTokens {
       this.touched.set(t.id, now);
       try {
         this.onLastUsedWriteAttempt?.();
-        updateJsonStateSync<Stored[]>(this.file, [], (latest) => latest.map((x) => (x.id === t.id ? { ...x, lastUsed: new Date().toISOString() } : x)), { mode: 0o600, lockWaitMs: 50 });
-        this.cache = undefined;
+        updateJsonStateSync<Stored[]>(this.file, [], (latest) => latest.map((x) => (x.id === t.id ? { ...x, lastUsed: new Date().toISOString() } : x)), { mode: 0o600, lockWaitMs: 50, credential: true, sensitive: true });
       } catch {
         // Last used is a convenience; a read-only folder still signs in.
       }
