@@ -81,6 +81,106 @@ function remember(s: string, v: Json): void {
   parsedChars += s.length;
 }
 
+/** Locate the first character that breaks RFC 8259 JSON syntax, without recursing. */
+export function jsonErrorOffset(s: string): number | undefined {
+  type Frame = { kind: 'root' | 'array' | 'object'; state: 'value' | 'first' | 'key' | 'colon' | 'after' | 'done' };
+  const stack: Frame[] = [{ kind: 'root', state: 'value' }];
+  let i = 0;
+  const digit = (c: string | undefined) => c !== undefined && c >= '0' && c <= '9';
+  const hex = (c: string | undefined) => c !== undefined && /[0-9a-fA-F]/.test(c);
+  const space = (c: string | undefined) => c === ' ' || c === '\t' || c === '\n' || c === '\r';
+  const skipSpace = () => { while (space(s[i])) i++; };
+  const scanString = (): boolean => {
+    i++;
+    while (i < s.length) {
+      const c = s[i];
+      if (c === '"') { i++; return true; }
+      if (s.charCodeAt(i) < 0x20) return false;
+      if (c !== '\\') { i++; continue; }
+      i++;
+      const escape = s[i];
+      if (escape === undefined) return false;
+      if ('"\\/bfnrt'.includes(escape)) { i++; continue; }
+      if (escape !== 'u') return false;
+      i++;
+      for (let n = 0; n < 4; n++, i++) if (!hex(s[i])) return false;
+    }
+    return false;
+  };
+  const scanNumber = (): boolean => {
+    if (s[i] === '-') i++;
+    if (s[i] === '0') i++;
+    else {
+      if (s[i] === undefined || s[i] < '1' || s[i] > '9') return false;
+      do { i++; } while (digit(s[i]));
+    }
+    if (s[i] === '.') {
+      i++;
+      if (!digit(s[i])) return false;
+      do { i++; } while (digit(s[i]));
+    }
+    if (s[i] === 'e' || s[i] === 'E') {
+      i++;
+      if (s[i] === '+' || s[i] === '-') i++;
+      if (!digit(s[i])) return false;
+      do { i++; } while (digit(s[i]));
+    }
+    return true;
+  };
+  while (true) {
+    skipSpace();
+    const frame = stack[stack.length - 1];
+    const c = s[i];
+    if (frame.state === 'done') return c === undefined ? undefined : i;
+    if (frame.state === 'after') {
+      const close = frame.kind === 'array' ? ']' : '}';
+      if (c === close) { i++; stack.pop(); continue; }
+      if (c !== ',') return i;
+      i++;
+      frame.state = frame.kind === 'array' ? 'value' : 'key';
+      continue;
+    }
+    if (frame.state === 'colon') {
+      if (c !== ':') return i;
+      i++;
+      frame.state = 'value';
+      continue;
+    }
+    if (frame.kind === 'object' && (frame.state === 'first' || frame.state === 'key')) {
+      if (frame.state === 'first' && c === '}') { i++; stack.pop(); continue; }
+      if (c !== '"') return i;
+      if (!scanString()) return i;
+      frame.state = 'colon';
+      continue;
+    }
+    if (frame.kind === 'array' && frame.state === 'first' && c === ']') { i++; stack.pop(); continue; }
+    if (c === undefined) return i;
+    frame.state = frame.kind === 'root' ? 'done' : 'after';
+    if (c === '[' || c === '{') {
+      if (stack.length > 100000) return i;
+      i++;
+      stack.push({ kind: c === '[' ? 'array' : 'object', state: 'first' });
+    } else if (c === '"') {
+      if (!scanString()) return i;
+    } else if (c === '-' || digit(c)) {
+      if (!scanNumber()) return i;
+    } else {
+      const literal = c === 't' ? 'true' : c === 'f' ? 'false' : c === 'n' ? 'null' : '';
+      if (!literal) return i;
+      for (const letter of literal) {
+        if (s[i] !== letter) return i;
+        i++;
+      }
+    }
+  }
+}
+
+export function jsonProblem(s: string): string {
+  const offset = jsonErrorOffset(s);
+  if (offset === undefined) return 'The text is not valid JSON';
+  return offset === s.length ? 'The JSON text ends before it is complete' : `The text is not valid JSON at position ${offset + 1}`;
+}
+
 function parseJson(s: string): Json {
   const known = parsed.get(s);
   if (known !== undefined) {
@@ -95,7 +195,7 @@ function parseJson(s: string): Json {
     v = parseChecked(s);
   } catch (e) {
     if (e instanceof JsonError) throw e;
-    throw new JsonError((e as Error).message);
+    throw new JsonError(jsonProblem(s));
   }
   if (s.length >= 64) remember(s, v);
   return v;

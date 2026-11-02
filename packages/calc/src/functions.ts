@@ -41,7 +41,7 @@ import { MBS_CURL } from './mbs-curl.ts';
 import { MBS_JS } from './mbs-js.ts';
 import {
   JSON_TYPES, jsonDeleteElement, jsonFormatElements, jsonGetElement, jsonGetElementType, jsonListKeys, jsonListValues,
-  jsonMakeArray, jsonParse, jsonParsedState, jsonSetElement,
+  jsonMakeArray, jsonParse, jsonParsedState, jsonProblem, jsonSetElement,
 } from './json.ts';
 import type { Node } from './parser.ts';
 import { ALL_STYLES, STYLE_BITS, restyle, rgbHex, sliceRuns, toCss, type TextFormat } from './styled.ts';
@@ -1812,7 +1812,7 @@ eager('BE_JSONPath', 2, 2, (v, env) => {
   } catch (e) {
     rethrowExecutionRefusal(e);
     if (e instanceof HostWait) throw e;
-    beErrors.set(env.ctx, (e as Error).message);
+    beErrors.set(env.ctx, jsonProblem(T(v[0], env)));
     return text('?');
   }
   const r = jsonPath(doc, T(v[1], env));
